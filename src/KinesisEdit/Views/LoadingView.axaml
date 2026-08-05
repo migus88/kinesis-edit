@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="90"
+             x:Class="KinesisEdit.Views.LoadingView"
+             x:DataType="vm:LoadingViewModel">
+  <!-- Non-modal progress indicator with a caller-supplied caption
+       (specs/11-feature-dialogs.md §11.9, "Loading"). -->
+  <Border Classes="overlayCard" MinWidth="240">
+    <StackPanel Spacing="10">
+      <TextBlock Text="{Binding Caption}" HorizontalAlignment="Center" TextWrapping="Wrap" />
+      <ProgressBar IsIndeterminate="True" Width="200" />
+    </StackPanel>
+  </Border>
+</UserControl>

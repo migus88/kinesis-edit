@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configuration app (the legacy app is written in Pascal and unsupported). Target stack: **C# with Avalonia UI**. Primary platform is **macOS** — develop Mac-first — but Windows and Linux must also work.
 
-**Current status: scaffolded; static domain data, the in-memory keyboard model, the firmware module (version parsing + feature gating), the v-Drive services, the lighting module (model + led-file engine), the settings engine, and keystroke capture implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
+**Current status: static domain data, the in-memory keyboard model, the firmware module (version parsing + feature gating), the v-Drive services, the lighting module (model + led-file engine), the settings engine, and keystroke capture implemented; the app shell and device dashboard now exist — the app launches to a dashboard of detected devices and reaches demo mode with no hardware, but the per-device editors are still placeholders.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests` for Core and `KinesisEdit.Tests` for the app layer); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
 
 - Build: `dotnet build src/KinesisEdit.sln`
 - Test: `dotnet test src/KinesisEdit.sln`
@@ -17,7 +17,7 @@ Implementation is planned and tracked in GitHub issues — see the epic ([#1](ht
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
-- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `keyboard-model.md` (the runtime keyboard/macro model), `firmware.md` (version parsing + feature gating), `vdrive.md` (v-Drive discovery, file I/O, eject), `lighting.md` (lighting model + led-file engine), `settings.md` (the settings engine: keyboard/app settings models, parsers, 4MB gate, service), and `keystroke-capture.md` (physical keystroke capture for remap/macro recording). Add a doc per module as modules are built.
+- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `keyboard-model.md` (the runtime keyboard/macro model), `firmware.md` (version parsing + feature gating), `vdrive.md` (v-Drive discovery, file I/O, eject), `lighting.md` (lighting model + led-file engine), `settings.md` (the settings engine: keyboard/app settings models, parsers, 4MB gate, service), `keystroke-capture.md` (physical keystroke capture for remap/macro recording), and `app-shell.md` (the Avalonia app layer: shell navigation, device dashboard, detection loop, notifications). Add a doc per module as modules are built.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.
 
@@ -31,7 +31,7 @@ A SmartSet app is **a file editor with a keyboard-shaped UI**. Each programmable
 2. Parsers/serializers for the text file formats. The `lighting/ledN.txt` engine (RGB, TKO, Advantage360) is implemented in `KinesisEdit.Core.Lighting` (see `docs/app/lighting.md`) and the settings files (spec 08) in `KinesisEdit.Core.Settings` (see `docs/app/settings.md`); layout parsers are not.
 3. An in-memory model per keyboard (layers → keys → remaps/macros), implemented in `KinesisEdit.Core`: the static foundation — device catalog, key-token registry, layer geometries (see `docs/app/domain-data.md`) — plus the editable runtime model built on it, `KeyboardLayout`/`KeyboardLayer`/`KeyboardKey`/`Macro` (see `docs/app/keyboard-model.md`). Device limits are reported by `Validate()`, never enforced.
 4. Keystroke capture feeding that editing: real keypresses with left/right modifiers distinguished, swallowed while recording a remap or macro. Implemented in `KinesisEdit.Core.Input` (see `docs/app/keystroke-capture.md`).
-5. A per-device visual keyboard UI for editing that model.
+5. A per-device visual keyboard UI for editing that model. The app shell that hosts it — window, device dashboard, detection loop, notifications — is implemented in `KinesisEdit` (see `docs/app/app-shell.md`); the editors themselves are not.
 6. Save/sync/eject handling so the firmware reloads the files. The file I/O and eject services are implemented in `KinesisEdit.Core.VDrive` (see `docs/app/vdrive.md`); the save orchestration on top is not.
 
 Facts that shape the architecture (details in `specs/README.md` and the numbered docs):

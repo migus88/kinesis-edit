@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KinesisEdit.Core", "Kinesis
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KinesisEdit.Core.Tests", "KinesisEdit.Core.Tests\KinesisEdit.Core.Tests.csproj", "{A2879B99-00E3-4248-BE54-B31847497B4B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KinesisEdit.Tests", "KinesisEdit.Tests\KinesisEdit.Tests.csproj", "{78C154CD-3A04-4E13-8B0A-D5305A812DBF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{A2879B99-00E3-4248-BE54-B31847497B4B}.Release|x64.Build.0 = Release|Any CPU
 		{A2879B99-00E3-4248-BE54-B31847497B4B}.Release|x86.ActiveCfg = Release|Any CPU
 		{A2879B99-00E3-4248-BE54-B31847497B4B}.Release|x86.Build.0 = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|x64.Build.0 = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Debug|x86.Build.0 = Debug|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|x64.ActiveCfg = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|x64.Build.0 = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|x86.ActiveCfg = Release|Any CPU
+		{78C154CD-3A04-4E13-8B0A-D5305A812DBF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

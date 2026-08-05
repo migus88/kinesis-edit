@@ -4,19 +4,21 @@ using Avalonia.Interactivity;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Input;
 
-namespace KinesisEdit
+namespace KinesisEdit.Views
 {
     /// <summary>
     /// The keystroke-capture spike harness of issue #12: it drives an
     /// <see cref="AvaloniaKeystrokeCaptureService"/> over this window and logs every captured
     /// keystroke with its key-table code, the Legacy/Gen1/Gen2 tokens and the held modifiers, so
     /// the capture contract of specs/10-apps-and-ui.md can be checked by hand — including the
-    /// swallowing itself, by unticking auto-suspend and typing into the probe text box. Plain
-    /// code-behind on purpose — the project has no MVVM framework, and this window is a throwaway
-    /// harness that the per-device editor UIs will replace. It holds no capture rules: every state
-    /// question is asked of the service.
+    /// swallowing itself, by unticking auto-suspend and typing into the probe text box. It is not
+    /// the app's window: <see cref="MainWindow"/> is the shell, and this harness opens in its place
+    /// only when the app is started with the <c>--keystroke-spike</c> argument (see
+    /// docs/app/keystroke-capture.md). Plain code-behind on purpose — the project has no MVVM
+    /// framework, and this window is a throwaway harness that the per-device editor UIs will
+    /// replace. It holds no capture rules: every state question is asked of the service.
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class KeystrokeCaptureSpikeWindow : Window
     {
         private const string StoppedStatus = "Stopped";
         private const string CapturingStatus = "Capturing";
@@ -31,7 +33,7 @@ namespace KinesisEdit
         private readonly AvaloniaKeystrokeCaptureService _captureService;
 
         /// <summary>Builds the harness window and wires it to a capture service over itself.</summary>
-        public MainWindow()
+        public KeystrokeCaptureSpikeWindow()
         {
             InitializeComponent();
 

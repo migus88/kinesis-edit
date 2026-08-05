@@ -80,6 +80,14 @@ namespace KinesisEdit.Core.Devices
         /// <summary>Support/help URL given in specs/02-devices.md (Adv360 Pro only); null elsewhere.</summary>
         public string? SupportUrl { get; init; }
 
+        /// <summary>
+        /// Page opened by the "Troubleshooting Tips" button of the troubleshoot dialog
+        /// (specs/11-feature-dialogs.md §11.8); null for the non-configurable devices.
+        /// Distinct from <see cref="SupportUrl"/> and from the anchored firmware pages in
+        /// <c>KinesisEdit.Core.Firmware.FirmwareSupportUrls</c>.
+        /// </summary>
+        public string? TroubleshootingUrl { get; init; }
+
         /// <summary>Hint text for the on-board shortcut that opens the v-Drive (03 §1); null where the spec gives none.</summary>
         public string? VDriveShortcutHint { get; init; }
 

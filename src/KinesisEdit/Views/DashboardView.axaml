@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="KinesisEdit.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+  <Panel>
+    <!-- Cards for detected devices only; the card list is rebuilt by the detection loop. -->
+    <Grid RowDefinitions="Auto,*" IsVisible="{Binding HasDevices}" Margin="24">
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,16">
+        <Button Content="{x:Static vm:NoDeviceViewModel.ScanButtonCaption}" Command="{Binding ScanCommand}" />
+      </StackPanel>
+
+      <ScrollViewer Grid.Row="1">
+        <ItemsControl ItemsSource="{Binding Devices}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="16" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- specs/11-feature-dialogs.md §11.8 troubleshoot panel while nothing is detected. -->
+    <ContentControl Content="{Binding EmptyState}" IsVisible="{Binding IsEmpty}" Margin="24" />
+  </Panel>
+</UserControl>
