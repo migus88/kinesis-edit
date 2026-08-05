@@ -58,6 +58,6 @@ Every layer is **fully materialized**: the spec's delta descriptions (RGB vs Edg
 ## Deliberately not here
 
 - **No I/O or drive discovery** — detection *data* only (labels, marker paths); probing the filesystem is a later module.
-- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`); comparing them to a device's actual firmware happens elsewhere.
+- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`); comparing them to a device's actual firmware happens in `KinesisEdit.Core.Firmware` (see [`firmware.md`](firmware.md)).
 - **No parsers/serializers** for layout/macro files (specs 04, 06) — this module is the vocabulary those will consume.
 - **No legacy font/rendering metadata** from the spec 05 tables (font names/sizes of the Pascal UI).
