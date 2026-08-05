@@ -45,7 +45,7 @@ namespace KinesisEdit.Tests.ViewModels
                 _fileService,
                 new FakeUrlLauncher());
 
-            _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeFirmwareUpdatePresenter(), new FakeUrlLauncher());
+            _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeUrlLauncher());
             _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier, editors);
         }
 

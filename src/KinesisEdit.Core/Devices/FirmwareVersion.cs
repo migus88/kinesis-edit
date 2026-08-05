@@ -3,7 +3,7 @@ using System.Globalization;
 namespace KinesisEdit.Core.Devices
 {
     /// <summary>
-    /// A firmware (or app) version as reported in device version files, e.g.
+    /// A firmware version as reported in device version files, e.g.
     /// "1.0.1709.us (4MB), 03/08/2019" or "1.0.521". Per specs/09-firmware.md the
     /// first three dot-separated numeric tokens form major/minor/revision; a
     /// non-numeric minor or revision token parses as 0 and trailing text is ignored.

@@ -112,15 +112,6 @@
       <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
     </Style>
 
-    <!-- The single actionable state of the 'Check for Updates' dialog (specs/09-firmware.md §3
-         step 5): 'Update Now' is drawn in the accent color with a hand cursor; every other row
-         state stays a plain, disabled button. -->
-    <Style Selector="Button.updateAvailable">
-      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-
     <Style Selector="TextBlock.heading">
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="SemiBold" />

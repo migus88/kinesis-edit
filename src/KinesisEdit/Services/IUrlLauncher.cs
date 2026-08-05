@@ -2,7 +2,8 @@ namespace KinesisEdit.Services
 {
     /// <summary>
     /// Opens an external page in the user's browser — the "Troubleshooting Tips" link of
-    /// specs/11-feature-dialogs.md §11.8 and the support links of specs/09-firmware.md §2.
+    /// specs/11-feature-dialogs.md §11.8 and the per-device support links of
+    /// specs/09-firmware.md §2 that a firmware-gate refusal offers.
     /// </summary>
     public interface IUrlLauncher
     {
