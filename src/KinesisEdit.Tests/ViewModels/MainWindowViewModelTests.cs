@@ -15,6 +15,8 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeVDriveFileService _fileService = new();
         private readonly FakeDeviceEjectService _ejectService = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeProfileSessionFactory _profiles = new();
+        private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
         private readonly DashboardViewModel _dashboard;
@@ -30,8 +32,12 @@ namespace KinesisEdit.Tests.ViewModels
                 new FakeUiDispatcher(),
                 _neverPolls);
 
+            // The real factory over fake collaborators: which editor a device resolves to is part
+            // of what OpenDevice has to get right.
+            var editors = new EditorViewModelFactory(_profiles, () => _capture, _notifications);
+
             _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeFirmwareUpdatePresenter(), new FakeUrlLauncher());
-            _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier);
+            _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier, editors);
         }
 
         [Fact]
@@ -55,6 +61,58 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(_shell.Editor.IsDemoMode);
             Assert.Same(snapshot, _sessions.Active!.Device);
             Assert.True(_shell.HomeCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void OpenDevice_WithADeviceThatHasAnAuthoredPicture_SwapsInTheRealEditor()
+        {
+            // Demo mode on purpose: the editor's own load then builds its model in memory instead
+            // of racing this test through the profile factory.
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
+
+            var editor = Assert.IsType<DeviceEditorViewModel>(_shell.Editor);
+
+            Assert.Same(editor, _shell.CurrentView);
+            Assert.Equal("Freestyle Edge RGB", editor.DeviceName);
+            Assert.True(editor.IsDemoMode);
+        }
+
+        [Fact]
+        public void OpenDevice_WithADeviceThatHasNoPicture_SwapsInThePlaceholder()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
+        }
+
+        [Fact]
+        public async Task HomeCommand_WithTheRealEditorOpen_DisposesItAndStopsCapture()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
+
+            var editor = Assert.IsType<DeviceEditorViewModel>(_shell.Editor);
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(_shell.Editor);
+            Assert.Equal(1, _capture.StopCount);
+            Assert.False(_capture.HasSubscribers);
+
+            // Disposal is idempotent, so the shell may safely have done it already.
+            editor.Dispose();
+
+            Assert.Equal(1, _capture.StopCount);
+        }
+
+        [Fact]
+        public void OpenDevice_TwiceInARow_DisposesTheEditorItReplaces()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
+            Assert.False(_capture.HasSubscribers);
+            Assert.Equal(1, _capture.StopCount);
         }
 
         [Fact]
@@ -311,6 +369,7 @@ namespace KinesisEdit.Tests.ViewModels
             _shell.Dispose();
             _dashboard.Dispose();
             _monitor.Dispose();
+            _capture.Dispose();
         }
     }
 }

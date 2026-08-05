@@ -32,7 +32,7 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>The open editor, or null while the dashboard is showing.</summary>
-        public EditorPlaceholderViewModel? Editor
+        public EditorViewModelBase? Editor
         {
             get => _editor;
             private set
@@ -110,8 +110,9 @@ namespace KinesisEdit.ViewModels
         private readonly DeviceSessionManager _sessions;
         private readonly INotificationService _notifications;
         private readonly VDriveEjectNotifier _ejectNotifier;
+        private readonly IEditorViewModelFactory _editors;
         private ViewModelBase _currentView;
-        private EditorPlaceholderViewModel? _editor;
+        private EditorViewModelBase? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
         private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Warning;
         private bool _isDemoMode;
@@ -124,13 +125,15 @@ namespace KinesisEdit.ViewModels
             DeviceMonitorService monitor,
             DeviceSessionManager sessions,
             INotificationService notifications,
-            VDriveEjectNotifier ejectNotifier)
+            VDriveEjectNotifier ejectNotifier,
+            IEditorViewModelFactory editors)
         {
             Dashboard = dashboard ?? throw new ArgumentNullException(nameof(dashboard));
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
+            _editors = editors ?? throw new ArgumentNullException(nameof(editors));
             _currentView = dashboard;
 
             HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => IsEditorOpen && !IsBusy);
@@ -163,7 +166,9 @@ namespace KinesisEdit.ViewModels
 
             _notifications.ShowLoading(LoadingCaptions.ForDevice(device.DisplayName));
 
-            Editor = new EditorPlaceholderViewModel(device);
+            CloseEditor();
+
+            Editor = _editors.Create(device);
             CurrentView = Editor;
 
             // The detection loop keeps running: specs/10-apps-and-ui.md requires the open editor
@@ -172,6 +177,14 @@ namespace KinesisEdit.ViewModels
             UpdateStatusIndicator();
 
             _notifications.HideLoading();
+
+            // Reading the profile is the editor's own job and happens after the view is on screen,
+            // against its own IsLoading flag: the shell's loading splash covers the swap, not the
+            // drive read. LoadAsync never throws, which is what makes forgetting the task safe.
+            if (Editor is DeviceEditorViewModel editor)
+            {
+                _ = editor.LoadAsync();
+            }
         }
 
         private async Task GoHomeAsync()
@@ -189,7 +202,8 @@ namespace KinesisEdit.ViewModels
 
                 _sessions.End();
 
-                Editor = null;
+                CloseEditor();
+
                 CurrentView = Dashboard;
                 IsDemoMode = false;
 
@@ -205,6 +219,21 @@ namespace KinesisEdit.ViewModels
             }
 
             UpdateStatusIndicator();
+        }
+
+        /// <summary>
+        /// Drops the open editor, disposing it first. An editor holds the app-wide keystroke
+        /// capture service, which would otherwise keep swallowing keystrokes from the dashboard
+        /// behind it (docs/app/keystroke-capture.md).
+        /// </summary>
+        private void CloseEditor()
+        {
+            if (Editor is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
+            Editor = null;
         }
 
         private void UpdateStatusIndicator()
@@ -271,7 +300,10 @@ namespace KinesisEdit.ViewModels
             UpdateStatusIndicator();
         }
 
-        /// <summary>Unsubscribes from the dashboard and the detection loop. Safe to call multiple times.</summary>
+        /// <summary>
+        /// Unsubscribes from the dashboard and the detection loop and closes any open editor.
+        /// Safe to call multiple times.
+        /// </summary>
         public void Dispose()
         {
             if (_isDisposed)
@@ -283,6 +315,8 @@ namespace KinesisEdit.ViewModels
 
             Dashboard.ConfigureRequested -= OpenDevice;
             _monitor.Updated -= OnMonitorUpdated;
+
+            CloseEditor();
         }
     }
 }

@@ -50,6 +50,13 @@ The UI-free owner of *when* the recorder runs, so the rule is testable instead o
 - Its only platform judgement is "does focus sit in a `TextBox`" (visual-ancestor walk), pushed into the session via `SetTextInputFocused` — before each key event and from `GotFocusEvent`/`LostFocusEvent` handlers on the `TopLevel`, so status updates the moment focus moves. `SuspendOnTextInputFocus` (default `true`) turns that auto-suspend off, which is what lets the harness demonstrate swallowing.
 - `AvaloniaPhysicalKeyBridge` builds `PhysicalKey` → `PhysicalKeyCode` in one cached, case-sensitive `Enum.TryParse` pass by member name. All 126 declared Core names match Avalonia 11.3.12 exactly, so zero aliases are needed. A future rename gets an alias here, never a rename in Core.
 
+## The consumer — the keyboard editor
+
+`DeviceEditorViewModel` is the first real consumer ([keyboard-editor.md](keyboard-editor.md)): it subscribes to `KeystrokeCaptured` for the editor's lifetime, calls `Start()` **only** when a key enters listening state, applies the captured `CapturedKeystroke.Key` through `KeyboardKey.Remap`, and calls `Stop()` on the keystroke, on cancel, on a layer switch and on `Dispose`. One instance is built lazily by `App` over the shell window and shared by every editor; the shell disposes it after the editor.
+
+- **The editor's own Escape is a casualty of "swallow everything", by design.** While a key listens, Escape resolves like any other position and becomes the assignment — a keyboard must be able to carry an Escape remap — so the editor cancels by pointer instead. See [keyboard-editor.md](keyboard-editor.md) for the full rule and the tunnel-order reason its Escape handler is a safety net rather than the path.
+- **Suspension has no consumer yet.** Nothing calls `Suspend`/`Resume`: the editor has no text-entry dialog, and the adapter's text-input auto-suspend covers the only case that exists. Macro recording (#15) is what makes the explicit calls matter.
+
 ## Permissions and platform reach (spike findings)
 
 - Avalonia 11.3.12's `KeyEventArgs.PhysicalKey` supplies the left/right modifier distinction natively, so there is **no native interop, no `CGEventTap`, no macOS Accessibility (TCC) permission, and no app-bundle identity work**.
@@ -69,6 +76,6 @@ The UI-free owner of *when* the recorder runs, so the rule is testable instead o
 ## Deliberately not here
 
 - **No modifier-string encoding.** The spec 05 §5.1 two-character form (`'LS'`, `'RC'`, `'S '` — the trailing space is load-bearing) is a file-format concern for the parser/serializer work; capture emits `KeyDefinition`s.
-- **No routing.** Deciding whether a captured key becomes a remap, a macro step, or a Tap-and-Hold action (spec 10 §Routing; spec 11 §Tap-and-Hold) is the editor UIs' job.
+- **No routing.** Deciding whether a captured key becomes a remap, a macro step, or a Tap-and-Hold action (spec 10 §Routing; spec 11 §Tap-and-Hold) is the editor UIs' job — the remap leg is in [keyboard-editor.md](keyboard-editor.md); the other two are issue #15.
 - **No global capture.** See the limitation above — focused-window only, by design.
 - **No pedal specifics.** Spec 12's single-action vs macro edit modes are pedal-editor behaviour built on top of this service.

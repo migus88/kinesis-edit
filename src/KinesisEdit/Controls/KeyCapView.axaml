@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="44" d:DesignHeight="44"
+             x:Class="KinesisEdit.Controls.KeyCapView"
+             x:DataType="vm:KeyboardKeyViewModel">
+  <!-- One key cap. The cap is a Button so it is focusable and clickable without code-behind; all
+       of its chrome comes from the 'keyCap' style classes in App.axaml, which is also where the
+       four states (selected / listening / modified / locked) get their theme brushes. The click
+       goes to the editor through the containing KeyboardView, so nothing here knows what a remap
+       is (specs/10-apps-and-ui.md, "Remap workflow"). -->
+  <Button Classes="keyCap"
+          Classes.selected="{Binding IsSelected}"
+          Classes.listening="{Binding IsListening}"
+          Classes.modified="{Binding IsModified}"
+          Classes.locked="{Binding !CanEdit}"
+          Command="{Binding $parent[controls:KeyboardView].KeySelectedCommand}"
+          CommandParameter="{Binding}"
+          ToolTip.Tip="{Binding Caption}">
+    <Grid RowDefinitions="*,Auto">
+      <!-- A '\n' in the caption is a two-line cap (specs/05-key-model.md §1.1); wrapping is on so
+           long captions on a 1U cap break instead of being clipped mid-word. -->
+      <TextBlock Grid.Row="0"
+                 Classes="keyCapText"
+                 Classes.modified="{Binding IsModified}"
+                 Classes.locked="{Binding !CanEdit}"
+                 Text="{Binding Caption}"
+                 TextWrapping="Wrap"
+                 TextAlignment="Center"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center" />
+
+      <!-- The key's LED colour (ledN.txt), shown as a strip rather than as the cap background so
+           the cap's own state stays readable next to it. -->
+      <Border Grid.Row="1"
+              Height="3"
+              CornerRadius="2"
+              Margin="1,2,1,0"
+              IsVisible="{Binding HasColorOverlay}"
+              Background="{Binding ColorOverlayHex, Converter={StaticResource HexColorToBrush}}" />
+    </Grid>
+  </Button>
+</UserControl>

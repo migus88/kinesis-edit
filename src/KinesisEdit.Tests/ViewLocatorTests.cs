@@ -12,6 +12,7 @@ namespace KinesisEdit.Tests
             Assert.Equal(typeof(DeviceCardView), ViewLocator.ResolveViewType(typeof(DeviceCardViewModel)));
             Assert.Equal(typeof(NoDeviceView), ViewLocator.ResolveViewType(typeof(NoDeviceViewModel)));
             Assert.Equal(typeof(EditorPlaceholderView), ViewLocator.ResolveViewType(typeof(EditorPlaceholderViewModel)));
+            Assert.Equal(typeof(DeviceEditorView), ViewLocator.ResolveViewType(typeof(DeviceEditorViewModel)));
             Assert.Equal(typeof(ToastView), ViewLocator.ResolveViewType(typeof(ToastViewModel)));
             Assert.Equal(typeof(LoadingView), ViewLocator.ResolveViewType(typeof(LoadingViewModel)));
         }
