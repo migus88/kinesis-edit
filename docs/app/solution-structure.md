@@ -28,11 +28,12 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 
 ## Core namespaces
 
-`KinesisEdit.Core` currently contains the static domain-data layer — see [`domain-data.md`](domain-data.md) for the full contract:
+`KinesisEdit.Core` currently contains the static domain-data layer — see [`domain-data.md`](domain-data.md) for the full contract — plus the runtime keyboard model built on top of it, see [`keyboard-model.md`](keyboard-model.md):
 
-- `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, macro/lighting capabilities; specs 02 and 03 §1–4) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
+- `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, and the per-family capabilities `MacroCapability`, `TapAndHoldCapability`, `LightingCapability`, `SupportsMultiModifiers`, with `ValueRange` for their bounded values; specs 02 and 03 §1–4, 04 §5.3, 06 §6, 11 §11.1–11.2) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
 - `Keys` — master key-token registry: `KeyRegistry` with 1282 entries in spec registration order across the three token dialects (spec 05 §3, §7).
 - `Geometry` — physical layer geometries: `GeometryCatalog`, seven layout families with fully materialized layers (spec 05 §4).
+- `Model` — the editable in-memory model: `KeyboardLayout` → `KeyboardLayer` → `KeyboardKey`, plus `Macro`/`Keystroke` and the limit reports of `Validate()` (spec 05 §1, §5, §7.2, §7.4; spec 06; 04 §5.3).
 
 Parsers/serializers and drive discovery are not implemented yet.
 

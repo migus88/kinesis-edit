@@ -4,7 +4,7 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 - **Stack:** C# with [Avalonia UI](https://avaloniaui.net/) for cross-platform portability.
 - **Platforms:** macOS first, with Windows and Linux fully supported.
-- **Status:** In development — specification complete, solution scaffolded (app shell, core library, tests, CI), static domain data implemented (device catalog, key-token registry, layer geometries — see [`docs/app/domain-data.md`](docs/app/domain-data.md)). Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
+- **Status:** In development — specification complete, solution scaffolded (app shell, core library, tests, CI), static domain data implemented (device catalog, key-token registry, layer geometries — see [`docs/app/domain-data.md`](docs/app/domain-data.md)) and the in-memory keyboard/macro model built on it (see [`docs/app/keyboard-model.md`](docs/app/keyboard-model.md)). Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
 
 ## Building and running
 

@@ -269,6 +269,17 @@ namespace KinesisEdit.Core.Tests.Devices
             Assert.Equal(7200, macros.MaxTotalKeystrokes);
         }
 
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdge)]
+        [InlineData(DeviceId.FreestylePro)]
+        public void Macros_ForFreestyleEdgeAndPro_KeepOnlyTheFirstCoTriggerPerSpec06Section2(DeviceId deviceId)
+        {
+            var macros = DeviceCatalog.GetById(deviceId).Macros;
+
+            Assert.Equal(4, macros.MaxCoTriggersPerMacro);
+            Assert.Equal(1, macros.PersistedCoTriggersPerMacro);
+        }
+
         [Fact]
         public void Macros_ForFreestylePro_MatchFreestyleEdge()
         {
@@ -291,6 +302,16 @@ namespace KinesisEdit.Core.Tests.Devices
             Assert.Null(macros.GatedMaxMacroCount);
         }
 
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdgeRgb)]
+        [InlineData(DeviceId.Tko)]
+        public void Macros_ForRgbAndTko_LimitMacrosToThreeHundredGen1CharactersPerSpec06Section6(DeviceId deviceId)
+        {
+            var macros = DeviceCatalog.GetById(deviceId).Macros;
+
+            Assert.Equal(300, macros.MaxCharactersPerMacro);
+        }
+
         [Fact]
         public void Macros_ForAdvantage360_AllowHundredMacrosWithFiveHundredCharacters()
         {
@@ -303,15 +324,123 @@ namespace KinesisEdit.Core.Tests.Devices
         }
 
         [Fact]
-        public void Macros_ForAdvantage2_UsePerTriggerKeyModel()
+        public void Macros_ForAdvantage360_UseFlatMacroListInsteadOfPerKeySlots()
+        {
+            var macros = DeviceCatalog.GetById(DeviceId.Advantage360).Macros;
+
+            Assert.True(macros.UsesFlatMacroList);
+            Assert.Null(macros.SlotsPerKey);
+            Assert.Null(macros.PersistedSlotsPerKey);
+        }
+
+        [Fact]
+        public void Macros_ForAdvantage2_UseFiveSlotsPerTriggerKeyOfWhichThreePersist()
         {
             var macros = DeviceCatalog.GetById(DeviceId.Advantage2).Macros;
 
             Assert.True(macros.IsSupported);
-            Assert.Equal(3, macros.MacrosPerTriggerKey);
+            Assert.Equal(5, macros.SlotsPerKey);
+            Assert.Equal(3, macros.PersistedSlotsPerKey);
             Assert.Equal(3, macros.MaxCoTriggersPerMacro);
+            Assert.Equal(3, macros.PersistedCoTriggersPerMacro);
             Assert.Equal(300, macros.MaxCharactersPerMacro);
             Assert.Null(macros.MaxMacroCount);
+            Assert.Null(macros.MaxTotalKeystrokes);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 5, 3)]
+        [InlineData(DeviceId.FreestyleEdge, 5, 3)]
+        [InlineData(DeviceId.FreestylePro, 5, 3)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 5, 5)]
+        [InlineData(DeviceId.Tko, 5, 5)]
+        [InlineData(DeviceId.Advantage360, null, null)]
+        [InlineData(DeviceId.SavantElite2, null, null)]
+        [InlineData(DeviceId.CrossfireKeypad, null, null)]
+        [InlineData(DeviceId.Advantage360Professional, null, null)]
+        public void Macros_ForEveryDevice_HaveSlotCountsPerSpec06Section1(
+            DeviceId deviceId,
+            int? expectedSlotsPerKey,
+            int? expectedPersistedSlotsPerKey)
+        {
+            var macros = DeviceCatalog.GetById(deviceId).Macros;
+
+            Assert.Equal(expectedSlotsPerKey, macros.SlotsPerKey);
+            Assert.Equal(expectedPersistedSlotsPerKey, macros.PersistedSlotsPerKey);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 3, 3)]
+        [InlineData(DeviceId.FreestyleEdge, 4, 1)]
+        [InlineData(DeviceId.FreestylePro, 4, 1)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 4, 4)]
+        [InlineData(DeviceId.Tko, 4, 4)]
+        [InlineData(DeviceId.Advantage360, 4, 4)]
+        [InlineData(DeviceId.SavantElite2, null, null)]
+        [InlineData(DeviceId.CrossfireKeypad, null, null)]
+        [InlineData(DeviceId.Advantage360Professional, null, null)]
+        public void Macros_ForEveryDevice_HaveCoTriggerCapsPerSpec06Section2(
+            DeviceId deviceId,
+            int? expectedMaxCoTriggers,
+            int? expectedPersistedCoTriggers)
+        {
+            var macros = DeviceCatalog.GetById(deviceId).Macros;
+
+            Assert.Equal(expectedMaxCoTriggers, macros.MaxCoTriggersPerMacro);
+            Assert.Equal(expectedPersistedCoTriggers, macros.PersistedCoTriggersPerMacro);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 0, 9, 0)]
+        [InlineData(DeviceId.FreestyleEdge, 0, 9, 0)]
+        [InlineData(DeviceId.FreestylePro, 0, 9, 0)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 1, 9, 5)]
+        [InlineData(DeviceId.Tko, 1, 9, 5)]
+        [InlineData(DeviceId.Advantage360, 1, 9, 5)]
+        public void Macros_ForEveryMacroDevice_HaveSpeedRangePerSpec06Section4(
+            DeviceId deviceId,
+            int expectedMinimum,
+            int expectedMaximum,
+            int expectedDefault)
+        {
+            var speed = DeviceCatalog.GetById(deviceId).Macros.Speed;
+
+            Assert.NotNull(speed);
+            Assert.Equal(new ValueRange(expectedMinimum, expectedMaximum, expectedDefault), speed);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 0, 9, 0)]
+        [InlineData(DeviceId.FreestyleEdge, 0, 9, 0)]
+        [InlineData(DeviceId.FreestylePro, 0, 9, 0)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 1, 9, 1)]
+        [InlineData(DeviceId.Tko, 1, 9, 1)]
+        [InlineData(DeviceId.Advantage360, 1, 9, 1)]
+        public void Macros_ForEveryMacroDevice_HaveRepeatRangePerSpec06Section4(
+            DeviceId deviceId,
+            int expectedMinimum,
+            int expectedMaximum,
+            int expectedDefault)
+        {
+            var repeat = DeviceCatalog.GetById(deviceId).Macros.Repeat;
+
+            Assert.NotNull(repeat);
+            Assert.Equal(new ValueRange(expectedMinimum, expectedMaximum, expectedDefault), repeat);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage360, true)]
+        [InlineData(DeviceId.Advantage2, false)]
+        [InlineData(DeviceId.FreestyleEdge, false)]
+        [InlineData(DeviceId.FreestylePro, false)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, false)]
+        [InlineData(DeviceId.Tko, false)]
+        [InlineData(DeviceId.SavantElite2, false)]
+        public void Macros_ForEveryDevice_ClampOutOfRangeValuesOnlyOnAdvantage360(DeviceId deviceId, bool expectedClamping)
+        {
+            var macros = DeviceCatalog.GetById(deviceId).Macros;
+
+            Assert.Equal(expectedClamping, macros.ClampsOutOfRangeValues);
         }
 
         [Theory]
@@ -324,6 +453,104 @@ namespace KinesisEdit.Core.Tests.Devices
 
             Assert.Equal(expectedIsSupported, macros.IsSupported);
             Assert.Null(macros.MaxMacroCount);
+            Assert.Null(macros.Speed);
+            Assert.Null(macros.Repeat);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2)]
+        [InlineData(DeviceId.FreestyleEdge)]
+        [InlineData(DeviceId.FreestylePro)]
+        [InlineData(DeviceId.FreestyleEdgeRgb)]
+        [InlineData(DeviceId.Tko)]
+        [InlineData(DeviceId.Advantage360)]
+        public void TapAndHold_ForEverySupportingDevice_AllowsTenPerLayoutWithinOneToNineHundredNinetyNineMilliseconds(
+            DeviceId deviceId)
+        {
+            var tapAndHold = DeviceCatalog.GetById(deviceId).TapAndHold;
+
+            Assert.True(tapAndHold.IsSupported);
+            Assert.Equal(10, tapAndHold.MaxPerLayout);
+            Assert.NotNull(tapAndHold.DelayMilliseconds);
+            Assert.Equal(1, tapAndHold.DelayMilliseconds.Minimum);
+            Assert.Equal(999, tapAndHold.DelayMilliseconds.Maximum);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 250)]
+        [InlineData(DeviceId.FreestyleEdge, 250)]
+        [InlineData(DeviceId.FreestylePro, 250)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 250)]
+        [InlineData(DeviceId.Tko, 250)]
+        [InlineData(DeviceId.Advantage360, 150)]
+        public void TapAndHold_ForEverySupportingDevice_HasDefaultDelayPerSpec11Section1(
+            DeviceId deviceId,
+            int expectedDefaultDelayMilliseconds)
+        {
+            var tapAndHold = DeviceCatalog.GetById(deviceId).TapAndHold;
+
+            Assert.Equal(expectedDefaultDelayMilliseconds, tapAndHold.DefaultDelayMilliseconds);
+            Assert.Equal(expectedDefaultDelayMilliseconds, tapAndHold.DelayMilliseconds?.Default);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 1, 0, 516)]
+        [InlineData(DeviceId.FreestyleEdge, 1, 0, 480)]
+        [InlineData(DeviceId.FreestylePro, 1, 0, 480)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 1, 0, 1)]
+        public void TapAndHold_ForFirmwareGatedDevices_CarriesMinimumFirmwarePerSpec11Section1(
+            DeviceId deviceId,
+            int expectedMajor,
+            int expectedMinor,
+            int expectedRevision)
+        {
+            var tapAndHold = DeviceCatalog.GetById(deviceId).TapAndHold;
+
+            Assert.Equal(new FirmwareVersion(expectedMajor, expectedMinor, expectedRevision), tapAndHold.MinimumFirmware);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.Tko)]
+        [InlineData(DeviceId.Advantage360)]
+        public void TapAndHold_ForUngatedDevices_HasNoMinimumFirmware(DeviceId deviceId)
+        {
+            var tapAndHold = DeviceCatalog.GetById(deviceId).TapAndHold;
+
+            Assert.True(tapAndHold.IsSupported);
+            Assert.Null(tapAndHold.MinimumFirmware);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.SavantElite2)]
+        [InlineData(DeviceId.CrossfireKeypad)]
+        [InlineData(DeviceId.Advantage360Professional)]
+        public void TapAndHold_ForPedalAndNonProgrammableDevices_IsNone(DeviceId deviceId)
+        {
+            var tapAndHold = DeviceCatalog.GetById(deviceId).TapAndHold;
+
+            Assert.Same(TapAndHoldCapability.None, tapAndHold);
+            Assert.False(tapAndHold.IsSupported);
+            Assert.Null(tapAndHold.MaxPerLayout);
+            Assert.Null(tapAndHold.DelayMilliseconds);
+            Assert.Null(tapAndHold.DefaultDelayMilliseconds);
+            Assert.Null(tapAndHold.MinimumFirmware);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.SavantElite2, false)]
+        [InlineData(DeviceId.Advantage2, false)]
+        [InlineData(DeviceId.FreestyleEdge, false)]
+        [InlineData(DeviceId.FreestylePro, false)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, false)]
+        [InlineData(DeviceId.CrossfireKeypad, false)]
+        [InlineData(DeviceId.Tko, false)]
+        [InlineData(DeviceId.Advantage360, true)]
+        [InlineData(DeviceId.Advantage360Professional, false)]
+        public void SupportsMultiModifiers_ForEveryDevice_IsTrueOnlyForTheAdvantage360PerSpec11Section2(
+            DeviceId deviceId,
+            bool expected)
+        {
+            Assert.Equal(expected, DeviceCatalog.GetById(deviceId).SupportsMultiModifiers);
         }
 
         [Theory]
