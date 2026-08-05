@@ -10,3 +10,11 @@ obj/
 .idea/
 .vs/
 .vscode/
+
+# .NET build/test output (additional)
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+TestResults/
+*.binlog
+*.suo
