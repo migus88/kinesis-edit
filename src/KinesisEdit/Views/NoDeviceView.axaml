@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:devices="clr-namespace:KinesisEdit.Core.Devices;assembly=KinesisEdit.Core"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="420"
+             x:Class="KinesisEdit.Views.NoDeviceView"
+             x:DataType="vm:NoDeviceViewModel">
+  <!-- The troubleshoot panel of specs/11-feature-dialogs.md §11.8, rendered inline as the
+       dashboard's empty state. The device picker is this app's addition: one app serves the
+       whole catalog, so the instruction text and the support link follow the selection. -->
+  <Border Classes="card" MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
+    <StackPanel Spacing="16">
+      <TextBlock Text="{Binding Title}" Classes="heading" />
+
+      <ComboBox ItemsSource="{Binding Devices}"
+                SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                HorizontalAlignment="Stretch">
+        <ComboBox.ItemTemplate>
+          <DataTemplate DataType="devices:DeviceDefinition">
+            <TextBlock Text="{Binding DisplayName}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+
+      <TextBlock Text="{Binding InstructionText}" TextWrapping="Wrap" Classes="muted" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="{x:Static vm:NoDeviceViewModel.ScanButtonCaption}" Command="{Binding ScanCommand}" />
+        <Button Content="{x:Static vm:NoDeviceViewModel.DemoModeButtonCaption}" Command="{Binding LaunchDemoModeCommand}" />
+        <Button Content="{x:Static vm:NoDeviceViewModel.TroubleshootingButtonCaption}" Command="{Binding TroubleshootingTipsCommand}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

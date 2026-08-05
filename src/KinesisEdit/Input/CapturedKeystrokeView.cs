@@ -5,7 +5,8 @@ namespace KinesisEdit.Input
 {
     /// <summary>
     /// One row of the capture spike's log: a <see cref="CapturedKeystroke"/> flattened into the
-    /// display strings <c>MainWindow</c> binds to. Presentation only — it holds no capture logic.
+    /// display strings <c>KeystrokeCaptureSpikeWindow</c> binds to. Presentation only — it holds no
+    /// capture logic.
     /// </summary>
     public sealed class CapturedKeystrokeView
     {

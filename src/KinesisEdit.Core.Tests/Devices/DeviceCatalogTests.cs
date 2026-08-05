@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Firmware;
 
 namespace KinesisEdit.Core.Tests.Devices
 {
@@ -607,14 +608,27 @@ namespace KinesisEdit.Core.Tests.Devices
         [InlineData(DeviceId.FreestyleEdgeRgb, "SmartSet + F8")]
         [InlineData(DeviceId.Tko, "SmartSet + Right Shift + V")]
         [InlineData(DeviceId.Advantage360, "SmartSet + v-Drive")]
-        [InlineData(DeviceId.SavantElite2, null)]
+        [InlineData(DeviceId.SavantElite2, "Program + F1")]
         [InlineData(DeviceId.CrossfireKeypad, null)]
         [InlineData(DeviceId.Advantage360Professional, null)]
-        public void VDriveShortcutHint_ForEveryDevice_MatchesSpec03Section1(DeviceId deviceId, string? expectedHint)
+        public void VDriveShortcutHint_ForEveryDevice_MatchesSpec03Section1AndSpec12Section3(
+            DeviceId deviceId,
+            string? expectedHint)
         {
             var device = DeviceCatalog.GetById(deviceId);
 
             Assert.Equal(expectedHint, device.VDriveShortcutHint);
+        }
+
+        [Fact]
+        public void VDriveShortcutHint_ForEveryProgrammableDevice_IsPresent()
+        {
+            var programmableDevices = DeviceCatalog.All.Where(device => device.IsProgrammable);
+
+            foreach (var device in programmableDevices)
+            {
+                Assert.False(string.IsNullOrWhiteSpace(device.VDriveShortcutHint), device.DisplayName);
+            }
         }
 
         [Theory]
@@ -693,12 +707,74 @@ namespace KinesisEdit.Core.Tests.Devices
         }
 
         [Fact]
-        public void Urls_ForSmartSetProgrammableDevices_AreNotSet()
+        public void ConfigurationAndSupportUrls_ForSmartSetProgrammableDevices_AreNotSet()
         {
             var advantage360 = DeviceCatalog.GetById(DeviceId.Advantage360);
 
             Assert.Null(advantage360.ConfigurationUrl);
             Assert.Null(advantage360.SupportUrl);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdgeRgb, "https://gaming.kinesis-ergo.com/fs-edge-rgb-support/")]
+        [InlineData(DeviceId.Tko, "https://gaming.kinesis-ergo.com/tko-support/")]
+        [InlineData(DeviceId.FreestyleEdge, "https://gaming.kinesis-ergo.com/fs-edge-support/")]
+        [InlineData(DeviceId.FreestylePro, "https://kinesis-ergo.com/support/freestyle-pro/")]
+        [InlineData(DeviceId.Advantage2, "https://kinesis-ergo.com/support/advantage2/")]
+        [InlineData(DeviceId.SavantElite2, "https://kinesis-ergo.com/support/savant-elite2/")]
+        [InlineData(DeviceId.Advantage360, "https://kinesis-ergo.com/support/kb360/")]
+        public void TroubleshootingUrl_ForEveryDeviceInSpec11Section8_MatchesSpec(DeviceId deviceId, string expectedUrl)
+        {
+            var device = DeviceCatalog.GetById(deviceId);
+
+            Assert.Equal(expectedUrl, device.TroubleshootingUrl);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.CrossfireKeypad)]
+        [InlineData(DeviceId.Advantage360Professional)]
+        public void TroubleshootingUrl_ForNonConfigurableDevice_IsNull(DeviceId deviceId)
+        {
+            var device = DeviceCatalog.GetById(deviceId);
+
+            Assert.Null(device.TroubleshootingUrl);
+        }
+
+        [Fact]
+        public void TroubleshootingUrl_ForEveryProgrammableDevice_IsPresent()
+        {
+            var programmableDevices = DeviceCatalog.All.Where(device => device.IsProgrammable);
+
+            foreach (var device in programmableDevices)
+            {
+                Assert.False(string.IsNullOrWhiteSpace(device.TroubleshootingUrl), device.DisplayName);
+            }
+        }
+
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdgeRgb)]
+        [InlineData(DeviceId.Tko)]
+        [InlineData(DeviceId.FreestyleEdge)]
+        [InlineData(DeviceId.FreestylePro)]
+        [InlineData(DeviceId.Advantage2)]
+        [InlineData(DeviceId.Advantage360)]
+        public void TroubleshootingUrl_ForDeviceWithFirmwarePage_IsNotTheAnchoredFirmwareUrl(DeviceId deviceId)
+        {
+            var device = DeviceCatalog.GetById(deviceId);
+            var firmwareUrl = FirmwareSupportUrls.FindUrl(deviceId);
+
+            Assert.NotNull(firmwareUrl);
+            Assert.NotEqual(firmwareUrl, device.TroubleshootingUrl);
+            Assert.DoesNotContain("#", device.TroubleshootingUrl);
+        }
+
+        [Fact]
+        public void TroubleshootingUrl_ForAdvantage360Professional_DoesNotReuseSupportUrl()
+        {
+            var device = DeviceCatalog.GetById(DeviceId.Advantage360Professional);
+
+            Assert.NotNull(device.SupportUrl);
+            Assert.Null(device.TroubleshootingUrl);
         }
     }
 }

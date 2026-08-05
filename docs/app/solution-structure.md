@@ -1,16 +1,17 @@
 # Solution structure
 
-Solution: `src/KinesisEdit.sln` (classic .sln). Three projects, all `net10.0`, `Nullable` + `ImplicitUsings` enabled.
+Solution: `src/KinesisEdit.sln` (classic .sln). Four projects, all `net10.0`, `Nullable` + `ImplicitUsings` enabled.
 
 ## Projects and dependency direction
 
 | Project | Role | References |
 |---|---|---|
-| `src/KinesisEdit/` | Avalonia 11 desktop app (`OutputType=WinExe`). Entry point `Program.cs`; shell window `MainWindow` titled "Kinesis Edit". | `KinesisEdit.Core` |
+| `src/KinesisEdit/` | Avalonia 11 desktop app (`OutputType=WinExe`, compiled bindings on). Entry point `Program.cs`; composition root `App.axaml.cs`; shell window `MainWindow` titled "Kinesis Edit". | `KinesisEdit.Core` |
 | `src/KinesisEdit.Core/` | Domain library: device model, parsers/serializers, drive discovery. **No UI/Avalonia dependencies — keep it that way.** | (none) |
 | `src/KinesisEdit.Core.Tests/` | xUnit tests for Core. Test files mirror Core's folder structure. | `KinesisEdit.Core` |
+| `src/KinesisEdit.Tests/` | xUnit tests for the app layer: services, view models, converters, `ViewLocator`. Test files mirror the app's folder structure; hand-rolled fakes (no mocking library), and no Avalonia runtime is started — everything under test is toolkit-free by design. | `KinesisEdit` |
 
-Dependency direction is one-way: app → Core ← tests. Domain logic goes in Core so it stays testable and UI-free.
+Dependency direction is one-way: `KinesisEdit.Core.Tests` → Core ← app ← `KinesisEdit.Tests`. Domain logic goes in Core so it stays testable and UI-free; app-layer logic goes in services and view models so it stays testable without a UI toolkit.
 
 ## Commands (from repo root)
 
@@ -24,7 +25,17 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 
 ## CI
 
-`.github/workflows/ci.yml` ("CI"): on PRs targeting `main` and pushes to `main`, matrix over macOS/Ubuntu/Windows, runs `dotnet build` + `dotnet test` on the solution in Release. SDK comes from `global.json` via `actions/setup-dotnet`.
+`.github/workflows/ci.yml` ("CI"): matrix over macOS/Ubuntu/Windows, runs `dotnet build` + `dotnet test` on the solution in Release. SDK comes from `global.json` via `actions/setup-dotnet`. **The automatic triggers are currently commented out** (`pull_request` on `main`, `push` to `main`), leaving only `workflow_dispatch` — disabled temporarily in commit 28c9e2c; uncomment them to restore CI on pull requests.
+
+## App namespaces
+
+`KinesisEdit` is the app shell and device dashboard — see [`app-shell.md`](app-shell.md):
+
+- `Services` — detection loop (`DeviceMonitorService` → `DeviceSnapshot`), notifications (message box, toast, loading, `Hide this notification?` suppression), the active-device session, eject, URL launching, and UI-thread dispatch. Toolkit-free apart from `AvaloniaUiDispatcher` and `MessageBoxPresenter`.
+- `ViewModels` — `MainWindowViewModel` (navigation, Home → eject, status indicator), `DashboardViewModel`/`DeviceCardViewModel`/`NoDeviceViewModel`, `EditorPlaceholderViewModel`, plus the notification view models. They expose enums and strings, never Avalonia brushes.
+- `Views` — the `.axaml` for each of the above plus `MainWindow`, `MessageBoxWindow`, `NotificationOverlay`. Resolved by name through `ViewLocator`. Also here: `KeystrokeCaptureSpikeWindow`, the issue-#12 capture harness, which is not part of the shipped UI — `App` opens it as the main window instead of the shell only when started with `--keystroke-spike` (see [`keystroke-capture.md`](keystroke-capture.md)).
+- `Converters` — `EnumMatchConverter`, `MessageBoxIconToGlyphConverter`: the enum → style-class/glyph mapping that keeps colors in XAML.
+- `Input` — the only platform-aware input code: `AvaloniaKeystrokeCaptureService` (tunnel-phase key preview on a `TopLevel`, delegating every decision to a Core `KeystrokeCaptureSession` and contributing only the "is a `TextBox` focused" verdict plus the `SuspendOnTextInputFocus` switch), `AvaloniaPhysicalKeyBridge`, and the harness row view `CapturedKeystrokeView`. It is the worked example of the layering rule — every capture rule lives in `KinesisEdit.Core.Input` where tests can reach it, and only the `TopLevel` adapter may reference Avalonia.
 
 ## Core namespaces
 
@@ -41,11 +52,8 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 - `Input` — the UI-free keystroke-capture state machines: `PhysicalKeyCode`/`PhysicalKeyMap`, `KeystrokeRecorder`, `KeystrokeCaptureSession` (started/suspended gating), `IKeystrokeCaptureService` (spec 10) — see [`keystroke-capture.md`](keystroke-capture.md).
 - `Layouts` — the layout-file engine: `LayoutFileParser`/`LayoutFileSerializer` for `layouts/layoutN.txt` and the Adv2 `qwerty.txt`/`dvorak.txt` (remaps, tap-and-hold, multi-modifiers, macros) across the four in-scope dialects, with invalid-line tracking and the Adv2 keypad-exception map (specs 04, 06; 05 §3.6, §3.12, §5.4) — see [`layout-files.md`](layout-files.md).
 
-## App namespaces
-
-`KinesisEdit/Input` holds the only platform-aware input code: `AvaloniaKeystrokeCaptureService` (tunnel-phase key preview on a `TopLevel`, delegating every decision to a Core `KeystrokeCaptureSession` and contributing only the "is a `TextBox` focused" verdict plus the `SuspendOnTextInputFocus` switch), `AvaloniaPhysicalKeyBridge`, and the harness row view `CapturedKeystrokeView`. It is the worked example of the boundary above — every capture rule lives in `KinesisEdit.Core.Input` where tests can reach it, and only the `TopLevel` adapter may reference Avalonia. `MainWindow` is currently the issue-#12 capture spike harness, not the eventual app shell.
-
 ## Notes
 
+- MVVM is `CommunityToolkit.Mvvm` 8.4.2 (`ObservableObject`, `RelayCommand`/`AsyncRelayCommand`) with plain constructor injection — **no DI container**; `App.axaml.cs` is the composition root.
 - The app project pins `Tmds.DBus.Protocol` 0.21.3 directly (transitive dep of Avalonia.Desktop 11.3.12 is the vulnerable 0.21.2, GHSA-xrw6-gwf8-vvr9). Drop the pin when Avalonia updates.
 - No StyleCop by design: its member-ordering defaults conflict with the repo's properties-before-fields ordering.
