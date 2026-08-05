@@ -4,7 +4,17 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 - **Stack:** C# with [Avalonia UI](https://avaloniaui.net/) for cross-platform portability.
 - **Platforms:** macOS first, with Windows and Linux fully supported.
-- **Status:** Greenfield — specification complete, implementation not yet started. Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
+- **Status:** In development — specification complete, solution scaffolded (app shell, core library, tests, CI). Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
+
+## Building and running
+
+Requires the .NET 10 SDK (pinned via `global.json`). From the repo root:
+
+```sh
+dotnet build src/KinesisEdit.sln    # build everything
+dotnet test src/KinesisEdit.sln     # run the test suite
+dotnet run --project src/KinesisEdit   # launch the app
+```
 
 ## How it works
 
@@ -17,7 +27,7 @@ Kinesis programmable keyboards mount a small FAT volume (the "v-Drive") containi
 | `specs/` | Full specification of the legacy apps, supported devices, and on-device file formats. The authoritative domain reference — start with [`specs/README.md`](specs/README.md). |
 | `docs/app/` | Agent-first documentation of the new app's modules, maintained alongside the code. |
 | `docs/guides/` | [Coding conventions](docs/guides/Coding%20Conventions.md) and other guides. |
-| `src/` | Source code of the new app. |
+| `src/` | Source code of the new app: `KinesisEdit.sln` with the Avalonia app (`KinesisEdit`), the UI-free domain library (`KinesisEdit.Core`), and its xUnit tests (`KinesisEdit.Core.Tests`). See [`docs/app/solution-structure.md`](docs/app/solution-structure.md). |
 
 ## Contributing notes
 

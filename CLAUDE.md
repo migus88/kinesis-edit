@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configuration app (the legacy app is written in Pascal and unsupported). Target stack: **C# with Avalonia UI**. Primary platform is **macOS** — develop Mac-first — but Windows and Linux must also work.
 
-**Current status: greenfield.** `src/` is empty and there is no solution/build yet. When scaffolding begins, use the .NET SDK (`dotnet new` / `dotnet build` / `dotnet test`) and update this section with the real commands as soon as they exist.
+**Current status: scaffolded.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
+
+- Build: `dotnet build src/KinesisEdit.sln`
+- Test: `dotnet test src/KinesisEdit.sln`
+- Run the app: `dotnet run --project src/KinesisEdit`
 
 Implementation is planned and tracked in GitHub issues — see the epic ([#1](https://github.com/migus88/kinesis-edit/issues/1)) and its ordered sub-issues. There is no in-repo planning document.
 
