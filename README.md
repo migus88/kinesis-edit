@@ -33,3 +33,4 @@ Kinesis programmable keyboards mount a small FAT volume (the "v-Drive") containi
 
 - Code follows the conventions in `docs/guides/Coding Conventions.md`: clean, SOLID, no god classes.
 - Every module gets a token-efficient doc in `docs/app/` so AI agents (and humans) can understand a domain without reading its source. Documentation — `docs/app/`, `CLAUDE.md`, and this README — is maintained as part of every feature change.
+- Feature work runs in isolated git worktrees under `.claude/worktrees/` (one per feature branch, based on `origin/main`), so several features can be in flight at once. Worktrees are removed once their PR merges; `/clean-worktree` sweeps up any leftovers.

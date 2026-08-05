@@ -11,6 +11,9 @@ obj/
 .vs/
 .vscode/
 
+# Feature worktrees (created by /feature, removed by /clean-worktree)
+.claude/worktrees/
+
 # .NET build/test output (additional)
 [Dd]ebug/
 [Rr]elease/
