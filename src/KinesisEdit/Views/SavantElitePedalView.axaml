@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="KinesisEdit.Views.SavantElitePedalView"
+             x:DataType="vm:SavantElitePedalViewModel">
+  <!-- The read-only Savant Elite2 view: the seven inputs of specs/12-savant-elite.md §5 with the
+       assignment text §5 prescribes, plus the lines of pedals.txt that could not be parsed. The
+       legacy two-panel form, its yellow edit box, the Configure buttons and the *Modified labels
+       are deliberately not reproduced — this app's visual language is the dashboard's cards. -->
+  <UserControl.Styles>
+    <!-- One hairline between rows: a top border on every row draws the separators without
+         leaving a trailing line under the last one. -->
+    <Style Selector="Border.pedalRow">
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="0,10,0,10" />
+    </Style>
+    <Style Selector="TextBlock.columnHeader">
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="24" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
+      <StackPanel Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
+          <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
+                     Classes="statusWarning"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsDemoMode}" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding Notice}" Classes="muted" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding FilePath}"
+                   Classes="muted"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasFilePath}" />
+      </StackPanel>
+
+      <!-- Demo mode, a v-Drive without a pedals.txt, an empty file, or a failed read: warning for
+           the expected states, red only for a genuine failure. -->
+      <Border Classes="card"
+              Padding="16,12"
+              IsVisible="{Binding HasStatusMessage}">
+        <TextBlock Text="{Binding StatusMessage}"
+                   TextWrapping="Wrap"
+                   Classes.muted="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=Loaded}"
+                   Classes.statusWarning="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter='DemoMode,FileMissing'}"
+                   Classes.statusError="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=LoadFailed}" />
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding InputsNote}" Classes="muted" TextWrapping="Wrap" />
+
+          <Grid ColumnDefinitions="150,110,*" Margin="0,4,0,0">
+            <TextBlock Grid.Column="0" Text="INPUT" Classes="columnHeader" />
+            <TextBlock Grid.Column="1" Text="MODE" Classes="columnHeader" />
+            <TextBlock Grid.Column="2" Text="ASSIGNMENT" Classes="columnHeader" />
+          </Grid>
+
+          <!-- Always seven rows: the file is authoritative for none of the hardware, and a given
+               product physically has only a subset of the inputs (12 §1). -->
+          <ItemsControl ItemsSource="{Binding Inputs}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:PedalInputRowViewModel">
+                <Border Classes="pedalRow">
+                  <Grid ColumnDefinitions="150,110,*">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding Name}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding ModeCaption}"
+                               Classes="muted"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <!-- Long macros wrap instead of being clipped; unassigned inputs read as
+                         muted so the programmed ones stand out. -->
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding AssignmentText}"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top"
+                               Classes.muted="{Binding !IsAssigned}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <!-- Unparseable lines are shown, never silently dropped (12 §4.2). -->
+      <Border Classes="card" IsVisible="{Binding HasInvalidLines}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesHeading}"
+                     FontWeight="SemiBold"
+                     Classes="statusWarning" />
+          <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesNote}"
+                     Classes="muted"
+                     TextWrapping="Wrap" />
+
+          <ItemsControl ItemsSource="{Binding InvalidLines}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:PedalInvalidLineViewModel">
+                <Border Classes="pedalRow">
+                  <Grid ColumnDefinitions="70,110,*">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding LineCaption}"
+                               Classes="muted"
+                               VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding InputName}"
+                               Classes="muted"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <SelectableTextBlock Grid.Column="2"
+                                         Text="{Binding Text}"
+                                         TextWrapping="Wrap"
+                                         VerticalAlignment="Top" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

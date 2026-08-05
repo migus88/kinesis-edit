@@ -5,7 +5,8 @@ namespace KinesisEdit.Core.Layouts
     /// Finer-grained than <see cref="Keys.TokenDialect"/> on purpose: the token dialect cannot
     /// tell the old Freestyle format (one persisted co-trigger, three persisted macro slots, no
     /// line-validity tracking in the legacy app) from the Gen1 RGB/TKO format, nor the
-    /// Advantage2 format from the out-of-scope SE2 pedal format.
+    /// Advantage2 format from the SE2 pedal file — which is not a layout dialect at all and
+    /// lives in <see cref="SavantElite.PedalFileParser"/> (spec 12 §4).
     /// </summary>
     public enum LayoutDialect
     {
