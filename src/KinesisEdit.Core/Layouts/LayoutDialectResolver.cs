@@ -6,9 +6,11 @@ namespace KinesisEdit.Core.Layouts
     /// <summary>
     /// Maps a device to the layout-file dialect its <c>layouts/layoutN.txt</c> (or Advantage2
     /// <c>qwerty.txt</c>/<c>dvorak.txt</c>) files are written in, per the dialect table of
-    /// specs/04-layout-file-format.md §4.1. Devices without in-scope layout files — the SE2
-    /// pedal (its own out-of-scope dialect), the CROSSFIRE keypad, and the Advantage360
-    /// Professional — resolve to <see cref="LayoutDialect.None"/>.
+    /// specs/04-layout-file-format.md §4.1. Devices without layout files — the SE2 pedal, the
+    /// CROSSFIRE keypad, and the Advantage360 Professional — resolve to
+    /// <see cref="LayoutDialect.None"/>. The SE2's <c>active/pedals.txt</c> is not a layout
+    /// dialect at all: it has its own grammar and engine in
+    /// <see cref="SavantElite.PedalFileParser"/> (spec 12 §4).
     /// </summary>
     public static class LayoutDialectResolver
     {

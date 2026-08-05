@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -31,7 +32,13 @@ namespace KinesisEdit.Tests.ViewModels
                 _neverPolls);
 
             _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeFirmwareUpdatePresenter(), new FakeUrlLauncher());
-            _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier);
+            _shell = new MainWindowViewModel(
+                _dashboard,
+                _monitor,
+                _sessions,
+                _notifications,
+                ejectNotifier,
+                new PedalFileService(_fileService));
         }
 
         [Fact]
@@ -55,6 +62,63 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(_shell.Editor.IsDemoMode);
             Assert.Same(snapshot, _sessions.Active!.Device);
             Assert.True(_shell.HomeCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void OpenDevice_WithTheSavantElite2_SwapsInTheReadOnlyPedalView()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+
+            _shell.OpenDevice(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            Assert.Same(pedal, _shell.CurrentView);
+            Assert.Equal(PedalLoadState.Loaded, pedal.LoadState);
+            Assert.Equal(7, pedal.Inputs.Count);
+            Assert.Equal("[lmouse]", pedal.Inputs[0].AssignmentText);
+            Assert.Same(snapshot, _sessions.Active!.Device);
+            Assert.True(_shell.IsEditorOpen);
+            Assert.True(_shell.HomeCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void OpenDevice_WithAnyDeviceOtherThanTheSavantElite2_StillSwapsInThePlaceholder()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
+        }
+
+        [Fact]
+        public async Task HomeCommand_AfterOpeningTheSavantElite2_ClosesTheEditorAndEjects()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+            _shell.OpenDevice(snapshot);
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(_shell.Editor);
+            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.Null(_sessions.Active);
+            Assert.Equal(snapshot.Location!.RootPath, Assert.Single(_ejectService.EjectedPaths));
+        }
+
+        [Fact]
+        public void OpenDevice_WithTheSavantElite2InDemoMode_ReadsNothingFromTheDrive()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2, VDriveConnectionStatus.CannotAccess);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+
+            _shell.OpenDevice(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            Assert.Equal(0, _fileService.ReadCount);
+            Assert.Equal(PedalLoadState.DemoMode, pedal.LoadState);
+            Assert.True(_shell.IsDemoMode);
         }
 
         [Fact]
@@ -297,6 +361,11 @@ namespace KinesisEdit.Tests.ViewModels
             _shell.HelpCommand.Execute(null);
 
             Assert.Equal(new[] { "settings", "help" }, raised);
+        }
+
+        private void SetPedalFile(DeviceSnapshot snapshot, params string[] lines)
+        {
+            _fileService.SetFile(Path.Combine(snapshot.Location!.RootPath, "active", "pedals.txt"), lines);
         }
 
         private void SetDrive(DeviceId deviceId, bool isWritable = true)

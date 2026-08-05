@@ -71,4 +71,4 @@ The UI-free owner of *when* the recorder runs, so the rule is testable instead o
 - **No modifier-string encoding.** The spec 05 §5.1 two-character form (`'LS'`, `'RC'`, `'S '` — the trailing space is load-bearing) is a file-format concern for the parser/serializer work; capture emits `KeyDefinition`s.
 - **No routing.** Deciding whether a captured key becomes a remap, a macro step, or a Tap-and-Hold action (spec 10 §Routing; spec 11 §Tap-and-Hold) is the editor UIs' job.
 - **No global capture.** See the limitation above — focused-window only, by design.
-- **No pedal specifics.** Spec 12's single-action vs macro edit modes are pedal-editor behaviour built on top of this service.
+- **No pedal specifics.** Spec 12's single-action vs macro edit modes are pedal-editor behaviour built on top of this service; the pedal's own view is read-only so far and captures nothing — see [savant-elite.md](savant-elite.md) for where that editing will live.

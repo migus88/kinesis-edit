@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Core.VDrive.Io;
@@ -98,8 +99,13 @@ namespace KinesisEdit
                 urlLauncher,
                 UpdateCheckPlatformResolver.Resolve());
 
+            // The Savant Elite2 editor reads active/pedals.txt through the same file service the
+            // rest of the app uses (docs/app/savant-elite.md); it is stateless, so one instance
+            // serves every session the shell opens.
+            var pedalFiles = new PedalFileService(fileService);
+
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, updatePresenter, urlLauncher);
-            _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier);
+            _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, pedalFiles);
 
             return notifications;
         }
