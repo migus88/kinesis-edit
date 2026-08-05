@@ -5,7 +5,7 @@ namespace KinesisEdit.Core.Devices
     /// master device table of specs/02-devices.md and the detection/path data of
     /// specs/03-vdrive-and-files.md §1-§4. Pure data — no I/O or filesystem probing.
     /// </summary>
-    public static class DeviceCatalog
+    public static partial class DeviceCatalog
     {
         private const string DefaultVersionFolder = "firmware";
         private const string DefaultVersionFile = "version.txt";
@@ -102,10 +102,8 @@ namespace KinesisEdit.Core.Devices
                     LayoutFolder = ActiveFolder,
                     FixedLayoutFileName = "pedals.txt"
                 },
-                Macros = new MacroCapability
-                {
-                    IsSupported = true
-                },
+                Macros = CreateSavantElite2Macros(),
+                TapAndHold = TapAndHoldCapability.None,
                 Lighting = LightingCapability.None,
                 HardwareNotes = "3 pedals + jack",
                 IsProgrammable = true
@@ -133,13 +131,8 @@ namespace KinesisEdit.Core.Devices
                     Kind = LayoutSchemeKind.QwertyDvorakPositions,
                     LayoutFolder = ActiveFolder
                 },
-                Macros = new MacroCapability
-                {
-                    IsSupported = true,
-                    MacrosPerTriggerKey = 3,
-                    MaxCoTriggersPerMacro = 3,
-                    MaxCharactersPerMacro = 300
-                },
+                Macros = CreateAdvantage2Macros(),
+                TapAndHold = CreateTapAndHold(new FirmwareVersion(1, 0, 516)),
                 Lighting = LightingCapability.None,
                 HardwareNotes = "full keyset incl. thumb clusters; 3 foot-pedal inputs (left/middle/right pedal)",
                 VDriveShortcutHint = "Program + F1",
@@ -164,7 +157,8 @@ namespace KinesisEdit.Core.Devices
                 SettingsFile = DefaultSettingsFile,
                 LayerCount = 2,
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: true),
-                Macros = CreateFreestyleEdgeMacroCapability(),
+                Macros = CreateFreestyleMacros(),
+                TapAndHold = CreateTapAndHold(new FirmwareVersion(1, 0, 480)),
                 Lighting = new LightingCapability
                 {
                     Kind = LightingKind.BlueBacklight
@@ -192,7 +186,8 @@ namespace KinesisEdit.Core.Devices
                 SettingsFile = DefaultSettingsFile,
                 LayerCount = 2,
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: false),
-                Macros = CreateFreestyleEdgeMacroCapability(),
+                Macros = CreateFreestyleMacros(),
+                TapAndHold = CreateTapAndHold(new FirmwareVersion(1, 0, 480)),
                 Lighting = LightingCapability.None,
                 HardwareNotes = "split keyboard; no game mode",
                 VDriveShortcutHint = "SmartSet + F8",
@@ -217,12 +212,8 @@ namespace KinesisEdit.Core.Devices
                 SettingsFile = DefaultSettingsFile,
                 LayerCount = 2,
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: true),
-                Macros = new MacroCapability
-                {
-                    IsSupported = true,
-                    MaxMacroCount = 100,
-                    MaxTotalKeystrokes = 7200
-                },
+                Macros = CreateRgbFamilyMacros(),
+                TapAndHold = CreateTapAndHold(new FirmwareVersion(1, 0, 1)),
                 Lighting = new LightingCapability
                 {
                     Kind = LightingKind.PerKeyRgb
@@ -242,6 +233,8 @@ namespace KinesisEdit.Core.Devices
                 LegacyAppId = 5,
                 ServingApp = ServingApp.None,
                 VolumeLabels = ["CROSSFIRE KEYPAD"],
+                Macros = MacroCapability.None,
+                TapAndHold = TapAndHoldCapability.None,
                 HardwareNotes = "never shipped",
                 IsProgrammable = false,
                 IsFutureDevice = true
@@ -265,12 +258,8 @@ namespace KinesisEdit.Core.Devices
                 SettingsFile = DefaultSettingsFile,
                 LayerCount = 2,
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: true),
-                Macros = new MacroCapability
-                {
-                    IsSupported = true,
-                    MaxMacroCount = 100,
-                    MaxTotalKeystrokes = 7200
-                },
+                Macros = CreateRgbFamilyMacros(),
+                TapAndHold = CreateTapAndHold(),
                 Lighting = new LightingCapability
                 {
                     Kind = LightingKind.PerKeyRgb,
@@ -301,13 +290,9 @@ namespace KinesisEdit.Core.Devices
                 SettingsFile = Adv360SettingsFile,
                 LayerCount = 5,
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: true, hasReadOnlyFactoryProfile: true),
-                Macros = new MacroCapability
-                {
-                    IsSupported = true,
-                    MaxMacroCount = 100,
-                    MaxCharactersPerMacro = 500,
-                    MaxTotalKeystrokes = 7200
-                },
+                Macros = CreateAdvantage360Macros(),
+                TapAndHold = CreateTapAndHold(defaultDelayMilliseconds: Advantage360TapAndHoldDefaultDelayMilliseconds),
+                SupportsMultiModifiers = true,
                 Lighting = new LightingCapability
                 {
                     Kind = LightingKind.IndicatorLeds,
@@ -327,6 +312,8 @@ namespace KinesisEdit.Core.Devices
                 DisplayName = "Advantage 360 Professional",
                 LegacyAppId = 8,
                 ServingApp = ServingApp.SmartSetMasterOffice,
+                Macros = MacroCapability.None,
+                TapAndHold = TapAndHoldCapability.None,
                 HardwareNotes = "configured via ZMK web GUI",
                 ConfigurationUrl = "https://kinesiscorporation.github.io/Adv360-Pro-GUI/",
                 SupportUrl = "https://kinesis-ergo.com/support/advantage360-pro",
@@ -344,19 +331,6 @@ namespace KinesisEdit.Core.Devices
                 FirstProfileNumber = 1,
                 LastProfileNumber = 9,
                 HasReadOnlyFactoryProfile = hasReadOnlyFactoryProfile
-            };
-        }
-
-        private static MacroCapability CreateFreestyleEdgeMacroCapability()
-        {
-            return new MacroCapability
-            {
-                IsSupported = true,
-                MaxMacroCount = 24,
-                GatedMaxMacroCount = 100,
-                MacroCountGateFirmware = new FirmwareVersion(1, 0, 340),
-                MaxCharactersPerMacro = 300,
-                MaxTotalKeystrokes = 7200
             };
         }
     }
