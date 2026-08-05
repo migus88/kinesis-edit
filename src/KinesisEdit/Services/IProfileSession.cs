@@ -9,7 +9,7 @@ namespace KinesisEdit.Services
     /// (docs/app/profiles.md). <see cref="ProfileSession"/> is sealed with a static factory, so it
     /// cannot be substituted in a test; this interface — implemented for real by
     /// <see cref="ProfileSessionAdapter"/> — is the seam, exactly like
-    /// <see cref="IFirmwareUpdatePresenter"/> is the seam over the update dialog.
+    /// <see cref="IMessageBoxPresenter"/> is the seam over the message-box dialog.
     /// </summary>
     public interface IProfileSession
     {

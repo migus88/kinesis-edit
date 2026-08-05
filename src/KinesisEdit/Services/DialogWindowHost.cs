@@ -4,9 +4,8 @@ namespace KinesisEdit.Services
 {
     /// <summary>
     /// The one way this app puts a dialog window on screen: modally over its owner, or standalone
-    /// when there is no owner yet — the presenters are built before the shell window exists.
-    /// Shared by <see cref="MessageBoxPresenter"/> and <see cref="FirmwareUpdatePresenter"/> so
-    /// the ownerless fallback cannot drift between them.
+    /// when there is no owner yet — <see cref="MessageBoxPresenter"/>, its only caller today, is
+    /// built before the shell window exists, and any further presenter shares the same fallback.
     /// </summary>
     internal static class DialogWindowHost
     {

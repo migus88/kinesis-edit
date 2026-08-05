@@ -2,9 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <!--The app's own version, deliberate rather than the SDK's 1.0.0 default: it is what the
-        "SmartSet App :" row of the update dialog compares (specs/09-firmware.md §3 step 2) and
-        what the version-manifest client sends as its User-Agent.-->
+    <!--The app's own product version, set deliberately rather than left at the SDK's 1.0.0
+        default: it is what the built assembly reports as its version.-->
     <Version>0.1.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
