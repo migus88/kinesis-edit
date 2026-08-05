@@ -37,14 +37,19 @@ namespace KinesisEdit.Core.VDrive.Io
         /// Truncates and fully rewrites the file in place with Latin1 bytes, each line followed
         /// by <see cref="Environment.NewLine"/> (specs/03-vdrive-and-files.md §5.2). Refused
         /// with <see cref="FileNotFoundException"/> for a missing file unless
-        /// <paramref name="allowCreate"/> is true; missing parent directories are never created.
+        /// <paramref name="allowCreate"/> is true, which also creates a missing parent
+        /// directory; without it, missing parent directories are never created.
         /// </summary>
         public void WriteAllLines(string path, IReadOnlyList<string> lines, bool allowCreate = false)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             ArgumentNullException.ThrowIfNull(lines);
 
-            if (!allowCreate)
+            if (allowCreate)
+            {
+                CreateParentDirectoryIfMissing(path);
+            }
+            else
             {
                 ThrowIfFileMissing(path);
             }
@@ -147,6 +152,16 @@ namespace KinesisEdit.Core.VDrive.Io
             }
 
             return lines;
+        }
+
+        private static void CreateParentDirectoryIfMissing(string path)
+        {
+            var parentDirectory = Path.GetDirectoryName(path);
+
+            if (!string.IsNullOrEmpty(parentDirectory))
+            {
+                Directory.CreateDirectory(parentDirectory);
+            }
         }
 
         private static void ThrowIfFileMissing(string path)

@@ -50,11 +50,26 @@ namespace KinesisEdit.Core.Devices
         /// <summary>How layout/profile files are named on the v-Drive (specs/02 master table, 03 §4).</summary>
         public LayoutFileScheme LayoutScheme { get; init; } = LayoutFileScheme.None;
 
-        /// <summary>Macro support and limits (specs/02-devices.md).</summary>
+        /// <summary>Macro support and limits (specs/02-devices.md, 04 §5.3, 06 §1, §2.1, §4, §6).</summary>
         public MacroCapability Macros { get; init; } = MacroCapability.None;
+
+        /// <summary>Tap-and-hold support and limits (specs/11-feature-dialogs.md §11.1, 04 §5.3).</summary>
+        public TapAndHoldCapability TapAndHold { get; init; } = TapAndHoldCapability.None;
+
+        /// <summary>
+        /// Whether a key position may hold one of the 11 multi-modifier combination codes
+        /// (specs/11-feature-dialogs.md §11.2 "Advantage360 only", "Adv360 format only";
+        /// specs/05-key-model.md §1.3 <c>Multimodifiers</c> and §5.7 "Multimodifiers (Adv360)").
+        /// True for the Advantage 360 alone — the Advantage 360 Professional is configured through
+        /// the ZMK web GUI and is not SmartSet-programmable at all.
+        /// </summary>
+        public bool SupportsMultiModifiers { get; init; }
 
         /// <summary>Lighting hardware (specs/02-devices.md).</summary>
         public LightingCapability Lighting { get; init; } = LightingCapability.None;
+
+        /// <summary>Keyboard-settings keys the app writes for the device, and their forms (specs/08-settings.md §2, §5).</summary>
+        public SettingsCapability Settings { get; init; } = SettingsCapability.None;
 
         /// <summary>Special hardware notes carried by the master table (specs/02-devices.md).</summary>
         public string? HardwareNotes { get; init; }

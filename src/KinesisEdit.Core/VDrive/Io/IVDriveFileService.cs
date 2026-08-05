@@ -21,7 +21,10 @@ namespace KinesisEdit.Core.VDrive.Io
         /// (specs/03-vdrive-and-files.md §5.2). The write is refused with
         /// <see cref="FileNotFoundException"/> when the file does not exist, unless
         /// <paramref name="allowCreate"/> is true for the operations the spec permits to
-        /// create files. Missing parent directories are never created.
+        /// create files; <paramref name="allowCreate"/> also creates a missing parent
+        /// directory (e.g. <c>settings/</c> for app_settings.txt on drives that ship without
+        /// it, specs/03-vdrive-and-files.md §4.2/§4.4). Without it, missing parent
+        /// directories are never created.
         /// </summary>
         void WriteAllLines(string path, IReadOnlyList<string> lines, bool allowCreate = false);
 

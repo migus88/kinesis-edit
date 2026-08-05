@@ -118,9 +118,15 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void SetHidden_WithUnwritableLocation_DoesNotThrow()
         {
+            // A merely missing folder is not unwritable any more — WriteAllLines(allowCreate: true)
+            // creates it. So block the settings folder with a file of the same name: creating the
+            // directory then fails, which is the I/O failure the store must swallow.
+            var blockedFolder = Path.Combine(_tempDirectory, "blocked-folder");
+            File.WriteAllText(blockedFolder, string.Empty);
+
             var store = new VDriveNotificationSuppressionStore(
                 _fileService,
-                Path.Combine(_tempDirectory, "missing-folder", VDriveNotificationSuppressionStore.FileName));
+                Path.Combine(blockedFolder, VDriveNotificationSuppressionStore.FileName));
 
             store.SetHidden(NotificationKeys.Save, true);
 

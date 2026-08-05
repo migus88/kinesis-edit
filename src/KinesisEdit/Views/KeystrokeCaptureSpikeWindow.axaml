@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:input="clr-namespace:KinesisEdit.Input"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
+        x:Class="KinesisEdit.Views.KeystrokeCaptureSpikeWindow"
+        Title="Kinesis Edit — keystroke capture spike"
+        Width="900" Height="640">
+  <DockPanel Margin="16">
+
+    <StackPanel DockPanel.Dock="Top" Spacing="4">
+      <TextBlock Text="Keystroke capture spike (issue #12)" FontSize="18" FontWeight="Bold" />
+      <TextBlock TextWrapping="Wrap"
+                 Text="Start capture, then press keys: each keystroke is resolved to a key-table entry and logged with its left/right modifiers, and the key event is consumed before any control sees it. The text box below is the swallow probe. With auto-suspend ON (default) it takes typing normally — proof of pass-through. Uncheck auto-suspend, focus the box and type: nothing appears in it while the log fills — proof of swallowing. The Suspend button exercises the explicit suspension a modal dialog would use. While capture is running the buttons below are mouse-only — Space and Enter are swallowed like every other key, which is the point. Capture is focused-window only: OS-reserved combinations (macOS Cmd+Tab, Cmd+Q, Cmd+Space; Windows Win+L) are consumed by the OS and can never be intercepted." />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,12,0,8">
+      <Button x:Name="CaptureToggleButton" Content="Start capture" Click="OnCaptureToggleClick" />
+      <Button x:Name="SuspendToggleButton" Content="Suspend" Click="OnSuspendToggleClick" />
+      <Button x:Name="ClearButton" Content="Clear" Click="OnClearClick" />
+      <CheckBox x:Name="AutoSuspendCheckBox"
+                Content="Auto-suspend while a text box is focused"
+                IsChecked="True" />
+      <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontWeight="SemiBold" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,12,0,0">
+      <TextBlock Text="Text entry / swallow probe — auto-suspend ON: typing passes through; auto-suspend OFF: typing is swallowed and only reaches the log" />
+      <TextBox x:Name="TextEntryBox"
+               Watermark="Type here to test pass-through, or untick auto-suspend to test swallowing" />
+    </StackPanel>
+
+    <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="4">
+      <DockPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="150,70,120,120,120,*" Margin="10,8,10,4">
+          <TextBlock Grid.Column="0" Text="Key" FontWeight="Bold" />
+          <TextBlock Grid.Column="1" Text="Code" FontWeight="Bold" />
+          <TextBlock Grid.Column="2" Text="Legacy" FontWeight="Bold" />
+          <TextBlock Grid.Column="3" Text="Gen1" FontWeight="Bold" />
+          <TextBlock Grid.Column="4" Text="Gen2" FontWeight="Bold" />
+          <TextBlock Grid.Column="5" Text="Held modifiers" FontWeight="Bold" />
+        </Grid>
+
+        <ListBox x:Name="KeystrokeList">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="input:CapturedKeystrokeView">
+              <Grid ColumnDefinitions="150,70,120,120,120,*">
+                <TextBlock Grid.Column="0" Text="{Binding DisplayText}" />
+                <TextBlock Grid.Column="1" Text="{Binding KeyCode}" />
+                <TextBlock Grid.Column="2" Text="{Binding LegacyToken}" />
+                <TextBlock Grid.Column="3" Text="{Binding Gen1Token}" />
+                <TextBlock Grid.Column="4" Text="{Binding Gen2Token}" />
+                <TextBlock Grid.Column="5" Text="{Binding HeldModifiers}" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+  </DockPanel>
+</Window>
