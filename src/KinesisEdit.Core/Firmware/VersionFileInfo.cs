@@ -4,8 +4,9 @@ namespace KinesisEdit.Core.Firmware
 {
     /// <summary>
     /// Immutable result of parsing a device version file (specs/09-firmware.md §1). Raw value
-    /// texts are kept alongside the parsed versions because the firmware dialog displays the
-    /// full value, e.g. "1.0.1709.us (4MB), 03/08/2019". Produced by
+    /// texts are kept alongside the parsed versions because parsing keeps only the
+    /// major/minor/revision tokens, so only the raw text carries the full value the file
+    /// stated, e.g. "1.0.1709.us (4MB), 03/08/2019". Produced by
     /// <see cref="VersionFileParser"/>; carries data plus the spec 02 model resolution only.
     /// </summary>
     public sealed record VersionFileInfo

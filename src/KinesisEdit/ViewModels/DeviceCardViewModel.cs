@@ -1,6 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
-using KinesisEdit.Core.Firmware;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 
@@ -32,14 +31,6 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Caption of the rescan button (specs/11-feature-dialogs.md §11.8).</summary>
         public const string ScanActionCaption = "Scan for v-Drive";
-
-        /// <summary>
-        /// Caption the rescan button takes on a connected device that offers the firmware update
-        /// dialog (specs/10-apps-and-ui.md: connected cards "swap the scan button to
-        /// 'Check for Updates'", and "the same card button opens the shared firmware-update
-        /// dialog instead").
-        /// </summary>
-        public const string CheckForUpdatesActionCaption = "Check for Updates";
 
         /// <summary>Caption of the eject button (specs/10-apps-and-ui.md).</summary>
         public const string EjectActionCaption = "Eject";
@@ -86,16 +77,10 @@ namespace KinesisEdit.ViewModels
         public string PrimaryActionCaption => IsDemoMode ? DemoModeActionCaption : ConfigureActionCaption;
 
         /// <summary>
-        /// Whether the secondary button checks for updates instead of rescanning: the drive must
-        /// be connected — specs/09-firmware.md §3 "requires a connected device" — and the device
-        /// must be one of the three that offer the dialog at all (§4: the FS Edge/Pro,
-        /// Advantage2 and Savant Elite 2 apps have none).
+        /// Caption of the secondary button. Invariant — the button only ever rescans — but kept a
+        /// property so the card view can bind it like every other caption.
         /// </summary>
-        public bool CanCheckForUpdates => _snapshot.Status == VDriveConnectionStatus.Connected
-            && UpdateCheckEligibility.IsSupported(DeviceId);
-
-        /// <summary>Caption of the secondary button: 'Check for Updates' when it can, 'Scan for v-Drive' otherwise.</summary>
-        public string SecondaryActionCaption => CanCheckForUpdates ? CheckForUpdatesActionCaption : ScanActionCaption;
+        public string SecondaryActionCaption => ScanActionCaption;
 
         /// <summary>Whether the Eject button is usable: a connected drive on a platform that can eject.</summary>
         public bool CanEject => _ejectNotifier.IsSupported
@@ -105,17 +90,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>Opens this device in the editor (Configure / Demo Mode).</summary>
         public IRelayCommand ConfigureCommand { get; }
 
-        /// <summary>
-        /// The secondary button: re-runs detection, or opens the firmware update dialog when
-        /// <see cref="CanCheckForUpdates"/> — spec 10 gives the card one button for both.
-        /// </summary>
+        /// <summary>The secondary button: re-runs detection.</summary>
         public IAsyncRelayCommand SecondaryActionCommand { get; }
 
         /// <summary>Flushes and releases the drive, with the spec's progress notices.</summary>
         public IAsyncRelayCommand EjectCommand { get; }
 
         private readonly VDriveEjectNotifier _ejectNotifier;
-        private readonly IFirmwareUpdatePresenter _updatePresenter;
         private readonly Action<DeviceSnapshot> _configureRequested;
         private readonly Func<Task> _scanRequested;
         private DeviceSnapshot _snapshot;
@@ -124,13 +105,11 @@ namespace KinesisEdit.ViewModels
         public DeviceCardViewModel(
             DeviceSnapshot snapshot,
             VDriveEjectNotifier ejectNotifier,
-            IFirmwareUpdatePresenter updatePresenter,
             Action<DeviceSnapshot> configureRequested,
             Func<Task> scanRequested)
         {
             _snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
             _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
-            _updatePresenter = updatePresenter ?? throw new ArgumentNullException(nameof(updatePresenter));
             _configureRequested = configureRequested ?? throw new ArgumentNullException(nameof(configureRequested));
             _scanRequested = scanRequested ?? throw new ArgumentNullException(nameof(scanRequested));
 
@@ -159,8 +138,6 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(StatusSeverity));
             OnPropertyChanged(nameof(IsDemoMode));
             OnPropertyChanged(nameof(PrimaryActionCaption));
-            OnPropertyChanged(nameof(CanCheckForUpdates));
-            OnPropertyChanged(nameof(SecondaryActionCaption));
             OnPropertyChanged(nameof(CanEject));
 
             EjectCommand.NotifyCanExecuteChanged();
@@ -173,11 +150,6 @@ namespace KinesisEdit.ViewModels
 
         private Task RunSecondaryActionAsync()
         {
-            if (CanCheckForUpdates)
-            {
-                return _updatePresenter.PresentAsync(_snapshot);
-            }
-
             return _scanRequested();
         }
 

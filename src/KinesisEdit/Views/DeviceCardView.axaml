@@ -23,8 +23,6 @@
               HorizontalContentAlignment="Center" />
 
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <!-- 'Scan for v-Drive', or 'Check for Updates' on a connected device whose app has the
-             firmware dialog (specs/10-apps-and-ui.md). -->
         <Button Content="{Binding SecondaryActionCaption}" Command="{Binding SecondaryActionCommand}" />
         <Button Content="{x:Static vm:DeviceCardViewModel.EjectActionCaption}"
                 Command="{Binding EjectCommand}"
