@@ -38,8 +38,13 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 - `VDrive` (+ `.Discovery`, `.Io`, `.Eject`) — v-Drive discovery (platform volume enumerators, shared scanner, polling monitor), raw 8-bit file I/O with the spec's write rules, and the flush/eject abstraction (spec 03 §2–5; 08 §1) — see [`vdrive.md`](vdrive.md).
 - `Lighting` — in-memory lighting model and the `lighting/ledN.txt` parser/serializer for the RGB, TKO, and Advantage360 dialects, plus the mode/indicator catalogs and lighting firmware hooks (spec 07; 05 §5.5) — see [`lighting.md`](lighting.md).
 - `Settings` — the settings engine: typed keyboard-settings and app-settings models with pure line-based parsers/serializers, the Advantage2 4MB write gate, and the `SettingsService` load/save binding (spec 08 §1–3, §5; 09 §1.1) — see [`settings.md`](settings.md).
+- `Input` — the UI-free keystroke-capture state machines: `PhysicalKeyCode`/`PhysicalKeyMap`, `KeystrokeRecorder`, `KeystrokeCaptureSession` (started/suspended gating), `IKeystrokeCaptureService` (spec 10) — see [`keystroke-capture.md`](keystroke-capture.md).
 
 Layout parsers and serializers (specs 04, 06; issue #8) are not implemented yet.
+
+## App namespaces
+
+`KinesisEdit/Input` holds the only platform-aware input code: `AvaloniaKeystrokeCaptureService` (tunnel-phase key preview on a `TopLevel`, delegating every decision to a Core `KeystrokeCaptureSession` and contributing only the "is a `TextBox` focused" verdict plus the `SuspendOnTextInputFocus` switch), `AvaloniaPhysicalKeyBridge`, and the harness row view `CapturedKeystrokeView`. It is the worked example of the boundary above — every capture rule lives in `KinesisEdit.Core.Input` where tests can reach it, and only the `TopLevel` adapter may reference Avalonia. `MainWindow` is currently the issue-#12 capture spike harness, not the eventual app shell.
 
 ## Notes
 
