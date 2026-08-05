@@ -37,7 +37,7 @@ Two-stage design: platform **volume enumerators** produce `VolumeCandidate(RootP
 Implements spec 03 §5.1–5.2 exactly. Encoding is **`Encoding.Latin1` everywhere** — the project's rendering of "raw 8-bit strings, no encoding conversion, no BOM handling": bytes 0x00–0xFF round-trip losslessly, a BOM in an input file is preserved as ordinary bytes, and UTF-8 is deliberately never used (load-bearing for the golden-file tests of the parser issues).
 
 - `ReadAllLines(path)` — line-split tolerantly (`\r\n`, `\n`, lone `\r`); trailing newline yields no empty last line.
-- `WriteAllLines(path, lines, allowCreate = false)` — **write refused (`FileNotFoundException`) unless the file exists**; operations the spec permits to create files (e.g. `layout<n>.txt` on save, 03 §5.3) opt in via `allowCreate`. Truncate-and-rewrite in place — no temp file, no atomic rename — native platform line endings, trailing newline. Missing parent directories are never created.
+- `WriteAllLines(path, lines, allowCreate = false)` — **write refused (`FileNotFoundException`) unless the file exists**; operations the spec permits to create files (e.g. `layout<n>.txt` on save, 03 §5.3) opt in via `allowCreate`, which also creates a missing parent directory (needed for `settings/app_settings.txt` on Adv2/SE2 drives, whose layouts have no `settings/` folder — 03 §4.2/§4.4; decision on issue #10). Truncate-and-rewrite in place — no temp file, no atomic rename — native platform line endings, trailing newline. Without `allowCreate`, missing parent directories are never created.
 - `UpdateSettingsFile(path, values)` — read-modify-write per spec 08 §1: a line matches managed key K iff it starts with K case-insensitively **and the next char is `=`** (requiring the separator resolves the spec's prefix collisions — `v_drive` vs `v_drive_open_on_startup`, `cust_color_1` vs `cust_color_10` — without legacy's trailing-`=` special cases). Matching lines are replaced in place; unknown/reserved lines survive verbatim in order; absent keys are appended in caller order.
 
 ## Eject — `IVDriveEjector`
@@ -51,7 +51,7 @@ Rationale (spec 03 §5.3): the firmware only reloads its files once the v-Drive 
 ## Load-bearing invariants
 
 1. **Latin1 in, Latin1 out.** Any UTF-8 in this layer corrupts bytes > 0x7F and breaks byte-exact round-trips. Never "fix" the encoding.
-2. **The write-refusal rule is a safety feature** (spec 03 §5.2): it prevents scattering files onto arbitrary volumes when a path is wrong. `allowCreate` is per-call and deliberate.
+2. **The write-refusal rule is a safety feature** (spec 03 §5.2): it prevents scattering files onto arbitrary volumes when a path is wrong. `allowCreate` is per-call and deliberate — and it is the only path that creates anything (file and, if needed, its parent folder).
 3. **Device facts live in the catalog only.** Labels, marker/version/settings paths, layout folders all come from `DeviceDefinition`; this layer contains zero device-specific strings.
 4. **Scanners never throw on bad candidates** — an unreadable volume is somebody else's mount, not an error.
 

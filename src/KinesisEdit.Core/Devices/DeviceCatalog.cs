@@ -107,6 +107,7 @@ namespace KinesisEdit.Core.Devices
                     IsSupported = true
                 },
                 Lighting = LightingCapability.None,
+                Settings = SettingsCapability.None,
                 HardwareNotes = "3 pedals + jack",
                 IsProgrammable = true
             };
@@ -141,6 +142,15 @@ namespace KinesisEdit.Core.Devices
                     MaxCharactersPerMacro = 300
                 },
                 Lighting = LightingCapability.None,
+                Settings = new SettingsCapability
+                {
+                    WritesMacroSpeed = true,
+                    MacroSpeedMinimum = 0,
+                    StatusSetting = StatusSettingKind.StatusPlaySpeedKey,
+                    VDriveSetting = VDriveSettingKind.OpenOnStartup,
+                    WritesKeyClickTone = true,
+                    WritesToggleTone = true
+                },
                 HardwareNotes = "full keyset incl. thumb clusters; 3 foot-pedal inputs (left/middle/right pedal)",
                 VDriveShortcutHint = "Program + F1",
                 IsProgrammable = true
@@ -169,6 +179,15 @@ namespace KinesisEdit.Core.Devices
                 {
                     Kind = LightingKind.BlueBacklight
                 },
+                Settings = new SettingsCapability
+                {
+                    LedMode = LedModeKind.ModeString,
+                    WritesMacroSpeed = true,
+                    MacroSpeedMinimum = 0,
+                    StatusSetting = StatusSettingKind.StatusPlaySpeedKey,
+                    VDriveSetting = VDriveSettingKind.AutoManual,
+                    WritesGameMode = true
+                },
                 HardwareNotes = "split keyboard, LED backlight, Game Mode switch",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
@@ -194,6 +213,13 @@ namespace KinesisEdit.Core.Devices
                 LayoutScheme = CreateNumberedProfileScheme(hasLighting: false),
                 Macros = CreateFreestyleEdgeMacroCapability(),
                 Lighting = LightingCapability.None,
+                Settings = new SettingsCapability
+                {
+                    WritesMacroSpeed = true,
+                    MacroSpeedMinimum = 0,
+                    StatusSetting = StatusSettingKind.StatusPlaySpeedKey,
+                    VDriveSetting = VDriveSettingKind.AutoManual
+                },
                 HardwareNotes = "split keyboard; no game mode",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
@@ -227,6 +253,7 @@ namespace KinesisEdit.Core.Devices
                 {
                     Kind = LightingKind.PerKeyRgb
                 },
+                Settings = CreatePerKeyRgbSettingsCapability(),
                 HardwareNotes = "split gaming keyboard",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
@@ -242,6 +269,7 @@ namespace KinesisEdit.Core.Devices
                 LegacyAppId = 5,
                 ServingApp = ServingApp.None,
                 VolumeLabels = ["CROSSFIRE KEYPAD"],
+                Settings = SettingsCapability.None,
                 HardwareNotes = "never shipped",
                 IsProgrammable = false,
                 IsFutureDevice = true
@@ -278,6 +306,7 @@ namespace KinesisEdit.Core.Devices
                     EdgeLedBottomCount = 15,
                     EdgeLedRightCount = 9
                 },
+                Settings = CreatePerKeyRgbSettingsCapability(),
                 HardwareNotes = "60% tenkeyless gaming board with tripartite space bar (left/middle/right space)",
                 VDriveShortcutHint = "SmartSet + Right Shift + V",
                 IsProgrammable = true
@@ -313,6 +342,12 @@ namespace KinesisEdit.Core.Devices
                     Kind = LightingKind.IndicatorLeds,
                     IndicatorLedCount = 6
                 },
+                Settings = new SettingsCapability
+                {
+                    StartupSetting = StartupSettingKind.ProfileNumber,
+                    StatusSetting = StatusSettingKind.StatusKey,
+                    WritesProgramLock = true
+                },
                 HardwareNotes = "split ergonomic contoured keyboard; optional foot pedal display; Bluetooth",
                 VDriveShortcutHint = "SmartSet + v-Drive",
                 IsProgrammable = true
@@ -327,6 +362,7 @@ namespace KinesisEdit.Core.Devices
                 DisplayName = "Advantage 360 Professional",
                 LegacyAppId = 8,
                 ServingApp = ServingApp.SmartSetMasterOffice,
+                Settings = SettingsCapability.None,
                 HardwareNotes = "configured via ZMK web GUI",
                 ConfigurationUrl = "https://kinesiscorporation.github.io/Adv360-Pro-GUI/",
                 SupportUrl = "https://kinesis-ergo.com/support/advantage360-pro",
@@ -344,6 +380,20 @@ namespace KinesisEdit.Core.Devices
                 FirstProfileNumber = 1,
                 LastProfileNumber = 9,
                 HasReadOnlyFactoryProfile = hasReadOnlyFactoryProfile
+            };
+        }
+
+        private static SettingsCapability CreatePerKeyRgbSettingsCapability()
+        {
+            return new SettingsCapability
+            {
+                StartupSetting = StartupSettingKind.LayoutFileName,
+                LedMode = LedModeKind.LedFileName,
+                WritesMacroSpeed = true,
+                MacroSpeedMinimum = 1,
+                StatusSetting = StatusSettingKind.StatusPlaySpeedKey,
+                VDriveSetting = VDriveSettingKind.AutoManual,
+                WritesGameMode = true
             };
         }
 
