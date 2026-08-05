@@ -57,7 +57,7 @@ Rationale (spec 03 §5.3): the firmware only reloads its files once the v-Drive 
 
 ## Deliberately not here
 
-- **No file-content parsing** — version-file text (`FirmwareVersion.TryParse` input extraction), layouts, macros, settings values are the parser issues (specs 04, 06, 08, 09).
+- **No file-content parsing** — version-file text is parsed by the firmware module ([firmware.md](firmware.md)); layouts, macros, and settings values are the parser issues (specs 04, 06, 08).
 - **No legacy "running from the v-Drive" mode** (spec 03 §3.2 step 1) — dropped by decision on issue #6; discovery always scans mounts.
 - **No `app_settings.txt` handling** (03 §6) — the app-settings module decides its local fallback location later.
 - **No UI states/dialogs** — error strings, demo-mode UX, and the troubleshoot flow (03 §3.5, spec 10) belong to the app layer.

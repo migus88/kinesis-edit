@@ -28,14 +28,15 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 
 ## Core namespaces
 
-`KinesisEdit.Core` currently contains the static domain-data layer (see [`domain-data.md`](domain-data.md)) and the v-Drive services (see [`vdrive.md`](vdrive.md)):
+`KinesisEdit.Core` currently contains the static domain-data layer (see [`domain-data.md`](domain-data.md)), the firmware module (see [`firmware.md`](firmware.md)), and the v-Drive services (see [`vdrive.md`](vdrive.md)):
 
 - `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, macro/lighting capabilities; specs 02 and 03 §1–4) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
 - `Keys` — master key-token registry: `KeyRegistry` with 1282 entries in spec registration order across the three token dialects (spec 05 §3, §7).
 - `Geometry` — physical layer geometries: `GeometryCatalog`, seven layout families with fully materialized layers (spec 05 §4).
-- `VDrive` (+ `.Discovery`, `.Io`, `.Eject`) — v-Drive discovery (platform volume enumerators, shared scanner, polling monitor), raw 8-bit file I/O with the spec's write rules, and the flush/eject abstraction (spec 03 §2–5; 08 §1).
+- `Firmware` — version-file parsing and firmware feature gating: `VersionFileParser`, `FirmwareGateCatalog`/`FirmwareGateService`, `FirmwareSupportUrls` (specs 09 §1–2, 11 §11.1, 12 §1) — see [`firmware.md`](firmware.md).
+- `VDrive` (+ `.Discovery`, `.Io`, `.Eject`) — v-Drive discovery (platform volume enumerators, shared scanner, polling monitor), raw 8-bit file I/O with the spec's write rules, and the flush/eject abstraction (spec 03 §2–5; 08 §1) — see [`vdrive.md`](vdrive.md).
 
-Parsers/serializers are not implemented yet.
+Layout/lighting parsers and serializers are not implemented yet.
 
 ## Notes
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configuration app (the legacy app is written in Pascal and unsupported). Target stack: **C# with Avalonia UI**. Primary platform is **macOS** — develop Mac-first — but Windows and Linux must also work.
 
-**Current status: scaffolded, static domain data and v-Drive services implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
+**Current status: scaffolded; static domain data, the firmware module (version parsing + feature gating), and the v-Drive services implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
 
 - Build: `dotnet build src/KinesisEdit.sln`
 - Test: `dotnet test src/KinesisEdit.sln`
@@ -17,7 +17,7 @@ Implementation is planned and tracked in GitHub issues — see the epic ([#1](ht
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
-- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), and `vdrive.md` (v-Drive discovery, file I/O, eject). Add a doc per module as modules are built.
+- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `firmware.md` (version parsing + feature gating), and `vdrive.md` (v-Drive discovery, file I/O, eject). Add a doc per module as modules are built.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.
 
