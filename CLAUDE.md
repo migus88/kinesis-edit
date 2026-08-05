@@ -8,10 +8,11 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 **Current status: greenfield.** `src/` is empty and there is no solution/build yet. When scaffolding begins, use the .NET SDK (`dotnet new` / `dotnet build` / `dotnet test`) and update this section with the real commands as soon as they exist.
 
+Implementation is planned and tracked in GitHub issues — see the epic ([#1](https://github.com/migus88/kinesis-edit/issues/1)) and its ordered sub-issues. There is no in-repo planning document.
+
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
-- `docs/plan/` — Implementation plan for the new app.
 - `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently empty; populate as modules are built.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.

@@ -4,7 +4,7 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 - **Stack:** C# with [Avalonia UI](https://avaloniaui.net/) for cross-platform portability.
 - **Platforms:** macOS first, with Windows and Linux fully supported.
-- **Status:** Greenfield — specification complete, implementation not yet started.
+- **Status:** Greenfield — specification complete, implementation not yet started. Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
 
 ## How it works
 
@@ -15,7 +15,6 @@ Kinesis programmable keyboards mount a small FAT volume (the "v-Drive") containi
 | Folder | Contents |
 |---|---|
 | `specs/` | Full specification of the legacy apps, supported devices, and on-device file formats. The authoritative domain reference — start with [`specs/README.md`](specs/README.md). |
-| `docs/plan/` | Implementation plan. |
 | `docs/app/` | Agent-first documentation of the new app's modules, maintained alongside the code. |
 | `docs/guides/` | [Coding conventions](docs/guides/Coding%20Conventions.md) and other guides. |
 | `src/` | Source code of the new app. |
