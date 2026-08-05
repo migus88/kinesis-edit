@@ -34,13 +34,19 @@ namespace KinesisEdit.ViewModels
 
         private readonly DeviceMonitorService _monitor;
         private readonly VDriveEjectNotifier _ejectNotifier;
+        private readonly IFirmwareUpdatePresenter _updatePresenter;
         private bool _isDisposed;
 
-        /// <summary>Creates the dashboard over the detection loop and the shared eject flow.</summary>
-        public DashboardViewModel(DeviceMonitorService monitor, VDriveEjectNotifier ejectNotifier, IUrlLauncher urlLauncher)
+        /// <summary>Creates the dashboard over the detection loop, the shared eject flow, and the firmware update dialog.</summary>
+        public DashboardViewModel(
+            DeviceMonitorService monitor,
+            VDriveEjectNotifier ejectNotifier,
+            IFirmwareUpdatePresenter updatePresenter,
+            IUrlLauncher urlLauncher)
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
+            _updatePresenter = updatePresenter ?? throw new ArgumentNullException(nameof(updatePresenter));
 
             ArgumentNullException.ThrowIfNull(urlLauncher);
 
@@ -142,7 +148,7 @@ namespace KinesisEdit.ViewModels
 
         private DeviceCardViewModel CreateCard(DeviceSnapshot snapshot)
         {
-            return new DeviceCardViewModel(snapshot, _ejectNotifier, RequestConfigure, ScanAsync);
+            return new DeviceCardViewModel(snapshot, _ejectNotifier, _updatePresenter, RequestConfigure, ScanAsync);
         }
 
         private void OnMonitorUpdated(DeviceMonitorUpdate update)

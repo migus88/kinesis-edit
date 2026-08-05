@@ -13,7 +13,10 @@ namespace KinesisEdit.Tests.Services
     /// </summary>
     internal static class TestDevices
     {
-        public static VDriveLocation CreateLocation(DeviceId deviceId, bool isWritable = true)
+        public static VDriveLocation CreateLocation(
+            DeviceId deviceId,
+            bool isWritable = true,
+            VDriveDebugFlags debugFlags = VDriveDebugFlags.None)
         {
             var device = DeviceCatalog.GetById(deviceId);
 
@@ -21,11 +24,16 @@ namespace KinesisEdit.Tests.Services
             {
                 Device = device,
                 RootPath = Path.Combine(Path.DirectorySeparatorChar + "fake", device.VolumeLabels[0]),
-                IsWritable = isWritable
+                IsWritable = isWritable,
+                DebugFlags = debugFlags
             };
         }
 
-        public static string[] CreateVersionFileLines(DeviceId deviceId, string? modelName = null, string keyboardFirmware = "1.0.100")
+        public static string[] CreateVersionFileLines(
+            DeviceId deviceId,
+            string? modelName = null,
+            string keyboardFirmware = "1.0.100",
+            string ledFirmware = "1.0.58")
         {
             var model = modelName ?? DeviceCatalog.GetById(deviceId).DisplayName;
 
@@ -35,7 +43,7 @@ namespace KinesisEdit.Tests.Services
                 [
                     "Model Name: " + model,
                     "KBD Firmware: " + keyboardFirmware,
-                    "LED Firmware: 1.0.58"
+                    "LED Firmware: " + ledFirmware
                 ],
                 DeviceId.Advantage360 =>
                 [
@@ -54,15 +62,27 @@ namespace KinesisEdit.Tests.Services
             };
         }
 
+        public static VersionFileInfo CreateVersionFile(
+            DeviceId deviceId,
+            string keyboardFirmware = "1.0.100",
+            string ledFirmware = "1.0.58")
+        {
+            return VersionFileParser.Parse(
+                deviceId,
+                CreateVersionFileLines(deviceId, keyboardFirmware: keyboardFirmware, ledFirmware: ledFirmware));
+        }
+
         public static DeviceSnapshot CreateSnapshot(
             DeviceId deviceId,
             VDriveConnectionStatus status = VDriveConnectionStatus.Connected,
-            VDriveHealth health = VDriveHealth.Ok)
+            VDriveHealth health = VDriveHealth.Ok,
+            VersionFileInfo? versionFile = null,
+            VDriveDebugFlags debugFlags = VDriveDebugFlags.None)
         {
             var isDemoMode = status != VDriveConnectionStatus.Connected;
             var location = status == VDriveConnectionStatus.NotDetected
                 ? null
-                : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected);
+                : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected, debugFlags);
 
             return new DeviceSnapshot
             {
@@ -70,7 +90,8 @@ namespace KinesisEdit.Tests.Services
                 Device = DeviceCatalog.GetById(deviceId),
                 Status = status,
                 Location = location,
-                Firmware = FirmwareState.FromVersionFile(VersionFileInfo.Empty, isDemoMode),
+                VersionFile = versionFile ?? VersionFileInfo.Empty,
+                Firmware = FirmwareState.FromVersionFile(versionFile ?? VersionFileInfo.Empty, isDemoMode),
                 IsDemoMode = isDemoMode,
                 Health = status == VDriveConnectionStatus.NotDetected ? VDriveHealth.Unknown : health
             };

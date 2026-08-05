@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using KinesisEdit.Core.VDrive.Discovery;
@@ -24,6 +25,7 @@ namespace KinesisEdit
         private const string KeystrokeSpikeArgument = "--keystroke-spike";
 
         private DeviceMonitorService? _deviceMonitor;
+        private HttpVersionManifestClient? _manifestClient;
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
 
@@ -74,16 +76,56 @@ namespace KinesisEdit
             _deviceMonitor = new DeviceMonitorService(monitor, fileService, new AvaloniaUiDispatcher());
 
             var sessions = new DeviceSessionManager(fileService);
-            var presenter = new MessageBoxPresenter(() => desktop.MainWindow);
+
+            // The owner is the topmost window rather than the shell, so a message box raised from
+            // inside a modal dialog (the firmware check's error and debug boxes) is owned by that
+            // dialog instead of by the window it already blocks.
+            var presenter = new MessageBoxPresenter(() => FindOwnerWindow(desktop));
             var notifications = new NotificationService(presenter, sessions);
             var ejectNotifier = new VDriveEjectNotifier(
                 new DeviceEjectService(VDriveEject.CreateForCurrentPlatform()),
                 notifications);
 
-            _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, new ProcessUrlLauncher());
+            var urlLauncher = new ProcessUrlLauncher();
+
+            _manifestClient = new HttpVersionManifestClient();
+
+            var updatePresenter = new FirmwareUpdatePresenter(
+                () => FindOwnerWindow(desktop),
+                _manifestClient,
+                new AssemblyAppVersionProvider(),
+                notifications,
+                urlLauncher,
+                UpdateCheckPlatformResolver.Resolve());
+
+            _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, updatePresenter, urlLauncher);
             _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier);
 
             return notifications;
+        }
+
+        /// <summary>
+        /// The window a dialog raised right now belongs to: the topmost one. Windows are searched
+        /// newest first, because <c>desktop.Windows</c> is in open order and the most recently
+        /// opened window is the one on top — which is also the one blocking everything under it
+        /// while it is modal. Activation alone is not enough: nothing reports
+        /// <see cref="Window.IsActive"/> while the user is in another app, and a dialog raised in
+        /// that state must still be owned by the open update window rather than by the shell it
+        /// already blocks.
+        /// </summary>
+        private static Window? FindOwnerWindow(IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var windows = desktop.Windows;
+
+            for (var index = windows.Count - 1; index >= 0; index--)
+            {
+                if (windows[index].IsActive)
+                {
+                    return windows[index];
+                }
+            }
+
+            return windows.Count > 0 ? windows[^1] : desktop.MainWindow;
         }
 
         private void OnExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
@@ -91,6 +133,7 @@ namespace KinesisEdit
             _shell?.Dispose();
             _dashboard?.Dispose();
             _deviceMonitor?.Dispose();
+            _manifestClient?.Dispose();
         }
     }
 }
