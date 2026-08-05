@@ -3,13 +3,57 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.SavantElitePedalView"
              x:DataType="vm:SavantElitePedalViewModel">
-  <!-- The read-only Savant Elite2 view: the seven inputs of specs/12-savant-elite.md §5 with the
-       assignment text §5 prescribes, plus the lines of pedals.txt that could not be parsed. The
-       legacy two-panel form, its yellow edit box, the Configure buttons and the *Modified labels
-       are deliberately not reproduced — this app's visual language is the dashboard's cards. -->
+  <!-- The Savant Elite2 editor: the seven inputs of specs/12-savant-elite.md §5 with the
+       assignment text §5 prescribes, the entry box that programs one of them, and the lines of
+       pedals.txt that could not be parsed. The legacy two-panel form and its yellow edit box are
+       deliberately not reproduced — this app's visual language is the dashboard's cards. -->
+  <UserControl.Resources>
+    <!-- The Special Actions menu of 12 §6 as a real menu: five top-level items, one per section,
+         each with its actions underneath. They are MenuItems rather than Buttons in a Flyout
+         because a MenuItem closes the menu when it is invoked — a picked action must not leave a
+         popup covering Backspace / Clear / Cancel / Done.
+         Every binding reads the item's own view model: the popup lives outside this view's visual
+         tree, so an ancestor binding could not reach the editor from here. -->
+    <ControlTheme x:Key="PedalSpecialActionMenuItem"
+                  TargetType="MenuItem"
+                  BasedOn="{StaticResource {x:Type MenuItem}}"
+                  x:DataType="vm:PedalSpecialActionViewModel">
+      <Setter Property="Header" Value="{Binding}" />
+      <Setter Property="HeaderTemplate">
+        <Setter.Value>
+          <DataTemplate DataType="vm:PedalSpecialActionViewModel">
+            <!-- An item belonging to the other mode still applies (§6 switches the mode for the
+                 user), so it is muted rather than hidden. -->
+            <TextBlock Text="{Binding Caption}" Classes.muted="{Binding !IsAvailable}" />
+          </DataTemplate>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Command" Value="{Binding ApplyCommand}" />
+      <Setter Property="CommandParameter" Value="{Binding}" />
+      <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+      <!-- §6's one checkbox item is "Windows Combination (Win + …)", so it is the only item that
+           may be one: Avalonia's menu interaction handler flips IsChecked on every CheckBox item
+           it clicks (through SetCurrentValue, which this one-way binding never corrects), which
+           left a check mark on every action that had ever been picked. IsCheckable therefore
+           decides the toggle type per item, and everything else stays ToggleType="None". -->
+      <Setter Property="ToggleType" Value="{Binding IsCheckable, Converter={StaticResource MenuItemToggle}}" />
+      <Setter Property="IsChecked" Value="{Binding IsChecked}" />
+    </ControlTheme>
+
+    <ControlTheme x:Key="PedalSpecialActionGroupMenuItem"
+                  TargetType="MenuItem"
+                  BasedOn="{StaticResource {x:Type MenuItem}}"
+                  x:DataType="vm:PedalSpecialActionGroupViewModel">
+      <Setter Property="Header" Value="{Binding Name}" />
+      <Setter Property="ItemsSource" Value="{Binding Actions}" />
+      <Setter Property="ItemContainerTheme" Value="{StaticResource PedalSpecialActionMenuItem}" />
+    </ControlTheme>
+  </UserControl.Resources>
+
   <UserControl.Styles>
     <!-- One hairline between rows: a top border on every row draws the separators without
          leaving a trailing line under the last one. -->
@@ -23,117 +67,277 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="FontSize" Value="12" />
     </Style>
+    <!-- The entry box of 12 §5 step 3: a read-only, selectable display of what has been recorded
+         so far. Deliberately not a TextBox — focus in one auto-suspends the capture service
+         (docs/app/keystroke-capture.md), so typing into the pedal would record nothing. -->
+    <Style Selector="Border.entryBox">
+      <Setter Property="Background" Value="{DynamicResource KeyboardBoardBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapListeningBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="Border.entryPanel">
+      <Setter Property="Background" Value="{DynamicResource ShellBarBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="Margin" Value="0,6,0,2" />
+    </Style>
+    <Style Selector="TextBlock.entryText">
+      <Setter Property="FontSize" Value="15" />
+    </Style>
+    <Style Selector="TextBlock.badge">
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
   </UserControl.Styles>
 
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="24" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
-      <StackPanel Spacing="4">
-        <StackPanel Orientation="Horizontal" Spacing="12">
-          <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
-          <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
-                     Classes="statusWarning"
-                     FontWeight="SemiBold"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding IsDemoMode}" />
-        </StackPanel>
+    <!-- A save serializes the model on a background thread, so nothing may be edited under it. -->
+    <Panel IsEnabled="{Binding !IsBusy}">
+      <StackPanel Margin="24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
+              <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
+                         Classes="statusWarning"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsDemoMode}" />
+            </StackPanel>
 
-        <TextBlock Text="{Binding Notice}" Classes="muted" TextWrapping="Wrap" />
-        <TextBlock Text="{Binding FilePath}"
-                   Classes="muted"
-                   FontSize="12"
-                   TextWrapping="Wrap"
-                   IsVisible="{Binding HasFilePath}" />
+            <TextBlock Text="{Binding Notice}" Classes="muted" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding FilePath}"
+                       Classes="muted"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasFilePath}" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.SavingCaption}"
+                       Classes="muted"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsBusy}" />
+            <TextBlock Text="Unsaved changes"
+                       Classes="statusWarning"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding HasUnsavedChanges}" />
+            <Button Content="Save" Command="{Binding SaveCommand}" Classes="primaryAction" />
+          </StackPanel>
+        </Grid>
+
+        <!-- Demo mode, a v-Drive without a pedals.txt, an empty file, or a failed read: warning for
+             the expected states, red only for a genuine failure. -->
+        <Border Classes="card"
+                Padding="16,12"
+                IsVisible="{Binding HasStatusMessage}">
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding StatusMessage}"
+                       TextWrapping="Wrap"
+                       Classes.muted="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=Loaded}"
+                       Classes.statusWarning="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter='DemoMode,FileMissing'}"
+                       Classes.statusError="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=LoadFailed}" />
+            <TextBlock Text="{Binding SaveNote}"
+                       Classes="muted"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasSaveNote}" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding InputsNote}" Classes="muted" TextWrapping="Wrap" />
+
+            <!-- The Modified badge has a column of its own, wide enough to hold it: Avalonia has no
+                 shared-size scope, so a badge inside the button's Auto column would widen that one
+                 row and push its Edit button out of line with the other six. -->
+            <Grid ColumnDefinitions="150,110,*,80,Auto" Margin="0,4,0,0">
+              <TextBlock Grid.Column="0" Text="INPUT" Classes="columnHeader" />
+              <TextBlock Grid.Column="1" Text="MODE" Classes="columnHeader" />
+              <TextBlock Grid.Column="2" Text="ASSIGNMENT" Classes="columnHeader" />
+            </Grid>
+
+            <!-- Always seven rows: the file is authoritative for none of the hardware, and a given
+                 product physically has only a subset of the inputs (12 §1). -->
+            <ItemsControl ItemsSource="{Binding Inputs}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:PedalInputRowViewModel">
+                  <Border Classes="pedalRow">
+                    <StackPanel Spacing="2">
+                      <Grid ColumnDefinitions="150,110,*,80,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Name}"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding ModeCaption}"
+                                   Classes="muted"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <!-- Long macros wrap instead of being clipped; unassigned inputs read as
+                             muted so the programmed ones stand out. -->
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding AssignmentText}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"
+                                   Classes.muted="{Binding !IsAssigned}" />
+
+                        <!-- Its own fixed column, so the Edit buttons stay in one line whether or
+                             not a row carries the badge. -->
+                        <TextBlock Grid.Column="3"
+                                   Text="{x:Static vm:PedalInputRowViewModel.ModifiedCaption}"
+                                   Classes="badge"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsModified}" />
+
+                        <!-- A file that could not be read is shown read-only: there is no Edit
+                             button at all, so nothing can rewrite lines nobody could see. -->
+                        <Button Grid.Column="4"
+                                Content="Edit"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).CanEdit}"
+                                Command="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).BeginEditCommand}"
+                                CommandParameter="{Binding}" />
+                      </Grid>
+
+                      <!-- The entry box of 12 §5, inline under the row it programs. Its content is
+                           the editor view model, handed in as the template's data context so that
+                           nothing inside needs an ancestor binding. -->
+                      <ContentControl IsVisible="{Binding IsEditing}"
+                                      Content="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext)}">
+                        <ContentControl.ContentTemplate>
+                          <DataTemplate DataType="vm:SavantElitePedalViewModel">
+                            <Border Classes="entryPanel">
+                              <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                  <TextBlock Grid.Column="0"
+                                             Text="{Binding EditingCaption}"
+                                             Classes="badge"
+                                             VerticalAlignment="Center" />
+
+                                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                    <!-- 12 §5 step 2. Buttons rather than toggles: the latch is the
+                                         session's mode, and a switch clears the entry, so the view
+                                         must never hold a state of its own here. -->
+                                    <Button Classes="layerTab"
+                                            Classes.selected="{Binding IsSingleMode}"
+                                            Content="Single Action"
+                                            Command="{Binding SetSingleModeCommand}" />
+                                    <Button Classes="layerTab"
+                                            Classes.selected="{Binding IsMacroMode}"
+                                            Content="Macro"
+                                            Command="{Binding SetMacroModeCommand}" />
+                                  </StackPanel>
+                                </Grid>
+
+                                <Border Classes="entryBox">
+                                  <Panel>
+                                    <SelectableTextBlock Text="{Binding EntryText}"
+                                                         Classes="entryText"
+                                                         TextWrapping="Wrap"
+                                                         VerticalAlignment="Center"
+                                                         IsVisible="{Binding HasEntry}" />
+                                    <TextBlock Text="Nothing recorded yet."
+                                               Classes="muted"
+                                               VerticalAlignment="Center"
+                                               IsVisible="{Binding !HasEntry}" />
+                                  </Panel>
+                                </Border>
+
+                                <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.EntryHint}"
+                                           Classes="muted"
+                                           FontSize="12"
+                                           TextWrapping="Wrap" />
+
+                                <!-- Why a Special Action was refused (§6); it changes nothing, so
+                                     an inline line is the whole report. -->
+                                <TextBlock Text="{Binding EntryMessage}"
+                                           Classes="statusWarning"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding HasEntryMessage}" />
+
+                                <TextBlock Text="Windows Combination (Win + …) is on: every key you record carries it."
+                                           Classes="muted"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding HoldWinModifier}" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                  <Button Content="Special Actions ▾">
+                                    <Button.Flyout>
+                                      <MenuFlyout Placement="BottomEdgeAlignedLeft"
+                                                  ItemsSource="{Binding SpecialActionGroups}"
+                                                  ItemContainerTheme="{StaticResource PedalSpecialActionGroupMenuItem}" />
+                                    </Button.Flyout>
+                                  </Button>
+
+                                  <Button Content="Backspace" Command="{Binding BackspaceCommand}" />
+                                  <Button Content="Clear" Command="{Binding ClearEntryCommand}" />
+                                  <Button Content="Cancel" Command="{Binding CancelEditCommand}" />
+                                  <Button Content="Done" Command="{Binding DoneCommand}" Classes="primaryAction" />
+                                </StackPanel>
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                      </ContentControl>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Unparseable lines are shown, never silently dropped (12 §4.2). -->
+        <Border Classes="card" IsVisible="{Binding HasInvalidLines}">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesHeading}"
+                       FontWeight="SemiBold"
+                       Classes="statusWarning" />
+            <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesNote}"
+                       Classes="muted"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesSaveNote}"
+                       Classes="muted"
+                       TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding InvalidLines}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:PedalInvalidLineViewModel">
+                  <Border Classes="pedalRow">
+                    <Grid ColumnDefinitions="70,110,*">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding LineCaption}"
+                                 Classes="muted"
+                                 VerticalAlignment="Top" />
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding InputName}"
+                                 Classes="muted"
+                                 TextWrapping="Wrap"
+                                 VerticalAlignment="Top" />
+                      <SelectableTextBlock Grid.Column="2"
+                                           Text="{Binding Text}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Top" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
       </StackPanel>
-
-      <!-- Demo mode, a v-Drive without a pedals.txt, an empty file, or a failed read: warning for
-           the expected states, red only for a genuine failure. -->
-      <Border Classes="card"
-              Padding="16,12"
-              IsVisible="{Binding HasStatusMessage}">
-        <TextBlock Text="{Binding StatusMessage}"
-                   TextWrapping="Wrap"
-                   Classes.muted="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=Loaded}"
-                   Classes.statusWarning="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter='DemoMode,FileMissing'}"
-                   Classes.statusError="{Binding LoadState, Converter={StaticResource EnumMatch}, ConverterParameter=LoadFailed}" />
-      </Border>
-
-      <Border Classes="card">
-        <StackPanel Spacing="8">
-          <TextBlock Text="{Binding InputsNote}" Classes="muted" TextWrapping="Wrap" />
-
-          <Grid ColumnDefinitions="150,110,*" Margin="0,4,0,0">
-            <TextBlock Grid.Column="0" Text="INPUT" Classes="columnHeader" />
-            <TextBlock Grid.Column="1" Text="MODE" Classes="columnHeader" />
-            <TextBlock Grid.Column="2" Text="ASSIGNMENT" Classes="columnHeader" />
-          </Grid>
-
-          <!-- Always seven rows: the file is authoritative for none of the hardware, and a given
-               product physically has only a subset of the inputs (12 §1). -->
-          <ItemsControl ItemsSource="{Binding Inputs}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:PedalInputRowViewModel">
-                <Border Classes="pedalRow">
-                  <Grid ColumnDefinitions="150,110,*">
-                    <TextBlock Grid.Column="0"
-                               Text="{Binding Name}"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Top" />
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding ModeCaption}"
-                               Classes="muted"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Top" />
-                    <!-- Long macros wrap instead of being clipped; unassigned inputs read as
-                         muted so the programmed ones stand out. -->
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding AssignmentText}"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Top"
-                               Classes.muted="{Binding !IsAssigned}" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-      </Border>
-
-      <!-- Unparseable lines are shown, never silently dropped (12 §4.2). -->
-      <Border Classes="card" IsVisible="{Binding HasInvalidLines}">
-        <StackPanel Spacing="8">
-          <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesHeading}"
-                     FontWeight="SemiBold"
-                     Classes="statusWarning" />
-          <TextBlock Text="{x:Static vm:SavantElitePedalViewModel.InvalidLinesNote}"
-                     Classes="muted"
-                     TextWrapping="Wrap" />
-
-          <ItemsControl ItemsSource="{Binding InvalidLines}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:PedalInvalidLineViewModel">
-                <Border Classes="pedalRow">
-                  <Grid ColumnDefinitions="70,110,*">
-                    <TextBlock Grid.Column="0"
-                               Text="{Binding LineCaption}"
-                               Classes="muted"
-                               VerticalAlignment="Top" />
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding InputName}"
-                               Classes="muted"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Top" />
-                    <SelectableTextBlock Grid.Column="2"
-                                         Text="{Binding Text}"
-                                         TextWrapping="Wrap"
-                                         VerticalAlignment="Top" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-      </Border>
-    </StackPanel>
+    </Panel>
   </ScrollViewer>
 </UserControl>

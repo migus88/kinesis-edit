@@ -37,5 +37,18 @@ namespace KinesisEdit.ViewModels
         {
             return Task.CompletedTask;
         }
+
+        /// <summary>
+        /// Whether the shell may close this editor — its chance to ask about unsaved work before
+        /// Home or another device replaces it. Returning false aborts the navigation and leaves the
+        /// editor on screen. Like <see cref="LoadAsync"/> it must be total: the shell awaits it from
+        /// a command, so a throw would surface as an unhandled failure rather than a dialog. The
+        /// default lets every navigation through — an editor that cannot lose anything has nothing
+        /// to ask.
+        /// </summary>
+        public virtual Task<bool> ConfirmCloseAsync()
+        {
+            return Task.FromResult(true);
+        }
     }
 }
