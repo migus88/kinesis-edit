@@ -93,7 +93,8 @@ Every layer is **fully materialized**: the spec's delta descriptions (RGB vs Edg
 ## Deliberately not here
 
 - **No I/O or drive discovery** — detection *data* only (labels, marker paths); probing the filesystem is a later module.
-- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`, `TapAndHoldCapability.MinimumFirmware`); comparing them to a device's actual firmware happens elsewhere.
-- **No macro/tap-and-hold behaviour** — the catalog states the limits, ranges and defaults; counting keystrokes, clamping out-of-range speed/repeat, and enforcing the caps belong to the model and parsers.
+- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`, `TapAndHoldCapability.MinimumFirmware`); comparing them to a device's actual firmware happens in `KinesisEdit.Core.Firmware` (see [`firmware.md`](firmware.md)). **These two versions are also encoded as `FirmwareGate` entries** (`ExpandedMacroCount`, `TapAndHold`) in `FirmwareGateCatalog` — the same spec 09 §2 numbers in two places. `FirmwareGateCatalog` is the authority for *evaluation*; the capability fields exist so a device's limits can be read without a firmware probe. Change both together, or consolidate them.
+- **No macro/tap-and-hold behaviour** — the catalog states the limits, ranges and defaults; counting keystrokes, clamping out-of-range speed/repeat, and enforcing the caps belong to the model (see [`keyboard-model.md`](keyboard-model.md)) and the parsers.
+
 - **No parsers/serializers** for layout/macro files (specs 04, 06) — this module is the vocabulary those will consume.
 - **No legacy font/rendering metadata** from the spec 05 tables (font names/sizes of the Pascal UI).
