@@ -40,6 +40,16 @@ namespace KinesisEdit.Core.Keys
         public const int Decimal = 0x6E;
         public const int Divide = 0x6F;
         public const int F1 = 0x70;
+
+        // F2-F24 continue sequentially from VK_F1 (0x70); F2-F6 are named because the
+        // lighting Fn-layer save-token exceptions reference them individually
+        // (specs/05-key-model.md §5.5). Ranged registrations still derive from F1.
+        public const int F2 = 0x71;
+        public const int F3 = 0x72;
+        public const int F4 = 0x73;
+        public const int F5 = 0x74;
+        public const int F6 = 0x75;
+
         public const int NumLock = 0x90;
         public const int ScrollLock = 0x91;
         public const int LeftShift = 0xA0;
