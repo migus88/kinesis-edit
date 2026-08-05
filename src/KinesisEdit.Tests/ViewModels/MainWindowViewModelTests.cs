@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -34,7 +35,11 @@ namespace KinesisEdit.Tests.ViewModels
 
             // The real factory over fake collaborators: which editor a device resolves to is part
             // of what OpenDevice has to get right.
-            var editors = new EditorViewModelFactory(_profiles, () => _capture, _notifications);
+            var editors = new EditorViewModelFactory(
+                _profiles,
+                () => _capture,
+                _notifications,
+                new PedalFileService(_fileService));
 
             _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeFirmwareUpdatePresenter(), new FakeUrlLauncher());
             _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier, editors);
@@ -64,13 +69,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void OpenDevice_WithADeviceThatHasAnAuthoredPicture_SwapsInTheRealEditor()
+        public void OpenDevice_WithADeviceThatHasAnAuthoredPicture_SwapsInTheKeyboardEditor()
         {
             // Demo mode on purpose: the editor's own load then builds its model in memory instead
             // of racing this test through the profile factory.
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
 
-            var editor = Assert.IsType<DeviceEditorViewModel>(_shell.Editor);
+            var editor = Assert.IsType<KeyboardEditorViewModel>(_shell.Editor);
 
             Assert.Same(editor, _shell.CurrentView);
             Assert.Equal("Freestyle Edge RGB", editor.DeviceName);
@@ -78,19 +83,88 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void OpenDevice_WithADeviceThatHasNoPicture_SwapsInThePlaceholder()
+        public void OpenDevice_WithTheSavantElite2_SwapsInTheReadOnlyPedalView()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+
+            _shell.OpenDevice(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            Assert.Same(pedal, _shell.CurrentView);
+            Assert.Equal(PedalLoadState.Loaded, pedal.LoadState);
+            Assert.Equal(7, pedal.Inputs.Count);
+            Assert.Equal("[lmouse]", pedal.Inputs[0].AssignmentText);
+            Assert.Same(snapshot, _sessions.Active!.Device);
+            Assert.True(_shell.IsEditorOpen);
+            Assert.True(_shell.HomeCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void OpenDevice_WithTheSavantElite2InDemoMode_ReadsNothingFromTheDrive()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2, VDriveConnectionStatus.CannotAccess);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+
+            _shell.OpenDevice(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            Assert.Equal(0, _fileService.ReadCount);
+            Assert.Equal(PedalLoadState.DemoMode, pedal.LoadState);
+            Assert.True(_shell.IsDemoMode);
+        }
+
+        [Fact]
+        public async Task HomeCommand_AfterOpeningTheSavantElite2_ClosesTheEditorAndEjects()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+            _shell.OpenDevice(snapshot);
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(_shell.Editor);
+            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.Null(_sessions.Active);
+            Assert.Equal(snapshot.Location!.RootPath, Assert.Single(_ejectService.EjectedPaths));
+        }
+
+        [Fact]
+        public async Task OpenDevice_WithTheKeyboardEditor_FiresItsLoadExactlyOnce()
+        {
+            // The shell is device-agnostic: it fires DeviceEditorViewModel.LoadAsync and forgets
+            // it, which is the only reason the keyboard editor ever reads its profile.
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb));
+
+            var editor = Assert.IsType<KeyboardEditorViewModel>(_shell.Editor);
+
+            await WaitForLoadAsync(editor);
+
+            Assert.Equal(1, _profiles.LoadCallCount);
+            Assert.NotNull(editor.Layout);
+            Assert.NotEmpty(editor.Layers);
+        }
+
+        [Fact]
+        public void OpenDevice_WithADeviceThatHasNoEditorOfItsOwn_SwapsInThePlaceholder()
         {
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
+
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Advantage2));
 
             Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
         }
 
         [Fact]
-        public async Task HomeCommand_WithTheRealEditorOpen_DisposesItAndStopsCapture()
+        public async Task HomeCommand_WithTheKeyboardEditorOpen_DisposesItAndStopsCapture()
         {
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
 
-            var editor = Assert.IsType<DeviceEditorViewModel>(_shell.Editor);
+            var editor = Assert.IsType<KeyboardEditorViewModel>(_shell.Editor);
 
             await _shell.HomeCommand.ExecuteAsync(null);
 
@@ -355,6 +429,25 @@ namespace KinesisEdit.Tests.ViewModels
             _shell.HelpCommand.Execute(null);
 
             Assert.Equal(new[] { "settings", "help" }, raised);
+        }
+
+        /// <summary>
+        /// Waits for the editor's fire-and-forget load to finish. The shell never awaits it, so
+        /// there is no task to hand back to the test.
+        /// </summary>
+        private static async Task WaitForLoadAsync(KeyboardEditorViewModel editor)
+        {
+            for (var attempt = 0; attempt < 500 && editor.IsLoading; attempt++)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.False(editor.IsLoading);
+        }
+
+        private void SetPedalFile(DeviceSnapshot snapshot, params string[] lines)
+        {
+            _fileService.SetFile(Path.Combine(snapshot.Location!.RootPath, "active", "pedals.txt"), lines);
         }
 
         private void SetDrive(DeviceId deviceId, bool isWritable = true)

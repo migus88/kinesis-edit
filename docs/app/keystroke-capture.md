@@ -52,7 +52,7 @@ The UI-free owner of *when* the recorder runs, so the rule is testable instead o
 
 ## The consumer — the keyboard editor
 
-`DeviceEditorViewModel` is the first real consumer ([keyboard-editor.md](keyboard-editor.md)): it subscribes to `KeystrokeCaptured` for the editor's lifetime, calls `Start()` **only** when a key enters listening state, applies the captured `CapturedKeystroke.Key` through `KeyboardKey.Remap`, and calls `Stop()` on the keystroke, on cancel, on a layer switch and on `Dispose`. One instance is built lazily by `App` over the shell window and shared by every editor; the shell disposes it after the editor.
+`KeyboardEditorViewModel` is the first real consumer ([keyboard-editor.md](keyboard-editor.md)): it subscribes to `KeystrokeCaptured` for the editor's lifetime, calls `Start()` **only** when a key enters listening state, applies the captured `CapturedKeystroke.Key` through `KeyboardKey.Remap`, and calls `Stop()` on the keystroke, on cancel, on a layer switch and on `Dispose`. One instance is built lazily by `App` over the shell window and shared by every editor; the shell disposes it after the editor.
 
 - **The editor's own Escape is a casualty of "swallow everything", by design.** While a key listens, Escape resolves like any other position and becomes the assignment — a keyboard must be able to carry an Escape remap — so the editor cancels by pointer instead. See [keyboard-editor.md](keyboard-editor.md) for the full rule and the tunnel-order reason its Escape handler is a safety net rather than the path.
 - **Suspension has no consumer yet.** Nothing calls `Suspend`/`Resume`: the editor has no text-entry dialog, and the adapter's text-input auto-suspend covers the only case that exists. Macro recording (#15) is what makes the explicit calls matter.
@@ -78,4 +78,4 @@ The UI-free owner of *when* the recorder runs, so the rule is testable instead o
 - **No modifier-string encoding.** The spec 05 §5.1 two-character form (`'LS'`, `'RC'`, `'S '` — the trailing space is load-bearing) is a file-format concern for the parser/serializer work; capture emits `KeyDefinition`s.
 - **No routing.** Deciding whether a captured key becomes a remap, a macro step, or a Tap-and-Hold action (spec 10 §Routing; spec 11 §Tap-and-Hold) is the editor UIs' job — the remap leg is in [keyboard-editor.md](keyboard-editor.md); the other two are issue #15.
 - **No global capture.** See the limitation above — focused-window only, by design.
-- **No pedal specifics.** Spec 12's single-action vs macro edit modes are pedal-editor behaviour built on top of this service.
+- **No pedal specifics.** Spec 12's single-action vs macro edit modes are pedal-editor behaviour built on top of this service; the pedal's own view is read-only so far and captures nothing — see [savant-elite.md](savant-elite.md) for where that editing will live.

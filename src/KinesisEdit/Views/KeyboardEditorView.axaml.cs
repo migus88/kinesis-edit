@@ -6,14 +6,14 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Views
 {
     /// <summary>
-    /// The per-device editor view, resolved from <see cref="DeviceEditorViewModel"/> by
+    /// The keyboard editor view, resolved from <see cref="KeyboardEditorViewModel"/> by
     /// <see cref="ViewLocator"/>. Everything it shows is bound; the only code here is the Escape
     /// route out of the remap's listening state.
     /// </summary>
-    public partial class DeviceEditorView : UserControl
+    public partial class KeyboardEditorView : UserControl
     {
         /// <summary>Creates the editor view.</summary>
-        public DeviceEditorView()
+        public KeyboardEditorView()
         {
             InitializeComponent();
 
@@ -27,7 +27,7 @@ namespace KinesisEdit.Views
 
         private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.Key != Key.Escape || DataContext is not DeviceEditorViewModel viewModel)
+            if (e.Key != Key.Escape || DataContext is not KeyboardEditorViewModel viewModel)
             {
                 return;
             }

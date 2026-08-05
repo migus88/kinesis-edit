@@ -1,18 +1,18 @@
 # Keyboard editor (keyboard picture + remap editing)
 
-The per-device editor the shell swaps in on Configure: a keyboard-shaped picture of one loaded profile, the click-then-press remap workflow of spec 10 ("click an on-screen key — the key enters 'listening' state; the next physical keypress captured by the app becomes the new assignment"), and the reset/save actions around it. It owns **no** domain rules — placements come from `VisualCatalog` ([domain-data.md](domain-data.md)), the model and its edit paths from `KinesisEdit.Core.Model` ([keyboard-model.md](keyboard-model.md)), load/save from `ProfileSession` ([profiles.md](profiles.md)), keystrokes from `IKeystrokeCaptureService` ([keystroke-capture.md](keystroke-capture.md)), and window/navigation/notifications from the shell ([app-shell.md](app-shell.md)).
+The editor the shell swaps in on Configure for a programmable keyboard: a keyboard-shaped picture of one loaded profile, the click-then-press remap workflow of spec 10 ("click an on-screen key — the key enters 'listening' state; the next physical keypress captured by the app becomes the new assignment"), and the reset/save actions around it. It owns **no** domain rules — placements come from `VisualCatalog` ([domain-data.md](domain-data.md)), the model and its edit paths from `KinesisEdit.Core.Model` ([keyboard-model.md](keyboard-model.md)), load/save from `ProfileSession` ([profiles.md](profiles.md)), keystrokes from `IKeystrokeCaptureService` ([keystroke-capture.md](keystroke-capture.md)), and window/navigation/notifications from the shell ([app-shell.md](app-shell.md)).
 
-**Device coverage: Freestyle Edge RGB only.** Every other device still opens `EditorPlaceholderViewModel`, because only that board's picture is authored. Adding a device is adding data to `VisualCatalog` — issues [#39](https://github.com/migus88/kinesis-edit/issues/39) (FS Edge / FS Pro), [#40](https://github.com/migus88/kinesis-edit/issues/40) (TKO), [#41](https://github.com/migus88/kinesis-edit/issues/41) (Advantage 360), [#42](https://github.com/migus88/kinesis-edit/issues/42) (Advantage2) — never editing anything below.
+**Device coverage: Freestyle Edge RGB only.** Every other device opens `EditorPlaceholderViewModel` — except the Savant Elite2, which has an editor of its own ([savant-elite.md](savant-elite.md)) and no keyboard picture at all — because only that one board's picture is authored. Adding a device is adding data to `VisualCatalog` — issues [#39](https://github.com/migus88/kinesis-edit/issues/39) (FS Edge / FS Pro), [#40](https://github.com/migus88/kinesis-edit/issues/40) (TKO), [#41](https://github.com/migus88/kinesis-edit/issues/41) (Advantage 360), [#42](https://github.com/migus88/kinesis-edit/issues/42) (Advantage2) — never editing anything below.
 
 | Namespace | Entry point(s) | Does | Owning spec |
 |---|---|---|---|
 | `KinesisEdit.Core.Geometry.Visual` | `VisualCatalog`, `KeyboardVisual`, `KeyVisual`, `KeyCluster` | Where each key position sits, in key units (UI-free data) | 05 §4; 02 |
 | `KinesisEdit.Controls` | `KeyboardPanel` | The only arithmetic: key-unit rectangles → arranged, scaled, centred children | — |
 | `KinesisEdit.Controls` | `KeyboardView`, `KeyCapView` | The device-agnostic picture of one layer; one key cap | 10 "Remap workflow" |
-| `KinesisEdit.Views` | `DeviceEditorView` | Header, layer switch, tab strip, listening banner, invalid-line block, Save | 10 |
-| `KinesisEdit.ViewModels` | `DeviceEditorViewModel` | The editor: load, selection/listening state machine, resets, save | 10; 04 §2.1, §5.2, §5.3; 03 §3.5, §5.3 |
+| `KinesisEdit.Views` | `KeyboardEditorView` | Header, layer switch, tab strip, listening banner, invalid-line block, Save | 10 |
+| `KinesisEdit.ViewModels` | `KeyboardEditorViewModel` | The editor: load, selection/listening state machine, resets, save | 10; 04 §2.1, §5.2, §5.3; 03 §3.5, §5.3 |
 | `KinesisEdit.ViewModels` | `KeyboardLayerViewModel`, `KeyboardKeyViewModel` | One layer's caps; one cap over one `KeyboardKey` | 05 §1.3, §5.3, §7.4 |
-| `KinesisEdit.ViewModels` | `EditorViewModelBase`, `EditorTab`, `EditorTabViewModel` | What the shell needs from *any* editor; the section strip | 10 |
+| `KinesisEdit.ViewModels` | `DeviceEditorViewModel`, `EditorTab`, `EditorTabViewModel` | What the shell needs from *any* editor ([app-shell.md](app-shell.md)); the section strip | 10 |
 | `KinesisEdit.ViewModels` | `KeyCaption`, `LayerCaptions`, `KeyColorOverlay` | The three presentation rules, each testable on its own | 05 §3, §1.1; 10; 07 §4 |
 | `KinesisEdit.Services` | `IProfileSession`, `IProfileSessionFactory`, `ProfileSessionAdapter`, `ProfileSessionFactory` | The fakeable seam over Core's sealed `ProfileSession` | 03 §4.1, §5.3 |
 | `KinesisEdit.Services` | `IEditorViewModelFactory`, `EditorViewModelFactory` | Which editor a device opens into | 10 "Opening a device" |
@@ -29,7 +29,7 @@ Core's model raises no change notification (plain mutable POCOs), so `KeyboardKe
 
 ## The generic component
 
-`KeyboardView` is device-agnostic on purpose: it binds only to a `KeyboardLayerViewModel` and exposes a single `KeySelectedCommand` styled property that `KeyCapView` invokes through `$parent[KeyboardView]` with the clicked `KeyboardKeyViewModel` as the parameter. Neither the picture nor the cap knows the editor exists; `DeviceEditorView` supplies `SelectKeyCommand`. **What a new device must supply is a `KeyboardVisual` and nothing else** — no XAML, no control, no view-model subclass. `EditorViewModelFactory` then resolves it automatically (it requires *both* `VisualCatalog` and `GeometryCatalog` to answer).
+`KeyboardView` is device-agnostic on purpose: it binds only to a `KeyboardLayerViewModel` and exposes a single `KeySelectedCommand` styled property that `KeyCapView` invokes through `$parent[KeyboardView]` with the clicked `KeyboardKeyViewModel` as the parameter. Neither the picture nor the cap knows the editor exists; `KeyboardEditorView` supplies `SelectKeyCommand`. **What a new device must supply is a `KeyboardVisual` and nothing else** — no XAML, no control, no view-model subclass. `EditorViewModelFactory` then resolves it automatically (it requires *both* `VisualCatalog` and `GeometryCatalog` to answer).
 
 `KeyboardPanel` is a `Panel` subclass and the only piece doing arithmetic:
 
@@ -39,9 +39,9 @@ Core's model raises no change notification (plain mutable POCOs), so `KeyboardKe
 
 `KeyCapView` sets the state classes `selected` / `listening` / `modified` / `locked` (`locked` = `!CanEdit`) plus a colour strip visible when `HasColorOverlay`. All chrome lives in `App.axaml`'s `keyCap*` / `layerTab` / `editorTab` / `keyboardBoard` styles, in both theme variants, applied to the button's `PART_ContentPresenter` (the Fluent theme's own `:pointerover`/`:disabled` setters target that presenter and would otherwise win). The cap states are declared in increasing precedence, so a listening key always reads as listening.
 
-## `DeviceEditorViewModel`
+## `KeyboardEditorViewModel`
 
-`EditorViewModelBase` (shared with `EditorPlaceholderViewModel`) supplies `Device`, `DeviceName`, `IsDemoMode`; `MainWindowViewModel.Editor` is typed as the base so navigation is independent of which editor a device resolves to.
+`DeviceEditorViewModel` — the shell's abstract editor base, shared with `EditorPlaceholderViewModel` and `SavantElitePedalViewModel` ([savant-elite.md](savant-elite.md)) — supplies `Device`, `DeviceName`, `IsDemoMode` and the virtual `LoadAsync()`; `MainWindowViewModel.Editor` is typed as that base so navigation is independent of which editor a device resolves to. This class overrides `LoadAsync`.
 
 State: `IsLoading` (true until the first load finishes), `IsBusy` (a save is in flight), `Layout`, `Layers`, `SelectedLayer`, `SelectedKey`, `ListeningKey`/`IsListening`, `ProfileCaption`, `ModifiedKeyCount`/`RemapCounterCaption`, `InvalidLineMessages`/`HasInvalidLines`, `BoardWidth`/`BoardHeight`, `Tabs`/`SelectedTab`.
 
@@ -94,7 +94,7 @@ One key listens at a time; capture is started **only** on entering listening and
 
 `CanBeginRemap` is false for a locked position (`CanEdit == false`, 05 §5.3), while loading, and while saving — clicking a locked key twice selects it and does nothing else. `BeginRemapCommand` is the same entry point without the click (bindable, and what the tests use).
 
-**Escape is not the cancel key — this is the single most surprising thing about the workflow.** While a key listens, the capture service previews the window's key events in the tunnel phase and swallows every physical key it resolves, Escape included, so **Escape is assigned like any other key**: a keyboard must be able to carry an Escape remap. Cancelling is a pointer action — the *Cancel* button beside the listening banner, clicking the listening key again, clicking another key, or switching layer. `DeviceEditorView` does register a tunneled `KeyDown` handler (`handledEventsToo: true`, as in `MessageBoxWindow`) that routes Escape to `CancelRemapCommand`, but it is a **safety net, not the path**: the capture handler sits on the `TopLevel` above it on the same tunnel route and has already consumed the keystroke and left listening state by the time the view sees it, leaving `CanExecute` false. It fires only when capture did *not* consume the Escape — capture suspended by text-input focus, for instance — which is exactly the case where listening would otherwise get stuck.
+**Escape is not the cancel key — this is the single most surprising thing about the workflow.** While a key listens, the capture service previews the window's key events in the tunnel phase and swallows every physical key it resolves, Escape included, so **Escape is assigned like any other key**: a keyboard must be able to carry an Escape remap. Cancelling is a pointer action — the *Cancel* button beside the listening banner, clicking the listening key again, clicking another key, or switching layer. `KeyboardEditorView` does register a tunneled `KeyDown` handler (`handledEventsToo: true`, as in `MessageBoxWindow`) that routes Escape to `CancelRemapCommand`, but it is a **safety net, not the path**: the capture handler sits on the `TopLevel` above it on the same tunnel route and has already consumed the keystroke and left listening state by the time the view sees it, leaving `CanExecute` false. It fires only when capture did *not* consume the Escape — capture suspended by text-input focus, for instance — which is exactly the case where listening would otherwise get stuck.
 
 **Applying a captured keystroke goes through the editor path `KeyboardKey.Remap(keystroke.Key)`**, which means capturing a key's *own original action* clears the remap (04 §2.1), exactly like the legacy apps. `ResetKeyCommand` deliberately calls `ClearRemap()` instead: `Remap(OriginalKey)` also clears the position's tap-and-hold and multi-modifier as a side effect ([keyboard-model.md](keyboard-model.md), "Watch out"), which is not what "reset this key's remap" means. `ResetLayerCommand`/`ResetLayoutCommand` call Core's `KeyboardLayer.Reset()`/`KeyboardLayout.Reset()` (which clear all four rule kinds; `KeyColor` survives) and then re-read every cap.
 
@@ -121,15 +121,15 @@ Both boxes go through `TryShowMessageBoxAsync`, which swallows a box that cannot
 ## Seams and composition
 
 - **`IProfileSession` / `IProfileSessionFactory`** exist because Core's `ProfileSession` is sealed with a static `Load` — unsubstitutable in a test. `ProfileSessionAdapter` is a pass-through with no behaviour of its own; `ProfileSessionFactory` calls `ProfileSession.Load` and wraps it. Same shape as `IFirmwareUpdatePresenter`.
-- **`EditorViewModelFactory`** answers "can this device be drawn?" with `VisualCatalog.TryGet(id, out _) && GeometryCatalog.TryGet(id, out _)` and returns `DeviceEditorViewModel` or `EditorPlaceholderViewModel`. The shell asks for one and swaps in whatever it gets.
+- **`EditorViewModelFactory`** is the one place that picks an editor: `DeviceId.SavantElite2` → `SavantElitePedalViewModel` ([savant-elite.md](savant-elite.md)); otherwise "can this device be drawn?", answered with `VisualCatalog.TryGet(id, out _) && GeometryCatalog.TryGet(id, out _)`, → `KeyboardEditorViewModel` or `EditorPlaceholderViewModel`. The shell asks for one and swaps in whatever it gets, which is also what keeps every editor's dependencies (the profile-session factory, the capture-service accessor, `PedalFileService`) out of `MainWindowViewModel`.
 - **The capture service is resolved through a `Func<IKeystrokeCaptureService>`**, not held: `AvaloniaKeystrokeCaptureService` attaches to the shell `TopLevel`, which does not exist while `App.BuildServices` wires the graph — the same ordering problem the message-box presenter solves with its `Func<Window?>` owner. `App` builds it lazily on first use, keeps the single instance, and disposes it in `OnExit` **after** the shell (which closes and disposes the editor, which stops capture first).
-- `MainWindowViewModel` gained `IEditorViewModelFactory`, widened `Editor` to `EditorViewModelBase?`, and disposes the outgoing editor in `CloseEditor()` on both navigate-home and re-open.
+- `MainWindowViewModel` delegates the choice to `IEditorViewModelFactory`, keeps `Editor` typed as the abstract `DeviceEditorViewModel?`, fires `editor.LoadAsync()` once after the view swap, and disposes the outgoing editor in `CloseEditor()` on both navigate-home and re-open.
 
 ## Spec strings and deliberate deviations
 
 From the spec: the `Remap (n)` counter and the `Reset Key` / `Reset Layer` / `Reset Layout` button captions (spec 10), and the post-save toast, which is Core's `ProfileSaveMessageCatalog` wording verbatim.
 
-Everything else here is this app's wording: `Profile n`, `Saving...`, `Loading profile...`, the `Save Profile` / `Load Profile` dialog titles, `The profile was not saved because it exceeds the device's limits:`, `Line <n>: <text>`, `Press a key to assign it to the highlighted key.`, `Some lines of this profile could not be applied`, and the tab captions `Keys` / `Macros` / `Lighting` / `Settings` (spec 10's RGB app has `Layout` / `Lighting` tabs with the macro editor as an in-window panel; the four-tab shape is chosen so #15/#16 have somewhere to land). The strings the view models own are consts on `DeviceEditorViewModel`/`EditorTabViewModel`/`LayerCaptions` and asserted by tests; the ones only the view uses are XAML literals.
+Everything else here is this app's wording: `Profile n`, `Saving...`, `Loading profile...`, the `Save Profile` / `Load Profile` dialog titles, `The profile was not saved because it exceeds the device's limits:`, `Line <n>: <text>`, `Press a key to assign it to the highlighted key.`, `Some lines of this profile could not be applied`, and the tab captions `Keys` / `Macros` / `Lighting` / `Settings` (spec 10's RGB app has `Layout` / `Lighting` tabs with the macro editor as an in-window panel; the four-tab shape is chosen so #15/#16 have somewhere to land). The strings the view models own are consts on `KeyboardEditorViewModel`/`EditorTabViewModel`/`LayerCaptions` and asserted by tests; the ones only the view uses are XAML literals.
 
 Recorded deviations:
 
@@ -159,7 +159,7 @@ Fakes (`KinesisEdit.Tests/Services`): `FakeProfileSessionFactory` (records every
 
 `HexColorToBrushConverter` is tested directly — it touches `Avalonia.Media` but needs no app instance.
 
-Uncovered by tests, on purpose: `KeyboardPanel`'s measure/arrange arithmetic, the style classes, and the `DeviceEditorView` Escape handler all need a UI runtime — they are hand-verified (`dotnet run --project src/KinesisEdit`).
+Uncovered by tests, on purpose: `KeyboardPanel`'s measure/arrange arithmetic, the style classes, and the `KeyboardEditorView` Escape handler all need a UI runtime — they are hand-verified (`dotnet run --project src/KinesisEdit`).
 
 ## Deliberately not here
 

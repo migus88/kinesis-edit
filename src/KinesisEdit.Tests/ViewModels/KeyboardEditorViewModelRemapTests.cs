@@ -11,12 +11,12 @@ namespace KinesisEdit.Tests.ViewModels
     /// 'listening' state; the next physical keypress captured by the app becomes the new
     /// assignment", plus the reset scopes around it.
     /// </summary>
-    public sealed class DeviceEditorViewModelRemapTests : IDisposable
+    public sealed class KeyboardEditorViewModelRemapTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
-        private readonly List<DeviceEditorViewModel> _editors = [];
+        private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
         public async Task SelectKeyCommand_OnAnUnselectedKey_SelectsItWithoutListening()
@@ -262,9 +262,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, _capture.StopCount);
         }
 
-        private async Task<DeviceEditorViewModel> CreateLoadedEditorAsync()
+        private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync()
         {
-            var editor = new DeviceEditorViewModel(
+            var editor = new KeyboardEditorViewModel(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
                 _capture,

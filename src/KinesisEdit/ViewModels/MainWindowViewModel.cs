@@ -31,8 +31,12 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _currentView, value);
         }
 
-        /// <summary>The open editor, or null while the dashboard is showing.</summary>
-        public EditorViewModelBase? Editor
+        /// <summary>
+        /// The open editor, or null while the dashboard is showing. Which editor it is depends on
+        /// the device and is decided by <see cref="IEditorViewModelFactory"/>; the shell only ever
+        /// uses what <see cref="DeviceEditorViewModel"/> declares.
+        /// </summary>
+        public DeviceEditorViewModel? Editor
         {
             get => _editor;
             private set
@@ -112,7 +116,7 @@ namespace KinesisEdit.ViewModels
         private readonly VDriveEjectNotifier _ejectNotifier;
         private readonly IEditorViewModelFactory _editors;
         private ViewModelBase _currentView;
-        private EditorViewModelBase? _editor;
+        private DeviceEditorViewModel? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
         private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Warning;
         private bool _isDemoMode;
@@ -149,7 +153,9 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Opens <paramref name="device"/> in the editor, in the order specs/10-apps-and-ui.md
         /// prescribes for Configure: set demo mode from the device's connected/writable state,
-        /// record the active device, show the loading splash, swap the view in, initialize.
+        /// record the active device, show the loading splash, swap the view in, initialize. Which
+        /// editor is built is <see cref="IEditorViewModelFactory"/>'s decision, so the shell stays
+        /// device-agnostic however many editors exist.
         /// </summary>
         public void OpenDevice(DeviceSnapshot device)
         {
@@ -166,25 +172,40 @@ namespace KinesisEdit.ViewModels
 
             _notifications.ShowLoading(LoadingCaptions.ForDevice(device.DisplayName));
 
-            CloseEditor();
+            DeviceEditorViewModel editor;
 
-            Editor = _editors.Create(device);
-            CurrentView = Editor;
-
-            // The detection loop keeps running: specs/10-apps-and-ui.md requires the open editor
-            // to "re-verify the device's version file every tick" to drive the v-Drive OK /
-            // v-Drive Error indicator, and here one loop serves both the dashboard and the editor.
-            UpdateStatusIndicator();
-
-            _notifications.HideLoading();
-
-            // Reading the profile is the editor's own job and happens after the view is on screen,
-            // against its own IsLoading flag: the shell's loading splash covers the swap, not the
-            // drive read. LoadAsync never throws, which is what makes forgetting the task safe.
-            if (Editor is DeviceEditorViewModel editor)
+            // CreateEditor reads from the v-Drive for the pedal, so the splash is hidden in a
+            // finally: an unexpected I/O failure must not leave the shell wedged behind a loading
+            // overlay with no editor and a disabled Home button.
+            try
             {
-                _ = editor.LoadAsync();
+                CloseEditor();
+
+                editor = CreateEditor(device);
+
+                Editor = editor;
+                CurrentView = editor;
+
+                // The detection loop keeps running: specs/10-apps-and-ui.md requires the open editor
+                // to "re-verify the device's version file every tick" to drive the v-Drive OK /
+                // v-Drive Error indicator, and here one loop serves both the dashboard and the editor.
+                UpdateStatusIndicator();
             }
+            finally
+            {
+                _notifications.HideLoading();
+            }
+
+            // Whatever the editor still has to do — the keyboard editor reads its profile — happens
+            // after the view is on screen, against the editor's own loading state: the shell's
+            // splash covers the swap, not the drive read. LoadAsync never throws, which is what
+            // makes forgetting the task safe.
+            _ = editor.LoadAsync();
+        }
+
+        private DeviceEditorViewModel CreateEditor(DeviceSnapshot device)
+        {
+            return _editors.Create(device);
         }
 
         private async Task GoHomeAsync()
@@ -222,7 +243,7 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Drops the open editor, disposing it first. An editor holds the app-wide keystroke
+        /// Drops the open editor, disposing it first. An editor may hold the app-wide keystroke
         /// capture service, which would otherwise keep swallowing keystrokes from the dashboard
         /// behind it (docs/app/keystroke-capture.md).
         /// </summary>

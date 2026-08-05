@@ -1,22 +1,31 @@
+using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Input;
+using KinesisEdit.Core.SavantElite;
 using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Services
 {
     /// <summary>
-    /// Resolves a device to the real editor when it can be drawn, and to the placeholder when it
-    /// cannot. "Can be drawn" is both catalogs answering: <see cref="GeometryCatalog"/> for the key
+    /// The one place that decides which editor a device opens into: the Savant Elite2's read-only
+    /// pedal view, the keyboard editor when the board can be drawn, and the placeholder otherwise.
+    /// "Can be drawn" is both catalogs answering: <see cref="GeometryCatalog"/> for the key
     /// positions and <see cref="VisualCatalog"/> for where they sit. Only the Freestyle Edge RGB
     /// has an authored picture today — issues #39-#42 add the rest, and each one becomes editable
     /// by adding data, never by changing this class.
+    /// <para>
+    /// The branch lives here rather than in <see cref="ViewModels.MainWindowViewModel"/> so that
+    /// the shell does not accumulate every device's dependencies as editors are added: this class
+    /// holds them, the shell holds this class.
+    /// </para>
     /// </summary>
     public sealed class EditorViewModelFactory : IEditorViewModelFactory
     {
         private readonly IProfileSessionFactory _profileSessions;
         private readonly Func<IKeystrokeCaptureService> _captureServiceResolver;
         private readonly INotificationService _notifications;
+        private readonly PedalFileService _pedalFiles;
 
         /// <summary>
         /// Creates the factory. The capture service is resolved through a delegate rather than
@@ -27,24 +36,34 @@ namespace KinesisEdit.Services
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
             Func<IKeystrokeCaptureService> captureServiceResolver,
-            INotificationService notifications)
+            INotificationService notifications,
+            PedalFileService pedalFiles)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _captureServiceResolver = captureServiceResolver ?? throw new ArgumentNullException(nameof(captureServiceResolver));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
+            _pedalFiles = pedalFiles ?? throw new ArgumentNullException(nameof(pedalFiles));
         }
 
         /// <inheritdoc />
-        public EditorViewModelBase Create(DeviceSnapshot device)
+        public DeviceEditorViewModel Create(DeviceSnapshot device)
         {
             ArgumentNullException.ThrowIfNull(device);
+
+            // The pedal reads its file itself (specs/12-savant-elite.md §4.6: pedals.txt is the
+            // whole model, so there is nothing for the detection loop to carry) and has no
+            // keyboard picture at all, so it is answered before the catalogs are asked.
+            if (device.DeviceId == DeviceId.SavantElite2)
+            {
+                return new SavantElitePedalViewModel(device, _pedalFiles);
+            }
 
             if (!CanRender(device))
             {
                 return new EditorPlaceholderViewModel(device);
             }
 
-            return new DeviceEditorViewModel(device, _profileSessions, _captureServiceResolver(), _notifications);
+            return new KeyboardEditorViewModel(device, _profileSessions, _captureServiceResolver(), _notifications);
         }
 
         private static bool CanRender(DeviceSnapshot device)

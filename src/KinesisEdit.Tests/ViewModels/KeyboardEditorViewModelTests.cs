@@ -9,12 +9,12 @@ using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Tests.ViewModels
 {
-    public sealed class DeviceEditorViewModelTests : IDisposable
+    public sealed class KeyboardEditorViewModelTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
-        private readonly List<DeviceEditorViewModel> _editors = [];
+        private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
         public async Task LoadAsync_InDemoMode_BuildsTheLayoutInMemoryWithoutTouchingTheDrive()
@@ -60,7 +60,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var request = Assert.Single(_notifications.MessageBoxes);
 
-            Assert.Equal(DeviceEditorViewModel.LoadFailureTitle, request.Title);
+            Assert.Equal(KeyboardEditorViewModel.LoadFailureTitle, request.Title);
             Assert.Contains("the v-Drive went away", request.Message, StringComparison.Ordinal);
             Assert.NotNull(editor.Layout);
             Assert.Equal(2, editor.Layers.Count);
@@ -291,8 +291,8 @@ namespace KinesisEdit.Tests.ViewModels
 
             var request = Assert.Single(_notifications.MessageBoxes);
 
-            Assert.Equal(DeviceEditorViewModel.SaveTitle, request.Title);
-            Assert.Contains(DeviceEditorViewModel.SaveRejectedMessage, request.Message, StringComparison.Ordinal);
+            Assert.Equal(KeyboardEditorViewModel.SaveTitle, request.Title);
+            Assert.Contains(KeyboardEditorViewModel.SaveRejectedMessage, request.Message, StringComparison.Ordinal);
             Assert.Contains("the device allows 100", request.Message, StringComparison.Ordinal);
             Assert.Empty(_notifications.Toasts);
         }
@@ -311,7 +311,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var request = Assert.Single(_notifications.MessageBoxes);
 
-            Assert.Equal(DeviceEditorViewModel.SaveTitle, request.Title);
+            Assert.Equal(KeyboardEditorViewModel.SaveTitle, request.Title);
             Assert.Contains("the v-Drive went away", request.Message, StringComparison.Ordinal);
             Assert.Empty(_notifications.Toasts);
             Assert.Null(_notifications.LoadingCaption);
@@ -332,7 +332,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, _capture.StopCount);
         }
 
-        private async Task<DeviceEditorViewModel> CreateLoadedEditorAsync()
+        private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync()
         {
             var editor = CreateEditor();
 
@@ -341,9 +341,9 @@ namespace KinesisEdit.Tests.ViewModels
             return editor;
         }
 
-        private DeviceEditorViewModel CreateEditor(DeviceSnapshot? snapshot = null)
+        private KeyboardEditorViewModel CreateEditor(DeviceSnapshot? snapshot = null)
         {
-            var editor = new DeviceEditorViewModel(
+            var editor = new KeyboardEditorViewModel(
                 snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
                 _capture,
