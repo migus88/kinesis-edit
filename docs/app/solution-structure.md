@@ -39,7 +39,7 @@ Dependency direction is one-way: `KinesisEdit.Core.Tests` → Core ← app ← `
 
 ## Core namespaces
 
-`KinesisEdit.Core` currently contains the static domain-data layer (see [`domain-data.md`](domain-data.md)), the runtime keyboard model built on top of it (see [`keyboard-model.md`](keyboard-model.md)), the firmware module (see [`firmware.md`](firmware.md)), the v-Drive services (see [`vdrive.md`](vdrive.md)), the lighting module (see [`lighting.md`](lighting.md)), and the settings engine (see [`settings.md`](settings.md)):
+`KinesisEdit.Core` currently contains the static domain-data layer (see [`domain-data.md`](domain-data.md)), the runtime keyboard model built on top of it (see [`keyboard-model.md`](keyboard-model.md)), the firmware module (see [`firmware.md`](firmware.md)), the v-Drive services (see [`vdrive.md`](vdrive.md)), the lighting module (see [`lighting.md`](lighting.md)), the settings engine (see [`settings.md`](settings.md)), the layout-file engine (see [`layout-files.md`](layout-files.md)), and the profile load/save/eject orchestration built on top of all of them (see [`profiles.md`](profiles.md)):
 
 - `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, and the per-family capabilities `MacroCapability`, `TapAndHoldCapability`, `LightingCapability`, `SettingsCapability`, `SupportsMultiModifiers`, with `ValueRange` for their bounded values; specs 02 and 03 §1–4, 04 §5.3, 06 §6, 08 §2, 11 §11.1–11.2) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
 - `Keys` — master key-token registry: `KeyRegistry` with 1282 entries in spec registration order across the three token dialects (spec 05 §3, §7).
@@ -51,6 +51,7 @@ Dependency direction is one-way: `KinesisEdit.Core.Tests` → Core ← app ← `
 - `Settings` — the settings engine: typed keyboard-settings and app-settings models with pure line-based parsers/serializers, the Advantage2 4MB write gate, and the `SettingsService` load/save binding (spec 08 §1–3, §5; 09 §1.1) — see [`settings.md`](settings.md).
 - `Input` — the UI-free keystroke-capture state machines: `PhysicalKeyCode`/`PhysicalKeyMap`, `KeystrokeRecorder`, `KeystrokeCaptureSession` (started/suspended gating), `IKeystrokeCaptureService` (spec 10) — see [`keystroke-capture.md`](keystroke-capture.md).
 - `Layouts` — the layout-file engine: `LayoutFileParser`/`LayoutFileSerializer` for `layouts/layoutN.txt` and the Adv2 `qwerty.txt`/`dvorak.txt` (remaps, tap-and-hold, multi-modifiers, macros) across the four in-scope dialects, with invalid-line tracking and the Adv2 keypad-exception map (specs 04, 06; 05 §3.6, §3.12, §5.4) — see [`layout-files.md`](layout-files.md).
+- `Profiles` — load/save/eject orchestration for numbered-profile devices (FS Edge/Pro, Edge RGB, TKO, Advantage360): `ProfileSession` (load, `IsDirty`, `CanSave`, `Save`/`SaveAs`), `ProfileSaveResult`, `ProfileReadOnlyException` (the Adv360 profile-0 guard), `ProfileSaveMessageCatalog`, `ProfileLightingCodec` (spec 03 §4.1/§4.3, §5.3; 04 §5.3; 07 §1.1-§1.3) — see [`profiles.md`](profiles.md).
 
 ## Notes
 
