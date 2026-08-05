@@ -54,27 +54,27 @@ namespace KinesisEdit.Core.Firmware
 
         private static IEnumerable<FirmwareGate> CreateAdvantage2Gates()
         {
-            var multimodifierGate = new FirmwareVersion(1, 0, 516);
+            var baselineGate = new FirmwareVersion(1, 0, 516);
 
             yield return new FirmwareGate
             {
                 Device = DeviceId.Advantage2,
                 Feature = FirmwareFeature.Multimodifiers,
-                MinimumKeyboardFirmware = multimodifierGate
+                MinimumKeyboardFirmware = baselineGate
             };
 
             yield return new FirmwareGate
             {
                 Device = DeviceId.Advantage2,
                 Feature = FirmwareFeature.TapAndHold,
-                MinimumKeyboardFirmware = multimodifierGate
+                MinimumKeyboardFirmware = baselineGate
             };
         }
 
         private static IEnumerable<FirmwareGate> CreateFreestyleGates(DeviceId deviceId)
         {
             var macroGate = new FirmwareVersion(1, 0, 340);
-            var multimodifierGate = new FirmwareVersion(1, 0, 480);
+            var baselineGate = new FirmwareVersion(1, 0, 480);
 
             yield return new FirmwareGate
             {
@@ -95,7 +95,7 @@ namespace KinesisEdit.Core.Firmware
             {
                 Device = deviceId,
                 Feature = FirmwareFeature.Multimodifiers,
-                MinimumKeyboardFirmware = multimodifierGate,
+                MinimumKeyboardFirmware = baselineGate,
                 Message = MultimodifiersRefusalMessage
             };
 
@@ -103,7 +103,7 @@ namespace KinesisEdit.Core.Firmware
             {
                 Device = deviceId,
                 Feature = FirmwareFeature.TapAndHold,
-                MinimumKeyboardFirmware = multimodifierGate,
+                MinimumKeyboardFirmware = baselineGate,
                 Message = TapAndHoldRefusalMessage
             };
         }
