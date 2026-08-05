@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configuration app (the legacy app is written in Pascal and unsupported). Target stack: **C# with Avalonia UI**. Primary platform is **macOS** — develop Mac-first — but Windows and Linux must also work.
 
-**Current status: scaffolded; static domain data, the firmware module (version parsing + feature gating), and the v-Drive services implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
+**Current status: scaffolded; static domain data, the firmware module (version parsing + feature gating), the v-Drive services, and the lighting module (model + led-file engine) implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
 
 - Build: `dotnet build src/KinesisEdit.sln`
 - Test: `dotnet test src/KinesisEdit.sln`
@@ -17,7 +17,7 @@ Implementation is planned and tracked in GitHub issues — see the epic ([#1](ht
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
-- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `firmware.md` (version parsing + feature gating), and `vdrive.md` (v-Drive discovery, file I/O, eject). Add a doc per module as modules are built.
+- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `firmware.md` (version parsing + feature gating), `vdrive.md` (v-Drive discovery, file I/O, eject), and `lighting.md` (lighting model + led-file engine). Add a doc per module as modules are built.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.
 
@@ -28,7 +28,7 @@ Read `specs/README.md` first — but the core mental model is:
 A SmartSet app is **a file editor with a keyboard-shaped UI**. Each programmable Kinesis device mounts a small FAT volume (the "v-Drive") containing plain-text config files (`layouts/layoutN.txt`, `lighting/ledN.txt`, settings); the keyboard's **firmware** parses those files — there is **no USB/HID configuration protocol**. The app therefore consists of:
 
 1. Drive discovery (find the mounted v-Drive by volume label + marker files). Implemented in `KinesisEdit.Core.VDrive` (see `docs/app/vdrive.md`).
-2. Parsers/serializers for the text file formats.
+2. Parsers/serializers for the text file formats. The `lighting/ledN.txt` engine (RGB, TKO, Advantage360) is implemented in `KinesisEdit.Core.Lighting` (see `docs/app/lighting.md`); layout parsers are not.
 3. An in-memory model per keyboard (layers → keys → remaps/macros). Its static foundation — device catalog, key-token registry, layer geometries — is implemented in `KinesisEdit.Core` (see `docs/app/domain-data.md`).
 4. A per-device visual keyboard UI for editing that model.
 5. Save/sync/eject handling so the firmware reloads the files. The file I/O and eject services are implemented in `KinesisEdit.Core.VDrive` (see `docs/app/vdrive.md`); the save orchestration on top is not.
