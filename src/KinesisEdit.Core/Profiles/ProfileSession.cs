@@ -1,0 +1,288 @@
+using System.Globalization;
+using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Firmware;
+using KinesisEdit.Core.Layouts;
+using KinesisEdit.Core.Model;
+using KinesisEdit.Core.Settings;
+using KinesisEdit.Core.VDrive;
+using KinesisEdit.Core.VDrive.Eject;
+using KinesisEdit.Core.VDrive.Io;
+
+namespace KinesisEdit.Core.Profiles
+{
+    /// <summary>
+    /// The load/edit/save unit for one numbered profile — Freestyle Edge/Pro, Freestyle Edge
+    /// RGB, TKO, and Advantage 360 (Advantage2's position-based naming is out of scope, issue
+    /// #37). Ties together the layout parser/serializer, the lighting engine, the settings
+    /// engine, and v-Drive file I/O/eject for one <c>layout&lt;n&gt;.txt</c>/<c>led&lt;n&gt;.txt</c>
+    /// pair (specs/03-vdrive-and-files.md §4.1/§4.3, §5.3).
+    /// </summary>
+    public sealed class ProfileSession
+    {
+        private const string LayoutFileNamePrefix = "layout";
+        private const string LedFileNamePrefix = "led";
+        private const string FileSuffix = ".txt";
+
+        private static readonly IVDriveFileService _fileService = new VDriveFileService();
+        private static readonly SettingsService _settingsService = new(_fileService);
+
+        /// <summary>The profile's key/layer/macro model, freshly built by <see cref="LayoutFileParser"/> (04 §4.2).</summary>
+        public KeyboardLayout Layout { get; }
+
+        /// <summary>
+        /// The device-appropriate lighting model (<see cref="Lighting.LightingModel"/>,
+        /// <see cref="Lighting.TkoLightingModel"/>, or <see cref="Lighting.Advantage360LightingModel"/>);
+        /// null when the device has no profile-orchestrated lighting file (FS Edge/Pro, see
+        /// <see cref="ProfileLightingCodec"/>).
+        /// </summary>
+        public object? Lighting { get; }
+
+        /// <summary>Layout lines that could not be applied on load (04 §5); toggle <see cref="LayoutInvalidLine.Keep"/> before saving.</summary>
+        public IReadOnlyList<LayoutInvalidLine> InvalidLines { get; }
+
+        /// <summary>The numbered profile position this session was loaded from.</summary>
+        public int ProfileNumber { get; }
+
+        /// <summary>The device this session belongs to.</summary>
+        public DeviceId Device { get; }
+
+        /// <summary>
+        /// False only for the Advantage 360's profile 0 (<see cref="LayoutFileScheme.HasReadOnlyFactoryProfile"/>) —
+        /// the factory profile has no on-disk file and cannot be saved to (specs/02-devices.md "Profiles 0-9").
+        /// </summary>
+        public bool CanSave => !IsReadOnlyProfile(_location.Device.LayoutScheme, ProfileNumber);
+
+        /// <summary>
+        /// Whether <see cref="Layout"/> (and <see cref="Lighting"/>, if present) currently
+        /// re-serialize to lines different from the ones captured right after <see cref="Load"/>.
+        /// Reuses <see cref="LayoutFileSerializer"/>/<see cref="ProfileLightingCodec"/> rather than
+        /// a bespoke model comparison, so dirty tracking can never drift from what a save would
+        /// actually write.
+        /// </summary>
+        public bool IsDirty
+        {
+            get
+            {
+                var currentLayoutLines = LayoutFileSerializer.Serialize(Layout, InvalidLines);
+
+                if (!currentLayoutLines.SequenceEqual(_originalLayoutLines))
+                {
+                    return true;
+                }
+
+                if (Lighting is null)
+                {
+                    return false;
+                }
+
+                var currentLightingLines = ProfileLightingCodec.Serialize(Device, Lighting);
+
+                return !currentLightingLines.SequenceEqual(_originalLightingLines!);
+            }
+        }
+
+        private readonly VDriveLocation _location;
+        private readonly KeyboardSettings _settings;
+        private readonly IReadOnlyList<string> _originalLayoutLines;
+        private readonly IReadOnlyList<string>? _originalLightingLines;
+
+        private ProfileSession(
+            VDriveLocation location,
+            DeviceId device,
+            int profileNumber,
+            KeyboardLayout layout,
+            IReadOnlyList<LayoutInvalidLine> invalidLines,
+            object? lighting,
+            KeyboardSettings settings,
+            IReadOnlyList<string> originalLayoutLines,
+            IReadOnlyList<string>? originalLightingLines)
+        {
+            _location = location;
+            Device = device;
+            ProfileNumber = profileNumber;
+            Layout = layout;
+            InvalidLines = invalidLines;
+            Lighting = lighting;
+            _settings = settings;
+            _originalLayoutLines = originalLayoutLines;
+            _originalLightingLines = originalLightingLines;
+        }
+
+        /// <summary>
+        /// Loads profile <paramref name="profileNumber"/> of <paramref name="device"/> from
+        /// <paramref name="location"/>: the layout file, the paired led file where the device has
+        /// one, and the keyboard-settings snapshot. Every call builds a brand-new instance —
+        /// never reload an existing one — which is what gives the spec 04 §4.2
+        /// "full-model-wipe-on-load" guarantee its orchestration-level meaning, on top of
+        /// <see cref="LayoutFileParser.Parse"/> already building a fresh <see cref="KeyboardLayout"/>
+        /// every call. Throws <see cref="ProfileReadOnlyException"/> for the Advantage 360's
+        /// profile 0, which has no on-disk file to read (specs/02-devices.md "Profiles 0-9").
+        /// </summary>
+        public static ProfileSession Load(VDriveLocation location, DeviceId device, int profileNumber)
+        {
+            ArgumentNullException.ThrowIfNull(location);
+
+            if (location.Device.Id != device)
+            {
+                throw new ArgumentException(
+                    $"The v-Drive location belongs to {location.Device.Id}, not {device}.", nameof(device));
+            }
+
+            var scheme = location.Device.LayoutScheme;
+
+            if (scheme.Kind != LayoutSchemeKind.NumberedProfiles)
+            {
+                throw new NotSupportedException(
+                    $"{device} does not use the numbered-profile layout scheme; profile orchestration covers "
+                    + "Freestyle Edge/Pro, Freestyle Edge RGB, TKO, and Advantage 360 only.");
+            }
+
+            EnsureNotReadOnlyProfile(scheme, profileNumber);
+            EnsureValidProfileNumber(scheme, profileNumber);
+
+            var layoutLines = _fileService.ReadAllLines(GetLayoutFilePath(location, profileNumber));
+            var parseResult = new LayoutFileParser(device).Parse(layoutLines);
+            var originalLayoutLines = LayoutFileSerializer.Serialize(parseResult.Layout, parseResult.InvalidLines);
+
+            object? lighting = null;
+            IReadOnlyList<string>? originalLightingLines = null;
+
+            if (ProfileLightingCodec.HasSupportedLighting(device))
+            {
+                var lightingLines = _fileService.ReadAllLines(GetLightingFilePath(location, profileNumber));
+                lighting = ProfileLightingCodec.Parse(device, lightingLines);
+                originalLightingLines = ProfileLightingCodec.Serialize(device, lighting);
+            }
+
+            var settings = _settingsService.LoadKeyboardSettings(location);
+
+            return new ProfileSession(
+                location,
+                device,
+                profileNumber,
+                parseResult.Layout,
+                parseResult.InvalidLines,
+                lighting,
+                settings,
+                originalLayoutLines,
+                originalLightingLines);
+        }
+
+        /// <summary>Saves back to <see cref="ProfileNumber"/> (the save sequence of specs/03-vdrive-and-files.md §5.3).</summary>
+        public ProfileSaveResult Save()
+        {
+            return ExecuteSave(ProfileNumber, setAsStartup: false);
+        }
+
+        /// <summary>
+        /// Saves to a different numbered slot. When <paramref name="setAsStartup"/> is true, also
+        /// points the device's startup settings (<c>startup_file</c>/<c>led_mode</c>, or the
+        /// Advantage 360's <c>profile</c> key) at <paramref name="targetProfileNumber"/> in the
+        /// same call (specs/07-lighting.md §1.2 "Save As to a profile number switches both the
+        /// current layout file and the current led file at once").
+        /// </summary>
+        public ProfileSaveResult SaveAs(int targetProfileNumber, bool setAsStartup)
+        {
+            return ExecuteSave(targetProfileNumber, setAsStartup);
+        }
+
+        private ProfileSaveResult ExecuteSave(int targetProfileNumber, bool setAsStartup)
+        {
+            var scheme = _location.Device.LayoutScheme;
+
+            EnsureNotReadOnlyProfile(scheme, targetProfileNumber);
+            EnsureValidProfileNumber(scheme, targetProfileNumber);
+
+            var violations = Layout.Validate();
+
+            if (violations.Count > 0)
+            {
+                return new ProfileSaveResult
+                {
+                    Success = false,
+                    Violations = violations,
+                    Ejected = false,
+                    PostSaveMessage = null
+                };
+            }
+
+            var layoutLines = LayoutFileSerializer.Serialize(Layout, InvalidLines);
+            _fileService.WriteAllLines(GetLayoutFilePath(_location, targetProfileNumber), layoutLines, allowCreate: true);
+
+            if (Lighting is not null)
+            {
+                var lightingLines = ProfileLightingCodec.Serialize(Device, Lighting);
+                _fileService.WriteAllLines(GetLightingFilePath(_location, targetProfileNumber), lightingLines, allowCreate: true);
+            }
+
+            if (setAsStartup)
+            {
+                SaveStartupSettings(targetProfileNumber);
+            }
+
+            var ejectResult = VDriveEject.CreateForCurrentPlatform().Eject(_location.RootPath);
+            var isStartupProfile = setAsStartup || _settings.StartupProfileNumber == targetProfileNumber;
+
+            return new ProfileSaveResult
+            {
+                Success = true,
+                Violations = violations,
+                Ejected = ejectResult.Succeeded,
+                PostSaveMessage = ProfileSaveMessageCatalog.GetMessage(Device, targetProfileNumber, isStartupProfile)
+            };
+        }
+
+        private void SaveStartupSettings(int targetProfileNumber)
+        {
+            var updatedSettings = _settings with { StartupProfileNumber = targetProfileNumber };
+
+            if (_location.Device.Settings.LedMode == LedModeKind.LedFileName)
+            {
+                updatedSettings = updatedSettings with
+                {
+                    LedMode = LedFileNamePrefix + targetProfileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix
+                };
+            }
+
+            _settingsService.SaveKeyboardSettings(_location, VersionFileInfo.Empty, updatedSettings);
+        }
+
+        private static void EnsureNotReadOnlyProfile(LayoutFileScheme scheme, int profileNumber)
+        {
+            if (IsReadOnlyProfile(scheme, profileNumber))
+            {
+                throw new ProfileReadOnlyException();
+            }
+        }
+
+        private static bool IsReadOnlyProfile(LayoutFileScheme scheme, int profileNumber)
+        {
+            return profileNumber == 0 && scheme.HasReadOnlyFactoryProfile;
+        }
+
+        private static void EnsureValidProfileNumber(LayoutFileScheme scheme, int profileNumber)
+        {
+            if (profileNumber < scheme.FirstProfileNumber || profileNumber > scheme.LastProfileNumber)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(profileNumber),
+                    profileNumber,
+                    $"Profile number must be between {scheme.FirstProfileNumber} and {scheme.LastProfileNumber}.");
+            }
+        }
+
+        private static string GetLayoutFilePath(VDriveLocation location, int profileNumber)
+        {
+            return Path.Combine(
+                location.LayoutsFolderPath!,
+                LayoutFileNamePrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix);
+        }
+
+        private static string GetLightingFilePath(VDriveLocation location, int profileNumber)
+        {
+            return Path.Combine(
+                location.LightingFolderPath!,
+                LedFileNamePrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix);
+        }
+    }
+}
