@@ -153,5 +153,25 @@ namespace KinesisEdit.Core.Devices
                 MinimumFirmware = minimumFirmware
             };
         }
+
+        /// <summary>
+        /// Settings capability shared by the per-key-RGB family (Edge RGB, TKO): the app writes
+        /// <c>startup_file</c> and <c>led_mode</c> as file names, <c>macro_speed</c> (minimum 1),
+        /// <c>status_play_speed</c>, <c>v_drive</c> as auto/manual, and <c>game_mode</c>
+        /// (specs/08-settings.md §2).
+        /// </summary>
+        private static SettingsCapability CreatePerKeyRgbSettingsCapability()
+        {
+            return new SettingsCapability
+            {
+                StartupSetting = StartupSettingKind.LayoutFileName,
+                LedMode = LedModeKind.LedFileName,
+                WritesMacroSpeed = true,
+                MacroSpeedMinimum = 1,
+                StatusSetting = StatusSettingKind.StatusPlaySpeedKey,
+                VDriveSetting = VDriveSettingKind.AutoManual,
+                WritesGameMode = true
+            };
+        }
     }
 }

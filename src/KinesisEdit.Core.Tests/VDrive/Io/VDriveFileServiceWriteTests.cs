@@ -35,11 +35,33 @@ namespace KinesisEdit.Core.Tests.VDrive.Io
         }
 
         [Fact]
-        public void WriteAllLines_WithMissingParentDirectoryAndAllowCreate_ThrowsDirectoryNotFoundException()
+        public void WriteAllLines_WithMissingParentDirectoryAndAllowCreate_CreatesDirectoryAndFile()
         {
             var path = Path.Combine(_tempDirectory, "no-such-folder", "file.txt");
 
-            Assert.Throws<DirectoryNotFoundException>(() => _service.WriteAllLines(path, new[] { "line" }, allowCreate: true));
+            _service.WriteAllLines(path, new[] { "line" }, allowCreate: true);
+
+            Assert.Equal("line" + Environment.NewLine, File.ReadAllText(path, Encoding.Latin1));
+        }
+
+        [Fact]
+        public void WriteAllLines_WithNestedMissingParentDirectoriesAndAllowCreate_CreatesAllOfThem()
+        {
+            var path = Path.Combine(_tempDirectory, "outer", "inner", "file.txt");
+
+            _service.WriteAllLines(path, new[] { "line" }, allowCreate: true);
+
+            Assert.Equal("line" + Environment.NewLine, File.ReadAllText(path, Encoding.Latin1));
+        }
+
+        [Fact]
+        public void WriteAllLines_WithMissingParentDirectoryAndNoAllowCreate_ThrowsAndCreatesNothing()
+        {
+            var directory = Path.Combine(_tempDirectory, "no-such-folder");
+            var path = Path.Combine(directory, "file.txt");
+
+            Assert.Throws<FileNotFoundException>(() => _service.WriteAllLines(path, new[] { "line" }));
+            Assert.False(Directory.Exists(directory));
         }
 
         [Fact]

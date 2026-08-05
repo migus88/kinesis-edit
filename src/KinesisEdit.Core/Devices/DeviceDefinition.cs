@@ -68,6 +68,9 @@ namespace KinesisEdit.Core.Devices
         /// <summary>Lighting hardware (specs/02-devices.md).</summary>
         public LightingCapability Lighting { get; init; } = LightingCapability.None;
 
+        /// <summary>Keyboard-settings keys the app writes for the device, and their forms (specs/08-settings.md §2, §5).</summary>
+        public SettingsCapability Settings { get; init; } = SettingsCapability.None;
+
         /// <summary>Special hardware notes carried by the master table (specs/02-devices.md).</summary>
         public string? HardwareNotes { get; init; }
 
