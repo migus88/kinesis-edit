@@ -92,9 +92,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The top bar's Settings button (specs/10-apps-and-ui.md). Permanently disabled until
-        /// the app-settings dialog exists (issue #17): nothing consumes
-        /// <see cref="SettingsRequested"/> yet, and a button that silently does nothing is worse
-        /// than a visibly unavailable one.
+        /// the app-settings dialog exists: nothing consumes <see cref="SettingsRequested"/> yet,
+        /// and a button that silently does nothing is worse than a visibly unavailable one.
         /// </summary>
         public IRelayCommand SettingsCommand { get; }
 

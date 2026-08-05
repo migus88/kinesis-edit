@@ -27,30 +27,12 @@ namespace KinesisEdit.Services
 
             var viewModel = new MessageBoxViewModel(request);
             var window = new MessageBoxWindow(viewModel);
-            var owner = _ownerAccessor();
 
-            if (owner is null)
-            {
-                await ShowStandaloneAsync(window).ConfigureAwait(true);
-            }
-            else
-            {
-                await window.ShowDialog(owner).ConfigureAwait(true);
-            }
+            await DialogWindowHost.ShowAsync(window, _ownerAccessor()).ConfigureAwait(true);
 
             // The window always records an outcome before it closes; the fallback only guards a
             // dialog that never opened at all.
             return viewModel.Outcome ?? viewModel.Complete(viewModel.EscapeResult);
-        }
-
-        private static Task ShowStandaloneAsync(Window window)
-        {
-            var completion = new TaskCompletionSource();
-
-            window.Closed += (_, _) => completion.TrySetResult();
-            window.Show();
-
-            return completion.Task;
         }
     }
 }

@@ -15,6 +15,18 @@ namespace KinesisEdit.Tests.Services
             Result = MessageBoxResult.Ok
         };
 
+        /// <summary>
+        /// Invoked from inside <see cref="ShowMessageBoxAsync"/>: the seam for asserting what the
+        /// caller had already done by the time the (blocking) box went up.
+        /// </summary>
+        public Action<MessageBoxRequest>? MessageBoxShowing { get; set; }
+
+        /// <summary>
+        /// When set, <see cref="ShowMessageBoxAsync"/> throws it — a box the real presenter could
+        /// not put on screen, e.g. because its owner window is already closed.
+        /// </summary>
+        public Exception? MessageBoxExceptionToThrow { get; set; }
+
         public List<ToastRequest> Toasts { get; } = [];
 
         public List<MessageBoxRequest> MessageBoxes { get; } = [];
@@ -28,6 +40,13 @@ namespace KinesisEdit.Tests.Services
         public Task<MessageBoxOutcome> ShowMessageBoxAsync(MessageBoxRequest request)
         {
             MessageBoxes.Add(request);
+
+            MessageBoxShowing?.Invoke(request);
+
+            if (MessageBoxExceptionToThrow is not null)
+            {
+                return Task.FromException<MessageBoxOutcome>(MessageBoxExceptionToThrow);
+            }
 
             return Task.FromResult(OutcomeToReturn);
         }

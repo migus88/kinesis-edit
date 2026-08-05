@@ -27,6 +27,7 @@ namespace KinesisEdit.Tests.ViewModels
             _dashboard = new DashboardViewModel(
                 _monitor,
                 new VDriveEjectNotifier(new FakeDeviceEjectService(), new FakeNotificationService()),
+                new FakeFirmwareUpdatePresenter(),
                 new FakeUrlLauncher());
         }
 

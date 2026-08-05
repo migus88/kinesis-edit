@@ -30,7 +30,7 @@ namespace KinesisEdit.Tests.ViewModels
                 new FakeUiDispatcher(),
                 _neverPolls);
 
-            _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeUrlLauncher());
+            _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeFirmwareUpdatePresenter(), new FakeUrlLauncher());
             _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier);
         }
 
