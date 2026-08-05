@@ -100,6 +100,18 @@ FS Edge/Pro have no `StartupSetting` in their `SettingsCapability` at all (spec 
 column), so there is no per-device notion of "the startup profile" to branch on for that family —
 one wording covers both cases.
 
+## The app-layer seam
+
+`ProfileSession` is sealed and opened through a static `Load`, so it cannot be substituted in a test.
+The app project therefore codes against `KinesisEdit.Services.IProfileSession` /
+`IProfileSessionFactory` — the same read-only surface (`Layout`, `Lighting`, `InvalidLines`,
+`ProfileNumber`, `CanSave`, `IsDirty`, `Save()`) — implemented for real by `ProfileSessionAdapter`
+(a pure pass-through) and `ProfileSessionFactory` (calls `ProfileSession.Load`, wraps the result).
+**Nothing is re-implemented above this module**; the seam exists only so the editor view models can
+be unit-tested without a drive. Its consumer is the keyboard editor
+([keyboard-editor.md](keyboard-editor.md)), which loads `LayoutScheme.FirstProfileNumber` on open
+and calls `Save()` off the UI thread; `SaveAs` and `IsDirty` have no consumer yet.
+
 ## Deliberately not here
 
 - **Advantage2** — position-based `<pos>_qwerty.txt`/`<pos>_dvorak.txt` naming, the `active/`

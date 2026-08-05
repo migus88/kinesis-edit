@@ -1,6 +1,4 @@
 using CommunityToolkit.Mvvm.Input;
-using KinesisEdit.Core.Devices;
-using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 
@@ -35,8 +33,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The open editor, or null while the dashboard is showing. Which editor it is depends on
-        /// the device (see <see cref="OpenDevice"/>); the shell only ever uses what
-        /// <see cref="DeviceEditorViewModel"/> declares.
+        /// the device and is decided by <see cref="IEditorViewModelFactory"/>; the shell only ever
+        /// uses what <see cref="DeviceEditorViewModel"/> declares.
         /// </summary>
         public DeviceEditorViewModel? Editor
         {
@@ -116,7 +114,7 @@ namespace KinesisEdit.ViewModels
         private readonly DeviceSessionManager _sessions;
         private readonly INotificationService _notifications;
         private readonly VDriveEjectNotifier _ejectNotifier;
-        private readonly PedalFileService _pedalFiles;
+        private readonly IEditorViewModelFactory _editors;
         private ViewModelBase _currentView;
         private DeviceEditorViewModel? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
@@ -132,14 +130,14 @@ namespace KinesisEdit.ViewModels
             DeviceSessionManager sessions,
             INotificationService notifications,
             VDriveEjectNotifier ejectNotifier,
-            PedalFileService pedalFiles)
+            IEditorViewModelFactory editors)
         {
             Dashboard = dashboard ?? throw new ArgumentNullException(nameof(dashboard));
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
-            _pedalFiles = pedalFiles ?? throw new ArgumentNullException(nameof(pedalFiles));
+            _editors = editors ?? throw new ArgumentNullException(nameof(editors));
             _currentView = dashboard;
 
             HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => IsEditorOpen && !IsBusy);
@@ -156,8 +154,8 @@ namespace KinesisEdit.ViewModels
         /// Opens <paramref name="device"/> in the editor, in the order specs/10-apps-and-ui.md
         /// prescribes for Configure: set demo mode from the device's connected/writable state,
         /// record the active device, show the loading splash, swap the view in, initialize. Which
-        /// editor is built is decided here and nowhere else — the Savant Elite2 has its own
-        /// (read-only) pedal view, every other device still gets the placeholder of issues #14-#16.
+        /// editor is built is <see cref="IEditorViewModelFactory"/>'s decision, so the shell stays
+        /// device-agnostic however many editors exist.
         /// </summary>
         public void OpenDevice(DeviceSnapshot device)
         {
@@ -174,12 +172,16 @@ namespace KinesisEdit.ViewModels
 
             _notifications.ShowLoading(LoadingCaptions.ForDevice(device.DisplayName));
 
+            DeviceEditorViewModel editor;
+
             // CreateEditor reads from the v-Drive for the pedal, so the splash is hidden in a
             // finally: an unexpected I/O failure must not leave the shell wedged behind a loading
             // overlay with no editor and a disabled Home button.
             try
             {
-                var editor = CreateEditor(device);
+                CloseEditor();
+
+                editor = CreateEditor(device);
 
                 Editor = editor;
                 CurrentView = editor;
@@ -193,16 +195,17 @@ namespace KinesisEdit.ViewModels
             {
                 _notifications.HideLoading();
             }
+
+            // Whatever the editor still has to do — the keyboard editor reads its profile — happens
+            // after the view is on screen, against the editor's own loading state: the shell's
+            // splash covers the swap, not the drive read. LoadAsync never throws, which is what
+            // makes forgetting the task safe.
+            _ = editor.LoadAsync();
         }
 
         private DeviceEditorViewModel CreateEditor(DeviceSnapshot device)
         {
-            // The pedal is the one device with a real editor so far, and it reads its file itself
-            // (specs/12-savant-elite.md §4.6: pedals.txt is the whole model, so there is nothing
-            // for the detection loop to carry). Everything else stays on the placeholder.
-            return device.DeviceId == DeviceId.SavantElite2
-                ? new SavantElitePedalViewModel(device, _pedalFiles)
-                : new EditorPlaceholderViewModel(device);
+            return _editors.Create(device);
         }
 
         private async Task GoHomeAsync()
@@ -220,7 +223,8 @@ namespace KinesisEdit.ViewModels
 
                 _sessions.End();
 
-                Editor = null;
+                CloseEditor();
+
                 CurrentView = Dashboard;
                 IsDemoMode = false;
 
@@ -236,6 +240,21 @@ namespace KinesisEdit.ViewModels
             }
 
             UpdateStatusIndicator();
+        }
+
+        /// <summary>
+        /// Drops the open editor, disposing it first. An editor may hold the app-wide keystroke
+        /// capture service, which would otherwise keep swallowing keystrokes from the dashboard
+        /// behind it (docs/app/keystroke-capture.md).
+        /// </summary>
+        private void CloseEditor()
+        {
+            if (Editor is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
+            Editor = null;
         }
 
         private void UpdateStatusIndicator()
@@ -302,7 +321,10 @@ namespace KinesisEdit.ViewModels
             UpdateStatusIndicator();
         }
 
-        /// <summary>Unsubscribes from the dashboard and the detection loop. Safe to call multiple times.</summary>
+        /// <summary>
+        /// Unsubscribes from the dashboard and the detection loop and closes any open editor.
+        /// Safe to call multiple times.
+        /// </summary>
         public void Dispose()
         {
             if (_isDisposed)
@@ -314,6 +336,8 @@ namespace KinesisEdit.ViewModels
 
             Dashboard.ConfigureRequested -= OpenDevice;
             _monitor.Updated -= OnMonitorUpdated;
+
+            CloseEditor();
         }
     }
 }

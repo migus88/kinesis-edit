@@ -1,0 +1,167 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="620"
+             x:Class="KinesisEdit.Views.KeyboardEditorView"
+             x:DataType="vm:KeyboardEditorViewModel">
+  <!-- The per-device editor of specs/10-apps-and-ui.md: the device and its open profile, the
+       layer switch, the section tabs, and the keyboard picture the remap workflow runs on. The
+       picture itself is the generic KeyboardView; everything device-specific reaches it as data. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20,16">
+
+    <!-- Header: what is open, and how much of it has been remapped. -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
+
+        <StackPanel Orientation="Horizontal"
+                    Spacing="10"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding ProfileCaption, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="·" Classes="muted" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ProfileCaption}" Classes="muted" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Demo mode never touched the drive and can never save (specs/03-vdrive-and-files.md §3.5). -->
+        <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
+                   Classes="statusWarning"
+                   FontWeight="SemiBold"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding IsDemoMode}" />
+      </StackPanel>
+
+      <TextBlock Grid.Column="1"
+                 Text="{Binding RemapCounterCaption}"
+                 FontWeight="SemiBold"
+                 VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- Layer switch and the profile-wide actions. The switch is built from the model's layers,
+         so it is two pills on a Freestyle Edge RGB and five on an Advantage 360 (issue #41). -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+      <ItemsControl Grid.Column="0" ItemsSource="{Binding Layers}" VerticalAlignment="Center">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="6" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="vm:KeyboardLayerViewModel">
+            <Button Classes="layerTab"
+                    Classes.selected="{Binding IsSelected}"
+                    Content="{Binding Caption}"
+                    Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectLayerCommand}"
+                    CommandParameter="{Binding}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <TextBlock Text="{x:Static vm:KeyboardEditorViewModel.SavingCaption}"
+                   Classes="muted"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding IsBusy}" />
+        <Button Content="Reset Key" Command="{Binding ResetKeyCommand}" />
+        <Button Content="Reset Layer" Command="{Binding ResetLayerCommand}" />
+        <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" />
+        <Button Content="Save" Command="{Binding SaveCommand}" Classes="primaryAction" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Section tabs. Everything but Keys is disabled until issues #15/#16 fill it in. -->
+    <ItemsControl Grid.Row="2" ItemsSource="{Binding Tabs}" Margin="0,14,0,0">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="2" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:EditorTabViewModel">
+          <Button Classes="editorTab"
+                  Classes.selected="{Binding IsSelected}"
+                  Content="{Binding Caption}"
+                  IsEnabled="{Binding IsEnabled}"
+                  Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectTabCommand}"
+                  CommandParameter="{Binding}" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Panel Grid.Row="3" Margin="0,12,0,0">
+      <TextBlock Text="Loading profile..."
+                 Classes="muted"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 IsVisible="{Binding IsLoading}" />
+
+      <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
+      <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
+        <Grid RowDefinitions="Auto,*"
+              IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
+          <!--
+            No "Esc cancels" here: while a key is listening the capture service swallows every
+            physical key, Escape included, so Escape is assigned like any other key (a keyboard
+            must be able to carry an Escape remap). Cancelling is therefore a pointer action.
+          -->
+          <StackPanel Grid.Row="0"
+                      Orientation="Horizontal"
+                      Spacing="12"
+                      Margin="0,0,0,8"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding IsListening}">
+            <TextBlock Text="Press a key to assign it to the highlighted key."
+                       Classes="statusWarning"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+            <Button Content="Cancel"
+                    Command="{Binding CancelRemapCommand}"
+                    VerticalAlignment="Center" />
+          </StackPanel>
+
+          <Border Grid.Row="1"
+                  Classes="keyboardBoard"
+                  IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+            <controls:KeyboardView DataContext="{Binding SelectedLayer}"
+                                   KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
+          </Border>
+        </Grid>
+
+        <TextBlock Text="This section is not implemented yet."
+                   Classes="muted"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Macros,Lighting,Settings'}" />
+      </Panel>
+    </Panel>
+
+    <!-- Lines of the loaded file the parser could not apply (specs/04-layout-files.md §5.2). They
+         are collapsed by default but never dropped silently. -->
+    <Expander Grid.Row="4"
+              Margin="0,12,0,0"
+              HorizontalAlignment="Stretch"
+              IsVisible="{Binding HasInvalidLines}">
+      <Expander.Header>
+        <TextBlock Text="Some lines of this profile could not be applied"
+                   Classes="statusWarning"
+                   FontWeight="SemiBold" />
+      </Expander.Header>
+      <ItemsControl ItemsSource="{Binding InvalidLineMessages}" MaxHeight="160">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="2" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="x:String">
+            <TextBlock Text="{Binding}" TextWrapping="Wrap" Classes="muted" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Expander>
+  </Grid>
+</UserControl>

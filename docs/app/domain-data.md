@@ -7,6 +7,7 @@ The static domain-data layer of `KinesisEdit.Core`: the spec's reference tables 
 | `KinesisEdit.Core.Devices` | `DeviceCatalog` | Master device table + v-Drive detection/path data + macro/tap-and-hold limits | specs 02; 03 §1–4; 04 §5.3; 06 §1, §2.1, §4, §6; 11 §11.1 |
 | `KinesisEdit.Core.Keys` | `KeyRegistry` | Master key-token table, three dialects | spec 05 §1–3, §7 |
 | `KinesisEdit.Core.Geometry` | `GeometryCatalog` | Physical layer geometry per layout family | spec 05 §1.3–1.5, §4, §5.3–5.4 |
+| `KinesisEdit.Core.Geometry.Visual` | `VisualCatalog` | Where each key position physically sits (board pictures, key units) | spec 05 §4 + spec 02 board descriptions |
 
 ## Devices — `DeviceCatalog`
 
@@ -86,6 +87,26 @@ Types:
 - `KeyPosition` (record) — `Index` (GUI button id / file-ordering key; identical positions share indices across a device's layers), `DefaultToken` (factory default in the family's dialect; empty for the Adv2 Keypad/Program buttons, which are never written to files), `PositionToken` (non-null only where the physical-position name differs from the default action — the Adv360 `(pos:x)` mechanism, e.g. `keyt` at position `kp`), `MasterAppDefaultToken` (Adv2 top-layer pedal positions 86–88 carry dual defaults: master-app vs standalone), `CanEdit` (false for locked positions: Adv2 Keypad/Program, SmartSet key on TKO/Adv360), `CanAssignMacro` (false for the physical modifier positions on Gen1 boards and Adv2; Adv360 modifiers and the TKO `fnshf` position allow macros).
 
 Every layer is **fully materialized**: the spec's delta descriptions (RGB vs Edge, Dvorak vs QWERTY, Adv360 Keypad/Fn overlays, Fn2/Fn3 ≡ Fn1 apart from name/index) are applied at build time by internal builders (`FreestyleGeometry`, `TkoGeometry`, `Advantage2Geometry`, `Advantage360Geometry`, `LayerBuilder`). Consumers never apply deltas.
+
+## Visual geometry — `VisualCatalog` (`KinesisEdit.Core.Geometry.Visual`)
+
+`GeometryCatalog` says *which* key positions a device has; `VisualCatalog` says *where they sit*. UI-free data (no Avalonia), consumed by the keyboard-shaped view ([keyboard-editor.md](keyboard-editor.md)).
+
+- **Key units.** `1.0` = one 1U keycap, width and height. Coordinates are board-absolute, address the key's **top-left** corner, X grows right, Y grows down. A renderer picks a pixel-per-unit scale and multiplies — nothing here is in pixels, millimetres or DIPs.
+- **One visual per device, shared by all its layers.** Layers differ only in the tokens bound to a position (spec 05 §7.4 — identical positions share an index across layers), never in placement, so the view draws the same rectangles for every layer and swaps only the captions.
+- **Authored, not derived.** Coordinates come from the physical board (spec 02 descriptions + the row grouping of spec 05 §4's index-ordered token lists), hand-authored per device. Legible and index-complete is the requirement, not millimetre accuracy.
+
+Types:
+
+- `VisualCatalog` — `FreestyleEdgeRgb` property; `TryGet(DeviceId, out KeyboardVisual?)` / `TryGet(DeviceId, LayoutVariant, out ...)` with **exactly** `GeometryCatalog`'s semantics (`LayoutVariant.None` = device default; any other variant must match the authored one — no silent fallback).
+- `KeyboardVisual` — `Variant`, `Keys` (authoring order, not index order), `Width`/`Height` (= max `Right`/`Bottom`; `0` when empty), `TryGetKey(int index, out KeyVisual?)` over a dictionary built in the constructor. Throws `ArgumentException` on duplicate indices.
+- `KeyVisual` (record) — `Index` (**the same ordinal as `KeyPosition.Index`**), `X`, `Y`, `Width`, `Height` (both default `1.0`), `Cluster`, plus computed `Right`/`Bottom`. Constructor throws `ArgumentOutOfRangeException` for a negative index/X/Y or a non-positive width/height.
+- `KeyCluster` — presentational grouping only (the logical geometry has no cluster concept): `None`/`Main`/`Thumb` (contoured boards)/`Function` (dedicated hotkey columns)/`EdgeZone` (TKO LED zones)/`Pedal`.
+- `KeyVisualBuilder` (internal) — row cursor helper: `Row(x, y, cluster)` then `Key`/`Keys`/`Range` walk left to right. Same role `LayerBuilder` plays for tokens.
+
+**Authored devices: Freestyle Edge RGB only.** `FreestyleEdgeRgbVisual` places all 95 positions as three blocks — the left-edge hotkey column (`hk0` spanning the column top, then `hk1`–`hk10` in a 2×5 grid, `KeyCluster.Function`), the left typing half, and the right typing half after a 1U `SplitGap`; both halves are `KeyCluster.Main` and the right half carries the standard ANSI row stagger. Bounds: 19.75 × 6 units. Every other `DeviceId` returns `false` — #39 authors FS Edge/Pro, #40 the TKO (incl. its 33 edge zones), #41 the Advantage 360, #42 the Advantage2 (both variants), adding data only (the types are device-agnostic).
+
+**Invariant:** a device's visual indices must be *exactly* the index set of its logical geometry layers — no missing key, no extra key, no overlapping rectangles. Enforced in both directions by `KinesisEdit.Core.Tests/Geometry/Visual`; adding a device visual means adding the matching set-equality test.
 
 ## Load-bearing invariants
 

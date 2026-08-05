@@ -3,11 +3,14 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// Stand-in for the per-device editor the shell swaps in on Configure. The keyboard editors
-    /// are separate issues (#14-#16) — the Savant Elite2 already has a real, read-only one
-    /// (<see cref="SavantElitePedalViewModel"/>) — so this view model only proves the navigation
-    /// contract of specs/10-apps-and-ui.md ("Opening a device" / "Home") and carries what the
-    /// shell already knows about the open device.
+    /// Stand-in for the per-device editor the shell swaps in on Configure, used for every device
+    /// that has no editor of its own yet. The Savant Elite2 has a real, read-only one
+    /// (<see cref="SavantElitePedalViewModel"/>) and every device with an authored keyboard
+    /// picture gets <see cref="KeyboardEditorViewModel"/> — today the Freestyle Edge RGB only,
+    /// because <see cref="Core.Geometry.Visual.VisualCatalog"/> resolves nothing else (issues
+    /// #39-#42 add the rest). This view model therefore only carries the navigation contract of
+    /// specs/10-apps-and-ui.md ("Opening a device" / "Home") and what the shell already knows
+    /// about the open device.
     /// </summary>
     public sealed class EditorPlaceholderViewModel : DeviceEditorViewModel
     {

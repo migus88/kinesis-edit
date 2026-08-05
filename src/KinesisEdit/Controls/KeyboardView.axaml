@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="250"
+             x:Class="KinesisEdit.Controls.KeyboardView"
+             x:DataType="vm:KeyboardLayerViewModel">
+  <!-- The keyboard picture of one layer. It is parameterised entirely by the layer view model —
+       board size, key rectangles and captions — so every device the visual catalog knows about is
+       drawn by this one control; nothing here is device-specific. -->
+  <ItemsControl ItemsSource="{Binding Keys}">
+    <ItemsControl.ItemsPanel>
+      <ItemsPanelTemplate>
+        <controls:KeyboardPanel BoardWidth="{Binding BoardWidth}" BoardHeight="{Binding BoardHeight}" />
+      </ItemsPanelTemplate>
+    </ItemsControl.ItemsPanel>
+
+    <!-- The generated item container is what the panel lays out, so the key's unit rectangle is
+         projected onto the container's attached properties here. This keeps KeyboardPanel free of
+         any knowledge of the item type. -->
+    <ItemsControl.Styles>
+      <Style Selector="ContentPresenter" x:DataType="vm:KeyboardKeyViewModel">
+        <Setter Property="controls:KeyboardPanel.UnitX" Value="{Binding X}" />
+        <Setter Property="controls:KeyboardPanel.UnitY" Value="{Binding Y}" />
+        <Setter Property="controls:KeyboardPanel.UnitWidth" Value="{Binding Width}" />
+        <Setter Property="controls:KeyboardPanel.UnitHeight" Value="{Binding Height}" />
+      </Style>
+    </ItemsControl.Styles>
+
+    <ItemsControl.ItemTemplate>
+      <DataTemplate DataType="vm:KeyboardKeyViewModel">
+        <controls:KeyCapView />
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+</UserControl>

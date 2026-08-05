@@ -8,7 +8,7 @@ namespace KinesisEdit.ViewModels
     /// name, and whether the session runs in demo mode. Every editor derives from it, so
     /// <see cref="MainWindowViewModel.Editor"/> stays typed without the shell knowing which
     /// device-specific editor it holds — the branch lives in one place,
-    /// <see cref="MainWindowViewModel.OpenDevice"/>.
+    /// <see cref="KinesisEdit.Services.IEditorViewModelFactory"/>.
     /// </summary>
     public abstract class DeviceEditorViewModel : ViewModelBase
     {
@@ -25,6 +25,17 @@ namespace KinesisEdit.ViewModels
         protected DeviceEditorViewModel(DeviceSnapshot device)
         {
             Device = device ?? throw new ArgumentNullException(nameof(device));
+        }
+
+        /// <summary>
+        /// Work the editor does after it is on screen; the shell fires it once and does not await
+        /// it. Editors that read the v-Drive do it here rather than in their constructor, so the
+        /// view swap is never blocked by I/O — and because nothing awaits the task, an override
+        /// must report its own failures instead of throwing. The default does nothing.
+        /// </summary>
+        public virtual Task LoadAsync()
+        {
+            return Task.CompletedTask;
         }
     }
 }

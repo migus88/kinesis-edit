@@ -2,10 +2,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using KinesisEdit.Core.Input;
 using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Core.VDrive.Io;
+using KinesisEdit.Input;
 using KinesisEdit.Services;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
@@ -27,6 +29,7 @@ namespace KinesisEdit
 
         private DeviceMonitorService? _deviceMonitor;
         private HttpVersionManifestClient? _manifestClient;
+        private AvaloniaKeystrokeCaptureService? _captureService;
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
 
@@ -104,10 +107,30 @@ namespace KinesisEdit
             // serves every session the shell opens.
             var pedalFiles = new PedalFileService(fileService);
 
+            var editorFactory = new EditorViewModelFactory(
+                new ProfileSessionFactory(),
+                () => ResolveCaptureService(desktop),
+                notifications,
+                pedalFiles);
+
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, updatePresenter, urlLauncher);
-            _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, pedalFiles);
+            _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, editorFactory);
 
             return notifications;
+        }
+
+        /// <summary>
+        /// The app-wide keystroke capture service, built over the shell window the first time an
+        /// editor asks for one. It previews the key events of a single <c>TopLevel</c>
+        /// (docs/app/keystroke-capture.md) and the window does not exist while the graph above is
+        /// wired — the same ordering problem the message-box presenter solves with its
+        /// <c>Func&lt;Window?&gt;</c> owner. By the time a device is opened the window is on screen.
+        /// </summary>
+        private IKeystrokeCaptureService ResolveCaptureService(IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return _captureService ??= new AvaloniaKeystrokeCaptureService(
+                desktop.MainWindow ?? throw new InvalidOperationException(
+                    "The shell window must exist before keystroke capture can attach to it."));
         }
 
         /// <summary>
@@ -140,6 +163,10 @@ namespace KinesisEdit
             _dashboard?.Dispose();
             _deviceMonitor?.Dispose();
             _manifestClient?.Dispose();
+
+            // After the shell, which closes the open editor first: the editor stops capture, this
+            // detaches it from the window for good.
+            _captureService?.Dispose();
         }
     }
 }
