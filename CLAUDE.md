@@ -37,7 +37,15 @@ Facts that shape the architecture (details in `specs/README.md` and the numbered
 
 ## Custom commands
 
-- `/feature <issue-number | issue-url | description>` — drives a feature end to end: syncs `main`, researches and asks clarifying questions, updates or creates the GitHub issue, branches, implements via subagents (Workflow orchestration with adversarial review when ultracode is enabled), verifies the build/tests and doc updates, and opens a PR. Defined in `.claude/commands/feature.md`.
+- `/feature <issue-number | issue-url | description>` — drives a feature end to end: syncs `main`, researches and asks clarifying questions, updates or creates the GitHub issue, branches, implements via subagents (Workflow orchestration with adversarial review when ultracode is enabled), runs the full unit-test suite (all tests must pass before a PR is opened), verifies the doc updates, and opens a PR. Defined in `.claude/commands/feature.md`.
+
+## Testing rules (important)
+
+Everything is covered by unit tests. Concretely:
+
+- Every feature creates unit tests for the code it adds and maintains the tests of the code it touches. Tests are part of the change, not a follow-up.
+- The full unit-test suite must pass (`dotnet test` once the solution exists) before a pull request is opened. A feature with failing or missing tests is incomplete and must not reach the PR stage.
+- CI runs the unit-test suite on every pull request targeting `main`; a red suite blocks the merge (workflow scoped in issue #3).
 
 ## Documentation rules (important)
 
