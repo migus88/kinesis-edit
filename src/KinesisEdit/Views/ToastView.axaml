@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="80"
+             x:Class="KinesisEdit.Views.ToastView"
+             x:DataType="vm:ToastViewModel">
+  <!-- The "Info dialog" of specs/11-feature-dialogs.md §11.9: non-modal, self-dismissing.
+       The host owns the timer; this view is the notice itself. -->
+  <Border Classes="overlayCard" MaxWidth="360">
+    <StackPanel Spacing="4">
+      <TextBlock Text="{Binding Title}"
+                 FontWeight="SemiBold"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding HasTitle}" />
+      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+    </StackPanel>
+  </Border>
+</UserControl>

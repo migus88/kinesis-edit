@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+        xmlns:services="clr-namespace:KinesisEdit.Services"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="210"
+        x:Class="KinesisEdit.Views.MessageBoxWindow"
+        x:DataType="vm:MessageBoxViewModel"
+        Title="{Binding Title}"
+        Width="440"
+        MinHeight="210"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <!-- The app-wide message box of specs/11-feature-dialogs.md §11.9: icon by dialog type,
+       buttons built from the standard set plus custom buttons, and the
+       'Hide this notification?' checkbox only when the request carries a suppression key. -->
+  <Grid RowDefinitions="*,Auto" Margin="20">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16">
+      <TextBlock Classes="messageIcon"
+                 VerticalAlignment="Top"
+                 Text="{Binding Icon, Converter={StaticResource MessageBoxIconGlyph}}"
+                 Classes.messageIconAccent="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter='Information,Confirmation'}"
+                 Classes.messageIconWarning="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                 Classes.messageIconError="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+
+      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" VerticalAlignment="Center" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Spacing="12" Margin="0,20,0,0">
+      <CheckBox Content="{x:Static vm:MessageBoxViewModel.SuppressionCaption}"
+                IsChecked="{Binding IsSuppressChecked, Mode=TwoWay}"
+                IsVisible="{Binding IsSuppressionAvailable}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <ItemsControl ItemsSource="{Binding CustomButtons}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="services:MessageBoxButton">
+              <Button Content="{Binding Caption}"
+                      CommandParameter="{Binding}"
+                      Command="{Binding $parent[Window].((vm:MessageBoxViewModel)DataContext).CustomButtonCommand}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Button Content="Yes" Command="{Binding YesCommand}" IsVisible="{Binding ShowsYes}" MinWidth="88" />
+        <Button Content="No" Command="{Binding NoCommand}" IsVisible="{Binding ShowsNo}" MinWidth="88" />
+        <Button Content="OK" Command="{Binding OkCommand}" IsVisible="{Binding ShowsOk}" MinWidth="88" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding ShowsCancel}" MinWidth="88" />
+      </StackPanel>
+    </StackPanel>
+  </Grid>
+</Window>

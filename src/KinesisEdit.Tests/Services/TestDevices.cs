@@ -1,0 +1,79 @@
+using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Firmware;
+using KinesisEdit.Core.VDrive;
+using KinesisEdit.Core.VDrive.Discovery;
+using KinesisEdit.Services;
+
+namespace KinesisEdit.Tests.Services
+{
+    /// <summary>
+    /// Builders for the catalog-backed fixtures the shell tests need: discovered drive
+    /// locations, version-file lines in each device's dialect (specs/09-firmware.md §1.1), and
+    /// ready-made snapshots.
+    /// </summary>
+    internal static class TestDevices
+    {
+        public static VDriveLocation CreateLocation(DeviceId deviceId, bool isWritable = true)
+        {
+            var device = DeviceCatalog.GetById(deviceId);
+
+            return new VDriveLocation
+            {
+                Device = device,
+                RootPath = Path.Combine(Path.DirectorySeparatorChar + "fake", device.VolumeLabels[0]),
+                IsWritable = isWritable
+            };
+        }
+
+        public static string[] CreateVersionFileLines(DeviceId deviceId, string? modelName = null, string keyboardFirmware = "1.0.100")
+        {
+            var model = modelName ?? DeviceCatalog.GetById(deviceId).DisplayName;
+
+            return deviceId switch
+            {
+                DeviceId.FreestyleEdgeRgb or DeviceId.Tko =>
+                [
+                    "Model Name: " + model,
+                    "KBD Firmware: " + keyboardFirmware,
+                    "LED Firmware: 1.0.58"
+                ],
+                DeviceId.Advantage360 =>
+                [
+                    "model=" + model,
+                    "kbd_fw_r=" + keyboardFirmware
+                ],
+                DeviceId.SavantElite2 =>
+                [
+                    "Firmware version is " + keyboardFirmware
+                ],
+                _ =>
+                [
+                    "Model Name: " + model,
+                    "Firmware Version: " + keyboardFirmware
+                ]
+            };
+        }
+
+        public static DeviceSnapshot CreateSnapshot(
+            DeviceId deviceId,
+            VDriveConnectionStatus status = VDriveConnectionStatus.Connected,
+            VDriveHealth health = VDriveHealth.Ok)
+        {
+            var isDemoMode = status != VDriveConnectionStatus.Connected;
+            var location = status == VDriveConnectionStatus.NotDetected
+                ? null
+                : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected);
+
+            return new DeviceSnapshot
+            {
+                ScannedDeviceId = deviceId,
+                Device = DeviceCatalog.GetById(deviceId),
+                Status = status,
+                Location = location,
+                Firmware = FirmwareState.FromVersionFile(VersionFileInfo.Empty, isDemoMode),
+                IsDemoMode = isDemoMode,
+                Health = status == VDriveConnectionStatus.NotDetected ? VDriveHealth.Unknown : health
+            };
+        }
+    }
+}

@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="KinesisEdit.Views.NotificationOverlay"
+             x:DataType="views:NotificationOverlay"
+             IsHitTestVisible="False">
+  <!-- Toasts and the loading indicator float over the content; neither is modal, so the whole
+       overlay is transparent to input (specs/11-feature-dialogs.md §11.9). -->
+  <Panel>
+    <ItemsControl ItemsSource="{Binding CenteredToasts}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="8" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+    </ItemsControl>
+
+    <ItemsControl ItemsSource="{Binding CornerToasts}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Bottom"
+                  Margin="0,0,24,24">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="8" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+    </ItemsControl>
+
+    <ContentControl Content="{Binding Loading}"
+                    IsVisible="{Binding Loading.IsVisible}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+  </Panel>
+</UserControl>

@@ -1,10 +1,106 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:KinesisEdit.Converters"
+             xmlns:local="clr-namespace:KinesisEdit"
              x:Class="KinesisEdit.App"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+  <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
-    <Application.Styles>
-        <FluentTheme />
-    </Application.Styles>
+  <Application.DataTemplates>
+    <local:ViewLocator />
+  </Application.DataTemplates>
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <converters:EnumMatchConverter x:Key="EnumMatch" />
+      <converters:MessageBoxIconToGlyphConverter x:Key="MessageBoxIconGlyph" />
+
+      <!-- Kinesis blue, the brand accent of specs/10-apps-and-ui.md "Fonts, colors, theming". -->
+      <Color x:Key="KinesisBlueColor">#0072CE</Color>
+
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="StatusOkBrush" Color="#15803D" />
+          <SolidColorBrush x:Key="StatusWarningBrush" Color="#B45309" />
+          <SolidColorBrush x:Key="StatusErrorBrush" Color="#C0261F" />
+          <SolidColorBrush x:Key="AccentTextBrush" Color="#0060AD" />
+          <SolidColorBrush x:Key="ShellBarBrush" Color="#F2F3F5" />
+          <SolidColorBrush x:Key="ShellBarBorderBrush" Color="#D8DADD" />
+          <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CardBorderBrush" Color="#D8DADD" />
+          <SolidColorBrush x:Key="OverlayBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="MutedTextBrush" Color="#5A6169" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="StatusOkBrush" Color="#5CD37F" />
+          <SolidColorBrush x:Key="StatusWarningBrush" Color="#E0A030" />
+          <SolidColorBrush x:Key="StatusErrorBrush" Color="#F1706A" />
+          <SolidColorBrush x:Key="AccentTextBrush" Color="#4FA9EC" />
+          <SolidColorBrush x:Key="ShellBarBrush" Color="#22242A" />
+          <SolidColorBrush x:Key="ShellBarBorderBrush" Color="#3A3D45" />
+          <SolidColorBrush x:Key="CardBrush" Color="#2A2D34" />
+          <SolidColorBrush x:Key="CardBorderBrush" Color="#3A3D45" />
+          <SolidColorBrush x:Key="OverlayBrush" Color="#2A2D34" />
+          <SolidColorBrush x:Key="MutedTextBrush" Color="#A6ADB6" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <!-- Status colors: 'Connected' / 'v-Drive OK' green, failures red, demo mode amber
+         (specs/10-apps-and-ui.md, "Detection loop"). Both palettes are theme-scoped, so the
+         same class reads correctly in the OS light and dark variants. -->
+    <Style Selector="TextBlock.statusOk">
+      <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}" />
+    </Style>
+    <Style Selector="TextBlock.statusWarning">
+      <Setter Property="Foreground" Value="{DynamicResource StatusWarningBrush}" />
+    </Style>
+    <Style Selector="TextBlock.statusError">
+      <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.messageIconAccent">
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.messageIconWarning">
+      <Setter Property="Foreground" Value="{DynamicResource StatusWarningBrush}" />
+    </Style>
+    <Style Selector="TextBlock.messageIconError">
+      <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.messageIcon">
+      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <Style Selector="Border.overlayCard">
+      <Setter Property="Background" Value="{DynamicResource OverlayBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="16,12" />
+      <Setter Property="BoxShadow" Value="0 4 16 0 #33000000" />
+    </Style>
+  </Application.Styles>
 </Application>

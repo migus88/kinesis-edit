@@ -4,7 +4,7 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 - **Stack:** C# with [Avalonia UI](https://avaloniaui.net/) for cross-platform portability.
 - **Platforms:** macOS first, with Windows and Linux fully supported.
-- **Status:** In development — specification complete, solution scaffolded (app shell, core library, tests, CI), static domain data implemented (device catalog, key-token registry, layer geometries — see [`docs/app/domain-data.md`](docs/app/domain-data.md)), firmware version parsing and feature gating implemented (see [`docs/app/firmware.md`](docs/app/firmware.md)), v-Drive services implemented (drive discovery, file I/O, eject — see [`docs/app/vdrive.md`](docs/app/vdrive.md)). Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
+- **Status:** In development — specification complete; static domain data implemented (device catalog, key-token registry, layer geometries — see [`docs/app/domain-data.md`](docs/app/domain-data.md)), firmware version parsing and feature gating implemented (see [`docs/app/firmware.md`](docs/app/firmware.md)), v-Drive services implemented (drive discovery, file I/O, eject — see [`docs/app/vdrive.md`](docs/app/vdrive.md)), and the app now launches to a device dashboard that lists detected keyboards, opens them from a card, and reaches demo mode with no hardware attached (see [`docs/app/app-shell.md`](docs/app/app-shell.md)). The per-device editors behind the dashboard are still placeholders. Progress is tracked in [GitHub issues](https://github.com/migus88/kinesis-edit/issues/1).
 
 ## Building and running
 
@@ -27,7 +27,7 @@ Kinesis programmable keyboards mount a small FAT volume (the "v-Drive") containi
 | `specs/` | Full specification of the legacy apps, supported devices, and on-device file formats. The authoritative domain reference — start with [`specs/README.md`](specs/README.md). |
 | `docs/app/` | Agent-first documentation of the new app's modules, maintained alongside the code. |
 | `docs/guides/` | [Coding conventions](docs/guides/Coding%20Conventions.md) and other guides. |
-| `src/` | Source code of the new app: `KinesisEdit.sln` with the Avalonia app (`KinesisEdit`), the UI-free domain library (`KinesisEdit.Core`), and its xUnit tests (`KinesisEdit.Core.Tests`). See [`docs/app/solution-structure.md`](docs/app/solution-structure.md). |
+| `src/` | Source code of the new app: `KinesisEdit.sln` with the Avalonia app (`KinesisEdit`), the UI-free domain library (`KinesisEdit.Core`), and their xUnit test projects (`KinesisEdit.Core.Tests`, `KinesisEdit.Tests`). See [`docs/app/solution-structure.md`](docs/app/solution-structure.md). |
 
 ## Contributing notes
 

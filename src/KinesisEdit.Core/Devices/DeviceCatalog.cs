@@ -108,6 +108,8 @@ namespace KinesisEdit.Core.Devices
                 },
                 Lighting = LightingCapability.None,
                 HardwareNotes = "3 pedals + jack",
+                TroubleshootingUrl = "https://kinesis-ergo.com/support/savant-elite2/",
+                VDriveShortcutHint = "Program + F1",
                 IsProgrammable = true
             };
         }
@@ -142,6 +144,7 @@ namespace KinesisEdit.Core.Devices
                 },
                 Lighting = LightingCapability.None,
                 HardwareNotes = "full keyset incl. thumb clusters; 3 foot-pedal inputs (left/middle/right pedal)",
+                TroubleshootingUrl = "https://kinesis-ergo.com/support/advantage2/",
                 VDriveShortcutHint = "Program + F1",
                 IsProgrammable = true
             };
@@ -170,6 +173,7 @@ namespace KinesisEdit.Core.Devices
                     Kind = LightingKind.BlueBacklight
                 },
                 HardwareNotes = "split keyboard, LED backlight, Game Mode switch",
+                TroubleshootingUrl = "https://gaming.kinesis-ergo.com/fs-edge-support/",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
             };
@@ -195,6 +199,7 @@ namespace KinesisEdit.Core.Devices
                 Macros = CreateFreestyleEdgeMacroCapability(),
                 Lighting = LightingCapability.None,
                 HardwareNotes = "split keyboard; no game mode",
+                TroubleshootingUrl = "https://kinesis-ergo.com/support/freestyle-pro/",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
             };
@@ -228,6 +233,7 @@ namespace KinesisEdit.Core.Devices
                     Kind = LightingKind.PerKeyRgb
                 },
                 HardwareNotes = "split gaming keyboard",
+                TroubleshootingUrl = "https://gaming.kinesis-ergo.com/fs-edge-rgb-support/",
                 VDriveShortcutHint = "SmartSet + F8",
                 IsProgrammable = true
             };
@@ -279,6 +285,7 @@ namespace KinesisEdit.Core.Devices
                     EdgeLedRightCount = 9
                 },
                 HardwareNotes = "60% tenkeyless gaming board with tripartite space bar (left/middle/right space)",
+                TroubleshootingUrl = "https://gaming.kinesis-ergo.com/tko-support/",
                 VDriveShortcutHint = "SmartSet + Right Shift + V",
                 IsProgrammable = true
             };
@@ -314,6 +321,9 @@ namespace KinesisEdit.Core.Devices
                     IndicatorLedCount = 6
                 },
                 HardwareNotes = "split ergonomic contoured keyboard; optional foot pedal display; Bluetooth",
+                // Spec 11.8 states "same as the Adv360 help URL" instead of quoting it; this is the
+                // un-anchored form of the firmware page in Firmware.FirmwareSupportUrls (spec 09 §2).
+                TroubleshootingUrl = "https://kinesis-ergo.com/support/kb360/",
                 VDriveShortcutHint = "SmartSet + v-Drive",
                 IsProgrammable = true
             };

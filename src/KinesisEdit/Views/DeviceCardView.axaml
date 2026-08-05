@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="200"
+             x:Class="KinesisEdit.Views.DeviceCardView"
+             x:DataType="vm:DeviceCardViewModel">
+  <Border Classes="card" Width="320">
+    <StackPanel Spacing="12">
+      <TextBlock Text="{Binding DisplayName}" Classes="heading" TextWrapping="Wrap" />
+
+      <!-- 'Connected' (green) / 'Not Detected' / 'Cannot Access' (red), specs/10-apps-and-ui.md. -->
+      <TextBlock Text="{Binding StatusText}"
+                 FontWeight="SemiBold"
+                 Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                 Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                 Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+
+      <Button Content="{Binding PrimaryActionCaption}"
+              Command="{Binding ConfigureCommand}"
+              HorizontalAlignment="Stretch"
+              HorizontalContentAlignment="Center" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="{x:Static vm:DeviceCardViewModel.ScanActionCaption}" Command="{Binding ScanCommand}" />
+        <Button Content="{x:Static vm:DeviceCardViewModel.EjectActionCaption}"
+                Command="{Binding EjectCommand}"
+                IsVisible="{Binding CanEject}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>
