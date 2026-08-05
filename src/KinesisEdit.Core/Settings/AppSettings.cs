@@ -76,5 +76,30 @@ namespace KinesisEdit.Core.Settings
         }
 
         private readonly IReadOnlyList<SettingsColor?> _customColors = new SettingsColor?[CustomColorCount];
+
+        /// <summary>
+        /// Returns a copy with one custom-color slot replaced. <paramref name="slotNumber"/> is
+        /// 1-based and uses the same numbering as
+        /// <see cref="SettingsKeys.GetCustomColorKey"/> — 1 = <c>cust_color_1</c> … 12 =
+        /// <c>cust_color_12</c>. Passing null clears the slot, and a cleared slot's key is
+        /// skipped on save rather than written empty (spec 08 §3). Throws
+        /// <see cref="ArgumentOutOfRangeException"/> outside 1-<see cref="CustomColorCount"/>.
+        /// </summary>
+        public AppSettings WithCustomColor(int slotNumber, SettingsColor? color)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(slotNumber, 1);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(slotNumber, CustomColorCount);
+
+            var colors = new SettingsColor?[CustomColorCount];
+
+            for (var index = 0; index < CustomColorCount; index++)
+            {
+                colors[index] = _customColors[index];
+            }
+
+            colors[slotNumber - 1] = color;
+
+            return this with { CustomColors = colors };
+        }
     }
 }

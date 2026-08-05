@@ -65,5 +65,28 @@ namespace KinesisEdit.Core.Tests.Profiles
             Assert.Equal(originalSettingsBytes, File.ReadAllBytes(drive.GetSettingsFilePath(DeviceId.FreestyleEdgeRgb)));
             Assert.True(File.Exists(drive.GetLayoutFilePath(DeviceId.FreestyleEdgeRgb, 5)));
         }
+
+        [Fact]
+        public void SaveAs_OnTheAdvantage360_WritesTheProfileKeyWithoutAddingLedMode()
+        {
+            using var drive = new ProfileFixtureDrive();
+
+            drive.WriteLayoutFile(DeviceId.Advantage360, 3, "<base>");
+            drive.WriteLightingFile(DeviceId.Advantage360, 3, "[ind1]>[caps][255][0][0]");
+            drive.WriteSettingsFile(DeviceId.Advantage360, "model=Adv360", "profile=3");
+
+            var location = drive.CreateLocation(DeviceId.Advantage360);
+            var session = ProfileSession.Load(location, DeviceId.Advantage360, 3);
+
+            var result = session.SaveAs(6, setAsStartup: true);
+
+            Assert.True(result.Success);
+
+            // StartupProfileSettings pairs led_mode only where the capability's LedMode is a
+            // file name (spec 08 §5.1); the Adv360 writes the bare profile key alone.
+            Assert.Equal(
+                new[] { "model=Adv360", "profile=6" },
+                File.ReadAllLines(drive.GetSettingsFilePath(DeviceId.Advantage360)));
+        }
     }
 }

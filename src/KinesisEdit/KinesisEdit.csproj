@@ -15,6 +15,10 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.12" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <!--The lighting tab's color picker (specs/07-lighting.md §4): the ring, the R/G/B sliders and
+        the hex box are Avalonia's own ColorView. Kept at the same version as every other Avalonia
+        package; its Fluent control theme is included by hand in App.axaml.-->
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.12" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->

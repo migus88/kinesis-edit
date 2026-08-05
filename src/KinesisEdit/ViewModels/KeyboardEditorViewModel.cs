@@ -142,8 +142,27 @@ namespace KinesisEdit.ViewModels
         /// <summary>Board height in key units.</summary>
         public double BoardHeight => _visual?.Height ?? 0;
 
-        /// <summary>The editor's sections; everything but <see cref="EditorTab.Keys"/> is a disabled placeholder.</summary>
+        /// <summary>
+        /// The editor's sections, filtered by what the device carries
+        /// (<see cref="EditorTabViewModel.CreateAll"/>). Macros is still a disabled placeholder
+        /// (issue #15).
+        /// </summary>
         public IReadOnlyList<EditorTabViewModel> Tabs { get; }
+
+        /// <summary>
+        /// The Settings tab's panel (docs/app/settings.md). Always built — it is cheap and reads
+        /// nothing on its own — but only reachable when <see cref="Tabs"/> carries
+        /// <see cref="EditorTab.Settings"/>, i.e. when the device has an app-managed settings file.
+        /// </summary>
+        public KeyboardSettingsViewModel Settings { get; }
+
+        /// <summary>
+        /// The Lighting tab's panel (docs/app/lighting.md). Always built, like
+        /// <see cref="Settings"/>, and pointed at the profile's lighting model by
+        /// <see cref="LoadAsync"/>; only reachable on a device
+        /// <see cref="LightingTabViewModel.IsSupported"/> accepts.
+        /// </summary>
+        public LightingTabViewModel Lighting { get; }
 
         /// <summary>The open section.</summary>
         public EditorTab SelectedTab
@@ -261,6 +280,7 @@ namespace KinesisEdit.ViewModels
         public KeyboardEditorViewModel(
             DeviceSnapshot device,
             IProfileSessionFactory profileSessions,
+            ISettingsService settings,
             IKeystrokeCaptureService capture,
             INotificationService notifications) : base(device)
         {
@@ -272,7 +292,14 @@ namespace KinesisEdit.ViewModels
             // and shared by every layer (docs/app/domain-data.md, "Visual geometry").
             _visual = VisualCatalog.TryGet(device.DeviceId, out var visual) ? visual : null;
 
-            Tabs = EditorTabViewModel.CreateAll();
+            Settings = new KeyboardSettingsViewModel(device, settings, notifications);
+            Lighting = new LightingTabViewModel(device, settings, notifications);
+
+            // The Lighting tab is enabled for the boards whose led file is the two-layer key
+            // backlight model the panel edits; the tab is already absent on a device without
+            // lighting hardware. The question is device-level on purpose: this constructor runs
+            // before any profile has been read, and demo mode never reads one at all.
+            Tabs = EditorTabViewModel.CreateAll(device.Device, Lighting.IsAvailable);
 
             SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab?.IsEnabled == true);
             SelectLayerCommand = new RelayCommand<KeyboardLayerViewModel>(SelectLayer);
@@ -327,6 +354,12 @@ namespace KinesisEdit.ViewModels
             {
                 IsLoading = false;
             }
+
+            // The Settings tab reads its own file, and reports its own failures inline, so a
+            // settings read can never stop the picture from appearing. The Lighting tab only
+            // reads the picker's stored swatches; its model came with the profile above.
+            await Settings.LoadAsync().ConfigureAwait(true);
+            await Lighting.LoadAsync().ConfigureAwait(true);
 
             if (outcome.Error is not null)
             {
@@ -390,6 +423,12 @@ namespace KinesisEdit.ViewModels
 
             SelectLayer(Layers.Count > 0 ? Layers[0] : null);
             RefreshCounters();
+
+            // The lighting panel edits the very model the session hands out, so mutating it is
+            // all a lighting save takes (ProfileSession.Save writes led<n>.txt whenever Lighting
+            // is non-null). It shares these layer view models, which is how a recoloured key
+            // repaints on the Keys tab too.
+            Lighting.Attach(outcome.Session?.Lighting, Layers);
         }
 
         private static IReadOnlyList<string> BuildInvalidLineMessages(IProfileSession? session)
@@ -411,12 +450,17 @@ namespace KinesisEdit.ViewModels
 
         private void SelectTab(EditorTab tab)
         {
-            // A tab with nothing behind it stays shut whichever way it is asked for, so a two-way
-            // binding cannot open what the command refuses.
-            if (FindTab(tab) is { IsEnabled: false })
+            // A tab with nothing behind it — disabled, or absent because the device does not carry
+            // that section at all — stays shut whichever way it is asked for, so a two-way binding
+            // cannot open what the command refuses.
+            if (FindTab(tab) is not { IsEnabled: true })
             {
                 return;
             }
+
+            // Listening belongs to the keyboard picture: leaving the tab must stop capture, or the
+            // app-wide service keeps swallowing keystrokes behind the section the user moved to.
+            CancelRemap();
 
             // The property name is passed explicitly: the caller-member default would name this
             // method rather than the property the view is bound to.
@@ -756,6 +800,10 @@ namespace KinesisEdit.ViewModels
 
         private void NotifyCommands()
         {
+            // SelectTabCommand is deliberately absent: a tab's IsEnabled is fixed at construction
+            // (EditorTabViewModel builds the strip from device-level facts only, including the
+            // lighting one) and the command's predicate reads nothing but its parameter, so there
+            // is no state here that could change its answer.
             BeginRemapCommand.NotifyCanExecuteChanged();
             CancelRemapCommand.NotifyCanExecuteChanged();
             ResetKeyCommand.NotifyCanExecuteChanged();

@@ -1,20 +1,35 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Settings;
+using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Io;
 using KinesisEdit.Services;
 
 namespace KinesisEdit.Tests.Services
 {
+    /// <summary>
+    /// The store over a real <c>app_settings.txt</c>: it reads and writes exclusively through
+    /// Core's settings engine, so these tests run the real
+    /// <see cref="SettingsService"/>/<see cref="VDriveFileService"/> pair over a temp directory
+    /// rather than a fake — the point of the seam is that there is only one merge implementation.
+    /// </summary>
     public sealed class VDriveNotificationSuppressionStoreTests : IDisposable
     {
         private readonly string _tempDirectory;
         private readonly string _filePath;
+        private readonly VDriveLocation _location;
         private readonly VDriveFileService _fileService = new();
+        private readonly ISettingsService _settings;
 
         public VDriveNotificationSuppressionStoreTests()
         {
             _tempDirectory = Path.Combine(Path.GetTempPath(), "KinesisEditTests-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempDirectory);
-            _filePath = Path.Combine(_tempDirectory, VDriveNotificationSuppressionStore.FileName);
+
+            _location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb) with { RootPath = _tempDirectory };
+            _filePath = VDriveNotificationSuppressionStore.GetFilePath(_location);
+            _settings = TestDevices.CreateSettingsService(_fileService);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
         }
 
         [Theory]
@@ -66,6 +81,24 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public void IsHidden_ForEveryNotificationKey_RoundTripsThroughTheSettingsModel()
+        {
+            // Every key of specs/08-settings.md §3 must map onto an AppSettings flag: a key this
+            // store cannot address would silently read as "show" forever.
+            CreateFile();
+            var store = CreateStore();
+
+            foreach (var key in NotificationKeys.All)
+            {
+                store.SetHidden(key, true);
+
+                Assert.True(store.IsHidden(key));
+            }
+
+            Assert.All(NotificationKeys.All, key => Assert.True(store.IsHidden(key)));
+        }
+
+        [Fact]
         public void SetHidden_WithExistingFile_PreservesUnknownLines()
         {
             CreateFile("cust_color_1=[255][0][128]", "save_msg=off", "some unparseable garbage");
@@ -89,6 +122,22 @@ namespace KinesisEdit.Tests.Services
             Assert.Equal(
                 new[] { "cust_color_1=[255][0][128]", "multiplay_msg=on" },
                 _fileService.ReadAllLines(_filePath));
+        }
+
+        [Fact]
+        public void SetHidden_WithACustomColorOnTheDrive_LeavesTheColorSlotIntact()
+        {
+            // The lighting pickers persist the twelve cust_color_N slots through the same seam;
+            // a line-based store here would rewrite the file without them.
+            CreateFile("cust_color_12=[1][2][3]");
+            var store = CreateStore();
+
+            store.SetHidden(NotificationKeys.SaveLighting, true);
+
+            Assert.Equal(
+                new[] { "cust_color_12=[1][2][3]", "savelighting_msg=on" },
+                _fileService.ReadAllLines(_filePath));
+            Assert.Equal("[1][2][3]", _settings.LoadAppSettings(_location).CustomColors[11]!.ToString());
         }
 
         [Fact]
@@ -116,17 +165,30 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public void SetHidden_WithAKeyOutsideTheSpecTable_WritesNothing()
+        {
+            CreateFile("save_msg=off");
+            var store = CreateStore();
+
+            store.SetHidden("not_a_spec_msg", true);
+
+            Assert.Equal(new[] { "save_msg=off" }, _fileService.ReadAllLines(_filePath));
+            Assert.False(store.IsHidden("not_a_spec_msg"));
+        }
+
+        [Fact]
         public void SetHidden_WithUnwritableLocation_DoesNotThrow()
         {
             // A merely missing folder is not unwritable any more — WriteAllLines(allowCreate: true)
             // creates it. So block the settings folder with a file of the same name: creating the
             // directory then fails, which is the I/O failure the store must swallow.
-            var blockedFolder = Path.Combine(_tempDirectory, "blocked-folder");
-            File.WriteAllText(blockedFolder, string.Empty);
+            var blockedRoot = Path.Combine(_tempDirectory, "blocked-root");
+            Directory.CreateDirectory(blockedRoot);
+            File.WriteAllText(Path.Combine(blockedRoot, "settings"), string.Empty);
 
             var store = new VDriveNotificationSuppressionStore(
-                _fileService,
-                Path.Combine(blockedFolder, VDriveNotificationSuppressionStore.FileName));
+                _settings,
+                _location with { RootPath = blockedRoot });
 
             store.SetHidden(NotificationKeys.Save, true);
 
@@ -134,18 +196,29 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
-        public void GetFilePath_ForDrive_PointsAtTheSettingsFolder()
+        public void GetFilePath_ForDrive_IsTheSettingsEnginesOwnPath()
         {
-            var location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb);
+            // One path, resolved by Core: the Advantage2's keyboard settings live in active/ while
+            // app_settings.txt always lives in settings/ (spec 08 §3), so a second answer here
+            // would put the two writers on different files.
+            var location = TestDevices.CreateLocation(DeviceId.Advantage2);
 
             var path = VDriveNotificationSuppressionStore.GetFilePath(location);
 
-            Assert.Equal(Path.Combine(location.SettingsFolderPath, "app_settings.txt"), path);
+            Assert.Equal(SettingsService.GetAppSettingsFilePath(location), path);
+            Assert.Equal(Path.Combine(location.RootPath, "settings", "app_settings.txt"), path);
+        }
+
+        [Fact]
+        public void Constructor_WithoutACollaborator_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => new VDriveNotificationSuppressionStore(null!, _location));
+            Assert.Throws<ArgumentNullException>(() => new VDriveNotificationSuppressionStore(_settings, null!));
         }
 
         private VDriveNotificationSuppressionStore CreateStore()
         {
-            return new VDriveNotificationSuppressionStore(_fileService, _filePath);
+            return new VDriveNotificationSuppressionStore(_settings, _location);
         }
 
         private void CreateFile(params string[] lines)

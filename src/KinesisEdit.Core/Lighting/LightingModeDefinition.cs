@@ -12,6 +12,13 @@ namespace KinesisEdit.Core.Lighting
         /// <summary>The mode this row describes.</summary>
         public required LightingMode Mode { get; init; }
 
+        /// <summary>
+        /// The mode's UI caption, quoted from the "Mode (UI name)" column of
+        /// specs/07-lighting.md §3 (and its "UI captions (RGB app)" list) — e.g. "Disable" for
+        /// <see cref="LightingMode.Disabled"/> and "Starlight" for the <c>[star]</c> token.
+        /// </summary>
+        public required string DisplayName { get; init; }
+
         /// <summary>Key-backlight file token without brackets (§2.2); null when the mode has none.</summary>
         public string? KeyBacklightToken { get; init; }
 

@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="460"
+             x:Class="KinesisEdit.Controls.ColorPickerView"
+             x:DataType="vm:ColorPickerViewModel">
+  <!-- The shared colour picker of specs/07-lighting.md §4. The ring, the R/G/B sliders and the
+       hex field are Avalonia's own ColorView; on top of it sit the spec's ten premixed swatches
+       and the twelve custom slots persisted to cust_color_1..12 in app_settings.txt (08 §3).
+       Every Avalonia Color stays on this side of the boundary — the view model only ever sees
+       "#RRGGBB" (docs/app/app-shell.md, invariant 6). -->
+  <StackPanel Spacing="10">
+    <ColorView Color="{Binding ColorHex, Mode=TwoWay, Converter={StaticResource HexColorToColor}}"
+               ColorSpectrumShape="Ring"
+               IsAlphaEnabled="False"
+               IsAlphaVisible="False"
+               IsColorPaletteVisible="False"
+               IsAccentColorsVisible="False"
+               IsColorModelVisible="False"
+               HorizontalAlignment="Left" />
+
+    <!-- The ten premixed swatches of §4, in the spec's order. Black is the "no colour" value, so
+         it doubles as the eraser for per-key colouring. -->
+    <StackPanel Spacing="4">
+      <TextBlock Text="Premixed" Classes="muted" />
+      <ItemsControl ItemsSource="{x:Static vm:ColorPickerViewModel.PremixedColors}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="vm:ColorSwatch">
+            <Button Classes="colorSwatch"
+                    ToolTip.Tip="{Binding Name}"
+                    Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectSwatchCommand}"
+                    CommandParameter="{Binding}">
+              <Border Classes="colorSwatchFill"
+                      Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <!-- The twelve custom slots. An empty slot is drawn as a hollow square: an unset slot is "no
+         swatch stored", not black (08 §3). -->
+    <StackPanel Spacing="4">
+      <TextBlock Text="Custom" Classes="muted" />
+      <ItemsControl ItemsSource="{Binding CustomColors}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="vm:CustomColorSlotViewModel">
+            <Button Classes="colorSwatch"
+                    ToolTip.Tip="{Binding Caption}"
+                    IsEnabled="{Binding HasColor}"
+                    Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectCustomColorCommand}"
+                    CommandParameter="{Binding}">
+              <Border Classes="colorSwatchFill"
+                      Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Never available in demo mode: spec 08 §3 bans saving app settings there. -->
+      <Button Content="{x:Static vm:ColorPickerViewModel.StoreCustomColorCaption}"
+              Command="{Binding StoreCustomColorCommand}"
+              HorizontalAlignment="Left" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

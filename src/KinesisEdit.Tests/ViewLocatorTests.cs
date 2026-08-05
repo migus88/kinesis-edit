@@ -14,6 +14,8 @@ namespace KinesisEdit.Tests
             Assert.Equal(typeof(EditorPlaceholderView), ViewLocator.ResolveViewType(typeof(EditorPlaceholderViewModel)));
             Assert.Equal(typeof(SavantElitePedalView), ViewLocator.ResolveViewType(typeof(SavantElitePedalViewModel)));
             Assert.Equal(typeof(KeyboardEditorView), ViewLocator.ResolveViewType(typeof(KeyboardEditorViewModel)));
+            Assert.Equal(typeof(KeyboardSettingsView), ViewLocator.ResolveViewType(typeof(KeyboardSettingsViewModel)));
+            Assert.Equal(typeof(LightingTabView), ViewLocator.ResolveViewType(typeof(LightingTabViewModel)));
             Assert.Equal(typeof(ToastView), ViewLocator.ResolveViewType(typeof(ToastViewModel)));
             Assert.Equal(typeof(LoadingView), ViewLocator.ResolveViewType(typeof(LoadingViewModel)));
         }

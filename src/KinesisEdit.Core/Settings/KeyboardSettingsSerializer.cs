@@ -20,8 +20,6 @@ namespace KinesisEdit.Core.Settings
         private const string LowercaseOffValue = "off";
         private const string AutoValue = "auto";
         private const string ManualValue = "manual";
-        private const string PitchBlackMode = "P";
-        private const string BreatheMode = "B";
         private const string LayoutFilePrefix = "layout";
         private const string LedFilePrefix = "led";
         private const string FileSuffix = ".txt";
@@ -94,9 +92,11 @@ namespace KinesisEdit.Core.Settings
                 return;
             }
 
+            // The mode-string domain (0-9, P, B) is LedModeValues': the settings panel's picker
+            // builds its options from the same list, so it cannot offer a value refused here.
             var value = capability.LedMode == LedModeKind.LedFileName
                 ? FormatLedFileName(ledMode)
-                : FormatLedModeString(ledMode);
+                : LedModeValues.Normalize(ledMode);
 
             if (value is null)
             {
@@ -123,35 +123,6 @@ namespace KinesisEdit.Core.Settings
                 && trimmedValue[LedFilePrefix.Length] is >= '1' and <= '9')
             {
                 return LedFilePrefix + trimmedValue[LedFilePrefix.Length] + FileSuffix;
-            }
-
-            return null;
-        }
-
-        private static string? FormatLedModeString(string ledMode)
-        {
-            var trimmedValue = ledMode.Trim();
-
-            if (trimmedValue.Length != 1)
-            {
-                return null;
-            }
-
-            var mode = char.ToUpperInvariant(trimmedValue[0]);
-
-            if (char.IsAsciiDigit(mode))
-            {
-                return trimmedValue;
-            }
-
-            if (mode == PitchBlackMode[0])
-            {
-                return PitchBlackMode;
-            }
-
-            if (mode == BreatheMode[0])
-            {
-                return BreatheMode;
             }
 
             return null;
