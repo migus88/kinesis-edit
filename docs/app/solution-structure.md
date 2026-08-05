@@ -33,8 +33,9 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 - `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, macro/lighting capabilities; specs 02 and 03 §1–4) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
 - `Keys` — master key-token registry: `KeyRegistry` with 1282 entries in spec registration order across the three token dialects (spec 05 §3, §7).
 - `Geometry` — physical layer geometries: `GeometryCatalog`, seven layout families with fully materialized layers (spec 05 §4).
+- `Firmware` — version-file parsing and firmware feature gating: `VersionFileParser`, `FirmwareGateCatalog`/`FirmwareGateService`, `FirmwareSupportUrls` (specs 09 §1–2, 11 §11.1, 12 §1) — see [`firmware.md`](firmware.md).
 
-Parsers/serializers and drive discovery are not implemented yet.
+Layout/lighting parsers and serializers, and drive discovery, are not implemented yet.
 
 ## Notes
 
