@@ -4,7 +4,7 @@ The static domain-data layer of `KinesisEdit.Core`: the spec's reference tables 
 
 | Namespace | Entry point | Encodes | Owning spec |
 |---|---|---|---|
-| `KinesisEdit.Core.Devices` | `DeviceCatalog` | Master device table + v-Drive detection/path data | specs 02; 03 §1–4 |
+| `KinesisEdit.Core.Devices` | `DeviceCatalog` | Master device table + v-Drive detection/path data + macro/tap-and-hold limits | specs 02; 03 §1–4; 04 §5.3; 06 §1, §2.1, §4, §6; 11 §11.1 |
 | `KinesisEdit.Core.Keys` | `KeyRegistry` | Master key-token table, three dialects | spec 05 §1–3, §7 |
 | `KinesisEdit.Core.Geometry` | `GeometryCatalog` | Physical layer geometry per layout family | spec 05 §1.3–1.5, §4, §5.3–5.4 |
 
@@ -13,10 +13,45 @@ The static domain-data layer of `KinesisEdit.Core`: the spec's reference tables 
 - `All` — 9 `DeviceDefinition`s in legacy-app-id order 0→8: SE2, Advantage2, FS Edge, FS Pro, Edge RGB, CROSSFIRE keypad, TKO, Adv360, Adv360 Professional.
 - `GetById(DeviceId)` — throws for unknown ids. `DeviceId` enum = `None` + those 9.
 - `FindByVolumeLabel(string?)` — spec 03 §2 exact-match rule: uppercase + trim, then compare against each device's candidates (11 labels catalog-wide); null when nothing matches.
+- Split across `DeviceCatalog.cs` (device definitions, detection/path data) and `DeviceCatalog.Capabilities.cs` (per-family `MacroCapability`/`TapAndHoldCapability` factories, shared as one instance per family).
 
-`DeviceDefinition` (record) per device: ordered volume-label candidates (≤3, primary first, stored uppercase; empty for Adv360 Pro), marker folder/file for detection (03 §3.1), version/settings folder+file with per-device overrides baked in (Adv2/SE2 `active`, Adv360 `settings.txt` doubles as version file; 03 §3.3), `LayerCount`, `LayoutScheme` (`LayoutFileScheme`/`LayoutSchemeKind`: `NumberedProfiles` 1–9 — Adv360 additionally `HasReadOnlyFactoryProfile` for profile 0, Adv2 `QwertyDvorakPositions`, SE2 `PedalFile`, `None`), `Macros` (`MacroCapability` — the FS Edge/Pro 24→100 macro bump is pure data: `GatedMaxMacroCount` + `MacroCountGateFirmware` 1.0.340, never evaluated here), `Lighting` (`LightingCapability` — `LightingKind`; TKO edge strip 9 left + 15 bottom + 9 right = 33; Adv360 6 indicator LEDs), `ServingApp`, `ConfigurationUrl`/`SupportUrl` (Adv360 Pro), `VDriveShortcutHint`, `HardwareNotes`, `IsProgrammable` (false: CROSSFIRE, Adv360 Pro), `IsFutureDevice` (CROSSFIRE).
+`DeviceDefinition` (record) per device: ordered volume-label candidates (≤3, primary first, stored uppercase; empty for Adv360 Pro), marker folder/file for detection (03 §3.1), version/settings folder+file with per-device overrides baked in (Adv2/SE2 `active`, Adv360 `settings.txt` doubles as version file; 03 §3.3), `LayerCount`, `LayoutScheme` (`LayoutFileScheme`/`LayoutSchemeKind`: `NumberedProfiles` 1–9 — Adv360 additionally `HasReadOnlyFactoryProfile` for profile 0, Adv2 `QwertyDvorakPositions`, SE2 `PedalFile`, `None`), `Macros` (`MacroCapability`), `TapAndHold` (`TapAndHoldCapability`) — both tabulated below, `SupportsMultiModifiers`, `Lighting` (`LightingCapability` — `LightingKind`; TKO edge strip 9 left + 15 bottom + 9 right = 33; Adv360 6 indicator LEDs), `ServingApp`, `ConfigurationUrl`/`SupportUrl` (Adv360 Pro), `VDriveShortcutHint`, `HardwareNotes`, `IsProgrammable` (false: CROSSFIRE, Adv360 Pro), `IsFutureDevice` (CROSSFIRE).
+
+`SupportsMultiModifiers`: whether a key position may hold one of the 11 four-character combination codes (`MultiModifierCodes`). **True for the Advantage 360 alone.** 11 §11.2 titles the dialog "Advantage360 only" and its file syntax "Adv360 format only"; 05 §1.3 tags the `Multimodifiers` field "(Adv360)" and 05 §5.7 is headed "Multimodifiers (Adv360)". 04 §2.3's "written by the RGB-family serializer" is implementation lineage, not scope — 04 §4.3 calls the same writer "the RGB-family/Gen2 serializer" and 04 §1.3 scopes the detection rule to the shared "(Gen1 RGB/TKO and Gen2 parser)". The Adv360 Professional is `false`: it is configured through the ZMK web GUI and is not SmartSet-programmable at all. Not to be confused with the `hyper`/`meh` key tokens (codes 11090/11091), whose firmware gates 09 §2 calls "Hyper/Meh multimodifiers" — a different feature.
 
 `FirmwareVersion` (same namespace): value type for version-file text per spec 09 §1.1 — first three dot-separated numeric tokens → major/minor/revision, non-numeric minor/revision → 0, trailing text ignored; lexicographic `IComparable<FirmwareVersion>`. Gate *data* references it; gate *evaluation* does not live here.
+
+`ValueRange` (same namespace): `sealed record ValueRange(int Minimum, int Maximum, int Default)` + `Contains(int)`. Inclusive bounds plus the value applied when the file carries none. Used for macro speed/repeat (06 §4) and the tap-and-hold delay (11 §11.1).
+
+### `MacroCapability` per device (02 master table; 04 §5.3; 06 §1, §2.1, §4, §6)
+
+| | SE2 | Adv2 | FS Edge / FS Pro | Edge RGB / TKO | Adv360 | CROSSFIRE / 360 Pro |
+|---|---|---|---|---|---|---|
+| `IsSupported` | true | true | true | true | true | false (`None`) |
+| `MaxMacroCount` | – | – | 24 | 100 | 100 | – |
+| `GatedMaxMacroCount` / `MacroCountGateFirmware` | – | – | 100 @ 1.0.340 | – | – | – |
+| `MaxCharactersPerMacro` | – | 300 (weighted keystrokes) | 300 (weighted keystrokes) | 300 (weighted keystrokes) | 500 (serialized keystroke text) | – |
+| `MaxTotalKeystrokes` | – | – | 7200 | 7200 | 7200 | – |
+| `SlotsPerKey` / `PersistedSlotsPerKey` | – | 5 / 3 | 5 / 3 | 5 / 5 | – (flat list) | – |
+| `UsesFlatMacroList` | false | false | false | false | **true** | false |
+| `MaxCoTriggersPerMacro` / `PersistedCoTriggersPerMacro` | – | 3 / 3 | 4 / **1** | 4 / 4 | 4 / 4 | – |
+| `Speed` (min–max, default) | – | 0–9, 0 | 0–9, 0 | 1–9, 5 | 1–9, 5 | – |
+| `Repeat` (min–max, default) | – | 0–9, 0 | 0–9, 0 | 1–9, 1 | 1–9, 1 | – |
+| `ClampsOutOfRangeValues` | false | false | false | false | **true** | false |
+
+Notes: `– ` = null, i.e. the spec states no value. The two per-macro metrics are not interchangeable: "weighted keystrokes" is 1 per keystroke plus 2 per attached modifier (04 §5.3, the same count as the 7200 budget), while the Adv360 500 measures the serialized value side of the macro line (06 §6) — see [`keyboard-model.md`](keyboard-model.md). Speed `0` means "use the keyboard's global speed" (`macro_speed=` in the settings file). Persisted ≠ model on purpose: the FS/Adv2 serializers write only slots 1–3 (06 §1) and the old FS parser/serializer keeps only the first co-trigger (06 §2.1, §3); the Adv2 serializer writes `{speedN}` but **no** repeat token (06 §3). SE2 has no per-macro speed/repeat setting at all — the pedal dialect embeds `speed1/3/5` tokens inside the macro (12 §4.4, §6). Adv2 has no macro-count or layout-keystroke limit in the spec. Adv360 keeps macros in one flat per-layout list tagged with trigger key + layer, so it has no slots.
+
+### `TapAndHoldCapability` per device (11 §11.1; 04 §5.3; 09 §2)
+
+| | SE2 | Adv2 | FS Edge / FS Pro | Edge RGB | TKO | Adv360 | CROSSFIRE / 360 Pro |
+|---|---|---|---|---|---|---|---|
+| `IsSupported` | false (`None`) | true | true | true | true | true | false (`None`) |
+| `MaxPerLayout` | – | 10 | 10 | 10 | 10 | 10 | – |
+| `DelayMilliseconds` | – | 1–999 | 1–999 | 1–999 | 1–999 | 1–999 | – |
+| `DefaultDelayMilliseconds` (= `DelayMilliseconds.Default`) | – | 250 | 250 | 250 | 250 | **150** | – |
+| `MinimumFirmware` | – | 1.0.516 | 1.0.480 | 1.0.1 | – | – | – |
+
+Firmware minimums are data only (never compared here). File syntax is `[position]>[tap][t&h<delay>][hold]` (11 §11.1) — parsing/serializing lives elsewhere.
 
 ## Keys — `KeyRegistry`
 
@@ -58,6 +93,8 @@ Every layer is **fully materialized**: the spec's delta descriptions (RGB vs Edg
 ## Deliberately not here
 
 - **No I/O or drive discovery** — detection *data* only (labels, marker paths); probing the filesystem is a later module.
-- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`); comparing them to a device's actual firmware happens in `KinesisEdit.Core.Firmware` (see [`firmware.md`](firmware.md)).
+- **No firmware-gate evaluation** (spec 09 §2) — gates are carried as data (`MacroCountGateFirmware`, `TapAndHoldCapability.MinimumFirmware`); comparing them to a device's actual firmware happens in `KinesisEdit.Core.Firmware` (see [`firmware.md`](firmware.md)). **These two versions are also encoded as `FirmwareGate` entries** (`ExpandedMacroCount`, `TapAndHold`) in `FirmwareGateCatalog` — the same spec 09 §2 numbers in two places. `FirmwareGateCatalog` is the authority for *evaluation*; the capability fields exist so a device's limits can be read without a firmware probe. Change both together, or consolidate them.
+- **No macro/tap-and-hold behaviour** — the catalog states the limits, ranges and defaults; counting keystrokes, clamping out-of-range speed/repeat, and enforcing the caps belong to the model (see [`keyboard-model.md`](keyboard-model.md)) and the parsers.
+
 - **No parsers/serializers** for layout/macro files (specs 04, 06) — this module is the vocabulary those will consume.
 - **No legacy font/rendering metadata** from the spec 05 tables (font names/sizes of the Pascal UI).
