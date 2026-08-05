@@ -38,6 +38,8 @@ Implements the spec 09 §1.1 line rule: prefix-match each line case-insensitivel
 | TKO | KBD = 1.0.0 (exact) | `MacroFirmwareWarning` |
 | Advantage 360 | KBD ≥ 1.0.69 | `TapAndHoldMacroActions` |
 
+**Who evaluates gates today.** The keyboard editor is the first consumer ([keyboard-editor.md](keyboard-editor.md)): `MacroPanelViewModel.ResolveMaxMacroCount` reads `ExpandedMacroCount` to pick between `MacroCapability.MaxMacroCount` and `GatedMaxMacroCount` (no dialog — the number simply changes), while `TapAndHold` and `CustomMacroDelays` are asked before their feature panels open and refuse with a dialog. That dialog is `KinesisEdit.ViewModels.FirmwareFeatureGate`, which shows `FirmwareGate.Message` plus an `Update Firmware` button wired to `FirmwareSupportUrls.FindUrl` ([feature-dialogs.md](feature-dialogs.md)); where a row stores no message — spec 09 §2 quotes the refusal only under the Freestyle rows — the calling feature supplies a fallback pinned by test to the row that does. `MacroFirmwareWarning`, `RippleAndFireballEffects`, `LightingLayerCustomization`, `ExpansionPackOffer` and `TapAndHoldMacroActions` still have no caller.
+
 ## Support pages — `FirmwareSupportUrls`
 
 - `FindUrl(DeviceId)` — the spec 09 §2 firmware support page the legacy "Upgrade Firmware" buttons open (FS Pro, FS Edge, Adv2, RGB, TKO, Adv360), null for other devices. Kept here rather than in the device catalog because spec 02 gives `DeviceDefinition.SupportUrl` only for the Adv360 Professional.
@@ -103,4 +105,4 @@ The Linux row is a **deliberate deviation**: the legacy app had no Linux build a
 - **No HTTP and no update dialog** — Core defines `IVersionManifestClient`, the manifest, and the row model; the actual GET, the firmware-debug raw-JSON dialog, the captions and the hidden-lighting-row window shrink are the app layer ([app-shell.md](app-shell.md)).
 - **No `update.upd` handling and no app self-update** (spec 09 §3.1, §4) — the legacy hands-free flow (download ZIP → unzip → replace `firmware/update.upd`) was never enabled and there is no self-updater; every update goes through the support links of §3 step 7.
 - **No expansion-pack lighting-state precondition** — the `ExpansionPackOffer` gate covers only the LED-version condition; "no led file contains the `fn ` prefix yet" (spec 07) is lighting-file knowledge, issue #9.
-- **No refusal-dialog UI** — gates carry the wording and support URLs as data; showing dialogs with "Update Firmware" buttons is the editor UIs, issues #15/#16.
+- **No refusal-dialog UI** — gates carry the wording and support URLs as data; the dialog with the "Update Firmware" button lives in the app layer (`FirmwareFeatureGate`, [feature-dialogs.md](feature-dialogs.md)), and the lighting/settings gates are still waiting for issue #16.

@@ -262,5 +262,42 @@
     <Style Selector="Button.editorTab.selected /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBrush}" />
     </Style>
+
+    <!-- ===== Feature panels (issue #15) =====================================================
+         The panels of specs/11-feature-dialogs.md render inline over the editor rather than as
+         separate windows, so the scrim is what makes them read as modal: it dims the editor and,
+         being hit-test visible, swallows every click aimed at it. Translucent black works in both
+         theme variants, which is why it is a literal rather than a theme brush. -->
+    <Style Selector="Border.overlayScrim">
+      <Setter Property="Background" Value="#66000000" />
+    </Style>
+    <Style Selector="TextBlock.overlayTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- The small caption over a field or a group of them, in the panels and the macro editor. -->
+    <Style Selector="TextBlock.fieldLabel">
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- A read-only action field: it shows what the next captured keystroke (or the Search Keys
+         picker) put there, and must not be a TextBox — focus in one auto-suspends capture, which
+         is exactly what the Tap and Hold fields need to stay clear of. -->
+    <Style Selector="Border.actionField">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="MinHeight" Value="32" />
+    </Style>
+    <Style Selector="Border.actionField.armed">
+      <Setter Property="Background" Value="{DynamicResource KeyCapListeningBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapListeningBorderBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
   </Application.Styles>
 </Application>

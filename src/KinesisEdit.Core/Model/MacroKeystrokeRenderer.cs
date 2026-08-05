@@ -24,11 +24,29 @@ namespace KinesisEdit.Core.Model
         /// <summary>The pedal different-press-release token — a single space between braces (06 §2.2, §7.6).</summary>
         public const string DifferentPressReleaseToken = "{ }";
 
+        /// <summary>The Gen1-family bottom-layer line prefix (04 §3.1, 06 §3 step 1).</summary>
+        public const string FnLayerPrefix = "fn ";
+
+        /// <summary>Index of the bottom (Fn/keypad) layer on the two-layer devices (04 §3.1, §3.2).</summary>
+        public const int BottomLayerIndex = 1;
+
+        /// <summary>
+        /// The layer prefix a line of <paramref name="dialect"/> carries on layer
+        /// <paramref name="layerIndex"/> (04 §3.1–§3.3, 06 §3 step 1): <c>fn </c> for the bottom
+        /// layer of the Gen1 family, and nothing anywhere else — the Legacy dialect marks the
+        /// keypad layer with a <c>kp-</c> prefix <em>inside</em> the first bracket and Gen2 with a
+        /// <c>&lt;...&gt;</c> header line, neither of which is part of the line's own text.
+        /// </summary>
+        public static string LayerPrefixFor(TokenDialect dialect, int layerIndex)
+        {
+            return dialect == TokenDialect.Gen1 && layerIndex == BottomLayerIndex ? FnLayerPrefix : string.Empty;
+        }
+
         /// <summary>
         /// Renders the full macro line of 06 §3 in <paramref name="dialect"/>'s tokens.
-        /// <paramref name="layerPrefix"/> is the caller's layer prefix ("fn " for the bottom layer
-        /// on non-Gen2 devices, empty on Gen2 where the layer comes from the <c>&lt;...&gt;</c>
-        /// header; 04 §3.1, §3.3).
+        /// <paramref name="layerPrefix"/> is the caller's layer prefix (<see cref="LayerPrefixFor"/>
+        /// answers it: "fn " for the bottom layer on the Gen1 family, empty on Gen2 where the layer
+        /// comes from the <c>&lt;...&gt;</c> header; 04 §3.1, §3.3).
         /// </summary>
         public static string Render(Macro macro, TokenDialect dialect, string layerPrefix = "")
         {

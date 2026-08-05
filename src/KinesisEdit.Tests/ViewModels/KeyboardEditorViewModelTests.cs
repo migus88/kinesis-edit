@@ -14,6 +14,10 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeFolderPickerService _folderPicker = new();
+        private readonly FakeFilePickerService _filePicker = new();
+        private readonly FakeVDriveFileService _files = new();
+        private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
@@ -140,7 +144,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Tabs_ExceptTheKeysTab_AreVisibleButDisabled()
+        public async Task Tabs_ExceptTheKeysAndMacrosTabs_AreVisibleButDisabled()
         {
             var editor = await CreateLoadedEditorAsync();
 
@@ -148,10 +152,14 @@ namespace KinesisEdit.Tests.ViewModels
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
                 editor.Tabs.Select(tab => tab.Tab));
             Assert.True(editor.Tabs[0].IsEnabled);
-            Assert.All(editor.Tabs.Skip(1), tab => Assert.False(tab.IsEnabled));
+            Assert.True(editor.Tabs[1].IsEnabled);
+
+            // Lighting and Settings have nothing behind them until issue #16.
+            Assert.All(editor.Tabs.Skip(2), tab => Assert.False(tab.IsEnabled));
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
+            Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
+            Assert.False(editor.SelectTabCommand.CanExecute(editor.Tabs[2]));
         }
 
         [Fact]
@@ -159,12 +167,25 @@ namespace KinesisEdit.Tests.ViewModels
         {
             var editor = await CreateLoadedEditorAsync();
 
-            editor.SelectedTab = EditorTab.Macros;
-            editor.SelectTabCommand.Execute(editor.Tabs[2]);
+            editor.SelectedTab = EditorTab.Lighting;
+            editor.SelectTabCommand.Execute(editor.Tabs[3]);
 
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.Tabs[1].IsSelected);
+            Assert.False(editor.Tabs[2].IsSelected);
+            Assert.False(editor.Tabs[3].IsSelected);
+        }
+
+        [Fact]
+        public async Task SelectedTab_SetToTheMacrosTab_Opens()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.SelectedTab = EditorTab.Macros;
+
+            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
+            Assert.True(editor.Tabs[1].IsSelected);
+            Assert.True(editor.IsMacroPanelVisible);
         }
 
         [Fact]
@@ -347,7 +368,11 @@ namespace KinesisEdit.Tests.ViewModels
                 snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
                 _capture,
-                _notifications);
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher);
 
             _editors.Add(editor);
 

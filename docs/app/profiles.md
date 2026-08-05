@@ -11,10 +11,13 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 |---|---|---|---|
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Load(VDriveLocation, DeviceId, int)` | Reads/parses `layout<n>.txt` + `led<n>.txt` (where present) + keyboard settings into a fresh session | 03 §4.1/§4.3; 04 §4.2 |
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Save()` / `.SaveAs(int, bool)` | Validate → write layout → write led → (SaveAs+startup) update settings → eject → message | 03 §5.3 |
-| `KinesisEdit.Core.Profiles` | `ProfileSaveResult` | Outcome record: `Success`, `Violations`, `Ejected`, `PostSaveMessage` | 03 §5.3 |
+| `KinesisEdit.Core.Profiles` | `ProfileSession.Import(ImportedFileKind, lines)` | Replaces the session's layout **or** lighting from an imported file; writes nothing | 10 "Import"; 07 §1.4 |
+| `KinesisEdit.Core.Profiles` | `ProfileSaveResult`, `ProfileImportResult` | Outcome records: `Success`/`Violations`/`Ejected`/`PostSaveMessage`; `Kind`/`InvalidLines` | 03 §5.3; 04 §5 |
 | `KinesisEdit.Core.Profiles` | `ProfileReadOnlyException` | The Advantage 360 profile-0 guard | 02 "Profiles 0-9" |
 | `KinesisEdit.Core.Profiles` | `ProfileSaveMessageCatalog` | Per-device-family post-save wording (data only, like `FirmwareGateCatalog`) | 03 §5.3; 07 §1.3; 10 |
 | `KinesisEdit.Core.Profiles` | `ProfileLightingCodec` (internal) | Device → `LedFileParser`/`LedFileSerializer` dispatch | 07 §1.1-§1.4 |
+| `KinesisEdit.Core.Profiles` | `ProfileFileNames` (internal) | The one `layout<n>.txt` / `led<n>.txt` naming, shared by the drive paths, the `led_mode` settings value, and an export's base names | 03 §4.1; 07 §1.2; 11 §11.5 |
+| `KinesisEdit.Core.Transfer` | `ProfileExportPlanner.Plan(session, selection)` | The files an export writes, layout first ([feature-dialogs.md](feature-dialogs.md)) | 11 §11.5 |
 
 ## `ProfileSession`
 
@@ -28,6 +31,8 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 - Exposes `Layout` (`KeyboardLayout`), `Lighting` (`object?` — a `LightingModel`, `TkoLightingModel`,
   or `Advantage360LightingModel` depending on device; null where the device has none), `InvalidLines`
   (`IReadOnlyList<LayoutInvalidLine>`, `Keep` defaults false — 04 §5.2), `ProfileNumber`, `Device`.
+  The first three have a **private setter**: an `Import` replaces them wholesale, so callers must
+  hold the *session* and re-read them, never cache the `KeyboardLayout` reference.
 - `IsDirty` re-serializes `Layout` (+ `Lighting`) with the *same* serializers a save would use and
   compares the lines against the lines captured right after `Load` — no bespoke model equality.
   Because the baseline is captured by serializing the just-parsed model (not the raw file text),
@@ -74,6 +79,31 @@ directly through `Load` and through `SaveAs(0, ...)` from a session loaded at an
    isStartupProfile)`, where `isStartupProfile` is `setAsStartup || settings.StartupProfileNumber ==
    targetProfileNumber` (the settings snapshot captured at `Load`).
 
+## Import and export (`ProfileSession.Import`, `KinesisEdit.Core.Transfer`)
+
+`Import(kind, lines)` is deliberately **the same operation as `Load` from a different source**: the same
+`LayoutFileParser`/`ProfileLightingCodec` path runs, so an imported file behaves exactly as it would
+off the drive — a brand-new model (04 §4.2's full-model-wipe-on-load), invalid lines tracked rather
+than dropped (04 §5), nothing written anywhere.
+
+- `kind` is decided **before** the call by `Transfer.ImportClassifier` (07 §1.4), and reading the file
+  and enforcing its 50 KB maximum are the caller's job ([feature-dialogs.md](feature-dialogs.md)).
+- A **layout** import replaces `Layout` **and** `InvalidLines`; a **lighting** import replaces only
+  `Lighting` and reports the layout's invalid lines unchanged, so a caller can always re-render that
+  surface from `ProfileImportResult.InvalidLines`. Importing lighting into a device with no
+  profile-orchestrated led file throws `NotSupportedException` — defensive, since the classifier
+  answers `Lighting` only for the three devices that have one.
+- The **profile-0 guard runs first**, exactly as for `Save`: the Adv360 factory profile cannot be
+  imported into either. The `IsDirty` baseline stays the one captured at `Load`, so imported content
+  is unsaved edit state and a save writes it like any other edit.
+
+`Transfer.ProfileExportPlanner.Plan(session, selection)` is the read-only twin: it serializes the
+session with the *same* serializers a save uses (kept invalid lines included) and names the files
+through `ProfileFileNames`, layout first. It takes the concrete `ProfileSession` because that is the
+only place the layout, the lighting model and the profile number live together — and because Core's
+three lighting models share no base type, so a caller holding `object? Lighting` could not pick a
+serializer for it.
+
 ## Lighting dispatch — `ProfileLightingCodec`
 
 Only Freestyle Edge RGB, TKO, and Advantage 360 get a `Lighting` model and a written led file here.
@@ -104,13 +134,18 @@ one wording covers both cases.
 
 `ProfileSession` is sealed and opened through a static `Load`, so it cannot be substituted in a test.
 The app project therefore codes against `KinesisEdit.Services.IProfileSession` /
-`IProfileSessionFactory` — the same read-only surface (`Layout`, `Lighting`, `InvalidLines`,
-`ProfileNumber`, `CanSave`, `IsDirty`, `Save()`) — implemented for real by `ProfileSessionAdapter`
-(a pure pass-through) and `ProfileSessionFactory` (calls `ProfileSession.Load`, wraps the result).
-**Nothing is re-implemented above this module**; the seam exists only so the editor view models can
-be unit-tested without a drive. Its consumer is the keyboard editor
-([keyboard-editor.md](keyboard-editor.md)), which loads `LayoutScheme.FirstProfileNumber` on open
-and calls `Save()` off the UI thread; `SaveAs` and `IsDirty` have no consumer yet.
+`IProfileSessionFactory` — `Layout`, `Lighting`, `InvalidLines`, `ProfileNumber`, `CanSave`,
+`IsDirty`, `Save()`, `Import(kind, lines)`, `PlanExport(selection)` — implemented for real by
+`ProfileSessionAdapter` (a pure pass-through; its `PlanExport` is the one line that calls
+`ProfileExportPlanner.Plan` on the wrapped session) and `ProfileSessionFactory` (calls
+`ProfileSession.Load`, wraps the result). **Nothing is re-implemented above this module**; the seam
+exists only so the editor view models can be unit-tested without a drive. Its consumer is the
+keyboard editor ([keyboard-editor.md](keyboard-editor.md)), which loads
+`LayoutScheme.FirstProfileNumber` on open, calls `Save()` off the UI thread, and reaches `Import`
+and `PlanExport` from the feature panels ([feature-dialogs.md](feature-dialogs.md)). Import is gated
+on `CanSave` — the same flag that keeps the Adv360 factory profile read-only, so the editor never
+even reaches Core's guard — while an export only needs a session to exist, which excludes demo mode.
+`SaveAs` and `IsDirty` still have no consumer.
 
 ## Deliberately not here
 

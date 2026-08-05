@@ -10,158 +10,441 @@
              x:Class="KinesisEdit.Views.KeyboardEditorView"
              x:DataType="vm:KeyboardEditorViewModel">
   <!-- The per-device editor of specs/10-apps-and-ui.md: the device and its open profile, the
-       layer switch, the section tabs, and the keyboard picture the remap workflow runs on. The
-       picture itself is the generic KeyboardView; everything device-specific reaches it as data. -->
-  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20,16">
+       layer switch, the section tabs, the keyboard picture the remap workflow runs on, the macro
+       panel of the Macros tab, and the feature panels of specs/11-feature-dialogs.md rendered as
+       an overlay over all of it. The picture itself is the generic KeyboardView; everything
+       device-specific reaches it as data. -->
+  <UserControl.Styles>
+    <!-- A macro-list / step row: a full-width, flat button that reads as a list entry. -->
+    <Style Selector="Button.rowButton">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.rowButton /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="Button.rowButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource KeyCapHoverBrush}" />
+    </Style>
+    <Style Selector="Button.rowButton.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource KeyCapModifiedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapModifiedBorderBrush}" />
+    </Style>
 
-    <!-- Header: what is open, and how much of it has been remapped. -->
-    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-        <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
+    <!-- The framed, scrollable areas of the macro panel (recorded steps, the profile's macros). -->
+    <Style Selector="Border.listFrame">
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="4" />
+    </Style>
+  </UserControl.Styles>
 
-        <StackPanel Orientation="Horizontal"
-                    Spacing="10"
-                    VerticalAlignment="Center"
-                    IsVisible="{Binding ProfileCaption, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}">
-          <TextBlock Text="·" Classes="muted" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding ProfileCaption}" Classes="muted" VerticalAlignment="Center" />
-        </StackPanel>
+  <Panel>
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20,16">
 
-        <!-- Demo mode never touched the drive and can never save (specs/03-vdrive-and-files.md §3.5). -->
-        <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
-                   Classes="statusWarning"
-                   FontWeight="SemiBold"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding IsDemoMode}" />
-      </StackPanel>
+      <!-- Header: what is open, and how much of it has been remapped. -->
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="{Binding DeviceName}" Classes="heading" VerticalAlignment="Center" />
 
-      <TextBlock Grid.Column="1"
-                 Text="{Binding RemapCounterCaption}"
-                 FontWeight="SemiBold"
-                 VerticalAlignment="Center" />
-    </Grid>
-
-    <!-- Layer switch and the profile-wide actions. The switch is built from the model's layers,
-         so it is two pills on a Freestyle Edge RGB and five on an Advantage 360 (issue #41). -->
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
-      <ItemsControl Grid.Column="0" ItemsSource="{Binding Layers}" VerticalAlignment="Center">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <StackPanel Orientation="Horizontal" Spacing="6" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="vm:KeyboardLayerViewModel">
-            <Button Classes="layerTab"
-                    Classes.selected="{Binding IsSelected}"
-                    Content="{Binding Caption}"
-                    Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectLayerCommand}"
-                    CommandParameter="{Binding}" />
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-        <TextBlock Text="{x:Static vm:KeyboardEditorViewModel.SavingCaption}"
-                   Classes="muted"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding IsBusy}" />
-        <Button Content="Reset Key" Command="{Binding ResetKeyCommand}" />
-        <Button Content="Reset Layer" Command="{Binding ResetLayerCommand}" />
-        <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" />
-        <Button Content="Save" Command="{Binding SaveCommand}" Classes="primaryAction" />
-      </StackPanel>
-    </Grid>
-
-    <!-- Section tabs. Everything but Keys is disabled until issues #15/#16 fill it in. -->
-    <ItemsControl Grid.Row="2" ItemsSource="{Binding Tabs}" Margin="0,14,0,0">
-      <ItemsControl.ItemsPanel>
-        <ItemsPanelTemplate>
-          <StackPanel Orientation="Horizontal" Spacing="2" />
-        </ItemsPanelTemplate>
-      </ItemsControl.ItemsPanel>
-      <ItemsControl.ItemTemplate>
-        <DataTemplate DataType="vm:EditorTabViewModel">
-          <Button Classes="editorTab"
-                  Classes.selected="{Binding IsSelected}"
-                  Content="{Binding Caption}"
-                  IsEnabled="{Binding IsEnabled}"
-                  Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectTabCommand}"
-                  CommandParameter="{Binding}" />
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
-
-    <Panel Grid.Row="3" Margin="0,12,0,0">
-      <TextBlock Text="Loading profile..."
-                 Classes="muted"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 IsVisible="{Binding IsLoading}" />
-
-      <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
-      <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
-        <Grid RowDefinitions="Auto,*"
-              IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
-          <!--
-            No "Esc cancels" here: while a key is listening the capture service swallows every
-            physical key, Escape included, so Escape is assigned like any other key (a keyboard
-            must be able to carry an Escape remap). Cancelling is therefore a pointer action.
-          -->
-          <StackPanel Grid.Row="0"
-                      Orientation="Horizontal"
-                      Spacing="12"
-                      Margin="0,0,0,8"
+          <StackPanel Orientation="Horizontal"
+                      Spacing="10"
                       VerticalAlignment="Center"
-                      IsVisible="{Binding IsListening}">
-            <TextBlock Text="Press a key to assign it to the highlighted key."
-                       Classes="statusWarning"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center" />
-            <Button Content="Cancel"
-                    Command="{Binding CancelRemapCommand}"
-                    VerticalAlignment="Center" />
+                      IsVisible="{Binding ProfileCaption, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="·" Classes="muted" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ProfileCaption}" Classes="muted" VerticalAlignment="Center" />
           </StackPanel>
 
-          <Border Grid.Row="1"
-                  Classes="keyboardBoard"
-                  IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-            <controls:KeyboardView DataContext="{Binding SelectedLayer}"
-                                   KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
-          </Border>
-        </Grid>
+          <!-- Demo mode never touched the drive and can never save (specs/03-vdrive-and-files.md §3.5). -->
+          <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
+                     Classes="statusWarning"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsDemoMode}" />
+        </StackPanel>
 
-        <TextBlock Text="This section is not implemented yet."
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+          <TextBlock Text="{Binding RemapCounterCaption}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding MacroCounterCaption}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Layer switch and the profile-wide actions. The switch is built from the model's layers,
+           so it is two pills on a Freestyle Edge RGB and five on an Advantage 360 (issue #41). -->
+      <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+        <ItemsControl Grid.Column="0" ItemsSource="{Binding Layers}" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="6" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:KeyboardLayerViewModel">
+              <Button Classes="layerTab"
+                      Classes.selected="{Binding IsSelected}"
+                      Content="{Binding Caption}"
+                      Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectLayerCommand}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="{x:Static vm:KeyboardEditorViewModel.SavingCaption}"
+                     Classes="muted"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}" />
+          <Button Content="Reset Key" Command="{Binding ResetKeyCommand}" />
+          <Button Content="Reset Layer" Command="{Binding ResetLayerCommand}" />
+          <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" />
+          <Button Content="Save" Command="{Binding SaveCommand}" Classes="primaryAction" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Section tabs plus the feature panels of spec 11. Lighting and Settings stay disabled
+           until issue #16 fills them in; every feature button reports its own availability
+           through the command's CanExecute, so there is no visibility logic here. -->
+      <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,14,0,0">
+        <ItemsControl Grid.Column="0" ItemsSource="{Binding Tabs}" VerticalAlignment="Bottom">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="2" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:EditorTabViewModel">
+              <Button Classes="editorTab"
+                      Classes.selected="{Binding IsSelected}"
+                      Content="{Binding Caption}"
+                      IsEnabled="{Binding IsEnabled}"
+                      Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectTabCommand}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+          <Button Content="Tap and Hold" Command="{Binding TapAndHoldCommand}" Margin="6,0,0,4" />
+          <Button Content="Insert Delay" Command="{Binding InsertDelayCommand}" Margin="6,0,0,4" />
+          <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
+          <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />
+          <Button Content="Import" Command="{Binding ImportCommand}" Margin="6,0,0,4" />
+        </WrapPanel>
+      </Grid>
+
+      <Panel Grid.Row="3" Margin="0,12,0,0">
+        <TextBlock Text="Loading profile..."
                    Classes="muted"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
-                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Macros,Lighting,Settings'}" />
-      </Panel>
-    </Panel>
+                   IsVisible="{Binding IsLoading}" />
 
-    <!-- Lines of the loaded file the parser could not apply (specs/04-layout-files.md §5.2). They
-         are collapsed by default but never dropped silently. -->
-    <Expander Grid.Row="4"
-              Margin="0,12,0,0"
-              HorizontalAlignment="Stretch"
-              IsVisible="{Binding HasInvalidLines}">
-      <Expander.Header>
-        <TextBlock Text="Some lines of this profile could not be applied"
-                   Classes="statusWarning"
-                   FontWeight="SemiBold" />
-      </Expander.Header>
-      <ItemsControl ItemsSource="{Binding InvalidLineMessages}" MaxHeight="160">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <StackPanel Spacing="2" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="x:String">
-            <TextBlock Text="{Binding}" TextWrapping="Wrap" Classes="muted" />
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </Expander>
-  </Grid>
+        <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
+        <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
+          <!-- The board serves both tabs: the macro's trigger is the key selected on it, so the
+               Macros tab docks its panel beside the picture rather than replacing it. -->
+          <Grid ColumnDefinitions="*,Auto"
+                IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros'}">
+            <Grid Grid.Column="0" RowDefinitions="Auto,*">
+              <!--
+                No "Esc cancels" here: while a key is listening the capture service swallows every
+                physical key, Escape included, so Escape is assigned like any other key (a keyboard
+                must be able to carry an Escape remap). Cancelling is therefore a pointer action.
+              -->
+              <StackPanel Grid.Row="0"
+                          Orientation="Horizontal"
+                          Spacing="12"
+                          Margin="0,0,0,8"
+                          VerticalAlignment="Center"
+                          IsVisible="{Binding IsListening}">
+                <TextBlock Text="Press a key to assign it to the highlighted key."
+                           Classes="statusWarning"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button Content="Cancel"
+                        Command="{Binding CancelRemapCommand}"
+                        VerticalAlignment="Center" />
+              </StackPanel>
+
+              <Border Grid.Row="1"
+                      Classes="keyboardBoard"
+                      IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+                <controls:KeyboardView DataContext="{Binding SelectedLayer}"
+                                       KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
+              </Border>
+            </Grid>
+
+            <!-- The macro editor of specs/10-apps-and-ui.md and specs/06-macros.md. Every number
+                 it shows — slot count, co-trigger cap, speed/repeat ranges, budgets — is the
+                 device's, so nothing here is Freestyle Edge RGB specific. -->
+            <ContentControl Grid.Column="1"
+                            Width="380"
+                            Margin="16,0,0,0"
+                            Content="{Binding MacroPanel}"
+                            IsVisible="{Binding IsMacroPanelVisible}">
+              <ContentControl.ContentTemplate>
+                <DataTemplate DataType="vm:MacroPanelViewModel">
+                  <!-- The panel scrolls, but Assign / Delete / Copy / Paste are pinned: they are
+                       what a macro edit ends in and must not need scrolling to reach. -->
+                  <Border Classes="card" Padding="14,12">
+                    <Grid RowDefinitions="*,Auto">
+                      <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="12" Margin="0,0,8,0">
+
+                          <!-- Macros match on the position's trigger key, not on its remapped
+                               action (05 §1.3), so this names that identity. -->
+                          <StackPanel Spacing="2">
+                            <TextBlock Text="TRIGGER KEY" Classes="fieldLabel" />
+                            <TextBlock Text="{Binding TriggerCaption}"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding HasTriggerKey}" />
+                          </StackPanel>
+
+                          <TextBlock Text="{Binding Message}"
+                                     Classes="statusWarning"
+                                     TextWrapping="Wrap"
+                                     IsVisible="{Binding HasMessage}" />
+
+                          <!-- One radio per macro slot of the trigger key (06 §1); the flat-list
+                               families (Advantage360) have none and hide the row. -->
+                          <StackPanel Spacing="4" IsVisible="{Binding UsesMacroSlots}">
+                            <TextBlock Text="SLOT" Classes="fieldLabel" />
+                            <ItemsControl ItemsSource="{Binding Slots}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <StackPanel Orientation="Horizontal" Spacing="6" />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:MacroSlotViewModel">
+                                  <Button Classes="layerTab"
+                                          Classes.selected="{Binding IsSelected}"
+                                          MinWidth="44"
+                                          Padding="10,6"
+                                          ToolTip.Tip="{Binding Preview}"
+                                          Command="{Binding $parent[ItemsControl].((vm:MacroPanelViewModel)DataContext).SelectSlotCommand}"
+                                          CommandParameter="{Binding}">
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                      <TextBlock Text="{Binding Caption}" />
+                                      <TextBlock Text="•" IsVisible="{Binding IsOccupied}" />
+                                    </StackPanel>
+                                  </Button>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+
+                          <StackPanel Spacing="6">
+                            <TextBlock Text="KEYSTROKES" Classes="fieldLabel" />
+
+                            <!-- Backspace here is the panel's button: the physical Backspace key is
+                                 recordable macro content, never an editing shortcut (06 §2.2). -->
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <Button Content="Record" Command="{Binding RecordCommand}" />
+                              <Button Content="Stop" Command="{Binding StopRecordingCommand}" />
+                              <Button Content="Backspace" Command="{Binding BackspaceCommand}" />
+                              <Button Content="Clear" Command="{Binding ClearCommand}" />
+                            </StackPanel>
+
+                            <TextBlock Text="Recording — every key you press is added to the macro."
+                                       Classes="statusWarning"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding IsRecording}" />
+
+                            <Border Classes="listFrame" MinHeight="56">
+                              <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding Steps.Items}">
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:MacroStepViewModel">
+                                      <Grid ColumnDefinitions="26,*,Auto" Margin="2,1">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Position}"
+                                                   Classes="muted"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Caption}"
+                                                   TextWrapping="Wrap"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="2"
+                                                Content="✕"
+                                                Padding="6,1"
+                                                FontSize="11"
+                                                Command="{Binding $parent[ItemsControl].((vm:MacroPanelViewModel)DataContext).RemoveStepCommand}"
+                                                CommandParameter="{Binding}" />
+                                      </Grid>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                              </ScrollViewer>
+                            </Border>
+                          </StackPanel>
+
+                          <!-- The modifiers the trigger must be pressed with (06 §2.1, §5); the
+                               device's cap is held by the panel, which reports a refusal above. -->
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="CO-TRIGGERS" Classes="fieldLabel" />
+                            <ItemsControl ItemsSource="{Binding CoTriggers}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                  <WrapPanel />
+                                </ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:MacroCoTriggerViewModel">
+                                  <Button Classes="layerTab"
+                                          Classes.selected="{Binding IsOn}"
+                                          Content="{Binding Caption}"
+                                          MinWidth="0"
+                                          Padding="10,5"
+                                          Margin="0,0,6,6"
+                                          Command="{Binding $parent[ItemsControl].((vm:MacroPanelViewModel)DataContext).ToggleCoTriggerCommand}"
+                                          CommandParameter="{Binding}" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+
+                          <!-- Playback speed and multiplay, clamped to the device's ranges (06 §4). -->
+                          <Grid ColumnDefinitions="*,*">
+                            <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0" IsVisible="{Binding HasSpeed}">
+                              <TextBlock Text="SPEED" Classes="fieldLabel" />
+                              <NumericUpDown Value="{Binding Speed, Mode=TwoWay}"
+                                             Minimum="{Binding SpeedMinimum}"
+                                             Maximum="{Binding SpeedMaximum}"
+                                             Increment="1"
+                                             FormatString="0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4" Margin="6,0,0,0" IsVisible="{Binding HasRepeat}">
+                              <TextBlock Text="REPEAT" Classes="fieldLabel" />
+                              <NumericUpDown Value="{Binding Repeat, Mode=TwoWay}"
+                                             Minimum="{Binding RepeatMinimum}"
+                                             Maximum="{Binding RepeatMaximum}"
+                                             Increment="1"
+                                             FormatString="0" />
+                            </StackPanel>
+                          </Grid>
+
+                          <!-- Breaching a budget is reported, never refused (06 §6); Validate() at
+                               save time is the backstop. -->
+                          <StackPanel Spacing="3">
+                            <TextBlock Text="BUDGET" Classes="fieldLabel" />
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                              <TextBlock Grid.Row="0" Grid.Column="0" Text="This macro" Classes="muted" />
+                              <TextBlock Grid.Row="0" Grid.Column="1"
+                                         Text="{Binding Budget.MacroCaption}"
+                                         Classes.statusError="{Binding Budget.IsMacroOverBudget}" />
+                              <TextBlock Grid.Row="1" Grid.Column="0" Text="Profile keystrokes" Classes="muted" />
+                              <TextBlock Grid.Row="1" Grid.Column="1"
+                                         Text="{Binding Budget.TotalCaption}"
+                                         Classes.statusError="{Binding Budget.IsTotalOverBudget}" />
+                              <TextBlock Grid.Row="2" Grid.Column="0" Text="Macros" Classes="muted" />
+                              <TextBlock Grid.Row="2" Grid.Column="1"
+                                         Text="{Binding Budget.MacroCountCaption}"
+                                         Classes.statusError="{Binding Budget.IsMacroCountOverBudget}" />
+                            </Grid>
+                            <TextBlock Text="{Binding Budget.OverflowMessage}"
+                                       Classes="statusWarning"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding Budget.IsMacroOverBudget}" />
+                          </StackPanel>
+
+                          <!-- Every macro of the profile, each rendered as the file will carry it
+                               (06 §3) — the Advantage360's macro repository, shown on every device. -->
+                          <StackPanel Spacing="4">
+                            <TextBlock Text="MACROS IN THIS PROFILE" Classes="fieldLabel" />
+                            <Border Classes="listFrame" MinHeight="40">
+                              <ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding Macros}">
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:MacroListEntryViewModel">
+                                      <Button Classes="rowButton"
+                                              Classes.selected="{Binding IsSelected}"
+                                              Command="{Binding $parent[ItemsControl].((vm:MacroPanelViewModel)DataContext).SelectMacroCommand}"
+                                              CommandParameter="{Binding}">
+                                        <StackPanel Spacing="1">
+                                          <TextBlock Text="{Binding TriggerCaption}"
+                                                     FontSize="12"
+                                                     FontWeight="SemiBold" />
+                                          <TextBlock Text="{Binding Text}"
+                                                     FontSize="11"
+                                                     Classes="muted"
+                                                     TextWrapping="Wrap" />
+                                        </StackPanel>
+                                      </Button>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                              </ScrollViewer>
+                            </Border>
+                          </StackPanel>
+                        </StackPanel>
+                      </ScrollViewer>
+
+                      <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
+                        <Button Content="Assign" Command="{Binding AssignCommand}" Classes="primaryAction" />
+                        <Button Content="Delete" Command="{Binding DeleteCommand}" />
+                        <Button Content="Copy" Command="{Binding CopyCommand}" />
+                        <Button Content="Paste" Command="{Binding PasteCommand}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ContentControl.ContentTemplate>
+            </ContentControl>
+          </Grid>
+
+          <TextBlock Text="This section is not implemented yet."
+                     Classes="muted"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Lighting,Settings'}" />
+        </Panel>
+      </Panel>
+
+      <!-- Lines of the loaded file the parser could not apply (specs/04-layout-files.md §5.2). They
+           are collapsed by default but never dropped silently. -->
+      <Expander Grid.Row="4"
+                Margin="0,12,0,0"
+                HorizontalAlignment="Stretch"
+                IsVisible="{Binding HasInvalidLines}">
+        <Expander.Header>
+          <TextBlock Text="Some lines of this profile could not be applied"
+                     Classes="statusWarning"
+                     FontWeight="SemiBold" />
+        </Expander.Header>
+        <ItemsControl ItemsSource="{Binding InvalidLineMessages}" MaxHeight="160">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="2" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="x:String">
+              <TextBlock Text="{Binding}" TextWrapping="Wrap" Classes="muted" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Expander>
+    </Grid>
+
+    <!-- The feature panels of spec 11, hosted inline rather than as separate windows so keystroke
+         capture never has to cross a window boundary. ViewLocator resolves the open overlay's own
+         view; the scrim below it swallows every click aimed at the editor underneath. -->
+    <Border Classes="overlayScrim" IsVisible="{Binding HasActiveOverlay}">
+      <ContentControl Content="{Binding ActiveOverlay}"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Margin="20" />
+    </Border>
+  </Panel>
 </UserControl>

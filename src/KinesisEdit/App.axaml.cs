@@ -107,11 +107,17 @@ namespace KinesisEdit
             // serves every session the shell opens.
             var pedalFiles = new PedalFileService(fileService);
 
+            // Both pickers defer their owner window exactly as the message-box presenter does:
+            // the storage provider hangs off a TopLevel, and no window exists yet at this point.
             var editorFactory = new EditorViewModelFactory(
                 new ProfileSessionFactory(),
                 () => ResolveCaptureService(desktop),
                 notifications,
-                pedalFiles);
+                pedalFiles,
+                new AvaloniaFolderPickerService(() => FindOwnerWindow(desktop)),
+                new AvaloniaFilePickerService(() => FindOwnerWindow(desktop)),
+                fileService,
+                urlLauncher);
 
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, updatePresenter, urlLauncher);
             _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, editorFactory);

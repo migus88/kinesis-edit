@@ -16,6 +16,10 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeFolderPickerService _folderPicker = new();
+        private readonly FakeFilePickerService _filePicker = new();
+        private readonly FakeVDriveFileService _files = new();
+        private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
@@ -268,7 +272,11 @@ namespace KinesisEdit.Tests.ViewModels
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
                 _capture,
-                _notifications);
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher);
 
             _editors.Add(editor);
 

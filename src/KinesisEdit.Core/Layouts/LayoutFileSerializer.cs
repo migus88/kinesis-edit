@@ -15,11 +15,11 @@ namespace KinesisEdit.Core.Layouts
     /// </summary>
     public static class LayoutFileSerializer
     {
-        /// <summary>The Gen1-family bottom-layer line prefix (04 §3.1).</summary>
-        private const string FnLinePrefix = "fn ";
+        /// <summary>The Gen1-family bottom-layer line prefix (04 §3.1), shared with the renderer.</summary>
+        private const string FnLinePrefix = MacroKeystrokeRenderer.FnLayerPrefix;
 
         /// <summary>Index of the bottom (Fn/keypad) layer on two-layer devices (04 §3.1, §3.2).</summary>
-        private const int BottomLayerIndex = 1;
+        private const int BottomLayerIndex = MacroKeystrokeRenderer.BottomLayerIndex;
 
         /// <summary>Serializes <paramref name="layout"/> with no kept lines (04 §4.3).</summary>
         public static IReadOnlyList<string> Serialize(KeyboardLayout layout)

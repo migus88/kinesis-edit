@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Input;
 using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -12,13 +13,16 @@ namespace KinesisEdit.Tests.Services
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeVDriveFileService _fileService = new();
+        private readonly FakeFolderPickerService _folderPicker = new();
+        private readonly FakeFilePickerService _filePicker = new();
+        private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly PedalFileService _pedalFiles;
         private readonly EditorViewModelFactory _factory;
 
         public EditorViewModelFactoryTests()
         {
             _pedalFiles = new PedalFileService(_fileService);
-            _factory = new EditorViewModelFactory(_profiles, () => _capture, _notifications, _pedalFiles);
+            _factory = CreateFactory(() => _capture);
         }
 
         [Fact]
@@ -62,16 +66,12 @@ namespace KinesisEdit.Tests.Services
         {
             var resolutions = 0;
 
-            var factory = new EditorViewModelFactory(
-                _profiles,
-                () =>
-                {
-                    resolutions++;
+            var factory = CreateFactory(() =>
+            {
+                resolutions++;
 
-                    return _capture;
-                },
-                _notifications,
-                _pedalFiles);
+                return _capture;
+            });
 
             Assert.Equal(0, resolutions);
 
@@ -85,16 +85,12 @@ namespace KinesisEdit.Tests.Services
         {
             var resolutions = 0;
 
-            var factory = new EditorViewModelFactory(
-                _profiles,
-                () =>
-                {
-                    resolutions++;
+            var factory = CreateFactory(() =>
+            {
+                resolutions++;
 
-                    return _capture;
-                },
-                _notifications,
-                _pedalFiles);
+                return _capture;
+            });
 
             factory.Create(TestDevices.CreateSnapshot(DeviceId.SavantElite2, VDriveConnectionStatus.CannotAccess));
             factory.Create(TestDevices.CreateSnapshot(DeviceId.Tko));
@@ -111,10 +107,35 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void Constructor_WithoutACollaborator_Throws()
         {
-            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(null!, () => _capture, _notifications, _pedalFiles));
-            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(_profiles, null!, _notifications, _pedalFiles));
-            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(_profiles, () => _capture, null!, _pedalFiles));
-            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(_profiles, () => _capture, _notifications, null!));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                null!, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, null!, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, null!, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, _notifications, null!, _folderPicker, _filePicker, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, _notifications, _pedalFiles, null!, _filePicker, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, null!, _fileService, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, null!, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, null!));
+        }
+
+        private EditorViewModelFactory CreateFactory(Func<IKeystrokeCaptureService> captureResolver)
+        {
+            return new EditorViewModelFactory(
+                _profiles,
+                captureResolver,
+                _notifications,
+                _pedalFiles,
+                _folderPicker,
+                _filePicker,
+                _fileService,
+                _urlLauncher);
         }
 
         public void Dispose()

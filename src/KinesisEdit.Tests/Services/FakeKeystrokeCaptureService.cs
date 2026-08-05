@@ -22,6 +22,12 @@ namespace KinesisEdit.Tests.Services
         /// <summary>How often <see cref="Dispose"/> was called.</summary>
         public int DisposeCount { get; private set; }
 
+        /// <summary>How often <see cref="Suspend"/> was called.</summary>
+        public int SuspendCount { get; private set; }
+
+        /// <summary>How often <see cref="Resume"/> was called.</summary>
+        public int ResumeCount { get; private set; }
+
         /// <summary>Whether anything is still listening to <see cref="KeystrokeCaptured"/>.</summary>
         public bool HasSubscribers => KeystrokeCaptured is not null;
 
@@ -42,11 +48,13 @@ namespace KinesisEdit.Tests.Services
 
         public void Suspend()
         {
+            SuspendCount++;
             IsSuspended = true;
         }
 
         public void Resume()
         {
+            ResumeCount++;
             IsSuspended = false;
         }
 
@@ -59,6 +67,24 @@ namespace KinesisEdit.Tests.Services
             {
                 Key = key,
                 PhysicalKey = PhysicalKeyCode.None
+            });
+        }
+
+        /// <summary>
+        /// Raises a keystroke for <paramref name="key"/> struck while
+        /// <paramref name="heldModifiers"/> were down — what macro recording folds into the
+        /// step's modifier set (specs/05-key-model.md §5.1).
+        /// </summary>
+        public void RaiseKeystroke(KeyDefinition key, params KeyDefinition[] heldModifiers)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            ArgumentNullException.ThrowIfNull(heldModifiers);
+
+            KeystrokeCaptured?.Invoke(new CapturedKeystroke
+            {
+                Key = key,
+                PhysicalKey = PhysicalKeyCode.None,
+                HeldModifiers = heldModifiers
             });
         }
 

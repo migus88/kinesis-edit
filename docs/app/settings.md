@@ -65,6 +65,6 @@ Constructor takes `IVDriveFileService`. Saves go through `UpdateSettingsFile` (r
 
 - **No local fallback location for `app_settings.txt`** when no drive is attached (03 §6 "next to the executable") — deferred by decision on issue #10; the service currently requires a `VDriveLocation`.
 - **No master-app registry globals** (08 §4 `HideAllNotifs`/`ShowAllNotifs`) — out of scope for #10; the `(not hidden and not "hide all") or "show all"` display rule belongs to the future notification layer.
-- **No settings UI** — dialogs, sliders, demo-mode save suppression (08 §5, 03 §3.5) are the editor UIs, issue #16 (and #15).
+- **No settings UI** — dialogs, sliders, demo-mode save suppression (08 §5, 03 §3.5) are the editor UIs, issue #16 (the editor's Settings tab is present and disabled).
 - **No startup_file↔led_mode pairing logic** (08 §5.1: the RGB profile slider writes both) — UI behavior, not serialization.
-- **No typed slot for the Adv2 startup layout file** (spec 02: `state.txt` carries a "startup layout file", e.g. `q_qwerty.txt`) — `StartupProfileNumber` is numeric, so such values read as null; harmless on disk (Adv2's capability never writes the key, the line survives verbatim), surfacing it is deferred to the Adv2 editor-UI work (issues #15/#16).
+- **No typed slot for the Adv2 startup layout file** (spec 02: `state.txt` carries a "startup layout file", e.g. `q_qwerty.txt`) — `StartupProfileNumber` is numeric, so such values read as null; harmless on disk (Adv2's capability never writes the key, the line survives verbatim), surfacing it is deferred to the Adv2 editor-UI work (issues #37/#42/#16).

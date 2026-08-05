@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
+using KinesisEdit.Core.Transfer;
 
 namespace KinesisEdit.Services
 {
@@ -41,6 +42,18 @@ namespace KinesisEdit.Services
         public ProfileSaveResult Save()
         {
             return _session.Save();
+        }
+
+        /// <inheritdoc />
+        public ProfileImportResult Import(ImportedFileKind kind, IReadOnlyList<string> lines)
+        {
+            return _session.Import(kind, lines);
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<ExportFile> PlanExport(ProfileExportSelection selection)
+        {
+            return ProfileExportPlanner.Plan(_session, selection);
         }
     }
 }
