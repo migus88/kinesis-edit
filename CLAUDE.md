@@ -35,6 +35,10 @@ Facts that shape the architecture (details in `specs/README.md` and the numbered
 - **Read tolerantly, write the current dialect** — devices in the field contain files written by older firmware/app versions.
 - **Feature availability is firmware-gated** by comparing device version files against hard-coded minimums (spec 09 has the gate table).
 
+## Custom commands
+
+- `/feature <issue-number | issue-url | description>` — drives a feature end to end: syncs `main`, researches and asks clarifying questions, updates or creates the GitHub issue, branches, implements via subagents (Workflow orchestration with adversarial review when ultracode is enabled), verifies the build/tests and doc updates, and opens a PR. Defined in `.claude/commands/feature.md`.
+
 ## Documentation rules (important)
 
 Documentation here is **agent-first**: the aim is that AI agents read `docs/app/` instead of source code to understand how a domain works, dipping into source only for particulars. Therefore:
