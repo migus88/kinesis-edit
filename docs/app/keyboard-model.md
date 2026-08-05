@@ -125,7 +125,7 @@ Token resolution falls back to the first dialect that names a key: the generic S
 
 ## Deliberately not here
 
-- **No file parsing, and no serialization above one macro line.** `MacroKeystrokeRenderer` writes the single 06 §3 macro line and exists so the model can measure the Adv360 cap; everything else belongs to the reader/writer module — remap/tap-and-hold/multi-modifier line syntax (04 §2), the Adv2 keypad-exception codes (05 §5.4) that disambiguate keypad-layer duplicates, the `fn `/`kp-`/`<header>` layer encodings, the Adv2 `{speedN}` and old-FS variants of the macro line, file assembly, and invalid-line tracking.
+- **No file parsing, and no serialization above one macro line.** `MacroKeystrokeRenderer` writes the single 06 §3 macro line and exists so the model can measure the Adv360 cap; everything else belongs to the reader/writer module — remap/tap-and-hold/multi-modifier line syntax (04 §2), the Adv2 keypad-exception codes (05 §5.4) that disambiguate keypad-layer duplicates, the `fn `/`kp-`/`<header>` layer encodings, the Adv2 `{speedN}` and old-FS variants of the macro line, file assembly, and invalid-line tracking. That module is `KinesisEdit.Core.Layouts` (see [`layout-files.md`](layout-files.md)), which consumes the tolerant load paths above.
 - **No firmware-gate evaluation** (spec 09 §2) — `GatedMaxMacroCount` and `TapAndHoldCapability.MinimumFirmware` are data the caller compares.
 - **No UI or binding concerns** — no change notification, no undo buffers, no `IsNew` editing flags, no display/caption rendering (05 §5.2 is a UI concern), no editor refusal rules such as "tap-and-hold not on top-layer A-Z" (04 §2.2).
 - **No drive I/O**, no profile files, no lighting state beyond the per-key `KeyColor` slot.

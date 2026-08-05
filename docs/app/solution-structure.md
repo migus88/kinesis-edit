@@ -50,8 +50,7 @@ Dependency direction is one-way: `KinesisEdit.Core.Tests` → Core ← app ← `
 - `Lighting` — in-memory lighting model and the `lighting/ledN.txt` parser/serializer for the RGB, TKO, and Advantage360 dialects, plus the mode/indicator catalogs and lighting firmware hooks (spec 07; 05 §5.5) — see [`lighting.md`](lighting.md).
 - `Settings` — the settings engine: typed keyboard-settings and app-settings models with pure line-based parsers/serializers, the Advantage2 4MB write gate, and the `SettingsService` load/save binding (spec 08 §1–3, §5; 09 §1.1) — see [`settings.md`](settings.md).
 - `Input` — the UI-free keystroke-capture state machines: `PhysicalKeyCode`/`PhysicalKeyMap`, `KeystrokeRecorder`, `KeystrokeCaptureSession` (started/suspended gating), `IKeystrokeCaptureService` (spec 10) — see [`keystroke-capture.md`](keystroke-capture.md).
-
-Layout parsers and serializers (specs 04, 06; issue #8) are not implemented yet.
+- `Layouts` — the layout-file engine: `LayoutFileParser`/`LayoutFileSerializer` for `layouts/layoutN.txt` and the Adv2 `qwerty.txt`/`dvorak.txt` (remaps, tap-and-hold, multi-modifiers, macros) across the four in-scope dialects, with invalid-line tracking and the Adv2 keypad-exception map (specs 04, 06; 05 §3.6, §3.12, §5.4) — see [`layout-files.md`](layout-files.md).
 
 ## Notes
 
