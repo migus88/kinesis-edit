@@ -1,5 +1,5 @@
 ---
-description: Drive a feature end-to-end from a GitHub issue ID or description — research, clarify, update/create the issue, branch, implement, open a PR
+description: Drive a feature end-to-end from a GitHub issue ID or description — research, clarify, update/create the issue, implement in an isolated git worktree, open a PR
 argument-hint: <issue-number | issue-url | feature description>
 ---
 
@@ -9,15 +9,16 @@ Input: `$ARGUMENTS` — either a GitHub issue reference (`123`, `#123`, or an is
 
 ## Operating principles
 
+- **Worktree isolation.** All implementation happens in a dedicated git worktree under `.claude/worktrees/`, branched from `origin/main` (phase 5). The shared checkout is never switched or dirtied, so multiple `/feature` sessions can run concurrently.
 - **Stay lean.** You are the orchestrator: hold decisions, plans, and diffs under review — not file contents. Delegate reading, exploring, and code-writing to subagents (Agent tool). Do not pull whole source files into your own context when a subagent summary will do.
 - **Docs before source.** This repo is documented agent-first: subagents should read `docs/app/` (and `specs/` for domain questions) before opening source files. See CLAUDE.md.
 - **Ultracode.** If a system-reminder says ultracode is enabled for this session, orchestrate research and implementation with the Workflow tool as described in phase 6. Otherwise use individual subagents and skip the heavy machinery.
 - **Documentation is part of the feature, not an afterthought.** Per CLAUDE.md, every change ships with its documentation: the module's agent-first doc in `docs/app/` (create it if the module is new), CLAUDE.md (new modules, changed commands), and README.md when user-facing behavior changes. A feature without its doc updates is incomplete and must not reach the PR phase.
 - **Unit tests are part of the feature, not an afterthought.** Per CLAUDE.md's testing rules, every change ships with unit tests for the behavior it adds and maintains the tests of the code it touches. The full suite must pass before the PR phase — a feature with failing or missing tests must not reach it.
 
-## Phase 1 — Sync main
+## Phase 1 — Sync
 
-Check `git status` first: if the working tree is dirty, stop and ask the user how to proceed (stash / commit / abort) — never discard changes silently. Then run `git checkout main && git pull`.
+`git fetch --prune origin`. Do **not** check out or pull `main`, and do not require a clean shared checkout — the shared checkout is never touched; the feature branches from `origin/main` inside its own worktree in phase 5.
 
 ## Phase 2 — Resolve the input
 
@@ -37,9 +38,13 @@ Check `git status` first: if the working tree is dirty, stop and ask the user ho
 
 Either way you now have an issue number `N` for the branch and PR.
 
-## Phase 5 — Branch
+## Phase 5 — Worktree
 
-`git checkout -b feature/N-short-slug`
+1. Determine the primary checkout's root: the first `worktree` line of `git worktree list --porcelain`. Do not use `--show-toplevel` — the session may already be inside another worktree.
+2. Create the worktree and its branch from `origin/main`:
+   `git worktree add "<root>/.claude/worktrees/feature-N-short-slug" -b feature/N-short-slug origin/main`
+   If the branch or worktree already exists (a previous run for the same issue), don't fight it: ask the user whether to resume in the existing worktree as-is or delete and recreate it.
+3. Switch the session into it: EnterWorktree with `path: "<root>/.claude/worktrees/feature-N-short-slug"`. Every subsequent phase — implementing, testing, committing, pushing — runs inside the worktree.
 
 ## Phase 6 — Implement
 
@@ -62,4 +67,15 @@ Either way you now have an issue number `N` for the branch and PR.
 1. Commit with a clear imperative message and push: `git push -u origin HEAD`.
 2. `gh pr create --title "…" --body "…"` (always pass the flags — the bare command drops into interactive mode). Body contains: what/why summary, notable decisions, test evidence, and `Closes #N`.
 
-Finish by reporting to the user: the issue link, the PR link, and a 3–5 sentence summary of what was built and any open questions.
+Finish by reporting to the user: the issue link, the PR link, the worktree path, and a 3–5 sentence summary of what was built and any open questions. Remind the user that the worktree stays until the PR is merged: they can tell you when it merges and you'll remove it (phase 9), or run `/clean-worktree` periodically to sweep up merged worktrees.
+
+## Phase 9 — Post-merge cleanup (deferred)
+
+The worktree outlives the PR creation. When the user reports the merge — possibly much later in the session:
+
+1. Verify: `gh pr view feature/N-short-slug --json state` — proceed only if the state is `MERGED`; otherwise report the actual state and stop.
+2. Leave the worktree first (a worktree cannot be removed while the session is inside it): ExitWorktree with `action: "keep"`.
+3. `git worktree remove <path>` — if removal is blocked only by disposable untracked files (build output and the like), retry with `--force`.
+4. `git branch -D feature/N-short-slug` (`-D` because squash/rebase merges are not ancestors of `main`; the merge was already verified in step 1), then `git fetch --prune`.
+
+If the session ends before the merge, that's fine — `/clean-worktree` removes merged worktrees on its next run.

@@ -42,7 +42,8 @@ Facts that shape the architecture (details in `specs/README.md` and the numbered
 
 ## Custom commands
 
-- `/feature <issue-number | issue-url | description>` — drives a feature end to end: syncs `main`, researches and asks clarifying questions, updates or creates the GitHub issue, branches, implements via subagents (Workflow orchestration with adversarial review when ultracode is enabled), runs the full unit-test suite (all tests must pass before a PR is opened), verifies the doc updates, and opens a PR. Defined in `.claude/commands/feature.md`.
+- `/feature <issue-number | issue-url | description>` — drives a feature end to end: fetches `origin`, researches and asks clarifying questions, updates or creates the GitHub issue, creates an isolated git worktree under `.claude/worktrees/` branched from `origin/main` (the shared checkout is never touched, so multiple sessions can work concurrently), implements via subagents (Workflow orchestration with adversarial review when ultracode is enabled), runs the full unit-test suite (all tests must pass before a PR is opened), verifies the doc updates, and opens a PR. When the user reports the PR merged, the worktree and branch are removed. Defined in `.claude/commands/feature.md`.
+- `/clean-worktree [all]` — removes finished worktrees: by default only those whose branch is merged into `origin/main` and that have no uncommitted changes; `all` force-removes every worktree after user confirmation. Defined in `.claude/commands/clean-worktree.md`.
 
 ## Testing rules (important)
 
