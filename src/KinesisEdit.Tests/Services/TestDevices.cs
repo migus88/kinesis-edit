@@ -15,10 +15,7 @@ namespace KinesisEdit.Tests.Services
     /// </summary>
     internal static class TestDevices
     {
-        public static VDriveLocation CreateLocation(
-            DeviceId deviceId,
-            bool isWritable = true,
-            VDriveDebugFlags debugFlags = VDriveDebugFlags.None)
+        public static VDriveLocation CreateLocation(DeviceId deviceId, bool isWritable = true)
         {
             var device = DeviceCatalog.GetById(deviceId);
 
@@ -26,8 +23,7 @@ namespace KinesisEdit.Tests.Services
             {
                 Device = device,
                 RootPath = Path.Combine(Path.DirectorySeparatorChar + "fake", device.VolumeLabels[0]),
-                IsWritable = isWritable,
-                DebugFlags = debugFlags
+                IsWritable = isWritable
             };
         }
 
@@ -88,13 +84,12 @@ namespace KinesisEdit.Tests.Services
             DeviceId deviceId,
             VDriveConnectionStatus status = VDriveConnectionStatus.Connected,
             VDriveHealth health = VDriveHealth.Ok,
-            VersionFileInfo? versionFile = null,
-            VDriveDebugFlags debugFlags = VDriveDebugFlags.None)
+            VersionFileInfo? versionFile = null)
         {
             var isDemoMode = status != VDriveConnectionStatus.Connected;
             var location = status == VDriveConnectionStatus.NotDetected
                 ? null
-                : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected, debugFlags);
+                : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected);
 
             return new DeviceSnapshot
             {

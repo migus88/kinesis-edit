@@ -29,7 +29,6 @@ namespace KinesisEdit
         private const string KeystrokeSpikeArgument = "--keystroke-spike";
 
         private DeviceMonitorService? _deviceMonitor;
-        private HttpVersionManifestClient? _manifestClient;
         private AvaloniaKeystrokeCaptureService? _captureService;
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
@@ -87,8 +86,8 @@ namespace KinesisEdit
             var sessions = new DeviceSessionManager(settings);
 
             // The owner is the topmost window rather than the shell, so a message box raised from
-            // inside a modal dialog (the firmware check's error and debug boxes) is owned by that
-            // dialog instead of by the window it already blocks.
+            // inside a modal dialog is owned by that dialog instead of by the window it already
+            // blocks.
             var presenter = new MessageBoxPresenter(() => FindOwnerWindow(desktop));
             var notifications = new NotificationService(presenter, sessions);
             var ejectNotifier = new VDriveEjectNotifier(
@@ -96,16 +95,6 @@ namespace KinesisEdit
                 notifications);
 
             var urlLauncher = new ProcessUrlLauncher();
-
-            _manifestClient = new HttpVersionManifestClient();
-
-            var updatePresenter = new FirmwareUpdatePresenter(
-                () => FindOwnerWindow(desktop),
-                _manifestClient,
-                new AssemblyAppVersionProvider(),
-                notifications,
-                urlLauncher,
-                UpdateCheckPlatformResolver.Resolve());
 
             // The Savant Elite2 editor reads active/pedals.txt through the same file service the
             // rest of the app uses (docs/app/savant-elite.md); it is stateless, so one instance
@@ -119,7 +108,7 @@ namespace KinesisEdit
                 notifications,
                 pedalFiles);
 
-            _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, updatePresenter, urlLauncher);
+            _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, urlLauncher);
             _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, editorFactory);
 
             return notifications;
@@ -145,7 +134,7 @@ namespace KinesisEdit
         /// opened window is the one on top — which is also the one blocking everything under it
         /// while it is modal. Activation alone is not enough: nothing reports
         /// <see cref="Window.IsActive"/> while the user is in another app, and a dialog raised in
-        /// that state must still be owned by the open update window rather than by the shell it
+        /// that state must still be owned by the open modal dialog rather than by the shell it
         /// already blocks.
         /// </summary>
         private static Window? FindOwnerWindow(IClassicDesktopStyleApplicationLifetime desktop)
@@ -168,7 +157,6 @@ namespace KinesisEdit
             _shell?.Dispose();
             _dashboard?.Dispose();
             _deviceMonitor?.Dispose();
-            _manifestClient?.Dispose();
 
             // After the shell, which closes the open editor first: the editor stops capture, this
             // detaches it from the window for good.

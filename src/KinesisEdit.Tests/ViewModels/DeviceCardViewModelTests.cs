@@ -8,13 +8,11 @@ namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
     /// The device card of specs/10-apps-and-ui.md: status wording, the Configure / Demo Mode
-    /// button, and the secondary button that swaps to "Check for Updates" on a connected device
-    /// whose app carries the firmware dialog (specs/09-firmware.md §3-§4).
+    /// button, and the secondary button that always rescans for the v-Drive.
     /// </summary>
     public class DeviceCardViewModelTests
     {
         private const string ScanCaption = "Scan for v-Drive";
-        private const string CheckForUpdatesCaption = "Check for Updates";
 
         [Theory]
         [InlineData(VDriveConnectionStatus.Connected, "Connected", StatusSeverity.Ok)]
@@ -92,7 +90,6 @@ namespace KinesisEdit.Tests.ViewModels
             var card = new DeviceCardViewModel(
                 snapshot,
                 new VDriveEjectNotifier(new FakeDeviceEjectService(), new FakeNotificationService()),
-                new FakeFirmwareUpdatePresenter(),
                 requested.Add,
                 () => Task.CompletedTask);
 
@@ -101,90 +98,32 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(snapshot, Assert.Single(requested));
         }
 
+        /// <summary>
+        /// The secondary button is the rescan button for every device and every connection state,
+        /// including the connected Freestyle Edge RGB that used to swap to 'Check for Updates'.
+        /// </summary>
         [Theory]
-        [InlineData(DeviceId.FreestyleEdgeRgb)]
-        [InlineData(DeviceId.Tko)]
-        [InlineData(DeviceId.Advantage360)]
-        public void SecondaryActionCaption_ForAConnectedDeviceWithTheUpdateDialog_IsCheckForUpdates(DeviceId deviceId)
+        [InlineData(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess)]
+        [InlineData(DeviceId.Tko, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.Advantage360, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.FreestyleEdge, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.FreestylePro, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.Advantage2, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.SavantElite2, VDriveConnectionStatus.Connected)]
+        [InlineData(DeviceId.Tko, VDriveConnectionStatus.CannotAccess)]
+        [InlineData(DeviceId.Tko, VDriveConnectionStatus.NotDetected)]
+        public async Task SecondaryAction_ForEveryDeviceAndStatus_ScansForTheVDrive(
+            DeviceId deviceId,
+            VDriveConnectionStatus status)
         {
-            var card = CreateCard(TestDevices.CreateSnapshot(deviceId), out _, out _);
+            var card = CreateCard(TestDevices.CreateSnapshot(deviceId, status), out _, out var scans);
 
-            Assert.True(card.CanCheckForUpdates);
-            Assert.Equal(CheckForUpdatesCaption, card.SecondaryActionCaption);
-        }
-
-        [Theory]
-        [InlineData(DeviceId.FreestyleEdge)]
-        [InlineData(DeviceId.FreestylePro)]
-        [InlineData(DeviceId.Advantage2)]
-        [InlineData(DeviceId.SavantElite2)]
-        public void SecondaryActionCaption_ForADeviceWithoutTheUpdateDialog_StaysScanForVDrive(DeviceId deviceId)
-        {
-            var card = CreateCard(TestDevices.CreateSnapshot(deviceId), out _, out _);
-
-            Assert.False(card.CanCheckForUpdates);
             Assert.Equal(ScanCaption, card.SecondaryActionCaption);
-        }
-
-        [Fact]
-        public void SecondaryActionCaption_WhenTheDriveIsNotWritable_StaysScanForVDrive()
-        {
-            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess), out _, out _);
-
-            Assert.False(card.CanCheckForUpdates);
-            Assert.Equal(ScanCaption, card.SecondaryActionCaption);
-        }
-
-        [Fact]
-        public async Task SecondaryActionCommand_ForAConnectedEligibleDevice_OpensTheUpdateDialog()
-        {
-            var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko);
-            var card = CreateCard(snapshot, out _, out var updatePresenter, out var scans);
-
-            await card.SecondaryActionCommand.ExecuteAsync(null);
-
-            Assert.Same(snapshot, Assert.Single(updatePresenter.PresentedDevices));
-            Assert.Empty(scans);
-        }
-
-        [Fact]
-        public async Task SecondaryActionCommand_ForAnIneligibleDevice_RunsAScan()
-        {
-            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Advantage2), out _, out var updatePresenter, out var scans);
 
             await card.SecondaryActionCommand.ExecuteAsync(null);
 
             Assert.Single(scans);
-            Assert.Empty(updatePresenter.PresentedDevices);
-        }
-
-        [Fact]
-        public async Task SecondaryActionCommand_ForAnEligibleDeviceThatIsNotConnected_RunsAScan()
-        {
-            var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess),
-                out _,
-                out var updatePresenter,
-                out var scans);
-
-            await card.SecondaryActionCommand.ExecuteAsync(null);
-
-            Assert.Single(scans);
-            Assert.Empty(updatePresenter.PresentedDevices);
-        }
-
-        [Fact]
-        public void Update_WhenTheDriveBecomesConnected_SwapsTheSecondaryCaption()
-        {
-            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess), out _, out _);
-            var changed = new List<string?>();
-            card.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
-
-            card.Update(TestDevices.CreateSnapshot(DeviceId.Tko));
-
-            Assert.Equal(CheckForUpdatesCaption, card.SecondaryActionCaption);
-            Assert.Contains(nameof(DeviceCardViewModel.SecondaryActionCaption), changed);
-            Assert.Contains(nameof(DeviceCardViewModel.CanCheckForUpdates), changed);
         }
 
         [Fact]
@@ -220,19 +159,9 @@ namespace KinesisEdit.Tests.ViewModels
         private static DeviceCardViewModel CreateCard(
             DeviceSnapshot snapshot,
             out FakeDeviceEjectService ejectService,
-            out FakeFirmwareUpdatePresenter updatePresenter)
-        {
-            return CreateCard(snapshot, out ejectService, out updatePresenter, out _);
-        }
-
-        private static DeviceCardViewModel CreateCard(
-            DeviceSnapshot snapshot,
-            out FakeDeviceEjectService ejectService,
-            out FakeFirmwareUpdatePresenter updatePresenter,
             out List<int> scans)
         {
             ejectService = new FakeDeviceEjectService();
-            updatePresenter = new FakeFirmwareUpdatePresenter();
 
             var scanCalls = new List<int>();
             scans = scanCalls;
@@ -240,7 +169,6 @@ namespace KinesisEdit.Tests.ViewModels
             return new DeviceCardViewModel(
                 snapshot,
                 new VDriveEjectNotifier(ejectService, new FakeNotificationService()),
-                updatePresenter,
                 _ => { },
                 () =>
                 {
