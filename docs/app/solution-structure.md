@@ -26,9 +26,15 @@ Dependency direction is one-way: app → Core ← tests. Domain logic goes in Co
 
 `.github/workflows/ci.yml` ("CI"): on PRs targeting `main` and pushes to `main`, matrix over macOS/Ubuntu/Windows, runs `dotnet build` + `dotnet test` on the solution in Release. SDK comes from `global.json` via `actions/setup-dotnet`.
 
-## Seed domain type
+## Core namespaces
 
-`KinesisEdit.Core/Devices/FirmwareVersion.cs` (`KinesisEdit.Core.Devices.FirmwareVersion`): immutable value type for versions read from device version files, per `specs/09-firmware.md` §1.1: first three dot-separated numeric tokens → major/minor/revision (non-numeric minor/revision token → 0, trailing text like `.us (4MB), 03/08/2019` ignored); lexicographic ordering via `IComparable<FirmwareVersion>`. It exists because firmware-version comparison gates feature availability (spec 09 §2) and it anchors the `Devices` namespace.
+`KinesisEdit.Core` currently contains the static domain-data layer — see [`domain-data.md`](domain-data.md) for the full contract:
+
+- `Devices` — device catalog: `DeviceCatalog`/`DeviceDefinition` (volume labels, marker files, v-Drive paths, macro/lighting capabilities; specs 02 and 03 §1–4) plus `FirmwareVersion`, the immutable value type for version-file parsing and comparison (spec 09 §1.1).
+- `Keys` — master key-token registry: `KeyRegistry` with 1282 entries in spec registration order across the three token dialects (spec 05 §3, §7).
+- `Geometry` — physical layer geometries: `GeometryCatalog`, seven layout families with fully materialized layers (spec 05 §4).
+
+Parsers/serializers and drive discovery are not implemented yet.
 
 ## Notes
 

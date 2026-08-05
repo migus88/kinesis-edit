@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configuration app (the legacy app is written in Pascal and unsupported). Target stack: **C# with Avalonia UI**. Primary platform is **macOS** — develop Mac-first — but Windows and Linux must also work.
 
-**Current status: scaffolded.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
+**Current status: scaffolded, static domain data implemented.** The solution lives at `src/KinesisEdit.sln` (Avalonia app `KinesisEdit`, UI-free domain library `KinesisEdit.Core`, xUnit tests `KinesisEdit.Core.Tests`); see `docs/app/solution-structure.md` for the layout and dependency rules. From the repo root:
 
 - Build: `dotnet build src/KinesisEdit.sln`
 - Test: `dotnet test src/KinesisEdit.sln`
@@ -17,7 +17,7 @@ Implementation is planned and tracked in GitHub issues — see the epic ([#1](ht
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
-- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently empty; populate as modules are built.
+- `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI) and `domain-data.md` (the static domain-data layer in Core). Add a doc per module as modules are built.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.
 
@@ -29,7 +29,7 @@ A SmartSet app is **a file editor with a keyboard-shaped UI**. Each programmable
 
 1. Drive discovery (find the mounted v-Drive by volume label + marker files).
 2. Parsers/serializers for the text file formats.
-3. An in-memory model per keyboard (layers → keys → remaps/macros).
+3. An in-memory model per keyboard (layers → keys → remaps/macros). Its static foundation — device catalog, key-token registry, layer geometries — is implemented in `KinesisEdit.Core` (see `docs/app/domain-data.md`).
 4. A per-device visual keyboard UI for editing that model.
 5. Save/sync/eject handling so the firmware reloads the files.
 
