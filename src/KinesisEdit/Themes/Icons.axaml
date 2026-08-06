@@ -42,6 +42,9 @@
       IconInformation    stroke only
       IconConfirmation   stroke only
       IconEject          fill only    - a solid triangle over a solid bar
+      IconClose          stroke only
+      IconRefresh        stroke only
+      IconExternalLink   stroke only
       IconScanning       stroke only
 
     Sizing hints are not re-declared here: `IconSize`, `IconStrokeThickness`, `SpinnerSize` and
@@ -114,6 +117,50 @@
        This one is filled, not stroked: both subpaths are closed regions, and stroking them would
        fatten the triangle by a pen width and turn the bar into an outlined box. -->
   <StreamGeometry x:Key="IconEject">M 8,2.3 L 13.7,9.1 L 2.3,9.1 Z M 1.7,11.4 L 14.3,11.4 L 14.3,13.7 L 1.7,13.7 Z</StreamGeometry>
+
+  <!-- Close: the bare cross a dismiss affordance is drawn with - a toast's "x", and nothing that
+       announces a state. Two strokes crossing on (8,8), arms 4 either side, so the mark spans half
+       its box the way the rest of the set's diagonals do.
+
+       This is deliberately NOT `IconError`, which is the same cross *inside the shared ring*: the
+       ring is what makes that mark a state, and a dismiss button wearing it would read as "this
+       toast is an error" rather than "close this". The two are separate keys for the same reason
+       `IconWarning` and `IconCannotAccess` are - a call site must name the one it means. -->
+  <StreamGeometry x:Key="IconClose">M 4,4 L 12,12 M 12,4 L 4,12</StreamGeometry>
+
+  <!-- Refresh: the static rescan mark - a circular arrow. Centre (8,8), radius 5; the arc runs
+       clockwise 290 degrees (hence the large-arc flag) from the 25-degree position round to 315,
+       leaving one gap on the right. At 315 the tangent is exactly 45 degrees, so the arc runs on
+       into a straight 3.5-long stub in that direction and the head is the square corner at its end,
+       one arm 3.3 to the left and one 3.3 up - the arrow's vertex pointing down and right, along
+       the direction of travel and across the gap.
+
+       Three numbers here are the pen's doing rather than the drawing's, and this mark was drawn
+       twice before they were right:
+
+       - The arms are 3.3 long, better than two pen widths. At 2.4 - the length that looks correct
+         on paper - a 1.5 stroke paints them as one blob and the head reads as a wart on the ring.
+       - The vertex is pushed *outside* the circle by the stub. A chevron hung straight off the
+         arc's end has its inner arm running alongside the arc about a pen width away, and the two
+         strokes merge into a solid wedge; 3.5 of tangent is what buys the arm its clearance.
+       - The arc starts at 25 degrees rather than at 3 o'clock, which is what keeps its first point
+         3.5 clear of the vertex. Closer, and the pen closes the gap and the mark reads as a ring
+         with something stuck to it rather than as an arrow chasing its own tail.
+
+       Not `IconScanning`, and it must not become it: that mark is the *busy* spinner, authored
+       lop-sided in its own 14x14 box so it can rotate without wobbling, and spoken for by the
+       `.spinner` style. This one never moves - it is the face of a button the user presses - so it
+       is drawn balanced on the 16px grid, its ink centred within a fraction of (8,8). -->
+  <StreamGeometry x:Key="IconRefresh">M 12.53,10.11 A 5,5 0 1 1 11.54,4.46 L 14.01,6.94 M 10.71,6.94 L 14.01,6.94 L 14.01,3.64</StreamGeometry>
+
+  <!-- External link: the north-east arrow that ends a link leaving the app ("Troubleshooting tips
+       ↗"). A diagonal shaft from (4,12) to (12,4) and an L-shaped head at the tip - along the top
+       and down the right - which the mitre join keeps square. It spans the same 4..12 as
+       `IconClose`, so the two read at one weight when they sit in the same row.
+
+       It exists as geometry because the law leaves no alternative: no Latin-1 character may stand
+       in for an icon, so the arrow a link ends with is a mark like any other. -->
+  <StreamGeometry x:Key="IconExternalLink">M 4,12 L 12,4 M 7,4 L 12,4 L 12,9</StreamGeometry>
 
   <!-- Scanning: the busy spinner, three quarters of a ring with the right quadrant open (the
        specimen is a 14px circle with `border-right-color: transparent`). The arc runs from the

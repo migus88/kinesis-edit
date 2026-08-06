@@ -92,9 +92,12 @@
       </Grid>
     </Border>
 
-    <Panel Grid.Row="1">
-      <ContentControl Content="{Binding CurrentView}" />
-      <views:NotificationOverlay x:Name="Notifications" />
-    </Panel>
+    <ContentControl Grid.Row="1" Content="{Binding CurrentView}" />
+
+    <!-- The overlay spans both rows, because a modal message box has to cover the app bar too:
+         left in row 1 it would dim the Home / Settings / Help pills and the status chip but leave
+         them clickable, and a dialog you can navigate out from behind is not modal. It is the
+         topmost child of the grid, so it also draws over the bar rather than under it. -->
+    <views:NotificationOverlay x:Name="Notifications" Grid.Row="0" Grid.RowSpan="2" />
   </Grid>
 </Window>

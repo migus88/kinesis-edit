@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Controls;
+using KinesisEdit.Core.Devices;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
@@ -54,6 +55,12 @@ namespace KinesisEdit.Tests.Design
                 (typeof(DeviceCardView).FullName!, "eject", "EjectButton"),
                 (typeof(WebToolCardView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(DashboardView).FullName!, "secondary", "SecondaryButton"),
+
+                // The dashboard's empty state (docs/design/mockups.md §1d) — the three weights of
+                // its action row, and the first call site `link` has ever had.
+                (typeof(NoDeviceView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(NoDeviceView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(NoDeviceView).FullName!, "link", "LinkButton"),
 
                 // The editor shell: the ⌥n legend on each layer segment of the tab bar, its two
                 // button roles, and the advisory strip's bordered `Review N`.
@@ -149,12 +156,14 @@ namespace KinesisEdit.Tests.Design
             return new TheoryData<string, string, string>
             {
                 // The settings panel draws the slider rows of specs/08-settings.md §5 and the
-                // "Disable" box beside them; the drop-down belongs to the troubleshoot panel's
-                // device picker, because the Freestyle Edge RGB carries no choice row.
+                // "Disable" box beside them. The drop-down is NOT here: the Freestyle Edge RGB
+                // this scene builds carries no choice row, and the troubleshoot panel's device
+                // picker — which used to be the app's only other ComboBox — is a ListBox of
+                // silhouettes since the §1d rebuild. TheSettingsChoiceRow_BridgesItsDropDown below
+                // reaches the one that is left, on the board that actually has it.
                 { typeof(KeyboardSettingsView).FullName!, nameof(Slider), "Slider" },
                 { typeof(KeyboardSettingsView).FullName!, nameof(CheckBox), "CheckBox" },
-                { typeof(ExportOverlayView).FullName!, nameof(CheckBox), "CheckBox" },
-                { typeof(NoDeviceView).FullName!, nameof(ComboBox), "ComboBox" }
+                { typeof(ExportOverlayView).FullName!, nameof(CheckBox), "CheckBox" }
             };
         }
 
@@ -181,6 +190,78 @@ namespace KinesisEdit.Tests.Design
 
             Assert.NotEmpty(controls);
             Assert.All(controls, control => Assert.Same(theme, control.Theme));
+        }
+
+        [AvaloniaFact]
+        public async Task TheSettingsChoiceRow_BridgesItsDropDown()
+        {
+            // The app's one remaining ComboBox: `led_mode` on a board whose capability spells it as
+            // a mode string (specs/08-settings.md §5.3) — the Freestyle Edge. The shared settings
+            // scene is the Freestyle Edge RGB, which has no choice row at all, so this builds the
+            // board that does rather than asserting on a control that is never realised.
+            using var scenes = new ViewSceneFactory();
+
+            var editor = scenes.CreateEditorFor(DeviceId.FreestyleEdge);
+            var view = new KeyboardSettingsView { DataContext = editor.Settings };
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var comboBox = Assert.Single(Descendants<Control>(view), control => control.GetType() == typeof(ComboBox));
+
+            Assert.Same(Theme("ComboBox"), comboBox.Theme);
+        }
+
+        [AvaloniaFact]
+        public async Task TheDevicePicker_ThemesItsOwnRows()
+        {
+            // The empty state's "Which device do you have?" list (docs/design/mockups.md §1d). It
+            // replaced a ComboBox: a drop-down hid six of the seven silhouettes behind a click.
+            // Like the token picker, it names its container theme rather than relying on a blanket
+            // ListBoxItem style — there is deliberately no such style any more.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(NoDeviceView).FullName!);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var list = Descendants<ListBox>(view).Single();
+            var picker = (NoDeviceViewModel)view.DataContext!;
+
+            Assert.Same(Theme("SelectableListRow"), list.ItemContainerTheme);
+            Assert.Equal(picker.Devices.Count, list.ItemCount);
+
+            foreach (var index in Enumerable.Range(0, picker.Devices.Count))
+            {
+                Assert.Same(Theme("SelectableListRow"), ContainerAt(list, index).Theme);
+            }
+        }
+
+        [AvaloniaFact]
+        public async Task ChoosingADeviceRow_MovesTheEmptyStatesWholeDescription()
+        {
+            // One pick drives the steps, the demo target and the support link; the list is the only
+            // thing that moves it.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(NoDeviceView).FullName!);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var list = Descendants<ListBox>(view).Single();
+            var picker = (NoDeviceViewModel)view.DataContext!;
+            var tkoIndex = picker.Devices.Select((option, index) => (option, index))
+                .Single(entry => entry.option.Id == DeviceId.Tko).index;
+
+            list.SelectedIndex = tkoIndex;
+
+            Assert.Equal(DeviceId.Tko, picker.SelectedDevice.Id);
+            Assert.Contains("SmartSet + Right Shift + V", picker.Steps.Select(step => step.ValueText));
+            Assert.Equal("Launch TKO in Demo Mode", picker.DemoModeCaption);
+
+            // ...and the other direction, which is what the two-way binding is for.
+            picker.SelectedDevice = DeviceCatalog.GetById(DeviceId.Advantage2);
+
+            Assert.Same(picker.SelectedOption, list.SelectedItem);
         }
 
         [AvaloniaFact]

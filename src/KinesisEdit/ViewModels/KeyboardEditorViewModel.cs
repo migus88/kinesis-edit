@@ -31,7 +31,7 @@ namespace KinesisEdit.ViewModels
         public const string ProfileCaptionPrefix = "Profile ";
 
         /// <summary>Caption of the loading indicator during a save. Not a spec string.</summary>
-        public const string SavingCaption = "Saving...";
+        public const string SavingCaption = "Saving…";
 
         /// <summary>
         /// The Demo Mode bar's copy, verbatim from mockup 1f. Purple, never amber: demo mode is its
@@ -1790,10 +1790,16 @@ namespace KinesisEdit.ViewModels
 
             if (message is not null)
             {
+                // A message that counts advisories must not arrive on the success face: the amber
+                // variant of mockup 1k exists for exactly this toast, and BuildPostSaveMessage has
+                // already folded "saved with N advisories" into the text above. Everything was
+                // still written — an advisory is a remark, never a failure — so this stays a toast
+                // rather than becoming a message box (docs/design/README.md: advisories never block).
                 _notifications.ShowToast(new ToastRequest
                 {
                     Title = SaveTitle,
-                    Message = message
+                    Message = message,
+                    Severity = Advisories.Total > 0 ? ToastSeverity.Advisory : ToastSeverity.Success
                 });
             }
         }

@@ -17,6 +17,59 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("Safe To Remove Hardware", viewModel.Message);
             Assert.False(viewModel.HasTitle);
             Assert.Equal(ToastPosition.BottomRight, viewModel.Position);
+            Assert.Equal(ToastSeverity.Success, viewModel.Severity);
+        }
+
+        [Fact]
+        public void Severity_WhenAdvisoryIsAskedFor_IsReported()
+        {
+            // Mockup 1k's second toast. Amber is the only warning colour in the app, and the notice
+            // still dismisses itself: an advisory never blocks.
+            var viewModel = new ToastViewModel(new ToastRequest
+            {
+                Title = "Saved with 3 advisories",
+                Message = "Everything was written. Review the warnings.",
+                Severity = ToastSeverity.Advisory
+            });
+
+            Assert.Equal(ToastSeverity.Advisory, viewModel.Severity);
+        }
+
+        [Fact]
+        public void DismissCommand_WhenExecuted_AsksTheHostToTakeTheNoticeDown()
+        {
+            var viewModel = new ToastViewModel(new ToastRequest
+            {
+                Message = "Safe To Remove Hardware"
+            });
+
+            var dismissed = new List<ToastViewModel>();
+
+            viewModel.DismissRequested += toast => dismissed.Add(toast);
+
+            viewModel.DismissCommand.Execute(null);
+
+            Assert.Equal([viewModel], dismissed);
+        }
+
+        [Fact]
+        public void DismissCommand_ExecutedTwice_AsksOnlyOnce()
+        {
+            // The host schedules a removal off this event. A second click on an `×` that is already
+            // fading must not schedule a second one.
+            var viewModel = new ToastViewModel(new ToastRequest
+            {
+                Message = "Safe To Remove Hardware"
+            });
+
+            var requests = 0;
+
+            viewModel.DismissRequested += _ => requests++;
+
+            viewModel.DismissCommand.Execute(null);
+            viewModel.DismissCommand.Execute(null);
+
+            Assert.Equal(1, requests);
         }
 
         [Fact]

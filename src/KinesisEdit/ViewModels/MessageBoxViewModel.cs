@@ -6,14 +6,36 @@ namespace KinesisEdit.ViewModels
     /// <summary>
     /// The app-wide message box of specs/11-feature-dialogs.md §11.9: title, message, icon, the
     /// standard Yes/No/OK/Cancel buttons plus caller-supplied custom buttons, and the
-    /// 'Hide this notification?' checkbox — which appears only when the request carries a
+    /// 'Don't ask this again' checkbox — which appears only when the request carries a
     /// suppression key. The answer leaves as a structured <see cref="MessageBoxOutcome"/>; the
     /// legacy "+100 modal result" encoding is not reproduced.
+    /// <para>
+    /// Mockup 1k labels the buttons by <b>outcome</b> ("Cancel · Key data only · Include macros"),
+    /// so each standard button's caption can be overridden per request. Only the label moves: Yes
+    /// is still Yes to every caller, which is what keeps their <c>switch</c> and their
+    /// <see cref="MessageBoxRequest.SuppressedResult"/> honest.
+    /// </para>
     /// </summary>
     public sealed class MessageBoxViewModel : ViewModelBase
     {
-        /// <summary>Caption of the suppression checkbox (specs/11-feature-dialogs.md §11.9).</summary>
-        public const string SuppressionCaption = "Hide this notification?";
+        /// <summary>
+        /// Caption of the suppression checkbox. Mockup 1k's wording, which supersedes spec
+        /// 11 §11.9's "Hide this notification?" — the flag it writes is unchanged
+        /// (specs/08-settings.md §3).
+        /// </summary>
+        public const string SuppressionCaption = "Don't ask this again";
+
+        /// <summary>Label of the Yes button when the request names no outcome of its own.</summary>
+        public const string DefaultYesCaption = "Yes";
+
+        /// <summary>Label of the No button when the request names no outcome of its own.</summary>
+        public const string DefaultNoCaption = "No";
+
+        /// <summary>Label of the OK button when the request names no outcome of its own.</summary>
+        public const string DefaultOkCaption = "OK";
+
+        /// <summary>Label of the Cancel button when the request names no outcome of its own.</summary>
+        public const string DefaultCancelCaption = "Cancel";
 
         /// <summary>The request being shown.</summary>
         public MessageBoxRequest Request { get; }
@@ -42,10 +64,22 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the standard No button is shown.</summary>
         public bool ShowsNo => Request.Buttons is MessageBoxButtons.YesNo or MessageBoxButtons.YesNoCancel;
 
-        /// <summary>Whether the 'Hide this notification?' checkbox belongs on this dialog.</summary>
+        /// <summary>Label of the Yes button — the request's own outcome name, or "Yes".</summary>
+        public string YesCaption => Caption(Request.YesCaption, DefaultYesCaption);
+
+        /// <summary>Label of the No button — the request's own outcome name, or "No".</summary>
+        public string NoCaption => Caption(Request.NoCaption, DefaultNoCaption);
+
+        /// <summary>Label of the OK button — the request's own outcome name, or "OK".</summary>
+        public string OkCaption => Caption(Request.OkCaption, DefaultOkCaption);
+
+        /// <summary>Label of the Cancel button — the request's own outcome name, or "Cancel".</summary>
+        public string CancelCaption => Caption(Request.CancelCaption, DefaultCancelCaption);
+
+        /// <summary>Whether the 'Don't ask this again' checkbox belongs on this dialog.</summary>
         public bool IsSuppressionAvailable => Request.HasSuppressionOption;
 
-        /// <summary>State of the 'Hide this notification?' checkbox.</summary>
+        /// <summary>State of the 'Don't ask this again' checkbox.</summary>
         public bool IsSuppressChecked
         {
             get => _isSuppressChecked;
@@ -142,6 +176,11 @@ namespace KinesisEdit.ViewModels
             Completed?.Invoke(outcome);
 
             return outcome;
+        }
+
+        private static string Caption(string? requested, string standard)
+        {
+            return string.IsNullOrWhiteSpace(requested) ? standard : requested;
         }
 
         private void CompleteWithCustomButton(MessageBoxButton? button)

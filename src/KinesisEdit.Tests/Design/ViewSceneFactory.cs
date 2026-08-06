@@ -102,17 +102,14 @@ namespace KinesisEdit.Tests.Design
 
             var viewType = typeof(App).Assembly.GetType(viewTypeName, throwOnError: true)!;
 
-            // The two windows that take their view model through the constructor get it there: the
-            // wiring they do in it (the notification overlay, the Enter/Escape contract) is part of
-            // what the scene has to exercise.
+            // The one window that takes its view model through the constructor gets it there: the
+            // wiring it does in it (attaching the notification overlay) is part of what the scene
+            // has to exercise. The message box is no longer a window — it is a card
+            // NotificationOverlay hosts — so it is built like every other view, from its
+            // DataContext.
             if (viewType == typeof(MainWindow))
             {
                 return new MainWindow(CreateShell(), _notifications);
-            }
-
-            if (viewType == typeof(MessageBoxWindow))
-            {
-                return new MessageBoxWindow(CreateMessageBox());
             }
 
             var view = (Control)Activator.CreateInstance(viewType)!;
@@ -234,8 +231,10 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>
         /// The shell view model. With <paramref name="withDevices"/> the dashboard shows the two
-        /// detected devices; without, nothing is detected at all and the shell settles into demo
-        /// mode — the state the purple status chip renders in.
+        /// detected devices; without, a completed scan found nothing and the status chip reads
+        /// v-Drive Error, which is what mockup 1d asks for. <b>It is not demo mode</b> — that is
+        /// what an open demo <em>session</em> reports, so a scene that wants the purple chip opens
+        /// one (see <c>ControlRenderTests.CreateDemoShell</c>).
         /// </summary>
         public MainWindowViewModel CreateShell(bool withDevices = true)
         {
@@ -290,7 +289,20 @@ namespace KinesisEdit.Tests.Design
         /// <summary>The troubleshoot panel the dashboard shows while nothing is detected.</summary>
         public NoDeviceViewModel CreateNoDevice()
         {
-            return new NoDeviceViewModel(_urlLauncher, _ => { }, () => Task.CompletedTask, DeviceId.FreestyleEdgeRgb);
+            // A non-default pick on purpose: the "default" tag belongs to the Advantage2 whatever
+            // the screen currently shows, and a scene that started on it could not tell the two
+            // apart. The baseline is 0 and the count below it is what a screen that has been open
+            // for a few passes reads.
+            var emptyState = new NoDeviceViewModel(
+                _urlLauncher,
+                _ => { },
+                () => Task.CompletedTask,
+                completedRefreshBaseline: 0,
+                initialDevice: DeviceId.FreestyleEdgeRgb);
+
+            emptyState.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 8);
+
+            return emptyState;
         }
 
         /// <summary>A card for one connected Freestyle Edge RGB.</summary>
@@ -420,26 +432,42 @@ namespace KinesisEdit.Tests.Design
                 ?? throw new InvalidOperationException($"Tap and Hold refused the scene: {result.RefusalMessage}");
         }
 
-        /// <summary>A dialog request with every part of the message box present.</summary>
+        /// <summary>
+        /// A dialog request with every part of the message box present: mockup 1k's own shape —
+        /// YesNoCancel, outcome-named affirmatives, and the suppression opt-out.
+        /// </summary>
         public MessageBoxViewModel CreateMessageBox()
         {
             return new MessageBoxViewModel(new MessageBoxRequest
             {
-                Title = "Save this profile?",
-                Message = "The profile has unsaved changes. Saving rewrites layout1.txt on the v-Drive.",
+                Title = "Copy macros too?",
+                Message = "You're copying F3 onto F8. F3 carries 3 macro slots.",
                 Icon = MessageBoxIcon.Confirmation,
-                Buttons = MessageBoxButtons.YesNo,
-                SuppressionKey = "save_msg"
+                Buttons = MessageBoxButtons.YesNoCancel,
+                YesCaption = "Include macros",
+                NoCaption = "Key data only",
+                SuppressionKey = NotificationKeys.Save
             });
         }
 
-        /// <summary>A corner toast, the app's ordinary notice.</summary>
+        /// <summary>A corner toast, the app's ordinary notice — mockup 1k's success variant.</summary>
         public ToastViewModel CreateToast()
         {
             return new ToastViewModel(new ToastRequest
             {
                 Title = "Saved",
-                Message = "Profile 1 written to /Volumes/FS_EDGE."
+                Message = "Written to the v-Drive. Eject from the dashboard when you want the keyboard to reload them."
+            });
+        }
+
+        /// <summary>The other toast mockup 1k draws: the same card, on the amber ramp.</summary>
+        public ToastViewModel CreateAdvisoryToast()
+        {
+            return new ToastViewModel(new ToastRequest
+            {
+                Title = "Saved with 3 advisories",
+                Message = "Everything was written. Review the warnings.",
+                Severity = ToastSeverity.Advisory
             });
         }
 
@@ -532,6 +560,11 @@ namespace KinesisEdit.Tests.Design
             if (viewType == typeof(ColorPickerView))
             {
                 return (await CreateEditorAsync().ConfigureAwait(true)).Lighting.Picker;
+            }
+
+            if (viewType == typeof(MessageBoxView))
+            {
+                return CreateMessageBox();
             }
 
             if (viewType == typeof(ToastView))

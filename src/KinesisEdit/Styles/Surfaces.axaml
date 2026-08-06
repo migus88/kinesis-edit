@@ -321,4 +321,63 @@
     <Setter Property="Theme" Value="{StaticResource TokenField}" />
     <Setter Property="MinHeight" Value="44" />
   </Style>
+
+  <!-- ===== Toast severity ======================================================================
+       Mockup 1k draws exactly two toasts: a success and an advisory. They differ in one dot and
+       one border, and in nothing else - the card, the shadow and the 180 ms fade above are shared,
+       because an advisory is a different thing to say, not a louder way of saying it.
+
+       Amber is the only warning colour in this app. There is deliberately no error variant: a
+       failure is a message box, which the user has to answer, and never a notice that vanishes
+       after five seconds. -->
+  <Style Selector="Border.toast.advisory">
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+  </Style>
+
+  <!-- The dot. 8x8 on the 4px grid - the mock's 7px rounded to the grid, because a one-off
+       dimension cannot be a named token from here (Themes/Geometry.axaml owns those) and 7 is off
+       the grid the whole design is built on. `RadiusPill` is what makes it a circle. It is nudged
+       down to sit on the title's optical centre rather than on the line box's top. -->
+  <Style Selector="Border.toastDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+    <Setter Property="Background" Value="{DynamicResource StatusOkBrush}" />
+  </Style>
+  <Style Selector="Border.toastDot.advisory">
+    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryBrush}" />
+  </Style>
+
+  <!-- ===== Suppression row =====================================================================
+       The "Don't ask this again" opt-out of mockup 1k, boxed so it reads as a preference rather
+       than as one of the dialog's answers. An inset face, because it is a hole in the card and not
+       a thing on top of it - the same rule the fields follow. -->
+  <Style Selector="Border.suppressionRow">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+  </Style>
+
+  <!-- ===== Numbered step marker =================================================================
+       The tile behind each digit of the empty state's connection steps (mockup 1d). 20x20 on the
+       4px grid, at keycap radius, so a column of them reads as a rail down the left of the list
+       and every step starts on the same x whether its sentence wraps or not.
+
+       Raised rather than inset: a marker sits ON the panel, it is not a hole in it, and the raised
+       face is the one that stays visible on both ramps against `panel` (#16191C dark, #FFFFFF
+       light). It carries no accent — a step number is a marker, and the accent means selection or
+       "you changed this", neither of which a step is. The digit's own type is `.stepNumber`. -->
+  <Style Selector="Border.stepMarker">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusKeycap}" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
 </Styles>

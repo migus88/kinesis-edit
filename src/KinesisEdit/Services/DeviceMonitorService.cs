@@ -58,6 +58,18 @@ namespace KinesisEdit.Services
         /// </summary>
         public DateTimeOffset? LastRefreshedUtc => _activity.LastRefreshedUtc;
 
+        /// <summary>
+        /// How many detection passes have run to completion since this service was created — the
+        /// number the dashboard's empty state ages its "rescanned N times since you opened this
+        /// window" against, by subtracting the baseline it captured when it was built.
+        /// <para>
+        /// It counts <b>completed passes</b> on exactly the rule <see cref="LastRefreshedUtc"/>
+        /// follows: a <see cref="Refresh"/> coalesced into a running pass shares that pass's single
+        /// increment, and a pass that threw adds nothing.
+        /// </para>
+        /// </summary>
+        public int CompletedRefreshCount => _activity.CompletedRefreshCount;
+
         /// <summary>Raised once per refresh, on the UI thread, with that refresh's snapshots and changes.</summary>
         public event Action<DeviceMonitorUpdate>? Updated;
 

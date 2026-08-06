@@ -3,54 +3,197 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
-             xmlns:devices="clr-namespace:KinesisEdit.Core.Devices;assembly=KinesisEdit.Core"
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
-             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="420"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.NoDeviceView"
              x:DataType="vm:NoDeviceViewModel">
-  <!-- The troubleshoot panel of specs/11-feature-dialogs.md §11.8, rendered inline as the
-       dashboard's empty state. The device picker is this app's addition: one app serves the
-       whole catalog, so the instruction text and the support link follow the selection. -->
-  <Border Classes="card" MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
-    <StackPanel Spacing="16">
-      <TextBlock Text="{Binding Title}" Classes="pageTitle" />
+  <!--
+    The dashboard's empty state (docs/design/mockups.md §1d), which is the troubleshoot panel of
+    specs/11-feature-dialogs.md §11.8 rebuilt as a working screen.
 
-      <ComboBox ItemsSource="{Binding Devices}"
-                SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
-                HorizontalAlignment="Stretch">
-        <!-- "All 7 known models with silhouettes" (docs/design/mockups.md 1d). At picker scale the
-             key grid inside a board collapses into texture, so the drawing is stroked and dim
-             rather than filled: recognition has to survive in the body outlines alone - one piece
-             with a recessed front edge, two contoured halves, two flat halves, a single slab,
-             three pedals. The pen is finer than the icon law's 1.5 because at 33px the key rects
-             are under two pixels across: 1.5 welds them into a slab and even 1.0 closes them up,
-             where 0.6 leaves the bodies reading as outlines in both variants (checked by rendering
-             the seven at 0.5/0.6/0.75/1.0 through the headless harness).
+    The shape, top to bottom: the headline and the sentence that says the app is already watching;
+    two panels side by side - "which device do you have?" on the left, that device's connection
+    steps on the right; the live reassurance line; and the three actions in their design weights.
 
-             Every device in this list is programmable and therefore drawn; the two catalog entries
-             without artwork never reach here. -->
-        <ComboBox.ItemTemplate>
-          <DataTemplate DataType="devices:DeviceDefinition">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <controls:Icon Classes="deviceArt"
-                             Size="33"
-                             StrokeThickness="0.6"
-                             Data="{Binding Id, Converter={StaticResource DeviceArt}}"
-                             Stroke="{DynamicResource TextMutedBrush}"
-                             VerticalAlignment="Center" />
-              <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
-            </StackPanel>
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
+    NOTHING HERE ASKS THE USER TO PRESS ANYTHING TO MAKE DETECTION HAPPEN. The 2s loop is already
+    running, the reassurance line counts its completed passes, and DashboardViewModel.IsEmpty drops
+    this whole surface for the device card the moment a drive is seen. "Scan now" exists because a
+    user who has just plugged something in wants to ask, not because the app needs asking.
+  -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <!-- STRETCH, not Center, with the MaxWidth doing the centring. A Center-aligned panel is
+         arranged at its *content's* width, so the whole screen slid sideways every time the pick
+         changed the length of a step sentence - the picker's own rows moving out from under the
+         pointer that had just clicked one. Stretch clamped by MaxWidth is arranged at 880 whatever
+         the pick, and Avalonia centres a stretched child that its MaxWidth held back. -->
+    <StackPanel MaxWidth="880"
+                Spacing="{DynamicResource Space24}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center">
 
-      <TextBlock Text="{Binding InstructionText}" TextWrapping="Wrap" Classes="body muted" />
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{Binding Title}" Classes="pageTitle" />
+        <!-- Left-aligned explicitly: a MaxWidth narrower than the column would otherwise be
+             centred in it (a StackPanel child stretches by default), which indents the sentence
+             away from the headline it belongs to. -->
+        <TextBlock Text="{Binding Body}"
+                   Classes="body muted"
+                   TextWrapping="Wrap"
+                   MaxWidth="640"
+                   HorizontalAlignment="Left" />
+      </StackPanel>
 
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button Content="{x:Static vm:NoDeviceViewModel.ScanButtonCaption}" Command="{Binding ScanCommand}" />
-        <Button Content="{x:Static vm:NoDeviceViewModel.DemoModeButtonCaption}" Command="{Binding LaunchDemoModeCommand}" />
-        <Button Content="{x:Static vm:NoDeviceViewModel.TroubleshootingButtonCaption}" Command="{Binding TroubleshootingTipsCommand}" />
+      <Grid ColumnDefinitions="300,*" ColumnSpacing="{DynamicResource Space24}">
+        <!-- ===== The picker ==================================================================
+             All seven programmable boards, in the mockup's order rather than the catalog's, each
+             with its plan-view silhouette.
+
+             A ListBox rather than a row of buttons or a drop-down: the pick is one-of-N, which is
+             what a SelectingItemsControl is; it buys the whole group one tab stop with arrow keys
+             inside it; and the rows' selected/hover/focus faces are the SelectableListRow control
+             theme's rather than seven bindings. A drop-down hid six of the seven silhouettes
+             behind a click, which is the opposite of what §1d asks for. -->
+        <Border Grid.Column="0" Classes="card">
+          <StackPanel Spacing="{DynamicResource Space12}">
+            <TextBlock Text="{x:Static vm:NoDeviceViewModel.PickerTitle}" Classes="cardTitle" />
+
+            <!-- SelectionChanged is the one behaviour on this screen: a single-selection ListBox
+                 drops the row that is already selected when it is Ctrl/Cmd-clicked, and this
+                 screen has no "nothing picked" state. See NoDeviceView.axaml.cs. -->
+            <ListBox ItemsSource="{Binding Devices}"
+                     SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                     SelectionChanged="OnDeviceSelectionChanged"
+                     ItemContainerTheme="{StaticResource SelectableListRow}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0">
+              <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:DevicePickerOption">
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource Space8}">
+                    <!-- At picker scale the key grid inside a board collapses into texture, so the
+                         drawing is stroked and dim rather than filled: recognition has to survive
+                         in the body outlines alone - one piece with a recessed front edge, two
+                         contoured halves, two flat halves, a single slab, three pedals. The pen is
+                         finer than the icon law's 1.5 because at 33px the key rects are under two
+                         pixels across: 1.5 welds them into a slab and even 1.0 closes them up,
+                         where 0.6 leaves the bodies reading as outlines in both variants.
+
+                         Every device in this list is programmable and therefore drawn; the two
+                         catalog entries without artwork never reach here. -->
+                    <controls:Icon Grid.Column="0"
+                                   Classes="deviceArt"
+                                   Size="33"
+                                   StrokeThickness="0.6"
+                                   Data="{Binding Id, Converter={StaticResource DeviceArt}}"
+                                   Stroke="{DynamicResource TextMutedBrush}"
+                                   VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Caption}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <!-- The board the screen starts on. Sans, and NOT the accent `.badge`: the
+                         accent means selection or "you changed this", and "this is the default"
+                         is neither - it would also fight the accent the selected row already
+                         carries. -->
+                    <TextBlock Grid.Column="2"
+                               Text="{x:Static vm:NoDeviceViewModel.DefaultTagCaption}"
+                               Classes="meta muted"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding IsDefault}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="{x:Static vm:NoDeviceViewModel.PickerHelperText}"
+                       Classes="meta muted"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- ===== The steps ===================================================================
+             Everything device-specific is built from the catalog by ViewModels/ConnectionSteps -
+             the onboard shortcut, the volume label, whether the thing being plugged in is a
+             keyboard or a pedal - so this template holds no per-device markup at all. -->
+        <Border Grid.Column="1" Classes="card">
+          <StackPanel Spacing="{DynamicResource Space12}">
+            <TextBlock Text="{Binding StepsTitle}" Classes="cardTitle" TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding Steps}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="{DynamicResource Space12}" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:ConnectionStep">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource Space12}">
+                    <Border Grid.Column="0" Classes="stepMarker">
+                      <TextBlock Text="{Binding Number}"
+                                 Classes="stepNumber"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center" />
+                    </Border>
+
+                    <!-- One sentence, three runs, because the middle one is a legend on the board
+                         or a label on the drive - a value that exists verbatim on the hardware -
+                         and the mono law reserves mono type for exactly those. Runs rather than
+                         three controls so the mono word sits inside the sentence and the whole
+                         thing still wraps as prose.
+
+                         THE RUNS ARE ADJACENT ON PURPOSE. InlineCollection is a
+                         whitespace-significant collection, so a newline between two Run tags is a
+                         space in the rendered sentence; the spacing lives inside the strings. -->
+                    <TextBlock Grid.Column="1"
+                               Classes="body muted"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"><Run Text="{Binding LeadText}" /><Run Text="{Binding ValueText}" FontFamily="{DynamicResource FontMono}" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding TrailText}" /></TextBlock>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- The live half of "no need to press anything": the count is the detection loop's own
+           completed passes since this screen was built, not a timer tick or a button press. -->
+      <TextBlock Text="{Binding RescanText}" Classes="meta muted" />
+
+      <!-- Three weights, three meanings: the primary names the board it will open, the secondary
+           asks the loop to look now, and the link leaves the app. -->
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space8}">
+        <Button Classes="primaryAction"
+                Content="{Binding DemoModeCaption}"
+                Command="{Binding LaunchDemoModeCommand}" />
+
+        <Button Classes="secondary" Command="{Binding ScanCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <controls:Icon Data="{DynamicResource IconRefresh}"
+                           Stroke="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ScanCaption}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+
+        <!-- The mockup writes this caption as "Troubleshooting tips ↗". The arrow is the
+             external-link mark, drawn as geometry beside the words rather than pasted into the
+             string: a Latin-1 arrow in a caption is a glyph the shipped font may not carry, and
+             the icon system exists precisely so a caption never has to. -->
+        <Button Classes="link"
+                Command="{Binding TroubleshootingTipsCommand}"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="{x:Static vm:NoDeviceViewModel.TroubleshootingButtonCaption}"
+                       VerticalAlignment="Center" />
+            <controls:Icon Data="{DynamicResource IconExternalLink}"
+                           Stroke="{DynamicResource AccentBrush}"
+                           VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </StackPanel>
-  </Border>
+  </ScrollViewer>
 </UserControl>

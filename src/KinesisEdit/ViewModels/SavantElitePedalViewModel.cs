@@ -68,19 +68,38 @@ namespace KinesisEdit.ViewModels
         /// <summary>The mid-edit question of 12 §5 step 1, asked when another input is picked.</summary>
         public const string PendingEditMessage = "Key modification in progress, apply changes?";
 
+        /// <summary>
+        /// Its affirmative, named after what it does rather than "Yes" (docs/design/mockups.md,
+        /// mockup 1k: "the two affirmative choices are labelled by outcome, not Yes/No"). It still
+        /// answers <c>Yes</c>.
+        /// </summary>
+        public const string ApplyEditCaption = "Apply edit";
+
+        /// <summary>Its other affirmative — the edit goes, the navigation proceeds. Still <c>No</c>.</summary>
+        public const string DiscardEditCaption = "Discard edit";
+
+        /// <summary>The way out of every question this editor asks. Still <c>Cancel</c>, or <c>No</c> where there is none.</summary>
+        public const string StayHereCaption = "Cancel";
+
         /// <summary>Title of everything a save raises — its failure dialog and its post-save toast.</summary>
         public const string SaveTitle = "Save Pedal Configuration";
 
-        /// <summary>Caption of the loading indicator during a save. Not a spec string.</summary>
-        public const string SavingCaption = "Saving...";
+        /// <summary>
+        /// Caption of the loading indicator during a save. Not a spec string; the ellipsis is the
+        /// one character mockup 1k uses, as in <see cref="LoadingCaptions.Default"/>.
+        /// </summary>
+        public const string SavingCaption = "Saving…";
 
         /// <summary>Title of the toast raised when a navigation is refused because a save is running.</summary>
         public const string SaveInProgressTitle = "Saving";
 
         /// <summary>
-        /// Message of that toast. The loading overlay takes no clicks and the top bar sits outside
-        /// the editor, so Home *is* pressable mid-save; without this the button would simply do
-        /// nothing.
+        /// Message of that toast. The loading indicator is now <b>blocking</b> — it sits on the
+        /// same scrim the message box uses (mockup 1k, "Loading · blocking") — so the pointer can
+        /// no longer reach Home while a save is running, and this refusal is the second line of
+        /// defence rather than the first. It is kept, and it still speaks: the guard is reachable
+        /// from any path that is not a click, and a navigation that silently did nothing would be
+        /// worse than one that says why.
         /// </summary>
         public const string SaveInProgressMessage = "Please wait for the save to finish.";
 
@@ -100,11 +119,20 @@ namespace KinesisEdit.ViewModels
         /// <summary>The question asked when the editor is left with unsaved changes (12 §5 step 9).</summary>
         public const string UnsavedChangesMessage = "Do you want to save changes to the pedal configuration file?";
 
+        /// <summary>Its affirmative: write the file, then go. Still <c>Yes</c>.</summary>
+        public const string SaveAndLeaveCaption = "Save and leave";
+
+        /// <summary>Its other affirmative: go anyway, losing the edits. Still <c>No</c>.</summary>
+        public const string LeaveWithoutSavingCaption = "Leave without saving";
+
         /// <summary>
         /// The same question when saving is impossible anyway — a demo session, or a file that
         /// could not be read. Offering "Yes, save" there would be a dead end.
         /// </summary>
         public const string DiscardChangesMessage = "Your changes cannot be saved to this device. Leave the editor and discard them?";
+
+        /// <summary>Its affirmative: leave, losing the edits, because there is nowhere to put them. Still <c>Yes</c>.</summary>
+        public const string DiscardChangesCaption = "Discard changes";
 
         /// <summary>Why a Special Action was refused for want of anything to apply it to (§6).</summary>
         public const string EmptyEntryMessage = "Add a keystroke first.";
@@ -493,11 +521,13 @@ namespace KinesisEdit.ViewModels
         /// editor: Yes saves (and refuses to leave when the save failed), No discards, Cancel stays.
         /// An edit still in the entry box is discarded first — it was never committed to an input.
         /// <para>
-        /// A save in flight refuses outright, without a question — but with a toast: Home is
-        /// reachable mid-save (the loading overlay takes no clicks), so a silent refusal would be a
-        /// live button that does nothing. Leaving would dispose this editor and eject the volume
-        /// while <c>WriteAllLines</c> is still running; the write is short, and the navigation works
-        /// the moment it finishes.
+        /// A save in flight refuses outright, without a question — but with a toast. The blocking
+        /// loading card now covers Home with its scrim, so the *pointer* can no longer get here at
+        /// all; this stays because the scrim is a UI fact and this is the invariant. Leaving would
+        /// dispose this editor while <c>WriteAllLines</c> is still running; the write is short, and
+        /// the navigation works the moment it finishes. The toast rides along so that any path
+        /// which is not a click — a shortcut, a caller of this method — says why rather than
+        /// appearing to do nothing.
         /// </para>
         /// </summary>
         public override async Task<bool> ConfirmCloseAsync()
@@ -530,7 +560,9 @@ namespace KinesisEdit.ViewModels
                     Title = SaveTitle,
                     Message = DiscardChangesMessage,
                     Icon = MessageBoxIcon.Warning,
-                    Buttons = MessageBoxButtons.YesNo
+                    Buttons = MessageBoxButtons.YesNo,
+                    YesCaption = DiscardChangesCaption,
+                    NoCaption = StayHereCaption
                 }).ConfigureAwait(true);
 
                 return discard?.Result == MessageBoxResult.Yes;
@@ -541,7 +573,10 @@ namespace KinesisEdit.ViewModels
                 Title = SaveTitle,
                 Message = UnsavedChangesMessage,
                 Icon = MessageBoxIcon.Confirmation,
-                Buttons = MessageBoxButtons.YesNoCancel
+                Buttons = MessageBoxButtons.YesNoCancel,
+                YesCaption = SaveAndLeaveCaption,
+                NoCaption = LeaveWithoutSavingCaption,
+                CancelCaption = StayHereCaption
             }).ConfigureAwait(true);
 
             return outcome?.Result switch
@@ -718,7 +753,10 @@ namespace KinesisEdit.ViewModels
                 Title = EditTitle,
                 Message = PendingEditMessage,
                 Icon = MessageBoxIcon.Confirmation,
-                Buttons = MessageBoxButtons.YesNoCancel
+                Buttons = MessageBoxButtons.YesNoCancel,
+                YesCaption = ApplyEditCaption,
+                NoCaption = DiscardEditCaption,
+                CancelCaption = StayHereCaption
             }).ConfigureAwait(true);
 
             switch (outcome?.Result)
@@ -979,9 +1017,10 @@ namespace KinesisEdit.ViewModels
             try
             {
                 // Shown inside the try, and hidden after IsBusy is cleared below: both calls fan
-                // out to the overlay, and a failure in either must not leave the flag stuck. It
-                // disables Save, every entry command *and* — through ConfirmCloseAsync's refusal —
-                // Home, which would trap the user in the editor with no way out but the window.
+                // out to the overlay, and a failure in either must not leave the flag stuck. The
+                // indicator is blocking, so a ShowLoading that threw would leave the app dimmed and
+                // untouchable; IsBusy on its own would only disable Save, every entry command and —
+                // through ConfirmCloseAsync's refusal — Home.
                 _notifications.ShowLoading(SavingCaption);
 
                 await Task.Run(() => _pedalFiles.Save(location, configuration)).ConfigureAwait(true);

@@ -19,8 +19,9 @@ namespace KinesisEdit
     /// The composition root. Everything is wired by hand — the app deliberately has no DI
     /// container — in the order the service layer expects: discovery, then the detection loop,
     /// then the session and notification services, and only then the view models and the shell
-    /// window. Polling is started last, once the window exists, because the message-box presenter
-    /// needs it as a modal owner. The <c>--keystroke-spike</c> argument replaces that whole graph
+    /// window. Polling is started last, once the window exists, because the surfaces a scan can
+    /// raise — the message box on the shell's overlay, the file pickers on its storage provider —
+    /// are all reached through it. The <c>--keystroke-spike</c> argument replaces that whole graph
     /// with the self-contained <see cref="KeystrokeCaptureSpikeWindow"/>.
     /// </summary>
     public partial class App : Application
@@ -98,10 +99,18 @@ namespace KinesisEdit
             var settings = new SettingsServiceAdapter(new SettingsService(fileService));
             var sessions = new DeviceSessionManager(settings);
 
-            // The owner is the topmost window rather than the shell, so a message box raised from
-            // inside a modal dialog is owned by that dialog instead of by the window it already
-            // blocks.
-            var presenter = new MessageBoxPresenter(() => FindOwnerWindow(desktop));
+            // The message box is drawn inside the shell window, over the notification overlay's
+            // scrim, so what the presenter needs is that overlay rather than an owner window - and
+            // the overlay does not exist yet either. Same deferred shape as the pickers below.
+            //
+            // The capture service goes with it, deferred the same way and for a sharper reason: the
+            // box now shares the shell's TopLevel, where a live capture swallows the dialog's own
+            // Enter and Escape and assigns them instead. The field is read rather than
+            // ResolveCaptureService called - a box raised before any editor has opened has nothing
+            // to suspend, and building a capture service to answer a dialog would be backwards.
+            var presenter = new MessageBoxPresenter(
+                () => FindMessageBoxHost(desktop),
+                () => _captureService);
             var notifications = new NotificationService(presenter, sessions);
             var ejectNotifier = new VDriveEjectNotifier(
                 new DeviceEjectService(VDriveEject.CreateForCurrentPlatform()),
@@ -153,6 +162,17 @@ namespace KinesisEdit
             return _captureService ??= new AvaloniaKeystrokeCaptureService(
                 desktop.MainWindow ?? throw new InvalidOperationException(
                     "The shell window must exist before keystroke capture can attach to it."));
+        }
+
+        /// <summary>
+        /// The surface a message box is drawn on: the shell window's notification overlay. It is
+        /// resolved at the moment a box is asked for rather than captured, because the presenter
+        /// that calls this is built before the window exists. Null until then — and
+        /// <see cref="MessageBoxPresenter"/> answers such a request rather than hanging on it.
+        /// </summary>
+        private static IMessageBoxPresenter? FindMessageBoxHost(IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            return (desktop.MainWindow as MainWindow)?.MessageBoxHost;
         }
 
         /// <summary>

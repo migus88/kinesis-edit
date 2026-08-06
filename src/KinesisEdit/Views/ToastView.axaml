@@ -3,21 +3,42 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="80"
              x:Class="KinesisEdit.Views.ToastView"
              x:DataType="vm:ToastViewModel">
-  <!-- The "Info dialog" of specs/11-feature-dialogs.md §11.9: non-modal, self-dismissing.
-       The host owns the timer; this view is the notice itself. `IsShown` is what the host raises
-       and lowers around the dwell, and it is what drives the 180 ms in and out. -->
+  <!-- The "Info dialog" of specs/11-feature-dialogs.md §11.9, drawn as mockup 1k draws it:
+       non-modal, bottom-right, self-dismissing after 5 s, with a dot saying which of the two
+       kinds it is and an `×` for closing it sooner. The host owns both timers; this view is the
+       notice itself. `IsShown` is what the host raises and lowers around the dwell, and it is
+       what drives the 180 ms in and out. -->
   <Border Classes="overlayCard toast"
           Classes.shown="{Binding IsShown}"
-          MaxWidth="360">
-    <StackPanel Spacing="4">
-      <TextBlock Text="{Binding Title}"
-                 Classes="control"
-                 TextWrapping="Wrap"
-                 IsVisible="{Binding HasTitle}" />
-      <TextBlock Text="{Binding Message}" Classes="body" TextWrapping="Wrap" />
-    </StackPanel>
+          Classes.advisory="{Binding Severity, Converter={StaticResource EnumMatch}, ConverterParameter=Advisory}"
+          Width="312">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource Space8}">
+      <!-- The kind, said once and in colour only: green for a success, amber for an advisory.
+           Advisories are amber and never red, and a toast never blocks whichever it is. -->
+      <Border Grid.Column="0"
+              Classes="toastDot"
+              Classes.advisory="{Binding Severity, Converter={StaticResource EnumMatch}, ConverterParameter=Advisory}" />
+
+      <StackPanel Grid.Column="1" Spacing="{DynamicResource Space4}">
+        <TextBlock Text="{Binding Title}"
+                   Classes="control"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasTitle}" />
+        <TextBlock Text="{Binding Message}" Classes="body muted" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- Chromeless by design: a dismiss is not an action the eye should land on before the
+           notice it is attached to. GhostButton is the theme that says so. -->
+      <Button Grid.Column="2"
+              Classes="ghost"
+              Command="{Binding DismissCommand}"
+              VerticalAlignment="Top">
+        <controls:Icon Data="{DynamicResource IconClose}" Stroke="{DynamicResource TextMutedBrush}" />
+      </Button>
+    </Grid>
   </Border>
 </UserControl>

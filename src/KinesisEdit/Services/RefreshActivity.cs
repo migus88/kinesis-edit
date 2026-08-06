@@ -40,6 +40,29 @@ namespace KinesisEdit.Services
             }
         }
 
+        /// <summary>
+        /// How many refreshes have run to completion since this instance was created — every call
+        /// to <see cref="Stamp"/>, and nothing else.
+        /// <para>
+        /// <b>It counts completed passes, not requests and not timer ticks.</b> A
+        /// <c>Refresh()</c> arriving while one runs is coalesced into a repeat of the running pass
+        /// (see <see cref="TryBegin"/>), so two callers can share one increment; a pass that threw
+        /// unwinds through <see cref="End"/> and never reaches <see cref="Stamp"/>, so it adds
+        /// nothing. It is what the empty state's "rescanned N times" reads, which is a claim about
+        /// scans that actually happened.
+        /// </para>
+        /// </summary>
+        public int CompletedRefreshCount
+        {
+            get
+            {
+                lock (_syncRoot)
+                {
+                    return _completedRefreshCount;
+                }
+            }
+        }
+
         /// <summary>Raised after <see cref="IsRefreshing"/> or <see cref="LastRefreshedUtc"/> changes.</summary>
         public event Action? Changed;
 
@@ -47,6 +70,7 @@ namespace KinesisEdit.Services
         private bool _isRefreshing;
         private bool _isRepeatRequested;
         private DateTimeOffset? _lastRefreshedUtc;
+        private int _completedRefreshCount;
 
         /// <summary>
         /// Claims the gate for a refresh. Returns false when one is already running, having marked
@@ -117,12 +141,17 @@ namespace KinesisEdit.Services
             }
         }
 
-        /// <summary>Records that a refresh ran to completion at <paramref name="timestamp"/>.</summary>
+        /// <summary>
+        /// Records that a refresh ran to completion at <paramref name="timestamp"/>. The time and
+        /// the count move together, under one lock, because they are the same fact seen twice:
+        /// <em>a pass finished</em>.
+        /// </summary>
         public void Stamp(DateTimeOffset timestamp)
         {
             lock (_syncRoot)
             {
                 _lastRefreshedUtc = timestamp;
+                _completedRefreshCount++;
             }
 
             Changed?.Invoke();

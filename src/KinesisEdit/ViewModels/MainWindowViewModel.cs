@@ -588,7 +588,15 @@ namespace KinesisEdit.ViewModels
 
         private VDriveHealth GetDashboardHealth()
         {
-            var health = VDriveHealth.Unknown;
+            // Nothing has been looked at yet. The chip keeps the Demo Mode face its field
+            // initialisers give it rather than announcing a failure no scan has established —
+            // "gone" is a finding, and before the first pass there is none. In the shipped app
+            // this state is never on screen: the composition root runs one synchronous pass in
+            // Start() before the first frame.
+            if (_monitor.LastRefreshedUtc is null)
+            {
+                return VDriveHealth.Unknown;
+            }
 
             foreach (var snapshot in _monitor.Snapshots)
             {
@@ -596,14 +604,15 @@ namespace KinesisEdit.ViewModels
                 {
                     return VDriveHealth.Ok;
                 }
-
-                if (snapshot.IsDetected)
-                {
-                    health = VDriveHealth.Error;
-                }
             }
 
-            return health;
+            // Everything else a completed scan can report is "v-Drive Error", which mockup 1a
+            // defines as "gone · unwritable" — a drive that is present but unreadable is
+            // unwritable, and no drive at all is gone. Mockup 1d says so outright: the chip reads
+            // v-Drive Error while nothing is present. Demo Mode is not this state; it means
+            // "nothing is written", which is true of an open demo session and is what the session
+            // branch above reports.
+            return VDriveHealth.Error;
         }
 
         private void SetStatusIndicator(VDriveHealth health)
@@ -620,7 +629,10 @@ namespace KinesisEdit.ViewModels
                     break;
                 default:
                     // Demo mode, not an advisory: no drive is being written to, which the design
-                    // gives its own colour rather than folding into amber.
+                    // gives its own colour rather than folding into amber. Two things reach here —
+                    // an open demo session, and the instant before the first scan completes; on
+                    // the dashboard a *completed* scan that found nothing reads v-Drive Error
+                    // instead, per mockup 1d.
                     StatusIndicatorText = DemoModeIndicator;
                     StatusIndicatorSeverity = StatusSeverity.Demo;
                     break;
