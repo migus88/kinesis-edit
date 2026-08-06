@@ -5,93 +5,207 @@
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
-             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="200"
+             mc:Ignorable="d" d:DesignWidth="470" d:DesignHeight="212"
              x:Class="KinesisEdit.Views.DeviceCardView"
              x:DataType="vm:DeviceCardViewModel">
-  <Border Classes="card deviceCard" Width="320">
-    <StackPanel Spacing="12">
-      <!-- The card's device art (docs/design/handoff.md:117): the board's plan-view silhouette,
-           drawn at 1:1 in the 92x56 box Themes/DeviceArt.axaml authors every device in, so the
-           seven stay at true proportion to one another rather than each filling the frame.
+  <!--
+    One dashboard card (docs/design/mockups.md §1b, §2e; docs/design/handoff.md, "1. Dashboard").
 
-           The frame follows the drawing: it is hidden outright when the device has none, which is
-           the design's rule that a thing the app cannot show is not rendered at all. The two
-           catalog entries without artwork - the never-shipped CROSSFIRE keypad and the
-           web-configured Advantage 360 Professional - are the only ones that can reach it. -->
-      <Border Classes="deviceArtFrame"
-              IsVisible="{Binding #DeviceArt.Data, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-        <controls:Icon x:Name="DeviceArt"
-                       Classes="deviceArt"
-                       Size="92"
-                       Data="{Binding DeviceId, Converter={StaticResource DeviceArt}}"
-                       Fill="{DynamicResource SurfaceThumbnailBrush}" />
-      </Border>
+    Anatomy, top to bottom: the 92x56 device art beside the name, the meta line and the status
+    line; the per-state explanation; the actions. It is a FIXED HEIGHT (`HeightDeviceCard`), and
+    the three-row grid pins the buttons to the bottom of it, so the four states differ only in
+    their rail, their status line, their explanation and their button captions - never in where a
+    button is. That is the whole point: a 2s refresh puts every card through Scanning, and a card
+    that resized would move the control under the cursor.
 
-      <TextBlock Text="{Binding DisplayName}" Classes="cardTitle" TextWrapping="Wrap" />
+    `collapsed` is authored here and dropped by the code-behind once the card is attached: a
+    transition never runs on an initial value, so a card born at its natural height would simply
+    appear instead of animating in.
+  -->
+  <Border x:Name="Card" Classes="card deviceCard collapsed">
+    <Panel>
+      <!-- Flush on the left edge: inside the border, outside the padding, which is why the card's
+           padding sits on the content grid rather than on the Border above. Green when the drive
+           is writable, red when it is there but shut, and transparent for the two states that are
+           neither (mockup 2e: "no red, no spinner").
 
-      <!-- 'Connected' / 'Not Detected' / 'Cannot Access' (specs/10-apps-and-ui.md), as a chip whose
-           fill cross-fades when the detection loop changes its mind. -->
-      <Border Classes="statusChip"
-              HorizontalAlignment="Left"
-              Classes.ok="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-              Classes.warning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-              Classes.error="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}">
-        <StackPanel Orientation="Horizontal" Spacing="6">
-          <!-- The state mark of docs/design/mockups.md 2b: a filled ring when connected, a dashed
-               ring when nothing answered, an exclamation circle when the drive is there but shut.
-               They are enumerated here rather than resolved by a converter because each one is a
-               different *pen* - filled, dashed, plain - and so names its own token; a converter
-               can only swap the geometry. Exactly one is visible, and they share one cell so the
-               chip's width does not depend on which.
+           Transparent rather than hidden: the rail's whole appearance and disappearance is the
+           "card status fill" the design cross-fades over 220 ms, and IsVisible would collapse it
+           instantly with nothing left for the transition to run on. Styles/Surfaces.axaml carries
+           the fade. -->
+      <Border Classes="cardStatusRail"
+              Classes.ok="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}"
+              Classes.error="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}" />
 
-               'Connected' is two marks in one cell, the ring stroked over the core filled, which
-               is how the design draws it. The colours are the chip's own text roles rather than
-               the bare status hues: mark and label sit on the same tint and must read as one. -->
-          <Panel Width="{DynamicResource IconSize}"
-                 Height="{DynamicResource IconSize}"
-                 VerticalAlignment="Center">
-            <controls:Icon Data="{DynamicResource IconConnected}"
-                           Stroke="{DynamicResource StatusOkTextBrush}"
-                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
-            <controls:Icon Data="{DynamicResource IconConnectedCore}"
-                           Fill="{DynamicResource StatusOkTextBrush}"
-                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
-            <controls:Icon Data="{DynamicResource IconNotDetected}"
-                           Stroke="{DynamicResource StatusErrorTextBrush}"
-                           StrokeDashArray="3,2"
-                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=NotDetected}" />
-            <controls:Icon Data="{DynamicResource IconCannotAccess}"
-                           Stroke="{DynamicResource StatusErrorTextBrush}"
-                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}" />
-          </Panel>
+      <Grid RowDefinitions="Auto,*,Auto" Margin="{StaticResource PaddingCard}">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+          <!-- The card's device art (docs/design/handoff.md:117): the board's plan-view silhouette,
+               drawn at 1:1 in the 92x56 box Themes/DeviceArt.axaml authors every device in, so the
+               seven stay at true proportion to one another rather than each filling the frame.
 
-          <TextBlock Text="{Binding StatusText}"
-                     Classes="pill"
-                     VerticalAlignment="Center"
-                     Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                     Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                     Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
-        </StackPanel>
-      </Border>
+               The frame follows the drawing: it is hidden outright when the device has none, which
+               is the design's rule that a thing the app cannot show is not rendered at all. The
+               never-shipped CROSSFIRE keypad is the only entry that can still reach it here - the
+               other artless catalog entry, the web-configured Advantage 360 Professional, has its
+               own card (WebToolCardView) and no art frame at all. -->
+          <Border Grid.Column="0"
+                  Classes="deviceArtFrame"
+                  VerticalAlignment="Top"
+                  IsVisible="{Binding #DeviceArt.Data, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+            <controls:Icon x:Name="DeviceArt"
+                           Classes="deviceArt"
+                           Size="92"
+                           Data="{Binding DeviceId, Converter={StaticResource DeviceArt}}"
+                           Fill="{DynamicResource SurfaceThumbnailBrush}" />
+          </Border>
 
-      <Button Content="{Binding PrimaryActionCaption}"
-              Command="{Binding ConfigureCommand}"
-              HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Center" />
+          <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="4" VerticalAlignment="Center">
+            <!-- Trimmed rather than wrapped: the card's height is fixed, so a long device name has
+                 to give way rather than push the status line into the buttons. -->
+            <TextBlock Text="{Binding DisplayName}" Classes="cardTitle" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding MetaLine}" Classes="meta muted" TextTrimming="CharacterEllipsis" />
 
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button Content="{Binding SecondaryActionCaption}" Command="{Binding SecondaryActionCommand}" />
-        <!-- Eject is the one action in the app that releases the drive, and it is always explicit;
-             the mark is the design's triangle-over-bar, filled, beside its own word. -->
-        <Button Command="{Binding EjectCommand}" IsVisible="{Binding CanEject}">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <controls:Icon Data="{DynamicResource IconEject}"
-                           Fill="{DynamicResource TextSecondaryBrush}"
-                           VerticalAlignment="Center" />
-            <TextBlock Text="{x:Static vm:DeviceCardViewModel.EjectActionCaption}" VerticalAlignment="Center" />
+            <!-- The status line of mockup 1b: a state mark, the caption, and the mount path in
+                 mono because it exists verbatim on the machine. Deliberately not the app bar's
+                 status *chip* - the design draws a lozenge for the one global readout in the
+                 chrome and a bare line on a card, where a pill beside a 15px title would read as
+                 a second control. -->
+            <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,2,0,0">
+              <!-- The state marks are enumerated rather than resolved by a converter because each
+                   one is a different *pen* - filled, dashed, plain - and so names its own token; a
+                   converter can only swap the geometry. Exactly one is visible, and they share one
+                   cell so the line's rhythm does not depend on which.
+
+                   'Connected' is two marks in one cell, the ring stroked over the core filled,
+                   which is how the design draws it. Resting takes the muted text role and not the
+                   error one: a known device whose drive is simply not mounted is not broken.
+                   Scanning is the app's one busy affordance, the 14px spinner. -->
+              <Panel Grid.Column="0"
+                     Width="{DynamicResource IconSize}"
+                     Height="{DynamicResource IconSize}"
+                     VerticalAlignment="Center">
+                <controls:Icon Data="{DynamicResource IconConnected}"
+                               Stroke="{DynamicResource StatusOkTextBrush}"
+                               IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
+                <controls:Icon Data="{DynamicResource IconConnectedCore}"
+                               Fill="{DynamicResource StatusOkTextBrush}"
+                               IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
+                <controls:Icon Data="{DynamicResource IconNotDetected}"
+                               Stroke="{DynamicResource TextMutedBrush}"
+                               StrokeDashArray="3,2"
+                               IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Resting}" />
+                <controls:Icon Data="{DynamicResource IconCannotAccess}"
+                               Stroke="{DynamicResource StatusErrorTextBrush}"
+                               IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}" />
+                <controls:Icon x:Name="ScanMark"
+                               Classes="spinner"
+                               Stroke="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Scanning}" />
+              </Panel>
+
+              <TextBlock Grid.Column="1"
+                         Text="{Binding StatusText}"
+                         Classes="pill"
+                         Margin="6,0,0,0"
+                         VerticalAlignment="Center"
+                         Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                         Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
+                         Classes.muted="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Unknown}" />
+
+              <TextBlock Grid.Column="2"
+                         Text="{Binding MountPath}"
+                         Classes="monoValueSmall muted"
+                         Margin="6,0,0,0"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding HasMountPath}" />
+            </Grid>
           </StackPanel>
-        </Button>
-      </StackPanel>
-    </StackPanel>
+        </Grid>
+
+        <!-- The per-state sentence. Resting explains that nothing is wrong; Cannot Access explains
+             what to do about it and is the one that takes the error box. Two lines at most: the
+             card's height is fixed, and a sentence that grew a third line in a narrow window would
+             push the buttons out of the bottom of it. -->
+        <Border Grid.Row="1"
+                Classes="cardExplanation"
+                Margin="0,12,0,0"
+                VerticalAlignment="Top"
+                IsVisible="{Binding HasExplanation}"
+                Classes.error="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}">
+          <Grid ColumnDefinitions="Auto,*">
+            <controls:Icon Grid.Column="0"
+                           Data="{DynamicResource IconCannotAccess}"
+                           Stroke="{DynamicResource StatusErrorTextBrush}"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Top"
+                           IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding ExplanationText}"
+                       Classes="body muted"
+                       TextWrapping="Wrap"
+                       MaxLines="2"
+                       TextTrimming="CharacterEllipsis" />
+          </Grid>
+        </Border>
+
+        <!-- Configure / the secondary action / Eject. Every one of them exists in every state and
+             keeps its column: what the drive is doing changes their captions and whether they can
+             run, never whether they are there (docs/app/app-shell.md; mockup 2e). -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,12,0,0">
+          <Button Grid.Column="0"
+                  Classes="primaryAction"
+                  Content="{Binding PrimaryActionCaption}"
+                  Command="{Binding ConfigureCommand}" />
+
+          <Button Grid.Column="1"
+                  Classes="secondary"
+                  Margin="6,0,0,0"
+                  Content="{Binding SecondaryActionCaption}"
+                  Command="{Binding SecondaryActionCommand}" />
+
+          <!-- Eject is the one action in the app that releases the drive, and it is always
+               explicit; the mark is the design's triangle-over-bar, filled, beside its own word.
+               It is rendered whenever a drive is mounted and merely unusable when the platform
+               cannot eject - a button that vanished would move Configure under the cursor. -->
+          <Button Grid.Column="3"
+                  Classes="eject"
+                  Command="{Binding EjectCommand}"
+                  IsVisible="{Binding ShowsEject}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <controls:Icon Data="{DynamicResource IconEject}"
+                             Fill="{DynamicResource StatusOkTextBrush}"
+                             VerticalAlignment="Center" />
+              <TextBlock Text="{x:Static vm:DeviceCardViewModel.EjectActionCaption}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Grid>
+
+      <!-- The scanning state's whole extra vocabulary: a 3px indeterminate bar flush across the
+           bottom of the card (mockup 2e, "only the status line and a 3px indeterminate bar
+           change"). It sits over the content rather than in the grid so it costs the layout
+           nothing, and the card's own ClipToBounds rounds its ends off with the card's corners.
+
+           No ControlTheme: the app-level `ProgressBar` style in Styles/Buttons.axaml already
+           paints the bar and its trough from the tokens, and 3px is reached by clearing Fluent's
+           MinHeight on the control itself - which is a property on the control, not a part of
+           somebody else's template.
+
+           IsIndeterminate IS BOUND TO THE STATE, not hardcoded. Fluent drives the bar's endless
+           slide from the `:indeterminate` pseudo-class, and hiding a control does not tear its
+           template down: once a card has been through one 2s refresh its bar is templated for
+           good, and a hardcoded True leaves that animation running on every card on the dashboard
+           forever. Bound, the pseudo-class drops with the state and the animation stops with it. -->
+      <ProgressBar VerticalAlignment="Bottom"
+                   IsIndeterminate="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Scanning}"
+                   MinHeight="0"
+                   Height="3"
+                   CornerRadius="0"
+                   BorderThickness="0"
+                   IsVisible="{Binding State, Converter={StaticResource EnumMatch}, ConverterParameter=Scanning}" />
+    </Panel>
   </Border>
 </UserControl>

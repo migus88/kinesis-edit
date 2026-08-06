@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -7,11 +8,16 @@ namespace KinesisEdit.ViewModels
     /// <summary>
     /// The single-window shell: it hosts the dashboard and swaps in an editor when a device is
     /// opened, exactly like the legacy dashboards embedded an editor form in their content panel
-    /// (specs/10-apps-and-ui.md, "Opening a device" and "Home"). It also owns the status
-    /// indicator — green 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode'.
+    /// (specs/10-apps-and-ui.md, "Opening a device" and "Home"). It also owns the app bar's
+    /// chrome — the window title, the nav-pill selection, the status indicator (green
+    /// 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode') and the mono "refreshed 0.4s ago"
+    /// readout of docs/design/mockups.md §1b.
     /// </summary>
     public sealed class MainWindowViewModel : ViewModelBase, IDisposable
     {
+        /// <summary>The app's own name; the window title on the dashboard, and the tail of every other title.</summary>
+        public const string AppTitle = "KinesisEdit";
+
         /// <summary>Indicator text while the version file re-check succeeds.</summary>
         public const string VDriveOkIndicator = "v-Drive OK";
 
@@ -26,6 +32,64 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Message prefix of that box; the exception's message follows it.</summary>
         public const string OpenFailureMessagePrefix = "The device could not be opened: ";
+
+        // Window title shapes: "KinesisEdit", "TKO — KinesisEdit", "TKO (Demo) — KinesisEdit"
+        // (docs/design/mockups.md §2g and the editor screens).
+        private const string WindowTitleSeparator = " — ";
+        private const string DemoModeTitleSuffix = " (Demo)";
+
+        // "refreshed 0.4s ago" / "refreshed 1.2s ago" (docs/design/mockups.md §1b, §1c) — one
+        // decimal, invariant, and rendered in mono so the width never reflows the app bar.
+        private const string LastRefreshedTemplate = "refreshed {0:0.0}s ago";
+
+        /// <summary>
+        /// How often the "refreshed Ns ago" readout is re-evaluated. 200 ms, not the 100 ms the
+        /// one-decimal format could justify: the readout's job is to show the loop is alive, and at
+        /// 5 Hz the tenths digit steps by an even 2 each tick — visibly smooth, at half the
+        /// property-change traffic. A change notification is raised only when the formatted text
+        /// actually differs, so a still readout costs nothing at all.
+        /// </summary>
+        private static readonly TimeSpan _defaultLastRefreshedTickInterval = TimeSpan.FromMilliseconds(200);
+
+        /// <summary>
+        /// The window title for a device name and demo flag: <c>KinesisEdit</c> with no device,
+        /// <c>‹Device› — KinesisEdit</c> while editing, <c>‹Device› (Demo) — KinesisEdit</c> in
+        /// demo mode.
+        /// </summary>
+        public static string BuildWindowTitle(string? deviceName, bool isDemoMode)
+        {
+            if (string.IsNullOrWhiteSpace(deviceName))
+            {
+                return AppTitle;
+            }
+
+            var suffix = isDemoMode ? DemoModeTitleSuffix : string.Empty;
+
+            return deviceName + suffix + WindowTitleSeparator + AppTitle;
+        }
+
+        /// <summary>
+        /// The "refreshed Ns ago" readout for a completed-pass timestamp and the current time.
+        /// Empty while no pass has completed — there is nothing to age, and the app bar shows
+        /// nothing rather than a zero that would claim a scan that never happened. A timestamp in
+        /// the future (a clock that stepped back) reads as 0.0s rather than negative.
+        /// </summary>
+        public static string FormatLastRefreshed(DateTimeOffset? lastRefreshedUtc, DateTimeOffset now)
+        {
+            if (lastRefreshedUtc is null)
+            {
+                return string.Empty;
+            }
+
+            var elapsedSeconds = (now - lastRefreshedUtc.Value).TotalSeconds;
+
+            if (elapsedSeconds < 0)
+            {
+                elapsedSeconds = 0;
+            }
+
+            return string.Format(CultureInfo.InvariantCulture, LastRefreshedTemplate, elapsedSeconds);
+        }
 
         /// <summary>The dashboard; also the view shown whenever no editor is open.</summary>
         public DashboardViewModel Dashboard { get; }
@@ -50,20 +114,49 @@ namespace KinesisEdit.ViewModels
                 if (SetProperty(ref _editor, value))
                 {
                     OnPropertyChanged(nameof(IsEditorOpen));
-
-                    HomeCommand.NotifyCanExecuteChanged();
+                    OnPropertyChanged(nameof(IsHomeSelected));
+                    OnPropertyChanged(nameof(WindowTitle));
                 }
             }
         }
 
-        /// <summary>Whether an editor is open — the Home button is only usable then.</summary>
+        /// <summary>Whether an editor is open — which is when Home has somewhere to go.</summary>
         public bool IsEditorOpen => _editor is not null;
+
+        /// <summary>
+        /// Whether the Home nav pill reads as the current location. Settings and Help are never
+        /// selected — they are their own issue and stay unavailable — so the view needs no
+        /// equivalent for them; it styles them as inactive nav rather than broken buttons.
+        /// <para>
+        /// This is the exact complement of <see cref="IsEditorOpen"/>, which is why
+        /// <see cref="HomeCommand"/> may <b>not</b> be gated on an editor being open: the nav pill
+        /// takes its selected face from a style qualified <c>.selected:not(:disabled)</c>
+        /// (Themes/ControlThemes/Pills.axaml), so a Home that is disabled exactly when it is
+        /// selected can never wear that face and renders as a third dead pill on the dashboard.
+        /// </para>
+        /// </summary>
+        public bool IsHomeSelected => !IsEditorOpen;
+
+        /// <summary>The window title: 'KinesisEdit', '‹Device› — KinesisEdit', or '‹Device› (Demo) — KinesisEdit'.</summary>
+        public string WindowTitle => BuildWindowTitle(_editor?.DeviceName, _isDemoMode);
+
+        /// <summary>The mono "refreshed 0.4s ago" readout; empty until the first pass completes.</summary>
+        public string LastRefreshedText => FormatLastRefreshed(_monitor.LastRefreshedUtc, _clock.UtcNow);
+
+        /// <summary>Whether a completed detection pass exists to age against.</summary>
+        public bool HasLastRefreshed => _monitor.LastRefreshedUtc is not null;
 
         /// <summary>Whether the open session runs in demo mode.</summary>
         public bool IsDemoMode
         {
             get => _isDemoMode;
-            private set => SetProperty(ref _isDemoMode, value);
+            private set
+            {
+                if (SetProperty(ref _isDemoMode, value))
+                {
+                    OnPropertyChanged(nameof(WindowTitle));
+                }
+            }
         }
 
         /// <summary>
@@ -97,7 +190,12 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _statusIndicatorSeverity, value);
         }
 
-        /// <summary>Closes the editor and ejects the drive when not in demo mode.</summary>
+        /// <summary>
+        /// Navigates to the dashboard: closes the editor and ejects the drive when not in demo
+        /// mode. It is a <em>navigation</em>, so it stays runnable while the dashboard is already
+        /// showing and simply does nothing — see <see cref="IsHomeSelected"/> for why the
+        /// alternative, gating it on <see cref="IsEditorOpen"/>, cannot work.
+        /// </summary>
         public IAsyncRelayCommand HomeCommand { get; }
 
         /// <summary>
@@ -121,22 +219,36 @@ namespace KinesisEdit.ViewModels
         private readonly INotificationService _notifications;
         private readonly VDriveEjectNotifier _ejectNotifier;
         private readonly IEditorViewModelFactory _editors;
+        private readonly ISystemClock _clock;
+        private readonly IUiDispatcher _dispatcher;
+        private readonly Timer _lastRefreshedTicker;
         private ViewModelBase _currentView;
         private DeviceEditorViewModel? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
         private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Demo;
+        private string _lastRefreshedText = string.Empty;
         private bool _isDemoMode;
         private bool _isBusy;
         private bool _isDisposed;
 
-        /// <summary>Creates the shell over the dashboard, the detection loop, and the session services.</summary>
+        /// <summary>
+        /// Creates the shell over the dashboard, the detection loop, and the session services.
+        /// <paramref name="clock"/> ages the "refreshed Ns ago" readout and
+        /// <paramref name="dispatcher"/> marshals its ticker onto the UI thread — a
+        /// <c>DispatcherTimer</c> would put Avalonia inside a view model
+        /// (docs/app/app-shell.md, invariant 8). <paramref name="lastRefreshedTickInterval"/>
+        /// overrides the 200 ms default; tests park it.
+        /// </summary>
         public MainWindowViewModel(
             DashboardViewModel dashboard,
             DeviceMonitorService monitor,
             DeviceSessionManager sessions,
             INotificationService notifications,
             VDriveEjectNotifier ejectNotifier,
-            IEditorViewModelFactory editors)
+            IEditorViewModelFactory editors,
+            ISystemClock clock,
+            IUiDispatcher dispatcher,
+            TimeSpan? lastRefreshedTickInterval = null)
         {
             Dashboard = dashboard ?? throw new ArgumentNullException(nameof(dashboard));
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
@@ -144,16 +256,23 @@ namespace KinesisEdit.ViewModels
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
             _editors = editors ?? throw new ArgumentNullException(nameof(editors));
+            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             _currentView = dashboard;
 
-            HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => IsEditorOpen && !IsBusy);
+            HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => !IsBusy);
             SettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke(), () => false);
             HelpCommand = new RelayCommand(() => HelpRequested?.Invoke(), () => false);
 
             Dashboard.ConfigureRequested += OpenDevice;
             _monitor.Updated += OnMonitorUpdated;
+            _monitor.RefreshActivityChanged += OnRefreshActivityChanged;
 
             UpdateStatusIndicator();
+
+            var tickInterval = lastRefreshedTickInterval ?? _defaultLastRefreshedTickInterval;
+
+            _lastRefreshedTicker = new Timer(OnLastRefreshedTick, null, tickInterval, tickInterval);
         }
 
         /// <summary>
@@ -348,7 +467,10 @@ namespace KinesisEdit.ViewModels
 
         private async Task GoHomeAsync()
         {
-            if (IsBusy)
+            // Home is already where we are: nothing to confirm, nothing to close, nothing to eject.
+            // The command stays runnable there so the pill can wear its selected face, so this is
+            // the one place that has to say the navigation is a no-op.
+            if (!IsEditorOpen || IsBusy)
             {
                 return;
             }
@@ -483,8 +605,57 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Unsubscribes from the dashboard and the detection loop and closes any open editor.
-        /// Safe to call multiple times.
+        /// A pass started or finished. Arrives already marshaled onto the UI thread
+        /// (docs/app/app-shell.md, invariant 7), and re-reads the readout immediately so a
+        /// completed pass snaps to "refreshed 0.0s ago" instead of waiting for the next tick.
+        /// </summary>
+        private void OnRefreshActivityChanged()
+        {
+            PublishLastRefreshedText();
+        }
+
+        /// <summary>
+        /// Ages the readout. A plain <see cref="Timer"/> marshaled through the
+        /// <see cref="IUiDispatcher"/>, not a <c>DispatcherTimer</c>: view models carry no Avalonia
+        /// types (docs/app/app-shell.md, invariant 8).
+        /// </summary>
+        private void OnLastRefreshedTick(object? state)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _dispatcher.Post(PublishLastRefreshedText);
+        }
+
+        /// <summary>
+        /// Raises the readout's change notification, and only when the rendered text really
+        /// changed — a still readout must not cost a property change per tick.
+        /// </summary>
+        private void PublishLastRefreshedText()
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            var text = LastRefreshedText;
+
+            if (string.Equals(text, _lastRefreshedText, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastRefreshedText = text;
+
+            OnPropertyChanged(nameof(LastRefreshedText));
+            OnPropertyChanged(nameof(HasLastRefreshed));
+        }
+
+        /// <summary>
+        /// Unsubscribes from the dashboard and the detection loop, stops the readout ticker, and
+        /// closes any open editor. Safe to call multiple times.
         /// </summary>
         public void Dispose()
         {
@@ -497,6 +668,9 @@ namespace KinesisEdit.ViewModels
 
             Dashboard.ConfigureRequested -= OpenDevice;
             _monitor.Updated -= OnMonitorUpdated;
+            _monitor.RefreshActivityChanged -= OnRefreshActivityChanged;
+
+            _lastRefreshedTicker.Dispose();
 
             CloseEditor();
         }

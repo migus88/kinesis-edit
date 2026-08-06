@@ -40,7 +40,21 @@ namespace KinesisEdit.Tests.Design
             foreach (var (viewTypeName, className, themeKey) in new[]
             {
                 (typeof(KeyCapView).FullName!, "keyCap", "KeyCapButton"),
-                (typeof(DeviceCardView).FullName!, "statusChip", "StatusPill"),
+
+                // The app bar. The status chip is the shell's own readout — the device card's
+                // status is a bare line, not a lozenge — and the nav pills were unclassed Fluent
+                // buttons until the dashboard rebuild.
+                (typeof(MainWindow).FullName!, "statusChip", "StatusPill"),
+                (typeof(MainWindow).FullName!, "navPill", "NavPill"),
+
+                // The dashboard. Three button roles that had a bridge and no call site at all
+                // until the cards were rebuilt on them.
+                (typeof(DeviceCardView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(DeviceCardView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(DeviceCardView).FullName!, "eject", "EjectButton"),
+                (typeof(WebToolCardView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(DashboardView).FullName!, "secondary", "SecondaryButton"),
+
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
                 (typeof(TapAndHoldOverlayView).FullName!, "actionField", "TokenField"),

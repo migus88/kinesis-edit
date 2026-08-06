@@ -45,9 +45,31 @@
   <x:Double x:Key="GutterSplit">26</x:Double>
 
   <!-- The dashboard card grid: two columns, and a 2px status rail flush against the left edge
-       of every card. -->
+       of every card.
+
+       The gap reaches the grid as the two Thicknesses beside it, because Avalonia's UniformGrid
+       has no spacing property and a Margin is a Thickness that no markup can compose out of an
+       x:Double. Each cell carries the gap on its right and bottom; the panel carries the negative
+       of it, which inflates its slot by exactly one gap in each direction so the last column ends
+       on the viewport's edge and the scroll extent stops at the bottom of the last row. The three
+       are one number and are pinned to each other by ShapeAndTypeTokenTests - change the gap and
+       the siblings have to follow, or the suite says so. -->
   <x:Double x:Key="CardGridGap">12</x:Double>
+  <Thickness x:Key="CardGridCellGap">0,0,12,12</Thickness>
+  <Thickness x:Key="CardGridPanelBleed">0,0,-12,-12</Thickness>
   <x:Double x:Key="WidthCardStatusRail">2</x:Double>
+
+  <!-- Every dashboard card is exactly this tall, whichever state it is in: "the card keeps its
+       size and its buttons keep their positions - only the status line and a 3px indeterminate
+       bar change, so a 2s refresh can't shift the layout under the cursor" (mockup 2e).
+
+       Derived from the mockup canvas' own box model for the tallest state, the unwritable card
+       with its two-line explanation: 2 border + 28 padding + 70 art frame (56 + 6 padding + 1
+       border, doubled) + 12 + 51.9 explanation (2 x 15.95 + 18 padding + 2 border) + 12 + 30
+       buttons = 205.9. Avalonia's line boxes are the font's own metrics rather than the mock's
+       explicit line-heights, which puts the same anatomy at ~211 here (16.5 prose leading, a
+       33.6 button). 212 is the next step of the 4px grid that clears both. -->
+  <x:Double x:Key="HeightDeviceCard">212</x:Double>
 
   <!-- Icons are geometry, never raster: a 16px box drawn with a 1.5px square-capped stroke. -->
   <x:Double x:Key="IconSize">16</x:Double>

@@ -44,6 +44,13 @@ namespace KinesisEdit.Core.Devices
         /// <summary>Settings file name (default "kbd_settings.txt"; Adv2 "state.txt", Adv360 "settings.txt"; 03 §3.3).</summary>
         public string? SettingsFile { get; init; }
 
+        /// <summary>
+        /// Physical shape of the device in the design system's form-factor vocabulary
+        /// (docs/design/mockups.md §1b, §2e); <see cref="DeviceFormFactor.None"/> where the design
+        /// classifies nothing. Distinct from <see cref="HardwareNotes"/>, which quotes specs/02 prose.
+        /// </summary>
+        public DeviceFormFactor FormFactor { get; init; }
+
         /// <summary>Programmable key layers (Adv2 and Gen1 boards: 2; Adv360: 5); null where not applicable.</summary>
         public int? LayerCount { get; init; }
 
@@ -73,6 +80,15 @@ namespace KinesisEdit.Core.Devices
 
         /// <summary>Special hardware notes carried by the master table (specs/02-devices.md).</summary>
         public string? HardwareNotes { get; init; }
+
+        /// <summary>
+        /// Display-ready note naming an accessory port the device exposes beyond its own inputs —
+        /// the Savant Elite 2's "accessory jack" (specs/02 "3 pedals + jack"; the four
+        /// <c>jack1</c>–<c>jack4</c> positions of specs/05 §3.14). Null where the device has none.
+        /// A single datum, not a capability record: no other device has one, and nothing but the
+        /// card meta line consumes it.
+        /// </summary>
+        public string? AccessoryNote { get; init; }
 
         /// <summary>External configuration site, where the device is configured outside SmartSet (Adv360 Pro ZMK GUI).</summary>
         public string? ConfigurationUrl { get; init; }
