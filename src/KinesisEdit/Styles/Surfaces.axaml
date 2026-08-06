@@ -163,6 +163,18 @@
     <Setter Property="Theme" Value="{StaticResource StatusPill}" />
   </Style>
 
+  <!-- ===== Keyboard legend ====================================================================
+       A key the user is meant to press, printed inline: the `⌥1`-`⌥5` hints on the editor's layer
+       segments today, and the shortcut table of mockup 2b when it lands. Mono, because a legend is
+       a literal rather than the app talking.
+
+       It sits here beside the status chip rather than in Buttons.axaml because it is the other
+       non-button lozenge of Themes/ControlThemes/Pills.axaml: a ContentControl and not a Button,
+       for the same reason the chip is a Border — it is a readout, never a target. -->
+  <Style Selector="ContentControl.kbd">
+    <Setter Property="Theme" Value="{StaticResource KbdChip}" />
+  </Style>
+
   <!-- ===== Framed lists and hairline rows ==================================================== -->
 
   <!-- A scrollable area that has to read as one field: the recorded macro steps, the profile's

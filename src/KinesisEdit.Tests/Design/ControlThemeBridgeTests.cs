@@ -41,6 +41,13 @@ namespace KinesisEdit.Tests.Design
             {
                 (typeof(KeyCapView).FullName!, "keyCap", "KeyCapButton"),
                 (typeof(DeviceCardView).FullName!, "statusChip", "StatusPill"),
+                (typeof(StatusChipView).FullName!, "statusChip", "StatusPill"),
+                // The ⌥n legend on each layer segment of the editor's tab bar.
+                (typeof(KeyboardEditorView).FullName!, "kbd", "KbdChip"),
+                (typeof(KeyboardEditorView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(KeyboardEditorView).FullName!, "secondary", "SecondaryButton"),
+                // The advisory strip's `Review N`, bordered as the handoff draws it.
+                (typeof(AdvisoryStripView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
                 (typeof(TapAndHoldOverlayView).FullName!, "actionField", "TokenField"),
@@ -223,9 +230,10 @@ namespace KinesisEdit.Tests.Design
 
                 Assert.Same(Theme("TabStripItem"), container.Theme);
 
-                // A tab this app has not built yet is shown disabled rather than hidden, and the
-                // strip's own scoped style is what still carries that.
-                Assert.Equal(editor.Tabs[index].IsEnabled, container.IsEnabled);
+                // Every tab the strip carries works: a section this app cannot open for this board
+                // is not rendered at all, so nothing in the strip is ever disabled and the scoped
+                // TabStripItem style that used to bind IsEnabled is gone.
+                Assert.True(container.IsEnabled, $"The {editor.Tabs[index].Caption} tab rendered disabled.");
             }
         }
 

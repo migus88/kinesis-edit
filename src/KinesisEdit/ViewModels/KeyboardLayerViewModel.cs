@@ -1,3 +1,4 @@
+using System.Globalization;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
@@ -18,6 +19,26 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed class KeyboardLayerViewModel : ViewModelBase
     {
+        /// <summary>How the layer shortcut is spelled on macOS: the Option glyph.</summary>
+        public const string MacShortcutPrefix = "⌥";
+
+        /// <summary>How it is spelled everywhere else — ⌥ is Alt on every other platform.</summary>
+        public const string ShortcutPrefix = "Alt+";
+
+        /// <summary>
+        /// The layer's shortcut legend. <paramref name="isMacOs"/> is a parameter rather than a
+        /// read of <see cref="KeyCaption.IsMacOs"/> so both platforms are testable on one machine —
+        /// the same shape <see cref="KeyCaption.For"/> uses. ⌥ is Alt on every platform
+        /// (docs/design/handoff.md § "Interactions": "map ⌘→Ctrl and ⌥→Alt on Windows/Linux"), so
+        /// only the spelling changes, never which physical key it names.
+        /// </summary>
+        public static string BuildShortcutHint(int layerIndex, bool isMacOs)
+        {
+            var number = (layerIndex + 1).ToString(CultureInfo.InvariantCulture);
+
+            return isMacOs ? MacShortcutPrefix + number : ShortcutPrefix + number;
+        }
+
         /// <summary>
         /// Builds one view model per layer of <paramref name="layout"/> over the device's board
         /// picture, resolving each layer's colour overlays from <paramref name="lighting"/>.
@@ -50,6 +71,16 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Layer identity: 0 = top/base, 1 = Fn/keypad, Advantage 360 uses 0..4.</summary>
         public int Index => Layer.Index;
+
+        /// <summary>
+        /// The keyboard legend printed on the layer's segment — <c>⌥1</c>… on macOS, <c>Alt+1</c>…
+        /// elsewhere (mockup 1f: "annotated with the shortcut ⌥1–5"). It is display text; the
+        /// accelerator it promises is kept by the editor's keyboard grammar
+        /// (<see cref="Input.EditorShortcuts"/>, docs/app/keyboard-editor.md), which maps ⌥ to
+        /// <c>Alt</c> on every platform — so the two agree on which physical key this names, and
+        /// only the spelling differs.
+        /// </summary>
+        public string ShortcutHint { get; }
 
         /// <summary>What the layer switch calls this layer (see <see cref="LayerCaptions"/>).</summary>
         public string Caption { get; }
@@ -86,6 +117,7 @@ namespace KinesisEdit.ViewModels
             ArgumentException.ThrowIfNullOrWhiteSpace(caption);
 
             Caption = caption;
+            ShortcutHint = BuildShortcutHint(layer.Index, KeyCaption.IsMacOs);
             BoardWidth = visual.Width;
             BoardHeight = visual.Height;
             Keys = BuildKeys(layer, visual, dialect, colorOverlays);

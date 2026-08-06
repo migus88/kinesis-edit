@@ -90,7 +90,19 @@ namespace KinesisEdit.ViewModels
             set => SetProperty(ref _isSelected, value);
         }
 
+        /// <summary>
+        /// Whether this macro is over one of the device's budgets — the row's amber dot. Pushed in
+        /// by <see cref="MacroPanelViewModel.Advisories"/> whenever the rows are rebuilt; a budget
+        /// is <b>reported, never refused</b>, so the dot is the whole consequence.
+        /// </summary>
+        public bool HasAdvisory
+        {
+            get => _hasAdvisory;
+            set => SetProperty(ref _hasAdvisory, value);
+        }
+
         private bool _isSelected;
+        private bool _hasAdvisory;
 
         /// <summary>Creates one row over a macro found on <paramref name="key"/> of <paramref name="layer"/>.</summary>
         public MacroListEntryViewModel(

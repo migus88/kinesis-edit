@@ -9,8 +9,14 @@ namespace KinesisEdit.ViewModels
     /// opened, exactly like the legacy dashboards embedded an editor form in their content panel
     /// (specs/10-apps-and-ui.md, "Opening a device" and "Home"). It also owns the status
     /// indicator — green 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode'.
+    /// <para>
+    /// It is also the app's <see cref="IShellChrome"/>: an editor that draws its own 46 px bar
+    /// reaches Home and the status chip through that interface rather than up the visual tree, and
+    /// the shell hides its own bar for as long as such an editor is open
+    /// (<see cref="IsShellChromeVisible"/>).
+    /// </para>
     /// </summary>
-    public sealed class MainWindowViewModel : ViewModelBase, IDisposable
+    public sealed class MainWindowViewModel : ViewModelBase, IShellChrome, IDisposable
     {
         /// <summary>Indicator text while the version file re-check succeeds.</summary>
         public const string VDriveOkIndicator = "v-Drive OK";
@@ -51,6 +57,11 @@ namespace KinesisEdit.ViewModels
                 {
                     OnPropertyChanged(nameof(IsEditorOpen));
 
+                    // Both directions: an editor with its own chrome opening hides the shell bar,
+                    // and the same editor closing brings it back. Raised here rather than at the
+                    // two call sites so no navigation path can forget one of them.
+                    OnPropertyChanged(nameof(IsShellChromeVisible));
+
                     HomeCommand.NotifyCanExecuteChanged();
                 }
             }
@@ -58,6 +69,14 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Whether an editor is open — the Home button is only usable then.</summary>
         public bool IsEditorOpen => _editor is not null;
+
+        /// <summary>
+        /// Whether the window draws its own top bar. False exactly while an editor that
+        /// <see cref="DeviceEditorViewModel.ProvidesOwnChrome"/> is open: the mockups draw one
+        /// 46 px bar while editing, carrying the same Home / device / Save / status pill this bar
+        /// carries, so keeping both would stack 92 px of chrome and put two status pills on screen.
+        /// </summary>
+        public bool IsShellChromeVisible => _editor?.ProvidesOwnChrome != true;
 
         /// <summary>Whether the open session runs in demo mode.</summary>
         public bool IsDemoMode
@@ -221,6 +240,11 @@ namespace KinesisEdit.ViewModels
                         CloseEditor();
 
                         editor = CreateEditor(device);
+
+                        // The editor gets the shell as data before it is on screen, so an editor
+                        // that draws its own bar has its Home command and its status chip bound by
+                        // the time the first frame is measured (IShellChrome).
+                        editor.Shell = this;
 
                         Editor = editor;
                         CurrentView = editor;
@@ -403,15 +427,25 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void CloseEditor()
         {
+            var editor = Editor;
+
             try
             {
-                if (Editor is IDisposable disposable)
+                if (editor is IDisposable disposable)
                 {
                     disposable.Dispose();
                 }
             }
             finally
             {
+                // Dropped even when the disposal failed, and before the reference goes: an editor
+                // still holding the shell would keep a Home button live on a surface that is no
+                // longer on screen.
+                if (editor is not null)
+                {
+                    editor.Shell = null;
+                }
+
                 Editor = null;
             }
         }

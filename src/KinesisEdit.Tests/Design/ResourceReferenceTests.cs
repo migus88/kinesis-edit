@@ -125,9 +125,11 @@ namespace KinesisEdit.Tests.Design
 
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
 
-            // A guard that matched nothing would pass for the wrong reason. Three views author a
-            // demo pill: the keyboard editor, the placeholder, and the pedal editor.
-            Assert.Equal(3, found);
+            // A guard that matched nothing would pass for the wrong reason. Two views author a demo
+            // pill: the placeholder and the pedal editor. The keyboard editor's went with the
+            // redesigned chrome — its toolbar's status chip and its Demo Mode bar say it instead,
+            // and both are bound rather than naming the indicator string.
+            Assert.Equal(2, found);
         }
 
         /// <summary>

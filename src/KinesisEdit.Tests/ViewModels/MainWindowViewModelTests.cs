@@ -92,6 +92,79 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void IsShellChromeVisible_OnTheDashboard_IsTrue()
+        {
+            Assert.True(_shell.IsShellChromeVisible);
+        }
+
+        [Fact]
+        public async Task IsShellChromeVisible_WhileAnEditorDrawsItsOwnBar_IsFalseAndComesBackOnHome()
+        {
+            // The mockups draw exactly one 46px bar while editing, and the keyboard editor's bar
+            // carries the same Home / device / Save / status pill this one does.
+            var changes = new List<string?>();
+
+            _shell.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
+
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
+
+            Assert.True(_shell.Editor!.ProvidesOwnChrome);
+            Assert.False(_shell.IsShellChromeVisible);
+            Assert.Contains(nameof(MainWindowViewModel.IsShellChromeVisible), changes);
+
+            changes.Clear();
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.True(_shell.IsShellChromeVisible);
+            Assert.Contains(nameof(MainWindowViewModel.IsShellChromeVisible), changes);
+        }
+
+        [Fact]
+        public async Task IsShellChromeVisible_ForAnEditorWithoutItsOwnBar_StaysTrue()
+        {
+            // The Savant Elite2 pedal editor keeps the shell's bar until issue #53 gives it one.
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+            SetPedalFile(snapshot, "[lpedal]>[lmouse]");
+
+            _shell.OpenDevice(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            await WaitForLoadAsync(() => pedal.IsLoading);
+
+            Assert.False(pedal.ProvidesOwnChrome);
+            Assert.True(_shell.IsShellChromeVisible);
+        }
+
+        [Fact]
+        public async Task OpenDevice_HandsTheEditorTheShellAndTakesItBackOnHome()
+        {
+            // The editor's own toolbar reaches Home and the status chip through IShellChrome, not
+            // up the visual tree — so the hand-off is state the shell owns, and a closed editor
+            // must not be left holding it.
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
+
+            var editor = Assert.IsType<KeyboardEditorViewModel>(_shell.Editor);
+
+            Assert.Same(_shell, editor.Shell);
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(editor.Shell);
+        }
+
+        [Fact]
+        public void StatusIndicator_IsTheShellChromeAnEditorBindsThrough()
+        {
+            IShellChrome chrome = _shell;
+
+            Assert.Same(_shell.HomeCommand, chrome.HomeCommand);
+            Assert.Equal(_shell.StatusIndicatorText, chrome.StatusIndicatorText);
+            Assert.Equal(_shell.StatusIndicatorSeverity, chrome.StatusIndicatorSeverity);
+        }
+
+        [Fact]
         public async Task OpenDevice_WithTheSavantElite2_SwapsInThePedalEditor()
         {
             var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);

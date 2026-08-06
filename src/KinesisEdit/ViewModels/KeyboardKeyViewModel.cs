@@ -78,6 +78,26 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Whether this position carries an advisory — a duplicate token today
+        /// (<see cref="Core.Model.DuplicateKeyScan"/>), anything anchored to a key tomorrow. Pushed
+        /// in by the editor from <see cref="Advisories.EditorAdvisories"/> after every rebuild, for
+        /// the same reason as <see cref="ColorOverlayHex"/>: the fact lives outside
+        /// <see cref="KeyboardKey"/>, so <see cref="RefreshFromModel"/> cannot reach it.
+        /// <para>
+        /// <b>Exposed and deliberately not rendered.</b> The design gives an advisory key a 12×3 px
+        /// <c>StatusAdvisoryStrong</c> bar in the cap's top-right corner, and that bar belongs to
+        /// the badge vocabulary of issue #91 — the remap bar, the macro dot, the tap-and-hold
+        /// corner and the legend row's live counts all land together, or the cap grows one badge
+        /// drawn to a different rule than the four beside it.
+        /// </para>
+        /// </summary>
+        public bool HasAdvisory
+        {
+            get => _hasAdvisory;
+            set => SetProperty(ref _hasAdvisory, value);
+        }
+
+        /// <summary>
         /// The key's LED colour as <c>#RRGGBB</c>, or null when it has none. Settable and
         /// notifying because the Lighting tab re-paints keys while the editor is open
         /// (docs/app/keyboard-editor.md, "The Lighting tab"): the colour lives in the lighting
@@ -111,6 +131,7 @@ namespace KinesisEdit.ViewModels
         private bool _isModified;
         private bool _isSelected;
         private bool _isListening;
+        private bool _hasAdvisory;
 
         /// <summary>Joins one model key to its placement.</summary>
         public KeyboardKeyViewModel(KeyboardKey key, KeyVisual visual, TokenDialect dialect, string? colorOverlayHex = null)

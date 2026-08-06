@@ -4,16 +4,18 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The tab strip is device-driven: a section a board could never carry is omitted, not shown
-    /// disabled (issue #16). Which sections those are comes from the catalog's
-    /// <c>LightingCapability</c>/<c>SettingsCapability</c>, never from a device id here.
+    /// The tab strip is capability-driven, and the rule is <b>absence, never disabling</b>: a
+    /// section this app cannot open for this board is not rendered at all (docs/design/README.md,
+    /// "capability-driven UI: absent features are not shown, not disabled"). Which sections those
+    /// are comes from the catalog's <c>LightingCapability</c>/<c>SettingsCapability</c> plus the
+    /// lighting panel's own support predicate — never from a device id here.
     /// </summary>
     public sealed class EditorTabViewModelTests
     {
         [Fact]
-        public void CreateAll_ForAPerKeyRgbBoard_HasAllFourSections()
+        public void CreateAll_ForAPerKeyRgbBoardThePanelCanLight_HasAllFourSections()
         {
-            var tabs = CreateAll(DeviceId.FreestyleEdgeRgb);
+            var tabs = CreateAll(DeviceId.FreestyleEdgeRgb, isLightingSupported: true);
 
             Assert.Equal(
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
@@ -21,94 +23,115 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void CreateAll_TheFirstTab_IsCaptionedLayout()
+        {
+            // The mockups' caption. The EditorTab.Keys enum member deliberately keeps its name: it
+            // is carried inside EnumMatch converter-parameter strings in XAML.
+            var tabs = CreateAll(DeviceId.FreestyleEdgeRgb, isLightingSupported: true);
+
+            Assert.Equal(EditorTab.Keys, tabs[0].Tab);
+            Assert.Equal(EditorTabViewModel.LayoutCaption, tabs[0].Caption);
+            Assert.Equal("Layout", tabs[0].Caption);
+        }
+
+        [Fact]
         public void CreateAll_ForADeviceWithoutLighting_OmitsTheLightingTab()
         {
             // Freestyle Pro and Advantage2 have no lighting hardware at all (specs/02-devices.md),
-            // so there is no lighting file to edit and no tab to open.
-            Assert.DoesNotContain(EditorTab.Lighting, CreateAll(DeviceId.FreestylePro).Select(tab => tab.Tab));
-            Assert.DoesNotContain(EditorTab.Lighting, CreateAll(DeviceId.Advantage2).Select(tab => tab.Tab));
+            // so there is no lighting file to edit and no tab to open. The support flag cannot
+            // conjure one either.
+            Assert.DoesNotContain(
+                EditorTab.Lighting,
+                CreateAll(DeviceId.FreestylePro, isLightingSupported: true).Select(tab => tab.Tab));
+            Assert.DoesNotContain(
+                EditorTab.Lighting,
+                CreateAll(DeviceId.Advantage2, isLightingSupported: true).Select(tab => tab.Tab));
+        }
+
+        [Fact]
+        public void CreateAll_ForALitBoardThisAppCannotEditYet_OmitsTheLightingTabRatherThanDimmingIt()
+        {
+            // The TKO's led file adds an edge section (#40) and the Advantage 360's holds six
+            // indicators (#41): neither is the model LightingTabViewModel edits. The tab used to be
+            // rendered and disabled; the design's law is that it is not rendered.
+            foreach (var deviceId in new[] { DeviceId.Tko, DeviceId.Advantage360 })
+            {
+                var device = DeviceCatalog.GetById(deviceId);
+
+                Assert.NotEqual(LightingKind.None, device.Lighting.Kind);
+                Assert.False(LightingTabViewModel.IsSupported(device));
+                Assert.DoesNotContain(
+                    EditorTab.Lighting,
+                    CreateAll(deviceId, isLightingSupported: false).Select(tab => tab.Tab));
+            }
         }
 
         [Fact]
         public void CreateAll_ForADeviceWithoutASettingsFile_OmitsTheSettingsTab()
         {
-            Assert.DoesNotContain(EditorTab.Settings, CreateAll(DeviceId.SavantElite2).Select(tab => tab.Tab));
-            Assert.DoesNotContain(EditorTab.Settings, CreateAll(DeviceId.CrossfireKeypad).Select(tab => tab.Tab));
             Assert.DoesNotContain(
                 EditorTab.Settings,
-                CreateAll(DeviceId.Advantage360Professional).Select(tab => tab.Tab));
+                CreateAll(DeviceId.SavantElite2, isLightingSupported: false).Select(tab => tab.Tab));
+            Assert.DoesNotContain(
+                EditorTab.Settings,
+                CreateAll(DeviceId.CrossfireKeypad, isLightingSupported: false).Select(tab => tab.Tab));
+            Assert.DoesNotContain(
+                EditorTab.Settings,
+                CreateAll(DeviceId.Advantage360Professional, isLightingSupported: false).Select(tab => tab.Tab));
         }
 
         [Fact]
-        public void CreateAll_ForTheAdvantage2_IsKeysMacrosAndSettings()
+        public void CreateAll_ForTheAdvantage2_IsLayoutMacrosAndSettings()
         {
-            var tabs = CreateAll(DeviceId.Advantage2);
+            var tabs = CreateAll(DeviceId.Advantage2, isLightingSupported: false);
 
             Assert.Equal(
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Settings },
                 tabs.Select(tab => tab.Tab));
-            Assert.True(tabs[^1].IsEnabled);
         }
 
         [Fact]
-        public void CreateAll_TheSettingsTab_IsEnabled()
-        {
-            var tabs = CreateAll(DeviceId.Tko);
-
-            Assert.True(Assert.Single(tabs, tab => tab.Tab == EditorTab.Settings).IsEnabled);
-        }
-
-        [Fact]
-        public void CreateAll_TheMacrosTab_IsAlwaysPresentAndEnabled()
+        public void CreateAll_TheMacrosTab_IsAlwaysPresent()
         {
             // Unlike Lighting and Settings, the Macros tab is not capability-filtered: the panel
             // behind it reads the device's own MacroCapability and says "This device does not
             // support macros" itself, so the answer lives in one place.
             foreach (var device in DeviceCatalog.All)
             {
-                var macros = Assert.Single(
-                    EditorTabViewModel.CreateAll(device, isLightingEnabled: false),
+                Assert.Single(
+                    EditorTabViewModel.CreateAll(device, isLightingSupported: false),
                     tab => tab.Tab == EditorTab.Macros);
-
-                Assert.True(macros.IsEnabled);
             }
         }
 
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public void CreateAll_TheLightingTab_FollowsTheLightingEnabledFlag(bool isLightingEnabled)
+        public void CreateAll_TheLightingTab_IsPresentOnlyWhenThePanelSupportsTheBoard(bool isLightingSupported)
         {
-            // The one switch the lighting panel flips when it lands.
+            // The one switch the lighting panel flips. It now decides presence, not enablement.
             var tabs = EditorTabViewModel.CreateAll(
                 DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb),
-                isLightingEnabled);
+                isLightingSupported);
 
-            Assert.Equal(isLightingEnabled, Assert.Single(tabs, tab => tab.Tab == EditorTab.Lighting).IsEnabled);
+            Assert.Equal(
+                isLightingSupported,
+                tabs.Any(tab => tab.Tab == EditorTab.Lighting));
         }
 
         [Fact]
-        public void CreateAll_ForEveryDevice_EnablesTheLightingTabExactlyWhereThePanelCanEditTheLedFile()
+        public void CreateAll_ForEveryDevice_RendersTheLightingTabExactlyWhereThePanelCanEditTheLedFile()
         {
             // The RGB is the only board whose led file is the two-layer key-backlight model the
-            // panel edits; the TKO adds an edge section (#40) and the Advantage 360 has indicators
-            // (#41), so their tabs stay visible-but-dark rather than opening an empty editor.
+            // panel edits, so it is the only board that gets the tab at all.
             foreach (var device in DeviceCatalog.All)
             {
                 var isSupported = LightingTabViewModel.IsSupported(device);
-                var lighting = EditorTabViewModel
+                var hasTab = EditorTabViewModel
                     .CreateAll(device, isSupported)
-                    .SingleOrDefault(tab => tab.Tab == EditorTab.Lighting);
+                    .Any(tab => tab.Tab == EditorTab.Lighting);
 
-                if (device.Lighting.Kind == LightingKind.None)
-                {
-                    Assert.Null(lighting);
-
-                    continue;
-                }
-
-                Assert.NotNull(lighting);
-                Assert.Equal(device.Id == DeviceId.FreestyleEdgeRgb, lighting.IsEnabled);
+                Assert.Equal(device.Id == DeviceId.FreestyleEdgeRgb, hasTab);
             }
         }
 
@@ -120,7 +143,7 @@ namespace KinesisEdit.Tests.ViewModels
             foreach (var device in DeviceCatalog.All)
             {
                 var hasTab = EditorTabViewModel
-                    .CreateAll(device, isLightingEnabled: false)
+                    .CreateAll(device, isLightingSupported: false)
                     .Any(tab => tab.Tab == EditorTab.Settings);
 
                 Assert.Equal(KeyboardSettingsRows.Create(device.Settings).Count > 0, hasTab);
@@ -128,14 +151,28 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void CreateAll_WithoutADevice_Throws()
+        public void CreateAll_ForEveryDevice_YieldsNoSectionTheEditorWouldHaveToRefuse()
         {
-            Assert.Throws<ArgumentNullException>(() => EditorTabViewModel.CreateAll(null!, isLightingEnabled: false));
+            // The whole point of dropping IsEnabled: every entry the strip carries opens.
+            foreach (var device in DeviceCatalog.All)
+            {
+                var tabs = EditorTabViewModel.CreateAll(device, LightingTabViewModel.IsSupported(device));
+
+                Assert.All(tabs, tab => Assert.False(string.IsNullOrWhiteSpace(tab.Caption)));
+                Assert.Equal(tabs.Select(tab => tab.Tab).Distinct().Count(), tabs.Count);
+            }
         }
 
-        private static IReadOnlyList<EditorTabViewModel> CreateAll(DeviceId deviceId)
+        [Fact]
+        public void CreateAll_WithoutADevice_Throws()
         {
-            return EditorTabViewModel.CreateAll(DeviceCatalog.GetById(deviceId), isLightingEnabled: false);
+            Assert.Throws<ArgumentNullException>(
+                () => EditorTabViewModel.CreateAll(null!, isLightingSupported: false));
+        }
+
+        private static IReadOnlyList<EditorTabViewModel> CreateAll(DeviceId deviceId, bool isLightingSupported)
+        {
+            return EditorTabViewModel.CreateAll(DeviceCatalog.GetById(deviceId), isLightingSupported);
         }
     }
 }

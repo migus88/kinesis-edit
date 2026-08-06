@@ -21,6 +21,34 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the device was opened without a connected, writable drive (03 §3.5).</summary>
         public bool IsDemoMode => Device.IsDemoMode;
 
+        /// <summary>
+        /// Whether this editor draws the whole 46 px bar itself — Home, the device name, the drive
+        /// path, Save <em>and</em> the v-Drive status chip — in which case the shell hides its own
+        /// (<see cref="MainWindowViewModel.IsShellChromeVisible"/>). The mockups draw exactly one
+        /// bar while editing, so two would be both 92 px of chrome and two status pills.
+        /// <para>
+        /// False by default: an editor that has not been rebuilt on the redesign keeps the shell's
+        /// bar. Only <see cref="KeyboardEditorViewModel"/> overrides it today — the Savant Elite2
+        /// pedal editor gets its own bar with issue #53.
+        /// </para>
+        /// </summary>
+        public virtual bool ProvidesOwnChrome => false;
+
+        /// <summary>
+        /// The shell, as data, for an editor that draws its own chrome — assigned by
+        /// <see cref="MainWindowViewModel"/> when it opens the editor and cleared when it closes
+        /// it. Null everywhere else, including in every headless scene that hosts an editor view on
+        /// its own, so a view binding through it must degrade to an empty chip rather than throw.
+        /// See <see cref="IShellChrome"/> for why this is a property and not a visual-tree lookup.
+        /// </summary>
+        public IShellChrome? Shell
+        {
+            get => _shell;
+            set => SetProperty(ref _shell, value);
+        }
+
+        private IShellChrome? _shell;
+
         /// <summary>Creates the editor for <paramref name="device"/>.</summary>
         protected DeviceEditorViewModel(DeviceSnapshot device)
         {

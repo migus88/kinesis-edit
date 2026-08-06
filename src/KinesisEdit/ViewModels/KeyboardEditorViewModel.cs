@@ -9,6 +9,7 @@ using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
 using KinesisEdit.Core.VDrive.Io;
 using KinesisEdit.Services;
+using KinesisEdit.ViewModels.Advisories;
 
 namespace KinesisEdit.ViewModels
 {
@@ -31,6 +32,21 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Caption of the loading indicator during a save. Not a spec string.</summary>
         public const string SavingCaption = "Saving...";
+
+        /// <summary>
+        /// The Demo Mode bar's copy, verbatim from mockup 1f. Purple, never amber: demo mode is its
+        /// own state in the four-status vocabulary and amber is reserved for advisories.
+        /// </summary>
+        public const string DemoModeBarMessage =
+            "Demo Mode — no keyboard attached. Nothing you change here is written anywhere.";
+
+        /// <summary>
+        /// The Demo Mode bar's one action (mockup 1f), verbatim; it runs the shell's Home. The
+        /// mockup's other action — <c>Export layout to file…</c> — is deliberately not rendered:
+        /// demo mode opens no session, so <c>CanExport</c> is false for exactly as long as the bar
+        /// is on screen, and a control that can never become live is not shown at all.
+        /// </summary>
+        public const string DemoModeConnectCaption = "Connect a device";
 
         /// <summary>Title of the dialog raised when the profile cannot be read from the drive.</summary>
         public const string LoadFailureTitle = "Load Profile";
@@ -74,6 +90,45 @@ namespace KinesisEdit.ViewModels
             ArgumentNullException.ThrowIfNull(line);
 
             return string.Create(CultureInfo.InvariantCulture, $"Line {line.LineNumber}: {line.Text}");
+        }
+
+        /// <summary>
+        /// This editor draws the whole 46 px bar itself, so the shell hides its own
+        /// (<see cref="MainWindowViewModel.IsShellChromeVisible"/>).
+        /// </summary>
+        public override bool ProvidesOwnChrome => true;
+
+        /// <summary>
+        /// The open drive's mount path, shown in mono beside the device name because it is a value
+        /// that exists verbatim on the machine. Empty in demo mode and on a device with no
+        /// location, which is what <see cref="HasMountPath"/> hides.
+        /// </summary>
+        public string MountPath => Device.Location?.RootPath ?? string.Empty;
+
+        /// <summary>Whether there is a mount path worth printing.</summary>
+        public bool HasMountPath => !IsDemoMode && MountPath.Length > 0;
+
+        /// <summary>
+        /// Whether the open profile re-serializes to something different from what was loaded —
+        /// the toolbar's Save turns amber for exactly this ("any edit marks the session dirty →
+        /// Save turns amber", docs/design/handoff.md § Interactions).
+        /// <para>
+        /// It is a <b>pull</b> from <see cref="IProfileSession.IsDirty"/>, which compares serialized
+        /// lines: Core's model announces nothing, so nothing pushes a notification when a key, a
+        /// macro or a lighting state is mutated. <see cref="RefreshDirtyState"/> is therefore called
+        /// from every path that can move the layout or the lighting model — see its remarks for the
+        /// list, which is the single most fragile thing about this property: a path that forgets it
+        /// leaves Save grey while the user has unsaved work.
+        /// </para>
+        /// <para>
+        /// Always false in demo mode and after a load that produced no session: there is nothing to
+        /// write, and Save is unavailable there anyway (03 §3.5).
+        /// </para>
+        /// </summary>
+        public bool IsDirty
+        {
+            get => _isDirty;
+            private set => SetProperty(ref _isDirty, value);
         }
 
         /// <summary>Whether the profile is still being read; the picture is empty until it is not.</summary>
@@ -164,6 +219,32 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the loaded file carried lines the parser could not apply.</summary>
         public bool HasInvalidLines => InvalidLineMessages.Count > 0;
 
+        /// <summary>
+        /// What the app has noticed about the open profile and is reporting without having changed
+        /// anything (<see cref="EditorAdvisories"/>). Rebuilt by <see cref="RefreshCounters"/>, so
+        /// every path that can move the layout ends in a fresh set; replaced whole rather than
+        /// mutated, because Core announces nothing.
+        /// <para>
+        /// <b>Nothing here gates anything.</b> No command's <c>CanExecute</c> reads it, a save with
+        /// advisories succeeds, and an over-budget layout is written as it stands — the board
+        /// truncates. That is the design law ("advisories never block"), and it is the reason this
+        /// is a read-out and not a validator.
+        /// </para>
+        /// </summary>
+        public EditorAdvisories Advisories
+        {
+            get => _advisories;
+            private set => SetProperty(ref _advisories, value);
+        }
+
+        /// <summary>
+        /// The summary strip's own view model: the <b>open section's</b> count and sentence, and
+        /// the <c>Review N</c> walk. Built once here and handed the set by
+        /// <see cref="RefreshAdvisorySummary"/>; <c>AdvisoryStripView</c> binds to it directly, so
+        /// nothing about the strip is a property of this class.
+        /// </summary>
+        public AdvisoryStripViewModel AdvisoryStrip { get; }
+
         /// <summary>Board width in key units; the view picks a pixel scale and multiplies.</summary>
         public double BoardWidth => _visual?.Width ?? 0;
 
@@ -172,9 +253,10 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The editor's sections, filtered by what the device carries
-        /// (<see cref="EditorTabViewModel.CreateAll"/>): Keys and Macros always, Lighting and
-        /// Settings only where the board has one, and Lighting disabled where its led file is not
-        /// the model <see cref="LightingTabViewModel"/> edits.
+        /// (<see cref="EditorTabViewModel.CreateAll"/>): Layout and Macros always, Settings where
+        /// the board has a settings file, Lighting only where its led file is the model
+        /// <see cref="LightingTabViewModel"/> edits. Every entry opens a working section — a
+        /// feature the board lacks is not rendered at all rather than disabled.
         /// </summary>
         public IReadOnlyList<EditorTabViewModel> Tabs { get; }
 
@@ -239,6 +321,20 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool IsOverlayAwaitingKeystroke => _overlays.Active is IKeystrokeSink { WantsKeystrokes: true };
 
+        /// <summary>
+        /// Whether the next physical keystroke already belongs to somebody: a key waiting for its
+        /// new assignment, a macro being recorded, or an armed Tap and Hold field. These are
+        /// exactly the three consumers of "one keystroke, one target" (invariant 5), and while any
+        /// of them is live the editor's keyboard grammar is <b>off entirely</b> — a user assigning
+        /// ⌘S to a key must get <c>s</c>-with-Meta recorded, not a save.
+        /// <para>
+        /// It is read on demand by <see cref="Views.KeyboardEditorView"/>'s key handler and is
+        /// deliberately not observable: nothing binds it, and its three sources already raise their
+        /// own notifications.
+        /// </para>
+        /// </summary>
+        public bool IsCaptureActive => IsListening || IsOverlayAwaitingKeystroke || _macroPanel?.IsRecording == true;
+
         /// <summary>The device's layers, in model order.</summary>
         public IReadOnlyList<KeyboardLayerViewModel> Layers
         {
@@ -290,7 +386,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether a key is currently listening for its new assignment.</summary>
         public bool IsListening => ListeningKey is not null;
 
-        /// <summary>Opens a section of the editor; disabled tabs are refused.</summary>
+        /// <summary>Opens a section of the editor; a section this strip does not carry is refused.</summary>
         public IRelayCommand<EditorTabViewModel> SelectTabCommand { get; }
 
         /// <summary>Switches the picture to another layer, cancelling anything in progress.</summary>
@@ -332,6 +428,21 @@ namespace KinesisEdit.ViewModels
         /// <summary>Opens Search Keys over the macro and inserts the picked action (11 §11.6).</summary>
         public IRelayCommand InsertSpecialActionCommand { get; }
 
+        /// <summary>
+        /// ⌘F, the grammar's "focus the token search from anywhere in the editor"
+        /// (docs/design/mockups.md <c>2b</c>): it opens the Search Keys panel of §11.6 and the view
+        /// puts the caret in its field.
+        /// <para>
+        /// Where a macro is open on the Macros tab it <b>is</b> the insertion picker
+        /// (<see cref="InsertSpecialActionCommand"/>) — finding a token there means inserting it.
+        /// Everywhere else it is the plain §11.6 picker, whose Ok simply closes: this app assigns a
+        /// key only from a captured physical keypress, so a picked token has nowhere to go until
+        /// <a href="https://github.com/migus88/kinesis-edit/issues/92">#92</a> repoints ⌘F at the
+        /// inspector's own token picker.
+        /// </para>
+        /// </summary>
+        public IRelayCommand OpenSearchCommand { get; }
+
         /// <summary>Opens the Export files panel (11 §11.5); never available in demo mode (03 §3.5).</summary>
         public IRelayCommand ExportCommand { get; }
 
@@ -359,6 +470,7 @@ namespace KinesisEdit.ViewModels
         private readonly EventHandler _tapAndHoldClosedHandler;
         private readonly EventHandler _macroRecordingChangedHandler;
         private readonly EventHandler _macrosChangedHandler;
+        private readonly EventHandler _lightingChangedHandler;
         private readonly PropertyChangedEventHandler _macroPanelPropertyChangedHandler;
         private IProfileSession? _session;
         private TapAndHoldOverlayViewModel? _tapAndHoldOverlay;
@@ -370,14 +482,23 @@ namespace KinesisEdit.ViewModels
         private KeyboardKeyViewModel? _listeningKey;
         private KeyboardLayout? _layout;
         private MacroPanelViewModel? _macroPanel;
+        private EditorAdvisories _advisories = EditorAdvisories.Empty;
         private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
         private int _modifiedKeyCount;
         private int _macroCount;
         private bool _isLoading = true;
         private bool _isBusy;
+        private bool _isDirty;
         private bool _hasLoadStarted;
         private bool _isDisposed;
+
+        /// <summary>
+        /// Set by <see cref="OnKeystrokeCaptured"/> whenever a keystroke went to the open panel's
+        /// sink, and read-and-cleared by the view on the very key event that produced it — see
+        /// <see cref="TryTakeOverlayKeystroke"/>.
+        /// </summary>
+        private bool _hasOverlayTakenKeystroke;
 
         /// <summary>
         /// Creates the editor for <paramref name="device"/>. Construction is deliberately cheap —
@@ -411,13 +532,18 @@ namespace KinesisEdit.ViewModels
             Settings = new KeyboardSettingsViewModel(device, settings, notifications);
             Lighting = new LightingTabViewModel(device, settings, notifications);
 
-            // The Lighting tab is enabled for the boards whose led file is the two-layer key
-            // backlight model the panel edits; the tab is already absent on a device without
-            // lighting hardware. The question is device-level on purpose: this constructor runs
-            // before any profile has been read, and demo mode never reads one at all.
+            // The strip owns the projection and the Review walk; selecting what a note is about is
+            // this class's, because the board and the macro panel are. Built before SelectTab
+            // below, which projects onto it.
+            AdvisoryStrip = new AdvisoryStripViewModel(SelectAnchoredKey, SelectAnchoredMacro);
+
+            // The Lighting tab is rendered only for a board whose led file is the two-layer key
+            // backlight model the panel edits — absent, never disabled, on every other board and on
+            // one with no lighting hardware at all. The question is device-level on purpose: this
+            // constructor runs before any profile has been read, and demo mode never reads one.
             Tabs = EditorTabViewModel.CreateAll(device.Device, Lighting.IsAvailable);
 
-            SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab?.IsEnabled == true);
+            SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab is not null);
             SelectLayerCommand = new RelayCommand<KeyboardLayerViewModel>(SelectLayer);
             SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(SelectKey);
             BeginRemapCommand = new RelayCommand(BeginRemap, () => CanBeginRemap());
@@ -431,6 +557,7 @@ namespace KinesisEdit.ViewModels
             TapAndHoldCommand = new AsyncRelayCommand(OpenTapAndHoldAsync, () => CanOpenTapAndHold());
             InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
             InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
+            OpenSearchCommand = new RelayCommand(OpenSearch, () => CanOpenSearch());
             ExportCommand = new RelayCommand(OpenExport, () => CanExport());
             ImportCommand = new AsyncRelayCommand(ImportAsync, () => CanImport());
             CloseOverlayCommand = new RelayCommand(_overlays.Dismiss, () => ActiveOverlay is not null);
@@ -443,6 +570,13 @@ namespace KinesisEdit.ViewModels
             _macroRecordingChangedHandler = (_, _) => OnMacroRecordingChanged();
             _macrosChangedHandler = (_, _) => RefreshCounters();
             _macroPanelPropertyChangedHandler = (_, e) => OnMacroPanelPropertyChanged(e);
+
+            // A lighting edit moves no counter, but it does move the session: ProfileSession.Save
+            // writes led<n>.txt from the very model the panel mutates, so the amber Save is the
+            // only thing that reports it.
+            _lightingChangedHandler = (_, _) => RefreshDirtyState();
+
+            Lighting.ModelChanged += _lightingChangedHandler;
 
             _overlays.ActiveChanged += _activeOverlayChangedHandler;
 
@@ -534,6 +668,78 @@ namespace KinesisEdit.ViewModels
             _macroPanel?.StopRecording();
 
             _overlays.Show(overlay);
+        }
+
+        /// <summary>
+        /// Moves the key selection one step across the <b>physical</b> board — the grammar's
+        /// "↑↓←→ move key selection across the physical grid, not tab order"
+        /// (docs/design/mockups.md <c>2b</c>). Returns whether the selection actually moved, which
+        /// is what tells the view there is a new cap to put the focus ring on.
+        /// <para>
+        /// The geometry is <see cref="KeyAdjacency"/>'s and lives in this class only because the
+        /// board picture does: <c>_visual</c> is the editor's, never the view's. With nothing
+        /// selected yet the first cap of the shown layer is where an arrow lands, so the grammar
+        /// has an entry point that does not need a click first.
+        /// </para>
+        /// <para>
+        /// It lands through <see cref="SelectKeyDirectly"/> and <b>never</b> through
+        /// <see cref="SelectKeyCommand"/>: the latter promotes a second hit on the already-selected
+        /// cap into listening, and arrowing onto a key must never start capture.
+        /// </para>
+        /// </summary>
+        public bool MoveSelection(NavigationDirection direction)
+        {
+            if (direction is NavigationDirection.None || _visual is null || IsLoading || IsBusy)
+            {
+                return false;
+            }
+
+            if (SelectedLayer is not { } layer || layer.Keys.Count == 0)
+            {
+                return false;
+            }
+
+            if (SelectedKey is null)
+            {
+                SelectKeyDirectly(layer.Keys[0]);
+
+                return true;
+            }
+
+            if (KeyAdjacency.Next(_visual, SelectedKey.Index, direction) is not { } target
+                || layer.FindByIndex(target.Index) is not { } cap)
+            {
+                return false;
+            }
+
+            SelectKeyDirectly(cap);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Whether the keystroke being handled right now was already taken by the open panel's own
+        /// keystroke sink — and clears the record as it answers, so one keystroke is reported once.
+        /// <para>
+        /// It exists because <see cref="IsOverlayAwaitingKeystroke"/> cannot answer the question.
+        /// The capture service previews the window's key events in the <b>tunnel</b> phase, above
+        /// this editor's view, so by the time the view's own handler runs the sink has already
+        /// received the key <em>and disarmed</em> — leaving the panel looking idle. Escape read
+        /// that as "nothing is waiting" and closed the whole panel in the same keypress it was
+        /// meant only to fill an armed field with.
+        /// </para>
+        /// <para>
+        /// The view reads it on <b>every</b> key down it sees, not only on Escape, so a latch set
+        /// by an ordinary keystroke cannot survive into a later Escape.
+        /// </para>
+        /// </summary>
+        public bool TryTakeOverlayKeystroke()
+        {
+            var taken = _hasOverlayTakenKeystroke;
+
+            _hasOverlayTakenKeystroke = false;
+
+            return taken;
         }
 
         private LoadOutcome LoadProfile()
@@ -691,10 +897,11 @@ namespace KinesisEdit.ViewModels
 
         private void SelectTab(EditorTab tab)
         {
-            // A tab with nothing behind it — disabled, or absent because the device does not carry
-            // that section at all — stays shut whichever way it is asked for, so a two-way binding
-            // cannot open what the command refuses.
-            if (FindTab(tab) is not { IsEnabled: true })
+            // A section this strip does not carry stays shut whichever way it is asked for, so a
+            // two-way binding cannot open what the command refuses. There is no longer a second
+            // case: a tab that exists always works, because a feature the board lacks is not
+            // rendered at all (EditorTabViewModel).
+            if (FindTab(tab) is null)
             {
                 return;
             }
@@ -721,6 +928,10 @@ namespace KinesisEdit.ViewModels
                 entry.IsSelected = entry.Tab == _selectedTab;
             }
 
+            // The strip is the *open* section's, so the sentence and the count move with the tab.
+            // The set itself does not: a tab switch writes nothing.
+            RefreshAdvisorySummary();
+
             // The two macro-insertion commands are only available while the macro panel is on
             // screen, so switching sections has to re-evaluate them.
             NotifyCommands();
@@ -741,7 +952,7 @@ namespace KinesisEdit.ViewModels
 
         private void OnSelectTab(EditorTabViewModel? tab)
         {
-            if (tab is null || !tab.IsEnabled)
+            if (tab is null)
             {
                 return;
             }
@@ -766,6 +977,9 @@ namespace KinesisEdit.ViewModels
             }
 
             SelectedLayer = layer;
+
+            // The Layout tab's strip is about the layer on screen, so it follows the switch.
+            RefreshAdvisorySummary();
 
             UpdateMacroTrigger();
         }
@@ -803,6 +1017,21 @@ namespace KinesisEdit.ViewModels
                     BeginRemap();
                 }
 
+                return;
+            }
+
+            SelectKeyDirectly(key);
+        }
+
+        /// <summary>
+        /// Moves the selection to <paramref name="key"/> and nothing else — no second-click
+        /// promotion to listening. It is what the click contract's "a different key" branch does,
+        /// and what <c>Review</c> needs: reviewing an advisory must not arm the keyboard.
+        /// </summary>
+        private void SelectKeyDirectly(KeyboardKeyViewModel key)
+        {
+            if (ReferenceEquals(key, SelectedKey))
+            {
                 return;
             }
 
@@ -904,6 +1133,11 @@ namespace KinesisEdit.ViewModels
 
             if (ActiveOverlay is IKeystrokeSink overlaySink)
             {
+                // Latched for the view, which is still to see this same key event: the sink may
+                // disarm as it takes the key, and "no field is armed any more" must not read as
+                // "the panel was idle, close it" (see TryTakeOverlayKeystroke).
+                _hasOverlayTakenKeystroke = true;
+
                 overlaySink.ReceiveKeystroke(keystroke);
 
                 return;
@@ -946,6 +1180,9 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void OnActiveOverlayChanged()
         {
+            // The latch belongs to the panel that set it; a swap or a dismiss ends its claim.
+            _hasOverlayTakenKeystroke = false;
+
             OnPropertyChanged(nameof(ActiveOverlay));
             OnPropertyChanged(nameof(HasActiveOverlay));
             OnPropertyChanged(nameof(IsOverlayAwaitingKeystroke));
@@ -1157,6 +1394,40 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// ⌘F. With a macro open on the Macros tab this <em>is</em> the insertion picker, so the
+        /// token the user searches for is inserted where they were working; everywhere else it is
+        /// the plain §11.6 picker. A Search Keys panel that is already up is left alone — the view
+        /// re-focuses its field, which is all "focus the token search" can mean when it is open.
+        /// </summary>
+        private void OpenSearch()
+        {
+            if (!CanOpenSearch() || ActiveOverlay is SearchKeysOverlayViewModel)
+            {
+                return;
+            }
+
+            if (CanInsertIntoMacro())
+            {
+                InsertSpecialAction();
+
+                return;
+            }
+
+            if (ActiveOverlay is not null)
+            {
+                // Another panel owns the surface; ⌘F never replaces one feature panel with another.
+                return;
+            }
+
+            ShowOverlay(new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.DefaultTitle, Layout!.Dialect));
+        }
+
+        private bool CanOpenSearch()
+        {
+            return Layout is not null && !IsLoading && !IsBusy;
+        }
+
+        /// <summary>
         /// Both insertion panels target the macro the macro panel currently has open, so two
         /// things have to be true: there is one — <see cref="MacroPanelViewModel.EditedMacro"/> is
         /// null on a device without macros, with nothing selected, and on a position that cannot
@@ -1274,10 +1545,121 @@ namespace KinesisEdit.ViewModels
             RefreshCounters();
         }
 
+        /// <summary>
+        /// Re-reads everything the chrome says about the model: the two spec-10 counters and the
+        /// dirty flag behind the amber Save. <b>Every path that can write to the layout ends
+        /// here</b> — a captured remap, the three resets, an accepted tap-and-hold, every
+        /// <see cref="MacroPanelViewModel.MacrosChanged"/>, and <see cref="Apply"/> after a load or
+        /// an import. Core announces nothing, so a path that skips it leaves both readouts stale.
+        /// </summary>
         private void RefreshCounters()
         {
             ModifiedKeyCount = Layout?.ModifiedKeyCount ?? 0;
             MacroCount = Layout?.MacroCount ?? 0;
+
+            RebuildAdvisories();
+            RefreshDirtyState();
+        }
+
+        /// <summary>
+        /// Re-reads what the app has to say about the layout and pushes it everywhere it is shown:
+        /// the per-key flag, the macro rows, and the strip's own count and sentence.
+        /// <para>
+        /// Hooked to <see cref="RefreshCounters"/> and deliberately <b>not</b> to
+        /// <see cref="RefreshDirtyState"/>. The set is derived from the
+        /// <see cref="KeyboardLayout"/> alone, and the only path that calls the dirty refresh on its
+        /// own is a lighting write, which cannot move a layout advisory —
+        /// <see cref="KeyboardLayout.Validate"/> walks every key of every layer, and paying for that
+        /// on each click of the colour picker would be felt for a set that cannot have changed.
+        /// </para>
+        /// </summary>
+        private void RebuildAdvisories()
+        {
+            Advisories = EditorAdvisories.Build(Layout);
+
+            foreach (var layer in Layers)
+            {
+                foreach (var key in layer.Keys)
+                {
+                    key.HasAdvisory = _advisories.HasAdvisoryForKey(layer.Index, key.Index);
+                }
+            }
+
+            if (_macroPanel is not null)
+            {
+                _macroPanel.Advisories = _advisories;
+            }
+
+            RefreshAdvisorySummary();
+        }
+
+        /// <summary>
+        /// Hands the strip the current set narrowed to the open section, without rebuilding it: the
+        /// tab and the layer decide which advisories the strip is about, and neither changes the
+        /// model.
+        /// </summary>
+        private void RefreshAdvisorySummary()
+        {
+            AdvisoryStrip.Project(_advisories, _selectedTab, SelectedLayer?.Index);
+        }
+
+        /// <summary>
+        /// <c>Review N</c>'s key half: puts the board's selection on the anchored cap. Handed to
+        /// <see cref="AdvisoryStripViewModel"/> as a callback, because the board is this class's.
+        /// <para>
+        /// It lands through <see cref="SelectKeyDirectly"/>, <b>never</b>
+        /// <see cref="SelectKeyCommand"/>: the click contract promotes a second hit on the
+        /// already-selected cap into listening, and reviewing is reading.
+        /// </para>
+        /// </summary>
+        private void SelectAnchoredKey(AdvisoryAnchor anchor)
+        {
+            if (anchor.KeyIndex is not int keyIndex || SelectedLayer?.FindByIndex(keyIndex) is not { } key)
+            {
+                return;
+            }
+
+            SelectKeyDirectly(key);
+        }
+
+        /// <summary>
+        /// <c>Review N</c>'s macro half: opens the anchored row in the macro panel. The strip's
+        /// other callback, for the same reason — the panel is this class's.
+        /// </summary>
+        private void SelectAnchoredMacro(AdvisoryAnchor anchor)
+        {
+            if (_macroPanel is null)
+            {
+                return;
+            }
+
+            foreach (var row in _macroPanel.Macros)
+            {
+                if (row.Layer?.Index == anchor.LayerIndex
+                    && row.Key?.Index == anchor.KeyIndex
+                    && row.Slot == anchor.MacroIndex)
+                {
+                    _macroPanel.SelectMacroCommand.Execute(row);
+
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Re-asks the session whether it still serializes to what was loaded. Split from
+        /// <see cref="RefreshCounters"/> because the lighting tab moves the session without moving
+        /// a counter, and calling the counter refresh from there would be a lie about what changed.
+        /// <para>
+        /// Not called after a successful save: Core's baseline is captured at load and
+        /// <c>ProfileSession.Save</c> does not move it (docs/app/profiles.md), so the session goes
+        /// on reporting itself dirty once it has been written. <see cref="SaveAsync"/> therefore
+        /// clears the flag outright, and the next real edit re-asks and gets true again.
+        /// </para>
+        /// </summary>
+        private void RefreshDirtyState()
+        {
+            IsDirty = _session?.IsDirty == true;
         }
 
         private void ResetLayer()
@@ -1399,12 +1781,19 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            if (result.PostSaveMessage is not null)
+            // The profile is on the drive: Save goes back to accent. Set rather than re-read,
+            // because the session's dirty baseline is the one captured at load and a save does not
+            // move it (see RefreshDirtyState).
+            IsDirty = false;
+
+            var message = AdvisoryStripViewModel.BuildPostSaveMessage(result.PostSaveMessage, Advisories.Total);
+
+            if (message is not null)
             {
                 _notifications.ShowToast(new ToastRequest
                 {
                     Title = SaveTitle,
-                    Message = result.PostSaveMessage
+                    Message = message
                 });
             }
         }
@@ -1436,10 +1825,9 @@ namespace KinesisEdit.ViewModels
 
         private void NotifyCommands()
         {
-            // SelectTabCommand is deliberately absent: a tab's IsEnabled is fixed at construction
-            // (EditorTabViewModel builds the strip from device-level facts only, including the
-            // lighting one) and the command's predicate reads nothing but its parameter, so there
-            // is no state here that could change its answer.
+            // SelectTabCommand is deliberately absent: the strip is built once from device-level
+            // facts (EditorTabViewModel), every tab in it works, and the command's predicate reads
+            // nothing but whether it was handed one — so no state here could change its answer.
             BeginRemapCommand.NotifyCanExecuteChanged();
             CancelRemapCommand.NotifyCanExecuteChanged();
             ResetKeyCommand.NotifyCanExecuteChanged();
@@ -1449,6 +1837,7 @@ namespace KinesisEdit.ViewModels
             TapAndHoldCommand.NotifyCanExecuteChanged();
             InsertDelayCommand.NotifyCanExecuteChanged();
             InsertSpecialActionCommand.NotifyCanExecuteChanged();
+            OpenSearchCommand.NotifyCanExecuteChanged();
             ExportCommand.NotifyCanExecuteChanged();
             ImportCommand.NotifyCanExecuteChanged();
         }
@@ -1476,6 +1865,8 @@ namespace KinesisEdit.ViewModels
             _isDisposed = true;
 
             _capture.KeystrokeCaptured -= _keystrokeCapturedHandler;
+
+            Lighting.ModelChanged -= _lightingChangedHandler;
 
             DetachTapAndHold();
 

@@ -6,6 +6,7 @@ using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Services;
+using KinesisEdit.ViewModels.Advisories;
 
 namespace KinesisEdit.ViewModels
 {
@@ -274,6 +275,29 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _macros, value);
         }
 
+        /// <summary>
+        /// The editor's advisory set, pushed in after every rebuild so a row that is over one of
+        /// the device's budgets can carry its amber dot. Setting it re-marks the rows, and
+        /// rebuilding the rows re-applies it — the two orders happen in both directions (a macro
+        /// edit rebuilds the rows first and the advisories second; a layer reset the other way
+        /// round), so neither may be the only place it is done.
+        /// <para>
+        /// A pushed value rather than a computed one: the panel edits macros and knows nothing
+        /// about <see cref="KeyboardLayout.Validate"/>, and re-running that walk here would run it
+        /// twice per edit.
+        /// </para>
+        /// </summary>
+        public EditorAdvisories Advisories
+        {
+            get => _advisories;
+            set
+            {
+                _advisories = value ?? EditorAdvisories.Empty;
+
+                ApplyAdvisories();
+            }
+        }
+
         /// <summary>The list row matching the macro under edit, or null.</summary>
         public MacroListEntryViewModel? SelectedMacro
         {
@@ -349,6 +373,7 @@ namespace KinesisEdit.ViewModels
         private readonly List<IRelayCommand> _commands = [];
         private readonly MacroClipboard _clipboard = new();
         private IReadOnlyList<MacroListEntryViewModel> _macros = [];
+        private EditorAdvisories _advisories = EditorAdvisories.Empty;
         private MacroListEntryViewModel? _selectedMacro;
         private MacroSlotViewModel? _selectedSlot;
         private KeyboardKeyViewModel? _triggerKey;
@@ -951,6 +976,20 @@ namespace KinesisEdit.ViewModels
 
             Macros = entries;
             SelectedMacro = selected;
+
+            ApplyAdvisories();
+        }
+
+        /// <summary>
+        /// Marks the rows the editor's advisory set anchors to. Nothing is disabled or hidden by
+        /// it: an over-budget macro is still edited, still assigned and still saved.
+        /// </summary>
+        private void ApplyAdvisories()
+        {
+            foreach (var entry in _macros)
+            {
+                entry.HasAdvisory = _advisories.HasAdvisoryForMacro(entry.Layer?.Index, entry.Key?.Index, entry.Slot);
+            }
         }
 
         private void RefreshCoTriggers()

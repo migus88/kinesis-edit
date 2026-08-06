@@ -111,7 +111,9 @@ namespace KinesisEdit.Tests.Design
 
                 using var host = ThemedHost.Show(view, variant);
 
-                foreach (var tab in editor.Tabs.Where(tab => tab.IsEnabled))
+                // No filter: every tab the strip carries opens a working section, because a feature
+                // the board lacks is not rendered at all (EditorTabViewModel).
+                foreach (var tab in editor.Tabs)
                 {
                     editor.SelectTabCommand.Execute(tab);
 
