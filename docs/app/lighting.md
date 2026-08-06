@@ -7,8 +7,10 @@ The lighting layer of `KinesisEdit.Core`: the in-memory lighting model and the `
 | `KinesisEdit.Core.Lighting` | `LedFileParser` / `LedFileSerializer` | Per-device led-file parse/serialize | 07 §1.4, §2, §5 |
 | `KinesisEdit.Core.Lighting` | `LightingModel`, `TkoLightingModel`, `Advantage360LightingModel` | Mutable in-memory state, full-reset semantics | 07 §1.5, §6 |
 | `KinesisEdit.Core.Lighting` | `LightingModeCatalog`, `IndicatorFunctionCatalog` | Static mode/function/token/direction data | 07 §2.2–§2.3, §3, §5 |
+| `KinesisEdit.Core.Lighting` | `LightingZoneCatalog` | The named per-key color zones (RGB) | 07 §4 |
 | `KinesisEdit.Core.Lighting` | `FnLayerTokenTranslator`, `TkoEdgeLineClassifier` | Fn save-token exceptions; edge-line detection | 07 §2.3, §2.4; 05 §5.5 |
-| `KinesisEdit.Core.Lighting` | `LightingAvailability`, `ExpansionPackDefaults` | Firmware hooks + factory pack data | 07 §3, §2.6; 09 §2 |
+| `KinesisEdit.Core.Lighting` | `LightingAvailability`, `ExpansionPackDefaults` | Firmware/device availability + factory pack data | 07 §3, §2.6; 09 §2 |
+| `KinesisEdit.Core.Lighting` | `LedColorConverter` | `LedColor` ↔ settings `SettingsColor` | 07 §4; 08 §3 |
 
 ## Model
 
@@ -25,16 +27,30 @@ The lighting layer of `KinesisEdit.Core`: the in-memory lighting model and the `
 
 ## Static data
 
-- `LightingModeCatalog.All` — 16 rows, one per `LightingMode`: 13 key-backlight tokens (12 readable + reserved `black`), 8 `_edge` tokens, line-shape flags, per-context direction sets, menu availability (RGB kb 14, TKO kb 14, TKO edge 10), `GatedByFeature`. `Find`, `FindByKeyBacklightToken`, `FindByEdgeToken` (case-insensitive). Starlight's token is `star`, **not** `starlight`.
+- `LightingModeCatalog.All` — 16 rows, one per `LightingMode`: `DisplayName` (the 07 §3 UI caption — note `Disabled` reads "Disable" and `Starlight` "Starlight" though its token is `star`), 13 key-backlight tokens (12 readable + reserved `black`), 8 `_edge` tokens, line-shape flags, per-context direction sets, menu availability (RGB kb 14, TKO kb 14, TKO edge 10), `GatedByFeature`. `Find`, `FindByKeyBacklightToken`, `FindByEdgeToken` (case-insensitive). Starlight's token is `star`, **not** `starlight`.
+- `LightingZoneCatalog` — the 07 §4 color zones as key-code sets, for the zone buttons Freestyle/Breathe expose (§3). `All` (every row), `Find(DeviceId)` → the device's zones in button order or an **empty list** for devices with none, `FindByName(DeviceId, name)` (case-insensitive). Rows are `LightingZoneDefinition { Device, DisplayName, KeyCodes }`; `KeyCodes` are the same Gen1 codes `LayerLightingState.KeyColors` uses, so painting a zone is one `SetKeyColor` per code (black clears). **RGB only** for now — the TKO's 10 zones (6 top + 4 Fn) are deferred with the TKO editor UI.
+- **RGB zone membership** (§4 names the zones but not their keys; resolved against `GeometryCatalog.FreestyleEdgeRgb` top layer, indices per 05 §4.2): **All** = all 95 keys · **Number** = digits `1`–`0` only (the TKO's equivalent is spelled "Number Row", the RGB's just "Number", so tilde/hyphen/equals are out) · **Function** = `F1`–`F12` (not esc/prnt/pause/del) · **WASD** = `w a s d` · **Game** = the left module's typing keys minus the F-row and minus `lwin` (which Game Mode disables anyway): `esc`, `tilde`, `1`–`6`, `tab q w e r t`, `caps a s d f g`, `lshft z x c v b`, `lctrl lalt lspc` — 29 keys · **Arrow** = `up lft dwn rght` · **Left Module** = the left half of the split board **including** the `hk0`–`hk10` hotkey column that sits on it (47 keys) · **Right Module** = the right half (48 keys). Left ∪ Right = All, disjoint; the split is the one authored in `FreestyleEdgeRgbVisual`.
+- `LedColorConverter` — `ToSettingsColor(LedColor)` / `ToLedColor(SettingsColor)` plus nullable overloads that pass null through (an unset `cust_color_N` slot is "no swatch stored", not black). Total and lossless: both types are three 0–255 components.
 - `IndicatorFunctionCatalog.All` — 8 functions, 12 tokens; `FindByToken` returns the row plus the `IndicatorLayer` a `lay*` token addresses.
 - `FnLayerTokenTranslator.Pairs` — the 8 (memory, file) key-code pairs of 05 §5.5; `TranslateForSave`/`TranslateForLoad` pass unmapped codes through.
 - `ExpansionPackDefaults.ProfileLines` — the §2.6-quoted factory files, keyed by profile number. Only profiles 1, 2, 6 are pinned by the spec; the rest are deliberately not invented.
 
-## Firmware hooks — `LightingAvailability`
+## Firmware/device hooks — `LightingAvailability`
 
 - `IsKeyBacklightModeAvailable(DeviceId, LightingMode, FirmwareState)` — menu membership + `FirmwareGateService` for gated modes: Ripple/Fireball gated on the RGB (KBD ≥ 1.0.121 and LED ≥ 1.0.58), automatically pass on the TKO (no gate row = available). `IsEdgeModeAvailable(mode)` — TKO edge menu membership.
+- `GetKeyBacklightDirections(DeviceId, LightingMode)` / `GetEdgeDirections(LightingMode)` — **what the direction panel offers**, empty when there is none. Per §3 the RGB shows directions for Wave, Rebound and Loop only, while "TKO also shows it for Fireball (left/right only)": the helper therefore returns empty for Fireball **on the RGB** and left/right on the TKO. Modes outside the device's menu return empty. `LightingModeDefinition.KeyBacklightDirections` stays device-agnostic and remains the **parse/serialize** data source — RGB files in the field do carry `[dirleft]`/`[dirright]` on Fireball lines and must keep round-tripping. Fireball is the only device-specific row; every other direction cell of the §3 table is identical on both devices. The edge context exists only on the TKO, so `GetEdgeDirections` takes no device.
 - `IsFnLayerLightingAvailable(DeviceId, FirmwareState)` — the `LightingLayerCustomization` gate (RGB: LED ≥ 1.0.44; ungated elsewhere).
 - `ContainsFnLayerLines(lines)` / `HasNoFnLayerLines(ledFiles)` — the lighting-side Expansion-Pack precondition (07 §3); callers combine it with `FirmwareFeature.ExpansionPackOffer`.
+
+## The UI on top (app layer)
+
+The editor's **Lighting tab** consumes everything above; it lives in `KinesisEdit.ViewModels`/`Views` and is documented in [keyboard-editor.md](keyboard-editor.md) ("The Lighting tab"). What matters from this side:
+
+- **`LightingTabViewModel`** (+ `LightingLayerViewModel`, `LightingModeViewModel`, `LightingDirectionViewModel`, `LightingZoneViewModel`, `LightingColorSlotViewModel`, `LightingPanelVisibility`) edits a `LightingModel` in place — the very instance `ProfileSession.Lighting` hands out, so **the editor's existing Save is the lighting save**; there is no second write path. `LightingTabViewModel.IsSupported(device)` is `LightingKind.PerKeyRgb && !HasEdgeLighting`, i.e. the Freestyle Edge RGB: the panel edits the plain two-layer key-backlight model and nothing else.
+- **Nothing in the UI restates a lighting rule.** Menus come from `LightingAvailability.IsKeyBacklightModeAvailable` + `LightingModeDefinition.DisplayName`, direction entries from `GetKeyBacklightDirections` (so Fireball offers none on the RGB), the panel matrix from the catalog's `WritesSpeed`/`WritesEffectColor`/`HasBaseMonoLine`/`HasPerKeyColors` flags, zones from `LightingZoneCatalog`, speed bounds from `LayerLightingState`. The Fn layer and the base-colour swatch are both behind `IsFnLayerLightingAvailable`.
+- **Per-key painting honours `SetKeyColor`'s contract**: keys are addressed by memory key code and black clears the entry (§2.1) rather than being stored. Zone codes are top-layer codes, re-resolved through the layout layer by position index when the Fn layer is active (§2.4 item 6).
+- **The colour picker** (`ColorPickerViewModel` + `Controls/ColorPickerView`, wrapping Avalonia's `ColorView`) owns the §4 swatches: the ten premixed colours, and the twelve custom slots persisted to `cust_color_1`…`cust_color_12` through the app's single `ISettingsService` using `LedColorConverter` and `AppSettings.WithCustomColor`, read-modify-write so the notification flags in the same file survive. Never written in demo mode (spec 08 §3).
+- A per-key mode's effect colour is a **picker colour, not file state**: §2.2 writes no effect-colour line for Freestyle/Breathe, so it resets to the default lime on reload. That is legacy-faithful, and the round-trip test says so explicitly.
 
 ## Load-bearing invariants
 
@@ -43,7 +59,7 @@ The lighting layer of `KinesisEdit.Core`: the in-memory lighting model and the `
 3. **Round-trip is semantic, not byte-exact.** parse → serialize → parse yields an equivalent model; canonical output may reorder/expand legacy inputs (mono-first, explicit `[spd5][dirleft]`, fill-all expanded to per-key lines). Corner: Freestyle with zero colors serializes empty and reloads as Disabled (legacy-faithful).
 4. **Fn translation is RGB-only, key-code → token, and the Gen1 tokens differ from the spec's key names.** Spec 05 §5.5 scopes the exception table to the FS-family bottom layer, so only the RGB key-backlight context translates (the TKO top layer has no F-row/`pause`/`del` positions). On the RGB Fn layer only: mute→`[F1]` … next→`[F6]`, insert→`[pause]`, scroll lock→`[del]`; the *emitted* tokens for the insert/scroll-lock memory keys are `ins`/`scrlk` per `KeyRegistry`, not the 07 §2.4 column names. Top-layer lines are never translated.
 5. **Black is "no color".** Per-key maps never hold black; assigning it clears; fill-all with black clears the layer; "no color" serializes `[0][0][0]` (07 §2.1).
-6. **Key tokens are layout-file tokens.** Per-key/per-LED addressing resolves through `KeyRegistry` Gen1, case-insensitive in, canonical casing out (07 §4); edge LEDs are the `KeyTable.EdgeZones` entries (codes 11113–11145).
+6. **Key tokens are layout-file tokens.** Per-key/per-LED addressing resolves through `KeyRegistry` Gen1, case-insensitive in, canonical casing out (07 §4); edge LEDs are the `KeyTable.EdgeZones` entries (codes 11113–11145). The geometry → key-code derivation lives once, in the internal `LightingKeyCodeResolver`, and is shared by `LightingSectionContext` (canonical file order) and `LightingZoneCatalog` (zone membership), so zones and files can never address different codes.
 
 ## Deliberately not here
 
@@ -51,4 +67,6 @@ The lighting layer of `KinesisEdit.Core`: the in-memory lighting model and the `
 - **No disk I/O or profile pairing** (07 §1.1–§1.3) — reading/writing `ledN.txt` and the layout↔led pairing is profile orchestration, issue #11.
 - **No file-import classification** (07 §1.4) — deliberately out of scope for this module.
 - **No dropped-line diagnostics** — 07 §2.4 prescribes silent tolerant reading for led files, so there is no unparseable-line channel here by design; the collect-and-show rule (CLAUDE.md, specs/README.md) applies to layout files and lands with issue #8.
-- **No lighting UI** — mode menus, color pickers, zones, previews (07 §3, §4, §7) are the editor UIs, issue #16; this module only answers availability queries.
+- **No UI in this module.** Core supplies the data and answers availability/membership queries; the mode menus, color pickers and zone buttons are the app layer's (see "The UI on top" above). Still unbuilt there: the **TKO** key-backlight + 33-zone edge editor (blocked on its board picture, issue [#40](https://github.com/migus88/kinesis-edit/issues/40)) and the **Advantage 360** six-indicator editor (issue [#41](https://github.com/migus88/kinesis-edit/issues/41)) — `TkoLightingModel` and `Advantage360LightingModel` are complete here but deliberately leave the Lighting tab disabled. The TKO's ten zones (§4) are likewise deferred in `LightingZoneCatalog`.
+- **No "Lighting Expansion Pack" offer** (07 §3, §2.6) — `HasNoFnLayerLines` and `ExpansionPackDefaults` exist for it, but nothing calls them.
+- **No animated effect previews** (07 §7) — timers and frame sequences are app-layer polish, never file state.

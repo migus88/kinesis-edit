@@ -80,5 +80,44 @@ namespace KinesisEdit.ViewModels
                 CultureInfo.InvariantCulture,
                 $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}");
         }
+
+        /// <summary>
+        /// Reads a <c>#RRGGBB</c> string back into a <see cref="LedColor"/> — the return path of
+        /// <see cref="ToHex"/>, used where the colour picker hands an edited colour back to a view
+        /// model (the picker itself works in Avalonia colours, which never cross this boundary).
+        /// The leading <c>#</c> is optional and anything else returns false rather than throwing.
+        /// </summary>
+        public static bool TryParseHex(string? hex, out LedColor color)
+        {
+            color = LedColor.Black;
+
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                return false;
+            }
+
+            var digits = hex.Trim();
+
+            if (digits.StartsWith('#'))
+            {
+                digits = digits[1..];
+            }
+
+            if (digits.Length != 6)
+            {
+                return false;
+            }
+
+            if (!byte.TryParse(digits.AsSpan(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var red)
+                || !byte.TryParse(digits.AsSpan(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var green)
+                || !byte.TryParse(digits.AsSpan(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var blue))
+            {
+                return false;
+            }
+
+            color = new LedColor(red, green, blue);
+
+            return true;
+        }
     }
 }

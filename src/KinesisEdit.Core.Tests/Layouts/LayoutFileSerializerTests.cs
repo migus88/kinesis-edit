@@ -134,6 +134,7 @@ namespace KinesisEdit.Core.Tests.Layouts
             var result = LayoutFixtures.Parse(DeviceId.FreestyleEdgeRgb, "{q}>{s0}{x1}{a}");
 
             Assert.Equal(["{q}>{s0}{x1}{a}"], LayoutFileSerializer.Serialize(result.Layout));
+            Assert.True(result.Layout.Device.Macros.PersistsRepeat);
         }
 
         [Fact]
@@ -150,6 +151,10 @@ namespace KinesisEdit.Core.Tests.Layouts
             key.SetMacro(1, macro);
 
             Assert.Equal(["{d}>{speed5}{a}"], LayoutFileSerializer.Serialize(layout));
+
+            // The catalog datum the editor reads to hide a control whose value this drops must
+            // agree with what actually happened here.
+            Assert.False(layout.Device.Macros.PersistsRepeat);
         }
 
         [Fact]

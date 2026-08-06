@@ -21,7 +21,7 @@ The layout-file engine of `KinesisEdit.Core`: parses and serializes `layouts/lay
 | `Gen2` | Advantage360 | Gen2 | `<base>`…`<function3>` headers | flat list | 4 | always (values are clamped 1–9 on load) |
 | `Advantage2` | Advantage2 | Legacy | `kp-` token prefix + exception list | 1–3 | 3 | `{speed1}`–`{speed9}`, **no repeat token** |
 
-Persisted slot/co-trigger counts and speed/repeat ranges come from `MacroCapability` (`PersistedSlotsPerKey`, `PersistedCoTriggersPerMacro`, `Speed`/`Repeat`, `ClampsOutOfRangeValues`) — never hard-coded here.
+Persisted slot/co-trigger counts and speed/repeat ranges come from `MacroCapability` (`PersistedSlotsPerKey`, `PersistedCoTriggersPerMacro`, `Speed`/`Repeat`, `PersistsRepeat`, `ClampsOutOfRangeValues`) — never hard-coded here. `PersistsRepeat` restates `LayoutDialectRules.ParsesRepeatToken` as catalog data so a UI can read it without the internal rules type.
 
 ## Parsing (04 §4.2, 06 §2)
 
@@ -43,6 +43,10 @@ Every line that cannot be applied is tracked on **all** dialects (the legacy FS/
 
 Full regeneration; nothing survives but kept lines. Per layer in list order (Gen2 emits every header, even for empty layers): per key in index order *tap-and-hold else multi-modifier else remap* (multi-modifier lines only on `Gen1Rgb`/`Gen2`), then the key's persisted macro slots; Gen2 instead appends the flat list's macros of that layer after the keys; then that layer's kept lines verbatim. Macro lines wrap `MacroKeystrokeRenderer.RenderKeystrokes` (the 06 §3 diffing lives there once); `MacroLineWriter` adds the per-dialect trigger/co-trigger groups (Adv2 keypad-layer macros get `kp-` prefixes except exception tokens) and the speed/repeat variants of the table above. Empty macros and tokenless keys (Adv2 Keypad/Program) write nothing.
 
+## Consumers
+
+`ProfileSession` runs both halves for a numbered profile ([profiles.md](profiles.md)), and two more paths reuse them unchanged: **Import** re-runs `LayoutFileParser` over an external file, so an imported layout behaves exactly like one read off the drive (fresh model, tracked invalid lines), and **Export** runs `LayoutFileSerializer` with the session's kept lines, so an exported file is what a save would have written ([feature-dialogs.md](feature-dialogs.md)). The macro editor writes the same `d001`..`d999` / `dran` delay tokens this parser reads, resolved through `MacroDelayTokens` ([keyboard-model.md](keyboard-model.md)) — including the `d125`/`d500` code-identity split noted above, which the file text cannot show.
+
 ## Load-bearing invariants
 
 1. **Never enforce, never drop.** Limits are `Validate()`'s job; unapplied lines are tracked, keepable, and re-emitted verbatim.
@@ -56,5 +60,5 @@ Full regeneration; nothing survives but kept lines. Per layer in list order (Gen
 - **No SE2 pedal dialect** (spec 12) — the pedal file is not a layout dialect: `LayoutDialectResolver` returns `None`, the parser refuses the device, and `active/pedals.txt` has its own engine in [savant-elite.md](savant-elite.md).
 - **No lighting lines** (04 §3.4) — `led*.txt` belongs to [lighting.md](lighting.md); layout files never carry edge-lighting lines.
 - **No save orchestration** — file naming/numbering, profile pairing, Adv360 factory-profile write protection, and drive I/O are issue #11's layer.
-- **No invalid-line dialog** (04 §5.2) — surfacing tracked lines and their red segments is the editor UI, issue #16; this module only carries the data.
+- **No invalid-line dialog** (04 §5.2) — this module only carries the data. The editor already surfaces the tracked lines as messages (see [keyboard-editor.md](keyboard-editor.md)); the red-segment dialog itself is still unbuilt.
 - **No firmware gating** (09 §2) — e.g. the FS 24→100 macro-count gate is validation/UI territory.

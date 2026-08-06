@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
+using KinesisEdit.Core.Transfer;
 using KinesisEdit.Services;
 
 namespace KinesisEdit.Tests.Services
@@ -20,7 +21,7 @@ namespace KinesisEdit.Tests.Services
             Ejected = true
         };
 
-        public KeyboardLayout Layout { get; }
+        public KeyboardLayout Layout { get; private set; }
 
         public object? Lighting { get; set; }
 
@@ -47,6 +48,21 @@ namespace KinesisEdit.Tests.Services
         /// </summary>
         public Action? DuringSave { get; set; }
 
+        /// <summary>What <see cref="PlanExport"/> hands back, whatever the selection.</summary>
+        public IReadOnlyList<ExportFile> ExportPlan { get; set; } = [];
+
+        /// <summary>Every selection <see cref="PlanExport"/> was asked for, in call order.</summary>
+        public List<ProfileExportSelection> ExportSelections { get; } = [];
+
+        /// <summary>Every <see cref="Import"/>, in call order.</summary>
+        public List<ImportCall> ImportCalls { get; } = [];
+
+        /// <summary>What a lighting <see cref="Import"/> puts into <see cref="Lighting"/>.</summary>
+        public object? LightingToImport { get; set; }
+
+        /// <summary>When set, <see cref="Import"/> throws it instead of applying anything.</summary>
+        public Exception? ImportExceptionToThrow { get; set; }
+
         public FakeProfileSession(KeyboardLayout layout)
         {
             Layout = layout ?? throw new ArgumentNullException(nameof(layout));
@@ -65,5 +81,46 @@ namespace KinesisEdit.Tests.Services
 
             return ResultToReturn;
         }
+
+        public IReadOnlyList<ExportFile> PlanExport(ProfileExportSelection selection)
+        {
+            ExportSelections.Add(selection);
+
+            return ExportPlan;
+        }
+
+        /// <summary>
+        /// Applies the import the way <see cref="ProfileSession.Import"/> does — a real parse of
+        /// the lines for a layout, the staged model for lighting — because what the editor has to
+        /// do afterwards depends on the content actually changing.
+        /// </summary>
+        public ProfileImportResult Import(ImportedFileKind kind, IReadOnlyList<string> lines)
+        {
+            ArgumentNullException.ThrowIfNull(lines);
+
+            ImportCalls.Add(new ImportCall(kind, lines));
+
+            if (ImportExceptionToThrow is not null)
+            {
+                throw ImportExceptionToThrow;
+            }
+
+            if (kind == ImportedFileKind.Lighting)
+            {
+                Lighting = LightingToImport;
+
+                return new ProfileImportResult { Kind = kind, InvalidLines = InvalidLines };
+            }
+
+            var parseResult = new LayoutFileParser(Layout.Device.Id).Parse(lines);
+
+            Layout = parseResult.Layout;
+            InvalidLines = parseResult.InvalidLines;
+
+            return new ProfileImportResult { Kind = kind, InvalidLines = InvalidLines };
+        }
+
+        /// <summary>One recorded import.</summary>
+        internal sealed record ImportCall(ImportedFileKind Kind, IReadOnlyList<string> Lines);
     }
 }

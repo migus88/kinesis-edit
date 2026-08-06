@@ -26,7 +26,28 @@ namespace KinesisEdit.Core.Tests.Devices
             Assert.Null(capability.Speed);
             Assert.Null(capability.Repeat);
             Assert.False(capability.UsesFlatMacroList);
+            Assert.False(capability.PersistsRepeat);
             Assert.False(capability.ClampsOutOfRangeValues);
+        }
+
+        /// <summary>
+        /// 06 §3: the repeat token is a serializer fact, not a model one. A device with no repeat
+        /// range cannot persist one, and the Advantage2 — which has a range but whose serializer
+        /// writes no <c>{xN}</c> — is the one device that models a repeat it never keeps.
+        /// </summary>
+        [Fact]
+        public void PersistsRepeat_ForEveryDevice_ImpliesTheDeviceHasARepeatRange()
+        {
+            foreach (var device in DeviceCatalog.All)
+            {
+                if (device.Macros.PersistsRepeat)
+                {
+                    Assert.NotNull(device.Macros.Repeat);
+                }
+            }
+
+            Assert.NotNull(DeviceCatalog.GetById(DeviceId.Advantage2).Macros.Repeat);
+            Assert.False(DeviceCatalog.GetById(DeviceId.Advantage2).Macros.PersistsRepeat);
         }
 
         [Fact]

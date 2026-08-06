@@ -1,9 +1,9 @@
-using System.Globalization;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Firmware;
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Settings;
+using KinesisEdit.Core.Transfer;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Core.VDrive.Io;
@@ -19,26 +19,26 @@ namespace KinesisEdit.Core.Profiles
     /// </summary>
     public sealed class ProfileSession
     {
-        private const string LayoutFileNamePrefix = "layout";
-        private const string LedFileNamePrefix = "led";
-        private const string FileSuffix = ".txt";
-
         private static readonly IVDriveFileService _fileService = new VDriveFileService();
         private static readonly SettingsService _settingsService = new(_fileService);
 
-        /// <summary>The profile's key/layer/macro model, freshly built by <see cref="LayoutFileParser"/> (04 §4.2).</summary>
-        public KeyboardLayout Layout { get; }
+        /// <summary>
+        /// The profile's key/layer/macro model, freshly built by <see cref="LayoutFileParser"/>
+        /// (04 §4.2). Replaced wholesale by a layout <see cref="Import"/>, which is the same
+        /// operation from a different source — hold the session, not this reference.
+        /// </summary>
+        public KeyboardLayout Layout { get; private set; }
 
         /// <summary>
         /// The device-appropriate lighting model (<see cref="Lighting.LightingModel"/>,
         /// <see cref="Lighting.TkoLightingModel"/>, or <see cref="Lighting.Advantage360LightingModel"/>);
         /// null when the device has no profile-orchestrated lighting file (FS Edge/Pro, see
-        /// <see cref="ProfileLightingCodec"/>).
+        /// <see cref="ProfileLightingCodec"/>). Replaced wholesale by a lighting <see cref="Import"/>.
         /// </summary>
-        public object? Lighting { get; }
+        public object? Lighting { get; private set; }
 
         /// <summary>Layout lines that could not be applied on load (04 §5); toggle <see cref="LayoutInvalidLine.Keep"/> before saving.</summary>
-        public IReadOnlyList<LayoutInvalidLine> InvalidLines { get; }
+        public IReadOnlyList<LayoutInvalidLine> InvalidLines { get; private set; }
 
         /// <summary>The numbered profile position this session was loaded from.</summary>
         public int ProfileNumber { get; }
@@ -168,6 +168,39 @@ namespace KinesisEdit.Core.Profiles
                 originalLightingLines);
         }
 
+        /// <summary>
+        /// Replaces this session's layout or lighting with the content of an imported file
+        /// (specs/10-apps-and-ui.md: "Import loads an external <c>.txt</c> (maximum 50 KB) and
+        /// auto-detects whether it is layout or LED content"). Which of the two
+        /// <paramref name="kind"/> names is decided by
+        /// <see cref="Transfer.ImportClassifier"/> before the call; reading the file and
+        /// enforcing its size are the caller's job.
+        /// <para>
+        /// It is deliberately the same operation as <see cref="Load"/> from a different source:
+        /// the very same <see cref="LayoutFileParser"/>/<see cref="ProfileLightingCodec"/> path
+        /// runs, so an imported file behaves exactly as it would have off the drive — a brand-new
+        /// model built from scratch (04 §4.2's full-model-wipe-on-load), invalid lines tracked
+        /// rather than dropped (04 §5), and nothing written anywhere. The baseline
+        /// <see cref="IsDirty"/> compares against is the one captured at load, so imported
+        /// content is <b>unsaved edit state</b> until the user saves.
+        /// </para>
+        /// Throws <see cref="ProfileReadOnlyException"/> for the Advantage 360's profile 0, whose
+        /// import is disabled with its save (specs/02-devices.md, "Profiles 0-9").
+        /// </summary>
+        public ProfileImportResult Import(ImportedFileKind kind, IReadOnlyList<string> lines)
+        {
+            ArgumentNullException.ThrowIfNull(lines);
+
+            if (!Enum.IsDefined(kind))
+            {
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown imported file kind.");
+            }
+
+            EnsureNotReadOnlyProfile(_location.Device.LayoutScheme, ProfileNumber);
+
+            return kind == ImportedFileKind.Lighting ? ImportLighting(lines) : ImportLayout(lines);
+        }
+
         /// <summary>Saves back to <see cref="ProfileNumber"/> (the save sequence of specs/03-vdrive-and-files.md §5.3).</summary>
         public ProfileSaveResult Save()
         {
@@ -184,6 +217,42 @@ namespace KinesisEdit.Core.Profiles
         public ProfileSaveResult SaveAs(int targetProfileNumber, bool setAsStartup)
         {
             return ExecuteSave(targetProfileNumber, setAsStartup);
+        }
+
+        private ProfileImportResult ImportLayout(IReadOnlyList<string> lines)
+        {
+            var parseResult = new LayoutFileParser(Device).Parse(lines);
+
+            Layout = parseResult.Layout;
+            InvalidLines = parseResult.InvalidLines;
+
+            return new ProfileImportResult
+            {
+                Kind = ImportedFileKind.Layout,
+                InvalidLines = InvalidLines
+            };
+        }
+
+        /// <summary>
+        /// Replaces the led model only; the layout and its invalid lines belong to the other file
+        /// and survive untouched. Defensive rather than reachable: the classifier answers
+        /// <see cref="ImportedFileKind.Lighting"/> only for the three devices that pair a led file
+        /// with each profile, which are exactly the ones this codec knows.
+        /// </summary>
+        private ProfileImportResult ImportLighting(IReadOnlyList<string> lines)
+        {
+            if (!ProfileLightingCodec.HasSupportedLighting(Device))
+            {
+                throw new NotSupportedException($"{Device} has no profile-orchestrated lighting file to import into.");
+            }
+
+            Lighting = ProfileLightingCodec.Parse(Device, lines);
+
+            return new ProfileImportResult
+            {
+                Kind = ImportedFileKind.Lighting,
+                InvalidLines = InvalidLines
+            };
         }
 
         private ProfileSaveResult ExecuteSave(int targetProfileNumber, bool setAsStartup)
@@ -234,15 +303,10 @@ namespace KinesisEdit.Core.Profiles
 
         private void SaveStartupSettings(int targetProfileNumber)
         {
-            var updatedSettings = _settings with { StartupProfileNumber = targetProfileNumber };
-
-            if (_location.Device.Settings.LedMode == LedModeKind.LedFileName)
-            {
-                updatedSettings = updatedSettings with
-                {
-                    LedMode = LedFileNamePrefix + targetProfileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix
-                };
-            }
+            var updatedSettings = StartupProfileSettings.ApplyStartupProfile(
+                _location.Device.Settings,
+                _settings,
+                targetProfileNumber);
 
             _settingsService.SaveKeyboardSettings(_location, VersionFileInfo.Empty, updatedSettings);
         }
@@ -273,16 +337,15 @@ namespace KinesisEdit.Core.Profiles
 
         private static string GetLayoutFilePath(VDriveLocation location, int profileNumber)
         {
-            return Path.Combine(
-                location.LayoutsFolderPath!,
-                LayoutFileNamePrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix);
+            return Path.Combine(location.LayoutsFolderPath!, ProfileFileNames.Layout(profileNumber));
         }
 
         private static string GetLightingFilePath(VDriveLocation location, int profileNumber)
         {
-            return Path.Combine(
-                location.LightingFolderPath!,
-                LedFileNamePrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix);
+            // ProfileFileNames.Lighting is StartupProfileSettings.GetLedFileName — the same helper
+            // that writes the paired led_mode value (spec 07 §1.2), so the file this session reads
+            // and the file name the settings point at cannot drift apart.
+            return Path.Combine(location.LightingFolderPath!, ProfileFileNames.Lighting(profileNumber));
         }
     }
 }

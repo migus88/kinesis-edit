@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.SavantElite;
+using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Core.VDrive.Io;
@@ -78,7 +79,11 @@ namespace KinesisEdit
 
             _deviceMonitor = new DeviceMonitorService(monitor, fileService, new AvaloniaUiDispatcher());
 
-            var sessions = new DeviceSessionManager(fileService);
+            // One settings service for the whole app: app_settings.txt must have a single reader
+            // and a single writer, or the notification-suppression flags and the lighting pickers'
+            // custom colors clobber each other (specs/08-settings.md §3).
+            var settings = new SettingsServiceAdapter(new SettingsService(fileService));
+            var sessions = new DeviceSessionManager(settings);
 
             // The owner is the topmost window rather than the shell, so a message box raised from
             // inside a modal dialog is owned by that dialog instead of by the window it already
@@ -96,11 +101,18 @@ namespace KinesisEdit
             // serves every session the shell opens.
             var pedalFiles = new PedalFileService(fileService);
 
+            // Both pickers defer their owner window exactly as the message-box presenter does:
+            // the storage provider hangs off a TopLevel, and no window exists yet at this point.
             var editorFactory = new EditorViewModelFactory(
                 new ProfileSessionFactory(),
+                settings,
                 () => ResolveCaptureService(desktop),
                 notifications,
-                pedalFiles);
+                pedalFiles,
+                new AvaloniaFolderPickerService(() => FindOwnerWindow(desktop)),
+                new AvaloniaFilePickerService(() => FindOwnerWindow(desktop)),
+                fileService,
+                urlLauncher);
 
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, urlLauncher);
             _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, editorFactory);

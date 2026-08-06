@@ -114,6 +114,25 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Re-paints the layer's colour strips from a freshly built
+        /// <see cref="KeyColorOverlay"/> map. A key the map does not mention loses its strip, so
+        /// this is the whole-layer form and not a merge — erasing a colour has to be visible too.
+        /// <para>
+        /// The overlay cannot come from <see cref="RefreshFromModel"/>: it lives in the lighting
+        /// model, which no layout parser ever writes into <see cref="KeyboardKey.KeyColor"/>.
+        /// </para>
+        /// </summary>
+        public void ApplyColorOverlays(IReadOnlyDictionary<int, string>? colorOverlays)
+        {
+            foreach (var key in Keys)
+            {
+                key.ColorOverlayHex = colorOverlays is not null && colorOverlays.TryGetValue(key.Index, out var hex)
+                    ? hex
+                    : null;
+            }
+        }
+
         private static IReadOnlyList<KeyboardKeyViewModel> BuildKeys(
             KeyboardLayer layer,
             KeyboardVisual visual,

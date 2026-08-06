@@ -36,6 +36,8 @@ Implements the spec 09 §1.1 line rule: prefix-match each line case-insensitivel
 | TKO | KBD = 1.0.0 (exact) | `MacroFirmwareWarning` |
 | Advantage 360 | KBD ≥ 1.0.69 | `TapAndHoldMacroActions` |
 
+**Who evaluates gates today.** The keyboard editor is the first consumer ([keyboard-editor.md](keyboard-editor.md)): `MacroPanelViewModel.ResolveMaxMacroCount` reads `ExpandedMacroCount` to pick between `MacroCapability.MaxMacroCount` and `GatedMaxMacroCount` (no dialog — the number simply changes), while `TapAndHold` and `CustomMacroDelays` are asked before their feature panels open and refuse with a dialog. That dialog is `KinesisEdit.ViewModels.FirmwareFeatureGate`, which shows `FirmwareGate.Message` plus an `Update Firmware` button wired to `FirmwareSupportUrls.FindUrl` ([feature-dialogs.md](feature-dialogs.md)); where a row stores no message — spec 09 §2 quotes the refusal only under the Freestyle rows — the calling feature supplies a fallback pinned by test to the row that does. `MacroFirmwareWarning`, `RippleAndFireballEffects`, `LightingLayerCustomization`, `ExpansionPackOffer` and `TapAndHoldMacroActions` still have no caller.
+
 ## Support pages — `FirmwareSupportUrls`
 
 - `FindUrl(DeviceId)` — the spec 09 §2 firmware support page the legacy "Upgrade Firmware" buttons open (FS Pro, FS Edge, Adv2, RGB, TKO, Adv360), null for other devices. Kept here rather than in the device catalog because spec 02 gives `DeviceDefinition.SupportUrl` only for the Adv360 Professional.
@@ -53,4 +55,4 @@ Implements the spec 09 §1.1 line rule: prefix-match each line case-insensitivel
 - **No file I/O** — the parser takes lines, never paths; reading `version.txt`/`settings.txt` off the v-Drive is drive discovery (issue #6).
 - **No update check** (issue #45) — nothing here fetches the vendor's published-versions endpoint or compares local versions against it. Spec 09 §3–§4 documents that flow for the *legacy* app only; this app has no HTTP stack (`KinesisEdit.Core` keeps zero package references), no manifest model and no update dialog. Firmware upgrades are reached through the `FirmwareSupportUrls` links above.
 - **No expansion-pack lighting-state precondition** — the `ExpansionPackOffer` gate covers only the LED-version condition; "no led file contains the `fn ` prefix yet" (spec 07) is lighting-file knowledge, issue #9.
-- **No refusal-dialog UI** — gates carry the wording and support URLs as data; showing dialogs with "Update Firmware" buttons is the editor UIs, issues #15/#16.
+- **No refusal-dialog UI** — gates carry the wording and support URLs as data; the dialog with the "Update Firmware" button lives in the app layer (`FirmwareFeatureGate`, [feature-dialogs.md](feature-dialogs.md)), and the lighting gates are read directly by the Lighting tab, which hides or disables the affected controls rather than refusing after the fact ([keyboard-editor.md](keyboard-editor.md)).

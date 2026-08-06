@@ -11,8 +11,11 @@ The runtime, editable state of one device profile: `KinesisEdit.Core.Model`. Pla
 | `Macro` | ordered keystrokes + trigger metadata + co-triggers | 05 §1.2; 06 §1, §4, §5 |
 | `Keystroke` | one key inside a macro + held modifiers + direction | 05 §1.1, §5.1, §5.2, §5.8 |
 | `KeyDirection` | `None`/`Down`/`Up` — the `{-token}`/`{+token}` prefixes | 05 §1.1, §5.8; 06 §2.2 |
-| `MacroKeystrokeRenderer` | macro → the 06 §3 line, and the Adv360 length metric | 06 §3, §6 |
+| `MacroKeystrokeRenderer` | macro → the 06 §3 line, its layer prefix, and the Adv360 length metric | 06 §3, §6 |
+| `MacroLengthMetric` | which of 06 §6's two per-macro metrics a layout is measured in, and the measurement | 06 §6; 04 §5.3 |
 | `ModelViolation` / `ModelViolationKind` | limit reports from `Validate()` | 04 §5.3; 06 §5, §6; 11 §11.1, §11.2 |
+| `TapAndHoldPrecheck` / `TapAndHoldRefusal` | the four checks a UI runs *before* offering tap-and-hold, and their verbatim refusals | 11 §11.1 |
+| `MacroDelayTokens` | the `dran` / `d001`..`d999` delay keys a macro editor inserts | 11 §11.3; 06 §2.2 |
 | `MacroModifiers` / `MacroModifierCodes` | the two-char modifier codes and their key mapping | 05 §5.1 |
 | `MultiModifierCodes` | the 11 accepted 4-char combos | 05 §5.7; 04 §2.3; 11 §11.2 |
 | `KeyColor` | per-key LED colour (`readonly record struct`, R/G/B 0-255) | 05 §1.3; 07 §2.1, §4 |
@@ -97,6 +100,8 @@ Clearing: `ClearRemap()`, `ClearTapAndHold()`, `ClearMultiModifiers()`, `ClearMa
 
 `RenderKeystrokes(macro, dialect)` is the keystroke section alone. `KeystrokeTextLength(macro, dialect)` is its length — the Adv360 metric (see below).
 
+`LayerPrefixFor(dialect, layerIndex)` answers the prefix argument: `fn ` for layer 1 of the **Gen1** dialect and nothing anywhere else, because only that family puts the layer into the line itself — Legacy marks the keypad layer with `kp-` *inside* the first bracket and Gen2 with a `<...>` header line (04 §3.1–§3.3). Anything that shows a macro as "the line the file will carry" has to pass it, or it disagrees with `LayoutFileSerializer`, which shares the same `fn ` constant.
+
 Token resolution falls back to the first dialect that names a key: the generic Shift/Ctrl/Alt entries exist only in the Legacy table (05 §3.5) yet appear inside Gen1 macro values (06 §7.3).
 
 ## Validation
@@ -112,6 +117,15 @@ Token resolution falls back to the first dialect that names a key: the generic S
 - `UnboundMacro` fires for a Gen2 flat-list macro that names no trigger key or no layer (06 §1, and 06 §5's "a layer is selected"). Such a macro is **excluded** from trigger-collision grouping — it is not on a trigger yet, so it cannot duplicate one.
 - Every limit comes from the device catalog. `MacroCountExceeded` compares against `MaxMacroCount` (the baseline); raising it via `GatedMaxMacroCount` needs firmware-gate evaluation, which is not this module's job. The Gen2-only checks (`EmptyMacro`, `UnbalancedMacroKeyDirection`, `ReservedMacroTriggerWithoutCoTrigger`) follow 06 §5.
 
+## Editor pre-checks — `TapAndHoldPrecheck`, `MacroDelayTokens`
+
+Two UI-free helpers that answer questions an editor would otherwise restate; both are pure functions over the model and carry the spec's wording/tokens as data, the same pattern `ModelViolation.Message` follows. Their consumer is the feature-dialog layer ([feature-dialogs.md](feature-dialogs.md)), which has the full rules.
+
+- `TapAndHoldPrecheck.Evaluate(layout, layer, key)` → the **first** `TapAndHoldRefusal` of 11 §11.1 in the spec's order (same key on another layer → maximum reached → macro trigger → A-Z/0-9 on layer 0), `None` when the dialog may open; `MessageFor(refusal)` is the verbatim message. It reads `TapAndHoldCapability.MaxPerLayout`, `TapAndHoldCount`, both macro stores, and the key's **factory default** table (not its remap). Whether the device supports the feature at all (`TapAndHoldCapability.IsSupported`), and whether its firmware clears the gate, are separate questions the caller asks first — and does ([feature-dialogs.md](feature-dialogs.md)).
+
+  **The maximum excludes the key being edited.** §11.1's wording caps how many tap-and-hold actions a profile *has*; re-opening the dialog on a key that already carries one rewrites that assignment rather than adding an eleventh, so `key.IsTapAndHold` takes one off the count. A literal reading would lock the last ten assignments of a full profile out of ever being edited again, which no recorded legacy behaviour asks for. A key carrying nothing yet is still refused.
+- `MacroDelayTokens`: `RandomToken` `dran`, the 1–999 ms range, `BuildCustomToken(ms)` → `d` + three zero-padded digits, and `ResolveRandom`/`ResolveCustom` which look the key up **by token, never by code** — `dran` and the generated `d002` share code 10087 and `KeyRegistry.FindByCode` answers `dran` first (05 §7).
+
 ## Load-bearing invariants
 
 1. **Limits are reported, never enforced.** The tolerant load paths store what a field file carries; `Validate()` describes what is out of bounds. Files written by older firmware may exceed today's limits and must still load. Only genuine programming errors (null args, slot/index out of range, flat-list misuse) throw. Position *permissions* (05 §5.3) and device *feature* scope (11 §11.2) are what the editor paths refuse.
@@ -119,6 +133,8 @@ Token resolution falls back to the first dialect that names a key: the generic S
 3. **Two length metrics, never conflated.**
    - **7200 layout budget** and the **300 per-macro cap** of every non-Gen2 family: `TotalKeystrokes` / `WeightedKeystrokeCount` = 1 per keystroke + 2 per attached modifier. 04 §5.3 defines keystroke accounting once for the whole document, so both use it.
    - **500 Adv360 per-macro cap**: `MacroKeystrokeRenderer.KeystrokeTextLength` — the length of the serialized **macro** text (06 §6), i.e. the value side of the §3 line. The trigger, the co-triggers, the layer prefix and the `{sN}`/`{xN}` markers are *not* in it.
+
+   **`MacroLengthMetric` is the one place that picks between them**: `UsesSerializedTextLength(layout)` (= `layout.UsesFlatMacroList`), `Measure(macro, layout)` and `UnitFor(layout)`. `Validate()` reports the number `Measure` returns, so a UI budget readout built on the other metric would contradict the gate that stops the save — which is exactly why the choice is not left to each caller.
 4. **Trigger identity ≠ position.** Macro lookups use `TriggerKey`, remaps use `PositionKey`; they differ wherever a position carries an explicit position token, and `fn1s`/`keyt` invert the rule back to `OriginalKey` (05 §1.3, §1.5).
 5. **Indices are dense and stable.** 0..N−1 per layer, unique, and the same physical position keeps its index — and its `PositionKey` — across every layer of a device (05 §7.4).
 6. **Copies, never shared instances.** Layer building and `CopyFrom`/`Clone` deep-copy macros; only the immutable `KeyDefinition` records are shared (05 §1.5).
@@ -127,5 +143,5 @@ Token resolution falls back to the first dialect that names a key: the generic S
 
 - **No file parsing, and no serialization above one macro line.** `MacroKeystrokeRenderer` writes the single 06 §3 macro line and exists so the model can measure the Adv360 cap; everything else belongs to the reader/writer module — remap/tap-and-hold/multi-modifier line syntax (04 §2), the Adv2 keypad-exception codes (05 §5.4) that disambiguate keypad-layer duplicates, the `fn `/`kp-`/`<header>` layer encodings, the Adv2 `{speedN}` and old-FS variants of the macro line, file assembly, and invalid-line tracking. That module is `KinesisEdit.Core.Layouts` (see [`layout-files.md`](layout-files.md)), which consumes the tolerant load paths above.
 - **No firmware-gate evaluation** (spec 09 §2) — `GatedMaxMacroCount` and `TapAndHoldCapability.MinimumFirmware` are data the caller compares.
-- **No UI or binding concerns** — no change notification, no undo buffers, no `IsNew` editing flags, no display/caption rendering (05 §5.2 is a UI concern), no editor refusal rules such as "tap-and-hold not on top-layer A-Z" (04 §2.2).
+- **No UI or binding concerns** — no change notification, no undo buffers, no `IsNew` editing flags, no display/caption rendering (05 §5.2 is a UI concern). The one exception is `TapAndHoldPrecheck` (above): 11 §11.1's four checks are *model* questions ("does another layer already carry one?", "is this a macro trigger?") that every editor would otherwise re-derive, so they live here as a pure function — but nothing here refuses an assignment because of them. `SetTapAndHold` still stores whatever it is given.
 - **No drive I/O**, no profile files, no lighting state beyond the per-key `KeyColor` slot.

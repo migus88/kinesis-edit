@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="240"
+             x:Class="KinesisEdit.Views.ExportOverlayView"
+             x:DataType="vm:ExportOverlayViewModel">
+  <!-- The Export files panel of specs/11-feature-dialogs.md §11.5: three mutually exclusive
+       checkboxes, then a native directory picker. Ok is ExportCommand and not the base
+       AcceptCommand — §11.5's accept is asynchronous, and the base command stays inert until the
+       files have actually been written. -->
+  <Border Classes="overlayCard" Width="420">
+    <StackPanel Spacing="12">
+      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+
+      <StackPanel Spacing="6">
+        <CheckBox Content="{x:Static vm:ExportOverlayViewModel.LayoutAndLightingCaption}"
+                  IsChecked="{Binding IsLayoutAndLightingSelected, Mode=TwoWay}" />
+        <CheckBox Content="{x:Static vm:ExportOverlayViewModel.LayoutOnlyCaption}"
+                  IsChecked="{Binding IsLayoutOnlySelected, Mode=TwoWay}" />
+        <CheckBox Content="{x:Static vm:ExportOverlayViewModel.LightingOnlyCaption}"
+                  IsChecked="{Binding IsLightingOnlySelected, Mode=TwoWay}" />
+      </StackPanel>
+
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Classes="statusError"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="Ok" Command="{Binding ExportCommand}" MinWidth="88" Classes="primaryAction" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

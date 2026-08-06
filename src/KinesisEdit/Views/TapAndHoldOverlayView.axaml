@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="360"
+             x:Class="KinesisEdit.Views.TapAndHoldOverlayView"
+             x:DataType="vm:TapAndHoldOverlayViewModel">
+  <!-- The Assign Tap and Hold Action panel of specs/11-feature-dialogs.md §11.1. Every label,
+       hint and message is a const on the view model, so the spec wording has one home.
+       The two action fields are deliberately *not* text boxes: they are filled by a real
+       keystroke, and focus inside a TextBox auto-suspends the capture service. -->
+  <Border Classes="overlayCard" Width="520">
+    <StackPanel Spacing="12">
+      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+
+      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                   Text="{x:Static vm:TapAndHoldOverlayViewModel.TapActionLabel}"
+                   Classes="fieldLabel"
+                   Margin="0,0,0,3" />
+        <Border Grid.Row="1" Grid.Column="0"
+                Classes="actionField"
+                ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.TapActionHint}"
+                Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}">
+          <TextBlock Text="{Binding TapActionText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </Border>
+        <Button Grid.Row="1" Grid.Column="1"
+                Content="Press Key"
+                Margin="8,0,0,0"
+                Command="{Binding ArmTapActionCommand}" />
+        <Button Grid.Row="1" Grid.Column="2"
+                Content="Search"
+                Margin="6,0,0,0"
+                ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.SearchHint}"
+                Command="{Binding SearchTapActionCommand}" />
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                   Text="{x:Static vm:TapAndHoldOverlayViewModel.HoldActionLabel}"
+                   Classes="fieldLabel"
+                   Margin="0,12,0,3" />
+        <Border Grid.Row="3" Grid.Column="0"
+                Classes="actionField"
+                ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.HoldActionHint}"
+                Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}">
+          <TextBlock Text="{Binding HoldActionText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </Border>
+        <Button Grid.Row="3" Grid.Column="1"
+                Content="Press Key"
+                Margin="8,0,0,0"
+                Command="{Binding ArmHoldActionCommand}" />
+        <Button Grid.Row="3" Grid.Column="2"
+                Content="Search"
+                Margin="6,0,0,0"
+                ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.SearchHint}"
+                Command="{Binding SearchHoldActionCommand}" />
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                   Text="{x:Static vm:TapAndHoldOverlayViewModel.DelayLabel}"
+                   Classes="fieldLabel"
+                   Margin="0,12,0,3" />
+        <!-- A real TextBox: typing the delay must not be swallowed by capture, and focus in one
+             is what tells the capture service to stand down. The arrows are §11.1's clamped
+             Up/Down steps. -->
+        <TextBox Grid.Row="5" Grid.Column="0"
+                 Text="{Binding DelayMilliseconds, Mode=TwoWay}"
+                 ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.DelayHint}" />
+        <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    Margin="8,0,0,0">
+          <Button Content="▲" Width="38" Command="{Binding IncreaseDelayCommand}" />
+          <Button Content="▼" Width="38" Command="{Binding DecreaseDelayCommand}" />
+        </StackPanel>
+      </Grid>
+
+      <TextBlock Text="{x:Static vm:TapAndHoldOverlayViewModel.NoteText}"
+                 Classes="muted"
+                 TextWrapping="Wrap" />
+
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Classes="statusError"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="Ok" Command="{Binding AcceptCommand}" MinWidth="88" Classes="primaryAction" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

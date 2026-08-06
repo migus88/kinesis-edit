@@ -43,9 +43,11 @@ namespace KinesisEdit.Core.Devices
         }
 
         /// <summary>
-        /// Advantage2 macros (specs/02-devices.md master table, 06 §1, §2.1, §4, §6): 5 model slots
-        /// of which 3 are persisted, up to 3 co-triggers, ~300 characters per macro, speed and
-        /// repeat 0-9 defaulting to 0. The spec states no macro count or layout keystroke budget.
+        /// Advantage2 macros (specs/02-devices.md master table, 06 §1, §2.1, §3, §4, §6): 5 model
+        /// slots of which 3 are persisted, up to 3 co-triggers, ~300 characters per macro, speed
+        /// and repeat 0-9 defaulting to 0 — but the Adv2 serializer writes no repeat token, so the
+        /// repeat value is modelled and never persisted. The spec states no macro count or layout
+        /// keystroke budget, i.e. no limit on either.
         /// </summary>
         private static MacroCapability CreateAdvantage2Macros()
         {
@@ -83,7 +85,8 @@ namespace KinesisEdit.Core.Devices
                 MaxCoTriggersPerMacro = MaxCoTriggerSlots,
                 PersistedCoTriggersPerMacro = 1,
                 Speed = LegacySpeedRange,
-                Repeat = LegacyRepeatRange
+                Repeat = LegacyRepeatRange,
+                PersistsRepeat = true
             };
         }
 
@@ -105,7 +108,8 @@ namespace KinesisEdit.Core.Devices
                 MaxCoTriggersPerMacro = MaxCoTriggerSlots,
                 PersistedCoTriggersPerMacro = MaxCoTriggerSlots,
                 Speed = RgbSpeedRange,
-                Repeat = RgbRepeatRange
+                Repeat = RgbRepeatRange,
+                PersistsRepeat = true
             };
         }
 
@@ -128,6 +132,7 @@ namespace KinesisEdit.Core.Devices
                 PersistedCoTriggersPerMacro = MaxCoTriggerSlots,
                 Speed = RgbSpeedRange,
                 Repeat = RgbRepeatRange,
+                PersistsRepeat = true,
                 ClampsOutOfRangeValues = true
             };
         }

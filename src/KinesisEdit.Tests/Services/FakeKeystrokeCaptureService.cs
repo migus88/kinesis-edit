@@ -59,9 +59,11 @@ namespace KinesisEdit.Tests.Services
         }
 
         /// <summary>
-        /// Raises a keystroke for <paramref name="key"/> with the modifiers held while it was
-        /// pressed, as the real service would. <see cref="CapturedKeystroke"/> drops the held set
-        /// itself when the key is a modifier (specs/05-key-model.md §5.1).
+        /// Raises a keystroke for <paramref name="key"/> struck while
+        /// <paramref name="heldModifiers"/> were down — what macro recording folds into the step's
+        /// modifier set, and what the pedal editor appends to a macro entry. <see
+        /// cref="CapturedKeystroke"/> drops the held set itself when the key is a modifier
+        /// (specs/05-key-model.md §5.1).
         /// </summary>
         public void RaiseKeystroke(KeyDefinition key, params KeyDefinition[] heldModifiers)
         {

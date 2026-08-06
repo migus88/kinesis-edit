@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="220"
+             x:Class="KinesisEdit.Views.MacroDelayOverlayView"
+             x:DataType="vm:MacroDelayOverlayViewModel">
+  <!-- The Macro Timing Delays panel of specs/11-feature-dialogs.md §11.3: the random radio and the
+       custom field with its Up/Down arrows. Neither control is preselected — an untouched panel
+       has to be able to fail validation — and typing in the custom field un-checks the radio,
+       which the view model does on assignment. -->
+  <Border Classes="overlayCard" Width="440">
+    <StackPanel Spacing="12">
+      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+
+      <RadioButton Content="{x:Static vm:MacroDelayOverlayViewModel.RandomDelayCaption}"
+                   IsChecked="{Binding IsRandomDelay, Mode=TwoWay}" />
+
+      <StackPanel Spacing="3">
+        <TextBlock Text="{x:Static vm:MacroDelayOverlayViewModel.CustomDelayCaption}" Classes="fieldLabel" />
+        <Grid ColumnDefinitions="*,Auto">
+          <!-- A real TextBox: the capture service stands down while focus sits in one, so the
+               digits reach the field instead of the macro. -->
+          <TextBox Grid.Column="0" Text="{Binding CustomDelayMilliseconds, Mode=TwoWay}" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+            <Button Content="▲" Width="38" Command="{Binding IncreaseDelayCommand}" />
+            <Button Content="▼" Width="38" Command="{Binding DecreaseDelayCommand}" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Classes="statusError"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="Ok" Command="{Binding AcceptCommand}" MinWidth="88" Classes="primaryAction" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

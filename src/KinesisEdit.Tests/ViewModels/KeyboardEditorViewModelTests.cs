@@ -1,7 +1,9 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Layouts;
+using KinesisEdit.Core.Lighting;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
+using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
@@ -12,8 +14,13 @@ namespace KinesisEdit.Tests.ViewModels
     public sealed class KeyboardEditorViewModelTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
+        private readonly FakeSettingsService _settings = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeFolderPickerService _folderPicker = new();
+        private readonly FakeFilePickerService _filePicker = new();
+        private readonly FakeVDriveFileService _files = new();
+        private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
@@ -140,31 +147,179 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Tabs_ExceptTheKeysTab_AreVisibleButDisabled()
+        public async Task Tabs_ForALitDeviceWithSettings_AreTheFourAndAllOpen()
         {
             var editor = await CreateLoadedEditorAsync();
 
             Assert.Equal(
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
                 editor.Tabs.Select(tab => tab.Tab));
-            Assert.True(editor.Tabs[0].IsEnabled);
-            Assert.All(editor.Tabs.Skip(1), tab => Assert.False(tab.IsEnabled));
+            Assert.All(editor.Tabs, tab => Assert.True(tab.IsEnabled));
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
+            Assert.All(editor.Tabs, tab => Assert.True(editor.SelectTabCommand.CanExecute(tab)));
         }
 
         [Fact]
-        public async Task SelectedTab_SetToATabWithNothingBehindIt_StaysOnTheKeysTab()
+        public void SelectedTab_SetToATabWithNothingBehindIt_StaysOnTheKeysTab()
+        {
+            // The TKO's led file adds an edge section this panel does not edit (#40), so its
+            // Lighting tab is present but dark — and a tab with nothing behind it stays shut
+            // whichever way it is asked for, the two-way binding included.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(DeviceId.Tko));
+            var lighting = Assert.Single(editor.Tabs, tab => tab.Tab == EditorTab.Lighting);
+
+            Assert.False(lighting.IsEnabled);
+            Assert.False(editor.SelectTabCommand.CanExecute(lighting));
+
+            editor.SelectedTab = EditorTab.Lighting;
+            editor.SelectTabCommand.Execute(lighting);
+
+            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
+            Assert.True(editor.Tabs[0].IsSelected);
+            Assert.False(lighting.IsSelected);
+        }
+
+        [Fact]
+        public void SelectedTab_SetToASectionTheDeviceDoesNotCarry_StaysOnTheKeysTab()
+        {
+            // The CROSSFIRE has no app-managed settings file, so the strip has no Settings tab at
+            // all: absent and disabled are refused by the same guard.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(DeviceId.CrossfireKeypad));
+
+            Assert.DoesNotContain(EditorTab.Settings, editor.Tabs.Select(tab => tab.Tab));
+
+            editor.SelectedTab = EditorTab.Settings;
+
+            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
+            Assert.True(editor.Tabs[0].IsSelected);
+        }
+
+        [Fact]
+        public async Task SelectedTab_SetToTheMacrosTab_Opens()
         {
             var editor = await CreateLoadedEditorAsync();
 
             editor.SelectedTab = EditorTab.Macros;
+
+            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
+            Assert.True(editor.Tabs[1].IsSelected);
+            Assert.True(editor.IsMacroPanelVisible);
+        }
+
+        [Fact]
+        public async Task SelectTabCommand_ForTheLightingTab_OpensIt()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
             editor.SelectTabCommand.Execute(editor.Tabs[2]);
 
-            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
-            Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.Tabs[1].IsSelected);
+            Assert.Equal(EditorTab.Lighting, editor.SelectedTab);
+            Assert.True(editor.Tabs[2].IsSelected);
+        }
+
+        [Fact]
+        public async Task Lighting_ForALoadedProfile_EditsTheModelTheSessionHandedOut()
+        {
+            var lighting = new LightingModel();
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                Lighting = lighting
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(editor.Lighting.IsAvailable);
+            Assert.Equal(2, editor.Lighting.Layers.Count);
+
+            editor.Lighting.SelectModeCommand.Execute(
+                editor.Lighting.Modes.Single(mode => mode.Mode == LightingMode.Wave));
+
+            // No second save path: the session already serializes whatever its Lighting holds.
+            Assert.Equal(LightingMode.Wave, lighting.TopLayer.Mode);
+        }
+
+        [Fact]
+        public async Task Lighting_IsSupportedForTheEditorsDeviceButNotForTheOtherLitBoards()
+        {
+            // Only the support predicate is checked here — what a tab built for such a device does
+            // is LightingTabViewModelTests.Attach_ForADeviceThePanelCannotEdit_DoesNothing. The
+            // TKO's led file carries a second, edge section (issue #40) and the Advantage 360's
+            // holds six indicators (issue #41): neither is this panel's model.
+            Assert.False(LightingTabViewModel.IsSupported(DeviceCatalog.GetById(DeviceId.Tko)));
+            Assert.False(LightingTabViewModel.IsSupported(DeviceCatalog.GetById(DeviceId.Advantage360)));
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(LightingTabViewModel.IsSupported(editor.Device.Device));
+        }
+
+        [Fact]
+        public async Task Lighting_InDemoMode_IsExplorableButNeverSaved()
+        {
+            var editor = CreateEditor(TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                VDriveConnectionStatus.NotDetected));
+
+            await editor.LoadAsync();
+
+            Assert.True(editor.Lighting.IsAvailable);
+            Assert.Equal(2, editor.Lighting.Layers.Count);
+            Assert.Equal(LightingTabViewModel.DemoModeHint, editor.Lighting.StatusMessage);
+            Assert.False(editor.Lighting.Picker.CanStoreCustomColors);
+            Assert.False(editor.SaveCommand.CanExecute(null));
+            Assert.Empty(_settings.AppSettingsSaves);
+        }
+
+        [Fact]
+        public async Task SelectTabCommand_ForTheSettingsTab_OpensIt()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.SelectTabCommand.Execute(editor.Tabs[3]);
+
+            Assert.Equal(EditorTab.Settings, editor.SelectedTab);
+            Assert.True(editor.Tabs[3].IsSelected);
+            Assert.False(editor.Tabs[0].IsSelected);
+        }
+
+        [Fact]
+        public async Task SelectTab_WhileAKeyIsListening_CancelsTheRemapAndStopsCapture()
+        {
+            // Capture is app-wide and never left running (docs/app/keyboard-editor.md,
+            // invariant 4): leaving the keyboard picture must end the listen.
+            var editor = await CreateLoadedEditorAsync();
+            var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            editor.SelectKeyCommand.Execute(key);
+            editor.BeginRemapCommand.Execute(null);
+
+            Assert.True(editor.IsListening);
+
+            editor.SelectedTab = EditorTab.Settings;
+
+            Assert.Equal(EditorTab.Settings, editor.SelectedTab);
+            Assert.False(editor.IsListening);
+            Assert.False(key.IsListening);
+            Assert.False(_capture.IsCapturing);
+            Assert.Equal(1, _capture.StopCount);
+        }
+
+        [Fact]
+        public async Task Settings_ForTheOpenDevice_IsLoadedThroughTheSettingsSeam()
+        {
+            _settings.KeyboardSettingsToReturn = new KeyboardSettings { MacroSpeed = 7 };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.Equal(1, _settings.LoadKeyboardCallCount);
+            Assert.False(editor.Settings.IsLoading);
+
+            var macroSpeed = Assert.IsType<SettingsSliderRowViewModel>(
+                editor.Settings.Rows.Single(row => row.Caption == KeyboardSettingsRows.MacroSpeedCaption));
+
+            Assert.Equal(7, macroSpeed.Value);
         }
 
         [Fact]
@@ -346,8 +501,13 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = new KeyboardEditorViewModel(
                 snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
+                _settings,
                 _capture,
-                _notifications);
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher);
 
             _editors.Add(editor);
 
