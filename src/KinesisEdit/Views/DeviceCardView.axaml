@@ -3,11 +3,30 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="200"
              x:Class="KinesisEdit.Views.DeviceCardView"
              x:DataType="vm:DeviceCardViewModel">
   <Border Classes="card deviceCard" Width="320">
     <StackPanel Spacing="12">
+      <!-- The card's device art (docs/design/handoff.md:117): the board's plan-view silhouette,
+           drawn at 1:1 in the 92x56 box Themes/DeviceArt.axaml authors every device in, so the
+           seven stay at true proportion to one another rather than each filling the frame.
+
+           The frame follows the drawing: it is hidden outright when the device has none, which is
+           the design's rule that a thing the app cannot show is not rendered at all. The two
+           catalog entries without artwork - the never-shipped CROSSFIRE keypad and the
+           web-configured Advantage 360 Professional - are the only ones that can reach it. -->
+      <Border Classes="deviceArtFrame"
+              IsVisible="{Binding #DeviceArt.Data, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+        <controls:Icon x:Name="DeviceArt"
+                       Classes="deviceArt"
+                       Size="92"
+                       Data="{Binding DeviceId, Converter={StaticResource DeviceArt}}"
+                       Fill="{DynamicResource SurfaceThumbnailBrush}" />
+      </Border>
+
       <TextBlock Text="{Binding DisplayName}" Classes="cardTitle" TextWrapping="Wrap" />
 
       <!-- 'Connected' / 'Not Detected' / 'Cannot Access' (specs/10-apps-and-ui.md), as a chip whose
@@ -17,11 +36,42 @@
               Classes.ok="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
               Classes.warning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
               Classes.error="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}">
-        <TextBlock Text="{Binding StatusText}"
-                   Classes="pill"
-                   Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                   Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                   Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <!-- The state mark of docs/design/mockups.md 2b: a filled ring when connected, a dashed
+               ring when nothing answered, an exclamation circle when the drive is there but shut.
+               They are enumerated here rather than resolved by a converter because each one is a
+               different *pen* - filled, dashed, plain - and so names its own token; a converter
+               can only swap the geometry. Exactly one is visible, and they share one cell so the
+               chip's width does not depend on which.
+
+               'Connected' is two marks in one cell, the ring stroked over the core filled, which
+               is how the design draws it. The colours are the chip's own text roles rather than
+               the bare status hues: mark and label sit on the same tint and must read as one. -->
+          <Panel Width="{DynamicResource IconSize}"
+                 Height="{DynamicResource IconSize}"
+                 VerticalAlignment="Center">
+            <controls:Icon Data="{DynamicResource IconConnected}"
+                           Stroke="{DynamicResource StatusOkTextBrush}"
+                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
+            <controls:Icon Data="{DynamicResource IconConnectedCore}"
+                           Fill="{DynamicResource StatusOkTextBrush}"
+                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=Connected}" />
+            <controls:Icon Data="{DynamicResource IconNotDetected}"
+                           Stroke="{DynamicResource StatusErrorTextBrush}"
+                           StrokeDashArray="3,2"
+                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=NotDetected}" />
+            <controls:Icon Data="{DynamicResource IconCannotAccess}"
+                           Stroke="{DynamicResource StatusErrorTextBrush}"
+                           IsVisible="{Binding Snapshot.Status, Converter={StaticResource EnumMatch}, ConverterParameter=CannotAccess}" />
+          </Panel>
+
+          <TextBlock Text="{Binding StatusText}"
+                     Classes="pill"
+                     VerticalAlignment="Center"
+                     Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                     Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                     Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+        </StackPanel>
       </Border>
 
       <Button Content="{Binding PrimaryActionCaption}"
@@ -31,9 +81,16 @@
 
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button Content="{Binding SecondaryActionCaption}" Command="{Binding SecondaryActionCommand}" />
-        <Button Content="{x:Static vm:DeviceCardViewModel.EjectActionCaption}"
-                Command="{Binding EjectCommand}"
-                IsVisible="{Binding CanEject}" />
+        <!-- Eject is the one action in the app that releases the drive, and it is always explicit;
+             the mark is the design's triangle-over-bar, filled, beside its own word. -->
+        <Button Command="{Binding EjectCommand}" IsVisible="{Binding CanEject}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <controls:Icon Data="{DynamicResource IconEject}"
+                           Fill="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+            <TextBlock Text="{x:Static vm:DeviceCardViewModel.EjectActionCaption}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </StackPanel>
   </Border>

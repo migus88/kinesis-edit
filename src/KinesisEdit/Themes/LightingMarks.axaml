@@ -1,0 +1,179 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The lighting-mode marks of the icon system (docs/design/handoff.md §"Shared components",
+    docs/design/mockups.md mockups 2b and 2f).
+
+    The law, verbatim: "16px grid, 1.5px stroke, square caps, geometry only", and for these keys
+    specifically: "Lighting-mode marks draw the motion (solid, breathing, spectrum, wave bars,
+    rings, off) rather than naming it."
+
+    Five rules follow, and every key below obeys them:
+
+    1. One key per `KinesisEdit.Core.Lighting.LightingMode` member, named `LightingMark<Mode>`.
+       All sixteen exist, including the two that never reach a mode menu - `Disabled` is the
+       menu's "Disable" row, `PitchBlack` is the reserved `[black]` token - because the picker
+       renders from the enum and a missing mark would be a hole in the rail.
+    2. The mark depicts the effect's *motion*, never its name. The caption beside it already
+       reads "Wave"; the mark's job is to say what wave looks like on the board. What each one
+       draws is taken from specs/07-lighting.md §3 ("Visual behavior") - see the per-key comments,
+       which name the sentence they come from.
+    3. Every mark is authored inside a 16x16 coordinate box, origin top-left, y down, and the
+       painted result - stroke included - stays inside it. Draw with `Stretch="None"` at
+       Width/Height `IconSize` (16), or let the rail scale the box as a whole; a per-mark
+       `Stretch` of Uniform would re-centre each mark on its own ink and break the shared centre
+       the set is aligned on.
+    4. There is no colour here and there must never be one. A geometry is a shape; the call site
+       names the token it is painted with. Mockup 2f draws these as filled colour/gradient
+       swatches - a rainbow block for Spectrum, a two-stop gradient for Breathe - and that is
+       deliberately *not* reproduced: a baked gradient cannot inherit a theme token, cannot be
+       recoloured for the selected row, and reads as a colour sample rather than as a motion.
+       We draw 2b's geometry archetypes instead and let the token carry the colour.
+    5. Stroke thickness and caps are the consuming control's job, not the geometry's:
+       `StrokeThickness="{StaticResource IconStrokeThickness}"` (1.5) and `StrokeLineCap="Square"`.
+       Nothing is baked in, so one pen change restyles all sixteen.
+
+    Fill vs stroke, per key (the whole contract in one table). The three FILL marks are the ones
+    whose meaning *is* solidity - a stroked disc is a ring, and a ring already means something
+    else in this set:
+
+      LightingMarkDisabled     stroke
+      LightingMarkFreestyle    FILL    - four painted cells; stroked they become empty outlines
+      LightingMarkMonochrome   FILL    - the solid disc; stroked it collides with Breathe
+      LightingMarkBreathe      FILL    - a filled core inside a filled ring, see its comment
+      LightingMarkSpectrum     stroke
+      LightingMarkWave         stroke
+      LightingMarkFrozenWave   stroke
+      LightingMarkReactive     stroke
+      LightingMarkRipple       stroke
+      LightingMarkFireball     stroke
+      LightingMarkStarlight    stroke
+      LightingMarkRebound      stroke
+      LightingMarkLoop         stroke
+      LightingMarkPulse        stroke
+      LightingMarkRain         stroke
+      LightingMarkPitchBlack   stroke
+
+    The three FILL marks are still safe to *also* stroke (their subpaths are all closed), but a
+    stroked Monochrome is a ring, not a solid, so the distinction is meaning, not tolerance.
+
+    Sizing hints are not re-declared here: `IconSize` and `IconStrokeThickness` already live in
+    Themes/Geometry.axaml.
+
+    Geometry is theme-independent - a shape does not change when the OS flips to light - so this
+    is a plain ResourceDictionary with no ThemeDictionaries, exactly like Geometry.axaml.
+  -->
+
+  <!-- ===== Off, and the deeper off ======================================================
+       Two modes mean "nothing lit" and both must be readable at rail size, so they are put in
+       different registers rather than being two shades of the same idea. -->
+
+  <!-- Disable. Mockup 2b's "off" archetype, verbatim: a single short horizontal bar. This is the
+       row the mode menu labels "Disable" and the one a user actually picks, so it keeps the
+       archetype; Pitch Black gets the other shape. Nothing is written to the led file for it
+       (specs/07-lighting.md §2.2), which is exactly what a minus sign says. -->
+  <StreamGeometry x:Key="LightingMarkDisabled">M 4,8 L 12,8</StreamGeometry>
+
+  <!-- Pitch Black: the reserved `[black]` token - a board explicitly painted black rather than a
+       board left unlit. Drawn as the board outline struck through: the "void" register, not the
+       hatch one. The design reserves hatching for "off, not black" on a *key*, so hatching this
+       mark would say the opposite of what it is; the slashed square keeps that register free and
+       is the more legible of the two at 22x18, where a 4px hatch pitch fills in. -->
+  <StreamGeometry x:Key="LightingMarkPitchBlack">M 3.5,3.5 L 12.5,3.5 L 12.5,12.5 L 3.5,12.5 Z M 11.5,4.5 L 4.5,11.5</StreamGeometry>
+
+  <!-- ===== The static modes ============================================================= -->
+
+  <!-- Freestyle: per-key colouring, no effect (§2.4). Four painted cells on a 2x2 grid - keys
+       addressed one at a time. Filled, because the point is that each cell carries its own
+       colour; as outlines they would read as empty sockets. -->
+  <StreamGeometry x:Key="LightingMarkFreestyle">M 2,2 L 7,2 L 7,7 L 2,7 Z M 9,2 L 14,2 L 14,7 L 9,7 Z M 2,9 L 7,9 L 7,14 L 2,14 Z M 9,9 L 14,9 L 14,14 L 9,14 Z</StreamGeometry>
+
+  <!-- Monochrome: one colour across the whole board. Mockup 2b's "solid" archetype - a filled
+       disc, radius 5.5 on (8,8). The simplest mark in the set, for the simplest mode. -->
+  <StreamGeometry x:Key="LightingMarkMonochrome">M 2.5,8 A 5.5,5.5 0 1 1 13.5,8 A 5.5,5.5 0 1 1 2.5,8 Z</StreamGeometry>
+
+  <!-- ===== The fades ==================================================================== -->
+
+  <!-- Breathe: per-key colours fading in and out (§3). Mockup 2b's "breathing" archetype. The
+       breath has to be a *silhouette*, not an opacity - opacity is a brush property and cannot
+       be baked into a geometry - so this is a small filled core (r 2.5) inside a filled ring
+       (r 7 down to 5.5, i.e. one pen width thick): the disc caught mid-breath, with the halo it
+       expands into.
+
+       Three subpaths, and the middle one is wound the opposite way (sweep flag 0) from the outer
+       and inner ones (sweep flag 1). That makes the annulus come out right under *either* fill
+       rule, so the mark cannot break if a call site sets `FillRule="NonZero"`. -->
+  <StreamGeometry x:Key="LightingMarkBreathe">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 2.5,8 A 5.5,5.5 0 1 0 13.5,8 A 5.5,5.5 0 1 0 2.5,8 Z M 5.5,8 A 2.5,2.5 0 1 1 10.5,8 A 2.5,2.5 0 1 1 5.5,8 Z</StreamGeometry>
+
+  <!-- Pulse: the *whole board* fading in and out (§3), which is what separates it from Breathe -
+       Pulse writes only a speed, it has no per-key colours. So it is Breathe's concentric idea
+       drawn in the board's shape instead of a key's: the board outline with its core throbbing
+       inside it. Rectangles, not circles, is the whole difference between the two marks, and it
+       is the true one. -->
+  <StreamGeometry x:Key="LightingMarkPulse">M 3,3.5 L 13,3.5 A 1.5,1.5 0 0 1 14.5,5 L 14.5,11 A 1.5,1.5 0 0 1 13,12.5 L 3,12.5 A 1.5,1.5 0 0 1 1.5,11 L 1.5,5 A 1.5,1.5 0 0 1 3,3.5 Z M 6,6 L 10,6 A 1,1 0 0 1 11,7 L 11,9 A 1,1 0 0 1 10,10 L 6,10 A 1,1 0 0 1 5,9 L 5,7 A 1,1 0 0 1 6,6 Z</StreamGeometry>
+
+  <!-- ===== The travelling effects ======================================================= -->
+
+  <!-- Spectrum: a board-wide hue cycle (§3), with no per-key shape at all. Mockup 2f draws it as
+       a rainbow gradient; without gradients the honest reduction is *banding* - four bands of
+       different lengths and offsets, stacked. Staggered rather than centred so it reads as a
+       spectrum strip and not as centred text. -->
+  <StreamGeometry x:Key="LightingMarkSpectrum">M 3,2.75 L 13,2.75 M 1.5,6.25 L 14.5,6.25 M 2.5,9.75 L 11.5,9.75 M 4,13.25 L 14,13.25</StreamGeometry>
+
+  <!-- Wave: "scrolls a rainbow across the board" (§3). A travelling wave with an arrow on its
+       leading edge.
+
+       This is the one place the set departs from a 2b archetype. 2b lists "wave bars"; here the
+       bar register is spent three times over (Spectrum's bands, Rain's columns, Disable's bar),
+       so a fourth set of bars would be the least distinguishable mark in the rail. A curve says
+       "wave" more directly, and it buys the Frozen Wave pair below: the same wave, sampled and
+       stopped. -->
+  <StreamGeometry x:Key="LightingMarkWave">M 1,8 C 2.4,3.6 4.6,3.6 6,8 C 7.4,12.4 9.6,12.4 11,8 L 12.4,8 M 11.8,5.8 L 14,8 L 11.8,10.2</StreamGeometry>
+
+  <!-- Frozen Wave: a *static* per-LED rainbow (§2.3, edge-only on the TKO) - the wave stopped
+       and held, one fixed colour per LED. So it is the Wave curve sampled into five discrete
+       stripes whose centres trace it, with no arrow: the motion is gone, the shape remains. -->
+  <StreamGeometry x:Key="LightingMarkFrozenWave">M 2,6.25 L 2,9.75 M 5,2.75 L 5,6.25 M 8,6.25 L 8,9.75 M 11,9.75 L 11,13.25 M 14,6.25 L 14,9.75</StreamGeometry>
+
+  <!-- Loop: "sweeps in the chosen direction" (§3), continuously and without end - a direction
+       plus a repeat. An open circuit with an arrowhead closing on its own start: the sweep that
+       comes round again. Kept open (315 degrees) so its silhouette cannot be mistaken for the
+       solid disc or the breathing ring. -->
+  <StreamGeometry x:Key="LightingMarkLoop">M 13.5,8 A 5.5,5.5 0 1 1 11.9,4.1 M 11.5,1.9 L 11.9,4.1 L 9.7,3.7</StreamGeometry>
+
+  <!-- Rebound: "bounces a bar" (§3) between the edges of the board - the one effect whose motion
+       is two-way, which is also why its direction control is Horizontal/Vertical rather than four
+       arrows. Two walls with a double-headed arrow between them: the travel and the two ends it
+       turns at. -->
+  <StreamGeometry x:Key="LightingMarkRebound">M 1.75,3.5 L 1.75,12.5 M 14.25,3.5 L 14.25,12.5 M 5,8 L 11,8 M 6.5,6.2 L 5,8 L 6.5,9.8 M 9.5,6.2 L 11,8 L 9.5,9.8</StreamGeometry>
+
+  <!-- Fireball: "shoots across a row" (§3) - directional, and the only effect that travels as a
+       single body. A comet: the head at the leading edge with its trail streaming behind it. The
+       trail is what makes it a shot rather than a dot. -->
+  <StreamGeometry x:Key="LightingMarkFireball">M 1.4,8 L 7.4,8 M 2.8,5.4 L 7.2,6.3 M 2.8,10.6 L 7.2,9.7 M 9.2,8 A 2.4,2.4 0 1 1 14,8 A 2.4,2.4 0 1 1 9.2,8 Z</StreamGeometry>
+
+  <!-- Rain: "drops random columns" (§3). Columns falling from the top edge of the board, caught
+       at three different depths - the stagger is the motion. The rail across the top is what
+       separates this from Frozen Wave's stripes: these fall from somewhere. -->
+  <StreamGeometry x:Key="LightingMarkRain">M 2,2 L 14,2 M 4,5 L 4,9.5 M 8,7 L 8,13.5 M 12,5.5 L 12,9</StreamGeometry>
+
+  <!-- ===== The press-driven effects ===================================================== -->
+
+  <!-- Reactive: "lights keys on key-press over the base color" (§3) - the only mode whose motion
+       is caused by the user. A keystroke coming down onto the board, with the light it throws off
+       on either side of the impact. -->
+  <StreamGeometry x:Key="LightingMarkReactive">M 8,3.5 L 8,9.5 M 5.8,7.3 L 8,9.5 L 10.2,7.3 M 2,12.5 L 14,12.5 M 3.9,10 L 2.6,8.7 M 12.1,10 L 13.4,8.7</StreamGeometry>
+
+  <!-- Ripple: "expands rings" (§3) from the pressed key. Mockup 2b's "rings" archetype, drawn as
+       the point of origin plus two arcs spreading from it, not as full concentric circles - the
+       origin is half the mode, and full circles would collide with Breathe's ring. The gap widens
+       with each ring (0.9 to 3.6 to 6.9) because that is what expanding looks like, and because
+       three evenly spaced arcs in a 16px box leave under a pixel between them: at rail size they
+       merge into a smear. Two rings and a source is the most this box holds legibly. -->
+  <StreamGeometry x:Key="LightingMarkRipple">M 7.1,12.6 A 0.9,0.9 0 1 1 8.9,12.6 A 0.9,0.9 0 1 1 7.1,12.6 Z M 4.4,12.6 A 3.6,3.6 0 0 1 11.6,12.6 M 1.1,12.6 A 6.9,6.9 0 0 1 14.9,12.6</StreamGeometry>
+
+  <!-- Starlight: "twinkles random keys" (§3) - token `[star]`, not `[starlight]`. Three sparkles
+       of three sizes, scattered rather than arranged: the scatter and the size difference are
+       the twinkle. Every arm relies on the square cap to end cleanly at this size. -->
+  <StreamGeometry x:Key="LightingMarkStarlight">M 5,2.3 L 5,8.7 M 1.8,5.5 L 8.2,5.5 M 12.7,2 L 12.7,5.2 M 11.1,3.6 L 14.3,3.6 M 11.8,8.4 L 11.8,13.2 M 9.4,10.8 L 14.2,10.8</StreamGeometry>
+</ResourceDictionary>

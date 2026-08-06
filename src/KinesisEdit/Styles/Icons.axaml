@@ -1,0 +1,82 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:KinesisEdit.Controls">
+  <!--
+    The one icon that moves.
+
+    Everything else about an icon is settled by Controls/Icon.cs (the 1.5px square-capped pen, the
+    16px grid, the uniform fit) and by the call site, which names the geometry and the token brush
+    it is painted with. There is deliberately no base `Icon` style here: an icon has no default
+    colour in this design, and inventing one would hide the fact that a call site forgot to name a
+    role.
+  -->
+
+  <!--
+    Device art shares one authoring box.
+
+    Themes/DeviceArt.axaml draws every board in the same 92x56 box - "boards are centred in it and
+    drawn at true proportion relative to each other" - which is a fact about the art, not about any
+    one call site, so it is stated once here. Fitting each silhouette's own ink instead would scale
+    every device to the same extent and throw away exactly the relative proportion the drawings
+    encode: a pedal would end up as wide as a contoured board.
+
+    `Size` stays with the call site, because the same drawing is used at two sizes: 92 renders the
+    art frame at 1:1 for a dashboard card, ~33 gives the silhouette in the empty-state picker. The
+    fit is uniform, so 92x56 in a Size-square box letterboxes to Size x (Size * 56/92).
+  -->
+  <Style Selector="controls|Icon.deviceArt">
+    <Setter Property="SourceBox" Value="0,0,92,56" />
+  </Style>
+
+  <!--
+    The busy spinner: three quarters of a 14px ring, rotating once every 1.1s, linearly, forever
+    (docs/design/handoff.md - "spinner = 14px circle, 1.5px stroke, one transparent quadrant, 1.1s
+    linear spin").
+
+    It lives in the style layer rather than in the control so the motion stays where the motion
+    budget can see it, and so a spinner is one class at the call site:
+
+      <controls:Icon Classes="spinner" Stroke="{DynamicResource AccentBrush}" />
+
+    Four things this style settles, in order:
+
+    1. `Data`. The mark is `IconScanning` (Themes/Icons.axaml) and nothing else, so the class name
+       and the geometry are bound together in one place instead of at every call site.
+    2. `SourceBox`. `IconScanning` is the one mark NOT authored on the 16px grid - it is drawn in a
+       14x14 box centred on (7,7), because the spinner's size token is 14. The box has to be stated
+       or the control would fit it as if it were a 16 box, shrink the ring and park its centre a
+       pixel off the control's, and the rotation would wobble. The 14 here is `SpinnerSize` by
+       construction; a Rect cannot be composed out of a resource, so it is written out and guarded
+       by a test rather than bound.
+    3. The rotation itself: `RenderTransformOrigin` at the control's centre, which is where the
+       fitted geometry's centre lands, and a linear 0-360 loop.
+    4. The duration is written out rather than bound. Themes/Motion.axaml records it as
+       `DurationSpinnerRotation`, but an `Animation` is not part of the logical tree, so a
+       `DynamicResource` on it would resolve to nothing and silently give a zero-length loop. This
+       is the same rule the recording pulse follows (Styles/Keyboard.axaml).
+
+    It keeps spinning under reduce-motion, deliberately. The spinner is not decoration: it is the
+    only affordance saying the app is still working, and a frozen one reads as a hung app - a worse
+    outcome for the very user reduce-motion exists to protect. Reduce-motion drops rises, slides and
+    height changes; a status affordance that carries information is not in that category. That is
+    also why this is a `Style.Animations` loop rather than a transition: there is no property change
+    to interpolate, so it has no Full/Reduced pair and no MotionResourceBinder alias.
+  -->
+  <Style Selector="controls|Icon.spinner">
+    <Setter Property="Data" Value="{DynamicResource IconScanning}" />
+    <Setter Property="Size" Value="{DynamicResource SpinnerSize}" />
+    <Setter Property="StrokeThickness" Value="{DynamicResource SpinnerStrokeThickness}" />
+    <Setter Property="SourceBox" Value="0,0,14,14" />
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Style.Animations>
+      <Animation Duration="0:0:1.1" IterationCount="Infinite" Easing="LinearEasing">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0.0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360.0" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+</Styles>

@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="90"
              x:Class="KinesisEdit.Views.LoadingView"
              x:DataType="vm:LoadingViewModel">
@@ -11,7 +12,12 @@
   <Border Classes="overlayCard" MinWidth="240">
     <StackPanel Spacing="10">
       <TextBlock Text="{Binding Caption}" Classes="body" HorizontalAlignment="Center" TextWrapping="Wrap" />
-      <ProgressBar IsIndeterminate="True" Width="200" />
+      <!-- The design's one busy affordance: a 14px ring with a quadrant missing, turning once every
+           1.1s. `.spinner` (Styles/Icons.axaml) carries the geometry, the box and the rotation, so
+           the only thing left to name here is the accent it turns in. -->
+      <controls:Icon Classes="spinner"
+                     Stroke="{DynamicResource AccentBrush}"
+                     HorizontalAlignment="Center" />
     </StackPanel>
   </Border>
 </UserControl>
