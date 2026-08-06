@@ -1,0 +1,130 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The state, action and chrome marks of the icon system (docs/design/handoff.md §"Shared
+    components", docs/design/mockups.md mockup 2b).
+
+    The law, verbatim: "16px grid, 1.5px stroke, square caps, geometry only."
+
+    Four rules follow from it, and every key below obeys them:
+
+    1. Every mark is authored inside a 16x16 coordinate box, origin top-left, y down. The one
+       exception is `IconScanning`, which is authored in its own 14x14 box - see its comment.
+       The painted result, stroke included, never leaves the box: a ring of radius 7 centred on
+       (8,8) is drawn with a 1.5px pen, so its outer edge lands at 0.25 and 15.75.
+    2. There is no colour here, and there must never be one. A geometry is a shape; the call
+       site names the token it is painted with (StatusOkBrush for connected, StatusErrorBrush for
+       cannot-access, StatusAdvisoryBrush for the advisory, AccentBrush for scanning, and so on).
+       A hex literal in this file would be a bug even though the file lives under Themes/.
+    3. Stroke thickness and caps are the consuming control's job, not the geometry's:
+       `StrokeThickness="{StaticResource IconStrokeThickness}"` (1.5) and
+       `StrokeLineCap="Square"`. Nothing is baked in, so one pen change restyles every mark.
+       The tiny dots of `!`, `i` and `?` are short stroke segments that rely on that square cap
+       to read as dots - with a flat cap they degrade to small dashes rather than disappearing.
+    4. Placement comes from the authored box, never from a mark's own extents. A control draws
+       these at `Stretch="None"` with Width/Height set to `IconSize` (16) - or, if it scales them
+       to some larger size, by mapping the *box* (16, or 14 for the spinner) onto that size.
+       Fitting a mark's own `Geometry.Bounds` into the box instead is the one thing that must not
+       happen: it is what makes a grid worth having. Two marks here fail loudly under it -
+       `IconConnectedCore` is a 5.6-wide dot that would be inflated to fill the whole box, and
+       `IconScanning`'s bounds are deliberately lop-sided (its right quadrant is missing), so
+       fitting them re-centres the arc and the spinner then wobbles as it turns. The rest fail
+       quietly, by drifting a fraction off the centre the whole family shares.
+
+    Fill vs stroke, per key (the whole contract in one table):
+
+      IconConnected      stroke only  - filling it turns the ring into a disc
+      IconConnectedCore  fill only    - the centre dot of the connected mark
+      IconNotDetected    stroke only, and dashed by the pen
+      IconCannotAccess   stroke only
+      IconWarning        stroke only
+      IconError          stroke only
+      IconInformation    stroke only
+      IconConfirmation   stroke only
+      IconEject          fill only    - a solid triangle over a solid bar
+      IconScanning       stroke only
+
+    Sizing hints are not re-declared here: `IconSize`, `IconStrokeThickness`, `SpinnerSize` and
+    `SpinnerStrokeThickness` already live in Themes/Geometry.axaml.
+
+    Geometry is theme-independent - a shape does not change when the OS flips to light - so this
+    is a plain ResourceDictionary with no ThemeDictionaries, exactly like Geometry.axaml.
+  -->
+
+  <!-- ===== The shared ring ==============================================================
+       Every state mark is built on the same circle: centre (8,8), radius 7, which is the
+       specimen's 14px ring (1.5px border, 5px core) scaled onto the 16px grid. It is written
+       out per key rather than shared through an alias so that any one mark can diverge later
+       without disturbing the others. -->
+
+  <!-- Connected. The specimen is a stroked ring with a filled core dot, and one geometry cannot
+       be both: filling this path would fill the ring solid. The mark is therefore split in two -
+       `IconConnected` is the ring the control strokes, `IconConnectedCore` the dot it fills -
+       and a connected mark is two Paths in one 16x16 cell, sharing the centre (8,8). -->
+  <StreamGeometry x:Key="IconConnected">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z</StreamGeometry>
+
+  <!-- The core dot: radius 2.8, the specimen's 5px dot on the 16px grid. Fill it; do not stroke
+       it, or it grows by the pen width in every direction. It shares the ring's centre and must
+       be drawn at the ring's scale - this is the mark that proves rule 4 above, because a control
+       that fits a geometry to its own bounds would draw this 5.6-wide dot as a 16-wide disc. -->
+  <StreamGeometry x:Key="IconConnectedCore">M 5.2,8 A 2.8,2.8 0 1 1 10.8,8 A 2.8,2.8 0 1 1 5.2,8 Z</StreamGeometry>
+
+  <!-- Not detected: the ring alone, no core. The design draws it *dashed*, and a dash pattern is
+       a property of the pen, not of the shape - so this is the plain circle and the call site
+       adds `StrokeDashArray="3,2"` (dashes are measured in stroke widths: 4.5px on, 3px off,
+       which is the ~3x rule a browser applies to the specimen's `1.5px dashed`). The
+       circumference does not divide evenly by that period, so the pattern meets itself at the
+       start point; at 16px the seam is invisible. -->
+  <StreamGeometry x:Key="IconNotDetected">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z</StreamGeometry>
+
+  <!-- Cannot access: the ring plus a centred exclamation mark - a stem from y 4.4 to 8.8 and a
+       dot below it. The dot is a 0.6-long segment whose square caps square it off; painted, the
+       whole mark spans 3.65 to 12.45, centred on the ring. -->
+  <StreamGeometry x:Key="IconCannotAccess">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 8,4.4 L 8,8.8 M 8,11.1 L 8,11.7</StreamGeometry>
+
+  <!-- The advisory mark. Its geometry is today identical to `IconCannotAccess` - the design
+       draws both as a `!` in a circle and separates them by colour, amber for the advisory and
+       red for the failure, per the law that an advisory is never red. It is written out as its
+       own key rather than aliased because the two say different things and are expected to
+       diverge; a call site must name the one it means, so that a later change to the advisory
+       shape cannot silently restyle every cannot-access mark in the app. -->
+  <StreamGeometry x:Key="IconWarning">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 8,4.4 L 8,8.8 M 8,11.1 L 8,11.7</StreamGeometry>
+
+  <!-- Error: the ring plus a centred cross, arms 2.6 either side of (8,8). -->
+  <StreamGeometry x:Key="IconError">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 5.4,5.4 L 10.6,10.6 M 10.6,5.4 L 5.4,10.6</StreamGeometry>
+
+  <!-- Information: the ring plus a lowercase `i`, which is the exclamation mark inverted - the
+       dot on top (a 0.6-long segment) and the stem below it. -->
+  <StreamGeometry x:Key="IconInformation">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 8,4.3 L 8,4.9 M 8,7.2 L 8,11.6</StreamGeometry>
+
+  <!-- Confirmation: the ring plus a question mark. The hook is a 270-degree arc around (8,6.2)
+       at radius 2 - it starts at the bowl's left, runs clockwise over the top and down the right
+       side to the bottom, then drops straight into the stem - and the dot below it is the same
+       0.6-long segment the other marks use. -->
+  <StreamGeometry x:Key="IconConfirmation">M 1,8 A 7,7 0 1 1 15,8 A 7,7 0 1 1 1,8 Z M 6,6.2 A 2,2 0 1 1 8,8.2 L 8,8.9 M 8,11.2 L 8,11.8</StreamGeometry>
+
+  <!-- ===== Action and chrome marks ====================================================== -->
+
+  <!-- Eject: a solid triangle pointing up over a solid bar. The specimen is a 10x6 triangle, a
+       2px gap and an 11x2 bar; scaled onto the 16px grid that is 11.4x6.8, a 2.3 gap and a
+       12.6x2.3 bar, which the design bottom-aligns in its box and this centres in the icon box
+       (the mark spans y 2.3 to 13.7, centred on (8,8) like every ring above, so an eject mark
+       sits on the same baseline as the state marks beside it).
+
+       This one is filled, not stroked: both subpaths are closed regions, and stroking them would
+       fatten the triangle by a pen width and turn the bar into an outlined box. -->
+  <StreamGeometry x:Key="IconEject">M 8,2.3 L 13.7,9.1 L 2.3,9.1 Z M 1.7,11.4 L 14.3,11.4 L 14.3,13.7 L 1.7,13.7 Z</StreamGeometry>
+
+  <!-- Scanning: the busy spinner, three quarters of a ring with the right quadrant open (the
+       specimen is a 14px circle with `border-right-color: transparent`). The arc runs from the
+       1:30 position anti-clockwise over the top, down the left and along the bottom to 4:30.
+
+       This is the one mark NOT on the 16px grid: it is authored in a 14x14 box, centred on
+       (7,7) at radius 6.25, because `SpinnerSize` is 14 and the spinner control sizes itself to
+       that token. Keeping the geometry's centre on the control's centre is what makes the
+       rotation true - a 14px mark parked inside a 16px box would spin about a point 1px off its
+       own centre unless the control compensated. Draw it at Width/Height `SpinnerSize` with
+       `Stretch="None"`, stroke `SpinnerStrokeThickness`, and rotate about (0.5, 0.5) for
+       `DurationSpinnerRotation` (1.1s, linear, infinite - see Themes/Motion.axaml). -->
+  <StreamGeometry x:Key="IconScanning">M 11.42,2.58 A 6.25,6.25 0 1 0 11.42,11.42</StreamGeometry>
+</ResourceDictionary>

@@ -78,24 +78,16 @@
     <Setter Property="Foreground" Value="{DynamicResource StatusDemoBrush}" />
   </Style>
 
-  <!-- ===== Message-box glyph =================================================================
-       The dialog-type icon of specs/11-feature-dialogs.md §11.9, drawn as a single Latin-1
-       character so it renders in the bundled fonts on every platform. It is a stand-in for the
-       design's stroked 16px icon geometry, which no view draws yet, so it is sized from its own
-       named step rather than from the text scale or the icon scale. -->
-  <Style Selector=":is(TextBlock).messageIcon">
-    <Setter Property="FontSize" Value="{DynamicResource FontSizeMessageGlyph}" />
-    <Setter Property="FontWeight" Value="Bold" />
-    <Setter Property="MinWidth" Value="{DynamicResource FontSizeMessageGlyph}" />
-    <Setter Property="TextAlignment" Value="Center" />
-  </Style>
-  <Style Selector=":is(TextBlock).messageIconAccent">
-    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-  </Style>
-  <Style Selector=":is(TextBlock).messageIconWarning">
-    <Setter Property="Foreground" Value="{DynamicResource StatusAdvisoryBrush}" />
-  </Style>
-  <Style Selector=":is(TextBlock).messageIconError">
-    <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+  <!-- ===== The app mark ======================================================================
+       The "K" inside the 18px accent tile in the app bar (docs/design/handoff.md:115). It is the
+       one place in the app that uses the 700 weight, and the one piece of mono type that is not a
+       value out of a config file: it is a wordmark, drawn as type deliberately, and so sits
+       outside the three icon families rather than becoming a geometry.
+
+       Themes/Typography.axaml supplies its family, size and weight; the tile it sits on is
+       `Border.logoTile` in Styles/Surfaces.axaml. Only the colour is here, and it is the accent's
+       own on-colour, because the tile behind it is the accent fill. -->
+  <Style Selector=":is(TextBlock).logoMark">
+    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
   </Style>
 </Styles>

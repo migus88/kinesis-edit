@@ -46,6 +46,7 @@ namespace KinesisEdit.Tests.Design
         [InlineData("WidthCardStatusRail", 2)]
         [InlineData("IconSize", 16)]
         [InlineData("IconStrokeThickness", 1.5)]
+        [InlineData("IconSizeDialog", 24)]
         [InlineData("SpinnerSize", 14)]
         [InlineData("SpinnerStrokeThickness", 1.5)]
         [InlineData("HatchPitch", 4)]

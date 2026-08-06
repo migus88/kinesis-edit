@@ -41,11 +41,13 @@
     <x:Double x:Key="FontSizeSectionLabel">10</x:Double>
     <x:Double x:Key="FontSizeKeycapLabel">9</x:Double>
 
-    <!-- Not a step of the text scale: the message box draws its dialog-type icon as a single
-         Latin-1 character (specs/11-feature-dialogs.md §11.9) because no view yet draws the
-         design's stroked 16px icon geometry. It is sized here so the placeholder has one home and
-         disappears with the glyph when real icons land. -->
-    <x:Double x:Key="FontSizeMessageGlyph">24</x:Double>
+    <!-- Not a step of the text scale: the "K" of the app mark, alone in the app at 700 and alone
+         in being mono type that is not a value out of a config file. The handoff grants the
+         weight to exactly this one glyph - "700 only for the tiny logo 'K'" - and draws it at
+         10px inside an 18px tile. It is a wordmark rather than an icon, so it stays type; the
+         scale it would otherwise borrow, `FontSizeMonoValueSmall`, means "a config value in a
+         tight place" and must not be reused for something that is not one. -->
+    <x:Double x:Key="FontSizeLogoMark">10</x:Double>
 
     <!-- Prose line height, as an absolute pixel value: Avalonia's LineHeight is not a multiplier.
          1.5x of the two prose steps. Single-line UI text sets no LineHeight at all - see the
@@ -176,5 +178,14 @@
     <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeKeycapLabel}" />
     <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- 10/700 mono. The app mark's "K", and nothing else - see FontSizeLogoMark above. Its colour
+       is `.logoMark` in Styles/Text.axaml and its tile is `Border.logoTile` in
+       Styles/Surfaces.axaml, following the same split as every other role here. -->
+  <Style Selector=":is(TextBlock).logoMark">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeLogoMark}" />
+    <Setter Property="FontWeight" Value="Bold" />
   </Style>
 </Styles>

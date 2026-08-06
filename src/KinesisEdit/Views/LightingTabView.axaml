@@ -69,10 +69,30 @@
               <DataTemplate DataType="vm:LightingModeViewModel">
                 <Button Classes="modeOption"
                         Classes.selected="{Binding IsSelected}"
-                        Content="{Binding Caption}"
                         HorizontalAlignment="Stretch"
                         Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectModeCommand}"
-                        CommandParameter="{Binding}" />
+                        CommandParameter="{Binding}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <!-- The mode's mark, which "draws the motion rather than naming it twice"
+                         (docs/design/handoff.md). Two Icons in one cell because thirteen of the
+                         sixteen marks are outlines and three are solids, and those are different
+                         properties on an Icon: the converter answers only the half the mode is
+                         drawn in, so the other draws nothing. Stroking a ring *and* filling it
+                         would turn it into a disc, which is why they are never both answered. -->
+                    <Panel Width="{DynamicResource IconSize}"
+                           Height="{DynamicResource IconSize}"
+                           VerticalAlignment="Center">
+                      <controls:Icon Classes="modeMark"
+                                     Classes.selected="{Binding IsSelected}"
+                                     Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Stroke}" />
+                      <controls:Icon Classes="modeMark filled"
+                                     Classes.selected="{Binding IsSelected}"
+                                     Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Fill}" />
+                    </Panel>
+
+                    <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

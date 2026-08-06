@@ -32,6 +32,24 @@
   <sys:TimeSpan x:Key="DurationToastDwell">0:0:5</sys:TimeSpan>
   <sys:TimeSpan x:Key="DurationRecordingPulse">0:0:1.4</sys:TimeSpan>
 
+  <!-- The busy spinner's rotation: 1.1s, linear, infinite (docs/design/handoff.md - "spinner =
+       14px circle, 1.5px stroke, one transparent quadrant, 1.1s linear spin"; the mark itself is
+       `IconScanning` in Themes/Icons.axaml).
+
+       Like the recording pulse, this is a `Style.Animations` loop rather than a transition, so it
+       has no `...Full`/`...Reduced` pair and no MotionResourceBinder alias - there is no property
+       change to interpolate, only a loop that runs while the app is busy. And, like the pulse,
+       its duration must be written out at the call site: an `Animation` is not part of the
+       logical tree, so a `DynamicResource` on it resolves to nothing and silently yields a
+       zero-length loop. This key is the budget's record of the number.
+
+       It keeps spinning under reduce-motion, deliberately. The spinner is not decoration: it is
+       the only affordance saying the app is still working, and a frozen one reads as a hung app -
+       which is a worse outcome for the user reduce-motion exists to protect than the rotation
+       itself. The reduced budget drops rises, slides and height changes; a status affordance that
+       carries information is not in that category. -->
+  <sys:TimeSpan x:Key="DurationSpinnerRotation">0:0:1.1</sys:TimeSpan>
+
   <!-- ===== Full budget ================================================================= -->
 
   <!-- A status chip changing state cross-fades its fill; the text inside it swaps instantly. -->

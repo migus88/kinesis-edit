@@ -42,6 +42,34 @@
     <Setter Property="Transitions" Value="{DynamicResource ListInsertTransitions}" />
   </Style>
 
+  <!-- The well a card's device silhouette is drawn in (docs/design/handoff.md:117, "92x56 device
+       art, abstract key-grid drawing, not a photo"). Control radius, a 1px line and 6 of padding,
+       exactly as the mock draws it; the drawing inside is filled with SurfaceThumbnail, which is
+       a step away from this face in both variants so the board reads against its well.
+
+       The face is SurfaceBar. The mock puts the well one step *up* from the card on dark and one
+       step *down* on light, and no single role does both; SurfaceBar is the one that lands on the
+       mock's dark value exactly and within a shade of its light one, while keeping the drawing
+       legible against it either way. -->
+  <Style Selector="Border.deviceArtFrame">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+
+  <!-- The app mark's tile in the app bar: an 18px accent square at keycap radius carrying the
+       700 mono "K" (`.logoMark`). It is the only accent fill in the chrome, which is the point —
+       the accent means "the app itself" here, one of its two sanctioned meanings. -->
+  <Style Selector="Border.logoTile">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusKeycap}" />
+  </Style>
+
   <!-- A card that floats: the toasts, the loading indicator, the feature panels. -->
   <Style Selector="Border.overlayCard">
     <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />

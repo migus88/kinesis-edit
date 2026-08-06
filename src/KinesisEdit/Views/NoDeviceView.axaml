@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:devices="clr-namespace:KinesisEdit.Core.Devices;assembly=KinesisEdit.Core"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="420"
              x:Class="KinesisEdit.Views.NoDeviceView"
              x:DataType="vm:NoDeviceViewModel">
@@ -17,9 +18,28 @@
       <ComboBox ItemsSource="{Binding Devices}"
                 SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
                 HorizontalAlignment="Stretch">
+        <!-- "All 7 known models with silhouettes" (docs/design/mockups.md 1d). At picker scale the
+             key grid inside a board collapses into texture, so the drawing is stroked and dim
+             rather than filled: recognition has to survive in the body outlines alone - one piece
+             with a recessed front edge, two contoured halves, two flat halves, a single slab,
+             three pedals. The pen is finer than the icon law's 1.5 because at 33px the key rects
+             are under two pixels across: 1.5 welds them into a slab and even 1.0 closes them up,
+             where 0.6 leaves the bodies reading as outlines in both variants (checked by rendering
+             the seven at 0.5/0.6/0.75/1.0 through the headless harness).
+
+             Every device in this list is programmable and therefore drawn; the two catalog entries
+             without artwork never reach here. -->
         <ComboBox.ItemTemplate>
           <DataTemplate DataType="devices:DeviceDefinition">
-            <TextBlock Text="{Binding DisplayName}" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <controls:Icon Classes="deviceArt"
+                             Size="33"
+                             StrokeThickness="0.6"
+                             Data="{Binding Id, Converter={StaticResource DeviceArt}}"
+                             Stroke="{DynamicResource TextMutedBrush}"
+                             VerticalAlignment="Center" />
+              <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+            </StackPanel>
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
