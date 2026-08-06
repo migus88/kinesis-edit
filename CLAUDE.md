@@ -14,10 +14,13 @@ A modern, cross-platform replacement for the Kinesis SmartSet keyboard-configura
 
 Implementation is planned and tracked in GitHub issues — see the epic ([#1](https://github.com/migus88/kinesis-edit/issues/1)) and its ordered sub-issues. There is no in-repo planning document.
 
+**A UI redesign is in flight.** Everything described above was built to mimic the legacy app; a design handoff now supersedes its look and, in places, its behavior. `docs/design/` holds that handoff and is the **authoritative design reference** — read `docs/design/README.md` before touching any view, style or user-facing string. The redesign has its own epic and phased child issues in GitHub; a design decision there beats the current implementation unless the issue says otherwise.
+
 ## Repository layout
 
 - `specs/` — Standalone specification of the legacy SmartSet apps, devices, and on-device file formats. This is the **authoritative domain reference** for the rebuild; do not modify it casually. Start with `specs/README.md` for the reading order and mental model.
 - `docs/app/` — Agent-first documentation of the new app's modules (see "Documentation rules" below). Currently: `solution-structure.md` (projects, commands, CI), `domain-data.md` (the static domain-data layer in Core), `keyboard-model.md` (the runtime keyboard/macro model), `firmware.md` (version parsing, feature gating), `vdrive.md` (v-Drive discovery, file I/O, eject), `lighting.md` (lighting model + led-file engine, mode/zone catalogs, and the lighting UI on top), `settings.md` (the settings engine: keyboard/app settings models, parsers, 4MB gate, service, and the settings panel on top), `keystroke-capture.md` (physical keystroke capture for remap/macro recording), `app-shell.md` (the Avalonia app layer: shell navigation, device dashboard, detection loop, notifications), `layout-files.md` (the layout-file engine: layout/macro parsers and serializers per dialect, invalid-line tracking), `profiles.md` (profile load/save/import/eject orchestration for the numbered-profile devices), `keyboard-editor.md` (the keyboard editor: visual geometry, the generic keyboard control, the remap workflow, the macro panel, keystroke routing, the lighting tab and the settings panel), `feature-dialogs.md` (the spec 11 panels hosted inline in the editor — Tap and Hold, Macro Timing Delays, Search Keys, Export — plus Import and the shared firmware-gate refusal), and `savant-elite.md` (the Savant Elite2 pedal-file engine: the seven inputs, `pedals.txt` parse/serialize, save merge, display text, the edit session + Special Actions catalog, and the pedal editor in the shell). Add a doc per module as modules are built.
+- `docs/design/` — The design handoff for the UI redesign, and the **authoritative design reference** for anything visual or user-facing. `README.md` (index, reading order, the mockup id map, and the design laws that cut across every screen), `handoff.md` (the handoff verbatim: design tokens, per-screen specs, Avalonia implementation notes), `mockups.md` (agent-first distillation of all 20 mockups — read this instead of the HTML), `KinesisEdit.dc.html` + `support.js` (the mockup canvas, for pixel-level reference in a browser). Do not modify it casually; it is a delivered artifact.
 - `docs/guides/` — Coding conventions and other guides.
 - `src/` — Source code of the new app.
 
@@ -60,6 +63,11 @@ Documentation here is **agent-first**: the aim is that AI agents read `docs/app/
 
 - Every developed module must have a doc in `docs/app/`. Keep it token-efficient: sufficient for an agent to understand the domain, not a prose-heavy tutorial.
 - When implementing a feature, maintain the documentation as part of the change: the relevant `docs/app/` doc, this CLAUDE.md (e.g. build/test commands, new modules), and `README.md`.
+- `docs/design/` is a delivered artifact, not a maintained module doc — read it, don't rewrite it. Record what the app actually does in `docs/app/`, including any deliberate deviation from the design and why.
+
+## Design rules (important)
+
+Anything visual or user-facing is governed by `docs/design/` — see `docs/design/README.md` for the reading order and the laws that cut across every screen. In short: never hardcode a color in a view (every color is a named token defined for both themes); mono type is reserved for values that exist verbatim in a config file; advisories are amber and never block; features a device lacks are not rendered at all rather than disabled; nothing ejects implicitly; and the motion budget is fixed and small.
 
 ## Code style
 

@@ -1,0 +1,4 @@
+# The design handoff is a delivered artifact, not source. Keep it out of diffs,
+# language stats and grep results — read docs/design/mockups.md instead.
+docs/design/KinesisEdit.dc.html linguist-vendored -diff
+docs/design/support.js         linguist-vendored -diff
