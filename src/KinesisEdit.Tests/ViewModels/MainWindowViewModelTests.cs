@@ -42,7 +42,11 @@ namespace KinesisEdit.Tests.ViewModels
                 _settings,
                 () => _capture,
                 _notifications,
-                new PedalFileService(_fileService));
+                new PedalFileService(_fileService),
+                new FakeFolderPickerService(),
+                new FakeFilePickerService(),
+                _fileService,
+                new FakeUrlLauncher());
 
             _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeUrlLauncher());
             _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier, editors);

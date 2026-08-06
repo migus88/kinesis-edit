@@ -318,6 +318,27 @@ namespace KinesisEdit.Core.Tests.Model
                 MacroKeystrokeRenderer.RenderKeystrokes(macro, TokenDialect.Gen1));
         }
 
+        /// <summary>
+        /// 06 §3 step 1 and 04 §3.1-§3.3: only the Gen1 family puts the layer into the line itself,
+        /// as the <c>fn </c> prefix on the bottom layer. The Legacy dialect marks the keypad layer
+        /// with <c>kp-</c> inside the first bracket and Gen2 with a header line, so neither
+        /// contributes a prefix.
+        /// </summary>
+        [Theory]
+        [InlineData(TokenDialect.Gen1, 0, "")]
+        [InlineData(TokenDialect.Gen1, 1, "fn ")]
+        [InlineData(TokenDialect.Legacy, 0, "")]
+        [InlineData(TokenDialect.Legacy, 1, "")]
+        [InlineData(TokenDialect.Gen2, 1, "")]
+        [InlineData(TokenDialect.Gen2, 4, "")]
+        public void LayerPrefixFor_PerDialectAndLayer_IsTheLinePrefixTheFileCarries(
+            TokenDialect dialect,
+            int layerIndex,
+            string expected)
+        {
+            Assert.Equal(expected, MacroKeystrokeRenderer.LayerPrefixFor(dialect, layerIndex));
+        }
+
         [Fact]
         public void Render_WithoutATrigger_WritesNoTriggerGroup()
         {

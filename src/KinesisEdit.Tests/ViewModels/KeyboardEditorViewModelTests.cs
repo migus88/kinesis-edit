@@ -17,6 +17,10 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeSettingsService _settings = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeFolderPickerService _folderPicker = new();
+        private readonly FakeFilePickerService _filePicker = new();
+        private readonly FakeVDriveFileService _files = new();
+        private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
@@ -143,35 +147,64 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Tabs_ForALitDeviceWithSettings_AreTheFourWithOnlyMacrosDisabled()
+        public async Task Tabs_ForALitDeviceWithSettings_AreTheFourAndAllOpen()
         {
             var editor = await CreateLoadedEditorAsync();
 
             Assert.Equal(
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
                 editor.Tabs.Select(tab => tab.Tab));
-            Assert.True(editor.Tabs[0].IsEnabled);
-            Assert.False(editor.Tabs[1].IsEnabled);
-            Assert.True(editor.Tabs[2].IsEnabled);
-            Assert.True(editor.Tabs[3].IsEnabled);
+            Assert.All(editor.Tabs, tab => Assert.True(tab.IsEnabled));
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
-            Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[2]));
-            Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[3]));
+            Assert.All(editor.Tabs, tab => Assert.True(editor.SelectTabCommand.CanExecute(tab)));
         }
 
         [Fact]
-        public async Task SelectedTab_SetToATabWithNothingBehindIt_StaysOnTheKeysTab()
+        public void SelectedTab_SetToATabWithNothingBehindIt_StaysOnTheKeysTab()
+        {
+            // The TKO's led file adds an edge section this panel does not edit (#40), so its
+            // Lighting tab is present but dark — and a tab with nothing behind it stays shut
+            // whichever way it is asked for, the two-way binding included.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(DeviceId.Tko));
+            var lighting = Assert.Single(editor.Tabs, tab => tab.Tab == EditorTab.Lighting);
+
+            Assert.False(lighting.IsEnabled);
+            Assert.False(editor.SelectTabCommand.CanExecute(lighting));
+
+            editor.SelectedTab = EditorTab.Lighting;
+            editor.SelectTabCommand.Execute(lighting);
+
+            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
+            Assert.True(editor.Tabs[0].IsSelected);
+            Assert.False(lighting.IsSelected);
+        }
+
+        [Fact]
+        public void SelectedTab_SetToASectionTheDeviceDoesNotCarry_StaysOnTheKeysTab()
+        {
+            // The CROSSFIRE has no app-managed settings file, so the strip has no Settings tab at
+            // all: absent and disabled are refused by the same guard.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(DeviceId.CrossfireKeypad));
+
+            Assert.DoesNotContain(EditorTab.Settings, editor.Tabs.Select(tab => tab.Tab));
+
+            editor.SelectedTab = EditorTab.Settings;
+
+            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
+            Assert.True(editor.Tabs[0].IsSelected);
+        }
+
+        [Fact]
+        public async Task SelectedTab_SetToTheMacrosTab_Opens()
         {
             var editor = await CreateLoadedEditorAsync();
 
             editor.SelectedTab = EditorTab.Macros;
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
 
-            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
-            Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(editor.Tabs[1].IsSelected);
+            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
+            Assert.True(editor.Tabs[1].IsSelected);
+            Assert.True(editor.IsMacroPanelVisible);
         }
 
         [Fact]
@@ -470,7 +503,11 @@ namespace KinesisEdit.Tests.ViewModels
                 _profiles,
                 _settings,
                 _capture,
-                _notifications);
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher);
 
             _editors.Add(editor);
 

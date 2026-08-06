@@ -42,9 +42,10 @@ Three URL members, three different sources — never collapse them: `Configurati
 | `MaxCoTriggersPerMacro` / `PersistedCoTriggersPerMacro` | – | 3 / 3 | 4 / **1** | 4 / 4 | 4 / 4 | – |
 | `Speed` (min–max, default) | – | 0–9, 0 | 0–9, 0 | 1–9, 5 | 1–9, 5 | – |
 | `Repeat` (min–max, default) | – | 0–9, 0 | 0–9, 0 | 1–9, 1 | 1–9, 1 | – |
+| `PersistsRepeat` | false | **false** | true | true | true | false |
 | `ClampsOutOfRangeValues` | false | false | false | false | **true** | false |
 
-Notes: `– ` = null, i.e. the spec states no value. The two per-macro metrics are not interchangeable: "weighted keystrokes" is 1 per keystroke plus 2 per attached modifier (04 §5.3, the same count as the 7200 budget), while the Adv360 500 measures the serialized value side of the macro line (06 §6) — see [`keyboard-model.md`](keyboard-model.md). Speed `0` means "use the keyboard's global speed" (`macro_speed=` in the settings file). Persisted ≠ model on purpose: the FS/Adv2 serializers write only slots 1–3 (06 §1) and the old FS parser/serializer keeps only the first co-trigger (06 §2.1, §3); the Adv2 serializer writes `{speedN}` but **no** repeat token (06 §3). SE2 has no per-macro speed/repeat setting at all — the pedal dialect embeds `speed1/3/5` tokens inside the macro (12 §4.4, §6). Adv2 has no macro-count or layout-keystroke limit in the spec. Adv360 keeps macros in one flat per-layout list tagged with trigger key + layer, so it has no slots.
+Notes: `– ` = null, i.e. the spec states no value. The two per-macro metrics are not interchangeable: "weighted keystrokes" is 1 per keystroke plus 2 per attached modifier (04 §5.3, the same count as the 7200 budget), while the Adv360 500 measures the serialized value side of the macro line (06 §6) — see [`keyboard-model.md`](keyboard-model.md). Speed `0` means "use the keyboard's global speed" (`macro_speed=` in the settings file). Persisted ≠ model on purpose, and a UI must offer only what the file keeps: the FS/Adv2 serializers write only slots 1–3 (06 §1), the old FS parser/serializer keeps only the first co-trigger (06 §2.1, §3), and the Adv2 serializer writes `{speedN}` but **no** repeat token (06 §3) — the last of which is `PersistsRepeat`, so the Adv2 models a repeat range it never writes and an editor hides the control rather than offering a value the next save discards. SE2 has no per-macro speed/repeat setting at all — the pedal dialect embeds `speed1/3/5` tokens inside the macro (12 §4.4, §6). Adv2 has no macro-count or layout-keystroke limit in the spec. Adv360 keeps macros in one flat per-layout list tagged with trigger key + layer, so it has no slots.
 
 ### `TapAndHoldCapability` per device (11 §11.1; 04 §5.3; 09 §2)
 
@@ -74,6 +75,8 @@ Per-table entry counts (pinned by tests):
 | 36 | 12 | 24 | 24 | 14 | 36 | 21 | 11 | 22 | 14 | 21 | 1014 | 33 | **1282** |
 
 Count notes: 3.3 includes the VK_PRINT prose row; 3.6 includes the 15 Legacy keypad-layer duplicates; 3.9 includes 2 prose duplicates; 3.12 = the explicit speed/delay rows plus generated `d001`..`d999` (code = 10085 + n).
+
+**`KeySearchCatalog`** (same namespace) is the one derived view over this table: the Search Keys list of 11 §11.6, built in registration order minus the `HiddenFromSearch` rows and the entries a dialect does not name, plus a case-insensitive filter over name and token. It adds no data — see [feature-dialogs.md](feature-dialogs.md) for the composition rule and for which "non-searchable" rows §11.6 mentions are *not* flagged in the table (the §3.6 keypad duplicates and the §3.11 hotkeys, which are therefore listed).
 
 ## Geometry — `GeometryCatalog`
 

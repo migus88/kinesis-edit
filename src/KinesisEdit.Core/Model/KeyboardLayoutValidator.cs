@@ -1,6 +1,5 @@
 using System.Globalization;
 using KinesisEdit.Core.Devices;
-using KinesisEdit.Core.Keys;
 
 namespace KinesisEdit.Core.Model
 {
@@ -398,7 +397,7 @@ namespace KinesisEdit.Core.Model
                 violations.Add(Create(ModelViolationKind.EmptyMacro, "The macro has no keystrokes.", layerIndex, keyIndex, macroIndex));
             }
 
-            ValidateMacroLength(macro, capability, isGen2, layout.Dialect, layerIndex, keyIndex, macroIndex, violations);
+            ValidateMacroLength(macro, capability, layout, layerIndex, keyIndex, macroIndex, violations);
 
             if (capability.MaxCoTriggersPerMacro is { } maxCoTriggers && macro.CoTriggerCount > maxCoTriggers)
             {
@@ -442,22 +441,14 @@ namespace KinesisEdit.Core.Model
         }
 
         /// <summary>
-        /// 06 §6 measures the per-macro limit two different ways.
-        /// <list type="bullet">
-        /// <item>The Advantage360's 500 is "the length of the serialized *macro* text": the value
-        /// side of 06 §3, i.e. the keystroke tokens alone
-        /// (<see cref="MacroKeystrokeRenderer.KeystrokeTextLength"/>), excluding the trigger, the
-        /// co-triggers and the <c>{sN}</c>/<c>{xN}</c> markers.</item>
-        /// <item>Every other family's 300 is a keystroke count, and 04 §5.3 defines keystroke
-        /// accounting once for the whole document — 1 per keystroke plus 2 per attached modifier —
-        /// so it is the same weighted count that feeds the 7200 layout budget.</item>
-        /// </list>
+        /// 06 §6 measures the per-macro limit two different ways, and
+        /// <see cref="MacroLengthMetric"/> owns the choice so the editor's budget readout and this
+        /// gate can never disagree.
         /// </summary>
         private static void ValidateMacroLength(
             Macro macro,
             MacroCapability capability,
-            bool isGen2,
-            TokenDialect dialect,
+            KeyboardLayout layout,
             int? layerIndex,
             int? keyIndex,
             int? macroIndex,
@@ -468,16 +459,14 @@ namespace KinesisEdit.Core.Model
                 return;
             }
 
-            var length = isGen2
-                ? MacroKeystrokeRenderer.KeystrokeTextLength(macro, dialect)
-                : macro.WeightedKeystrokeCount;
+            var length = MacroLengthMetric.Measure(macro, layout);
 
             if (length <= maxCharacters)
             {
                 return;
             }
 
-            var metric = isGen2 ? "serialized keystroke characters" : "weighted keystrokes";
+            var metric = MacroLengthMetric.UnitFor(layout);
 
             violations.Add(Create(
                 ModelViolationKind.MacroLengthExceeded,

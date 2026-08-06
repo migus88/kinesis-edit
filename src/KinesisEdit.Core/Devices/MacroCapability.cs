@@ -73,9 +73,20 @@ namespace KinesisEdit.Core.Devices
 
         /// <summary>
         /// Repeat/multiplay range and default (06 §4): Adv2 and FS Edge/Pro 0-9 default 0, RGB
-        /// family and Adv360 1-9 default 1. The Adv2 serializer writes no repeat token (06 §3).
+        /// family and Adv360 1-9 default 1. The Adv2 serializer writes no repeat token (06 §3) —
+        /// see <see cref="PersistsRepeat"/>.
         /// </summary>
         public ValueRange? Repeat { get; init; }
+
+        /// <summary>
+        /// Whether the dialect carries the <c>{xN}</c> repeat token at all. The Advantage2 form of
+        /// 06 §3 writes "no repeat token", so a repeat value set on that device is discarded the
+        /// moment the file is regenerated; every other macro-capable family persists it. The
+        /// companion of <see cref="PersistedSlotsPerKey"/> and
+        /// <see cref="PersistedCoTriggersPerMacro"/>: what the model can hold versus what the file
+        /// keeps. False wherever <see cref="Repeat"/> is null — there is no setting to persist.
+        /// </summary>
+        public bool PersistsRepeat { get; init; }
 
         /// <summary>
         /// Whether the parser clamps out-of-range speed/repeat values up to the minimum instead of

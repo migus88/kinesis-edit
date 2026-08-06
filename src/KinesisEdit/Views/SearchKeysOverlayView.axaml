@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:keys="clr-namespace:KinesisEdit.Core.Keys;assembly=KinesisEdit.Core"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="520"
+             x:Class="KinesisEdit.Views.SearchKeysOverlayView"
+             x:DataType="vm:SearchKeysOverlayViewModel">
+  <!-- The Search Keys picker of specs/11-feature-dialogs.md §11.6: a type-to-filter list over
+       every assignable action. The catalog, the filter and the item text are Core's; the double
+       click that accepts immediately is a gesture, so it stays here. -->
+  <UserControl.Styles>
+    <!-- The catalog is long: a compact row shows roughly twice as much of it at a time. -->
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Classes="overlayCard" Width="480">
+    <StackPanel Spacing="10">
+      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+
+      <StackPanel Spacing="3">
+        <TextBlock Text="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" Classes="fieldLabel" />
+        <!-- A real TextBox: capture stands down while focus sits in one, so the query is typed
+             into the box instead of being swallowed as a keystroke. -->
+        <TextBox Text="{Binding Query, Mode=TwoWay}" Watermark="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" />
+      </StackPanel>
+
+      <ListBox ItemsSource="{Binding Results}"
+               SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+               MaxHeight="320">
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="keys:KeySearchEntry">
+            <TextBlock Text="{Binding DisplayText}"
+                       DoubleTapped="OnRowDoubleTapped"
+                       TextWrapping="NoWrap" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Classes="statusError"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="Ok" Command="{Binding AcceptCommand}" MinWidth="88" Classes="primaryAction" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

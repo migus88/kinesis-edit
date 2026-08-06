@@ -59,16 +59,18 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void CreateAll_TheMacrosTab_IsAlwaysPresentAndDisabled()
+        public void CreateAll_TheMacrosTab_IsAlwaysPresentAndEnabled()
         {
-            // Issue #15 fills it in; until then a visibly unavailable tab beats a silent one.
+            // Unlike Lighting and Settings, the Macros tab is not capability-filtered: the panel
+            // behind it reads the device's own MacroCapability and says "This device does not
+            // support macros" itself, so the answer lives in one place.
             foreach (var device in DeviceCatalog.All)
             {
                 var macros = Assert.Single(
                     EditorTabViewModel.CreateAll(device, isLightingEnabled: false),
                     tab => tab.Tab == EditorTab.Macros);
 
-                Assert.False(macros.IsEnabled);
+                Assert.True(macros.IsEnabled);
             }
         }
 

@@ -13,13 +13,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the keyboard/remap tab.</summary>
         public const string KeysCaption = "Keys";
 
-        /// <summary>Caption of the macro tab (issue #15).</summary>
+        /// <summary>Caption of the macro tab.</summary>
         public const string MacrosCaption = "Macros";
 
-        /// <summary>Caption of the lighting tab (issue #16).</summary>
+        /// <summary>Caption of the lighting tab.</summary>
         public const string LightingCaption = "Lighting";
 
-        /// <summary>Caption of the settings tab (issue #16).</summary>
+        /// <summary>Caption of the settings tab.</summary>
         public const string SettingsCaption = "Settings";
 
         /// <summary>
@@ -31,10 +31,14 @@ namespace KinesisEdit.ViewModels
         /// file to edit, so an empty panel would be a lie;</item>
         /// <item>the Settings tab is <b>omitted</b> for a device with no app-managed settings file
         /// (<c>SettingsCapability.None</c>: Savant Elite2, CROSSFIRE, Advantage 360 Professional);</item>
-        /// <item>the Macros tab is always present and always disabled — issue #15.</item>
+        /// <item>the Macros tab is always present and always enabled — the panel behind it reads
+        /// the device's own macro capability and says so itself on a board that has none
+        /// (<c>MacroPanelViewModel.NotSupportedMessage</c>), which is one place fewer for the two
+        /// answers to disagree.</item>
         /// </list>
-        /// <paramref name="isLightingEnabled"/> is the single switch the lighting panel flips when
-        /// it lands: until then the Lighting tab is shown disabled on the devices that have one.
+        /// <paramref name="isLightingEnabled"/> is the switch the lighting panel sets from
+        /// <see cref="LightingTabViewModel.IsSupported"/>: a lit board whose led file this app
+        /// cannot edit yet keeps a visible but disabled tab.
         /// </summary>
         public static IReadOnlyList<EditorTabViewModel> CreateAll(DeviceDefinition device, bool isLightingEnabled)
         {
@@ -43,7 +47,7 @@ namespace KinesisEdit.ViewModels
             var tabs = new List<EditorTabViewModel>(4)
             {
                 new(EditorTab.Keys, KeysCaption, isEnabled: true),
-                new(EditorTab.Macros, MacrosCaption, isEnabled: false)
+                new(EditorTab.Macros, MacrosCaption, isEnabled: true)
             };
 
             if (device.Lighting.Kind != LightingKind.None)
