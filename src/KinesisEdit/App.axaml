@@ -19,10 +19,16 @@
   <Application.Resources>
     <ResourceDictionary>
       <converters:EnumMatchConverter x:Key="EnumMatch" />
-      <converters:MessageBoxIconToGlyphConverter x:Key="MessageBoxIconGlyph" />
       <converters:HexColorToBrushConverter x:Key="HexColorToBrush" />
       <converters:MenuItemToggleTypeConverter x:Key="MenuItemToggle" />
       <converters:HexColorToColorConverter x:Key="HexColorToColor" />
+
+      <!-- The two enum-to-geometry lookups. A mark whose pen changes with the state it reports —
+           the connection chips, the message box's dialog type — is enumerated in markup instead,
+           so each state names its own token brush; these two exist because a device and a
+           lighting mode are *data*, drawn under one pen, and cannot be enumerated in a template. -->
+      <converters:DeviceArtConverter x:Key="DeviceArt" />
+      <converters:LightingModeMarkConverter x:Key="LightingModeMark" />
 
       <!-- The design system (docs/design/). Tokens carries the colour roles in Dark and Light
            theme dictionaries; Geometry the radii, paddings and the spacing scale; Motion the
@@ -30,7 +36,12 @@
            cannot hold Style elements — so it is included under Application.Styles below instead of
            merged here.
 
-           Controls comes last because it is an alias map over the other two: it redeclares the
+           Icons, DeviceArt and LightingMarks are the drawn half of the same system: the state and
+           action marks, the device silhouettes and the lighting-mode marks, all as StreamGeometry
+           on the design's 16px grid. They carry shape only — no colour, no pen — so a call site
+           names the token it paints them with.
+
+           Controls comes last because it is an alias map over the roles above it: it redeclares the
            FluentTheme's own control keys (ButtonBackground, ComboBoxBorderBrush, ...) against
            those roles, so the base controls paint from the design system instead of from Fluent's
            palette. It has to live here, in Application.Resources, rather than in Styles/ — that is
@@ -40,6 +51,9 @@
         <ResourceInclude Source="avares://KinesisEdit/Themes/Tokens.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/Geometry.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/Motion.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/Icons.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/DeviceArt.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/LightingMarks.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/Controls.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
@@ -64,5 +78,6 @@
     <StyleInclude Source="avares://KinesisEdit/Styles/Buttons.axaml" />
     <StyleInclude Source="avares://KinesisEdit/Styles/Keyboard.axaml" />
     <StyleInclude Source="avares://KinesisEdit/Styles/Editor.axaml" />
+    <StyleInclude Source="avares://KinesisEdit/Styles/Icons.axaml" />
   </Application.Styles>
 </Application>

@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:KinesisEdit.Controls">
   <!--
     The editor's own chrome: the section tab strip, the read-only action fields of the spec 11
     panels, the lighting mode menu and the colour swatches.
@@ -90,6 +91,28 @@
   <Style Selector="Button.modeOption.selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+
+  <!-- The mark beside a mode's caption. It cannot inherit the row's foreground the way the caption
+       does - an Icon paints from a brush property, not from TextElement.Foreground - so the pair of
+       roles the row switches between is spelled out here instead of at the call site.
+
+       `.filled` is the same mark drawn as a solid: three of the sixteen modes are, and an Icon's
+       fill and stroke are different properties, so the class picks which one the brush lands on.
+       Setting both would turn every ring in the set into a disc. -->
+  <Style Selector="controls|Icon.modeMark">
+    <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="controls|Icon.modeMark.filled">
+    <Setter Property="Stroke" Value="{x:Null}" />
+    <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="controls|Icon.modeMark.selected">
+    <Setter Property="Stroke" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+  <Style Selector="controls|Icon.modeMark.filled.selected">
+    <Setter Property="Stroke" Value="{x:Null}" />
+    <Setter Property="Fill" Value="{DynamicResource AccentTextBrush}" />
   </Style>
 
   <!-- ===== Colour swatches ===================================================================

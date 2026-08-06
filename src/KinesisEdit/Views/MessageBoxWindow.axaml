@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
         xmlns:services="clr-namespace:KinesisEdit.Services"
+        xmlns:controls="clr-namespace:KinesisEdit.Controls"
         mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="210"
         x:Class="KinesisEdit.Views.MessageBoxWindow"
         x:DataType="vm:MessageBoxViewModel"
@@ -19,12 +20,34 @@
        'Hide this notification?' checkbox only when the request carries a suppression key. -->
   <Grid RowDefinitions="*,Auto" Margin="20">
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16">
-      <TextBlock Classes="messageIcon"
-                 VerticalAlignment="Top"
-                 Text="{Binding Icon, Converter={StaticResource MessageBoxIconGlyph}}"
-                 Classes.messageIconAccent="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter='Information,Confirmation'}"
-                 Classes.messageIconWarning="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                 Classes.messageIconError="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+      <!-- The dialog-type mark of specs/11-feature-dialogs.md §11.9, now the design's stroked 16px
+           geometry rather than a Latin-1 character. Each type is spelled out instead of resolved
+           by a converter because the four differ in colour as well as in shape, and a colour is a
+           named role a call site must state: accent for the two that inform or ask, amber for an
+           advisory, red for a failure. Exactly one is visible; `MessageBoxIcon.None` shows none of
+           them, and the cell is a fixed square so the message body does not shift. A dialog mark is drawn
+           at IconSizeDialog rather than the 16px rail size: it is the one thing that says what kind
+           of interruption this is. -->
+      <Panel Width="{DynamicResource IconSizeDialog}"
+             Height="{DynamicResource IconSizeDialog}"
+             VerticalAlignment="Top">
+        <controls:Icon Data="{DynamicResource IconInformation}"
+                       Size="{DynamicResource IconSizeDialog}"
+                       Stroke="{DynamicResource AccentBrush}"
+                       IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Information}" />
+        <controls:Icon Data="{DynamicResource IconConfirmation}"
+                       Size="{DynamicResource IconSizeDialog}"
+                       Stroke="{DynamicResource AccentBrush}"
+                       IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Confirmation}" />
+        <controls:Icon Data="{DynamicResource IconWarning}"
+                       Size="{DynamicResource IconSizeDialog}"
+                       Stroke="{DynamicResource StatusAdvisoryBrush}"
+                       IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}" />
+        <controls:Icon Data="{DynamicResource IconError}"
+                       Size="{DynamicResource IconSizeDialog}"
+                       Stroke="{DynamicResource StatusErrorBrush}"
+                       IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+      </Panel>
 
       <TextBlock Text="{Binding Message}" Classes="modalBody" TextWrapping="Wrap" VerticalAlignment="Center" />
     </StackPanel>

@@ -42,9 +42,27 @@ namespace KinesisEdit.Tests.Design
         private KeyboardEditorViewModel? _editor;
 
         /// <summary>
-        /// Every control the app declares that a user can see: the views, the windows and the
-        /// reusable controls, but not the layout primitives, which carry no styles of their own and
-        /// are covered by their own tests.
+        /// Every <b>screen</b> the app declares: a whole surface the app hosts and hands a view
+        /// model, which in this app is always a <see cref="Window"/> or a
+        /// <see cref="UserControl"/> — the views under <c>Views/</c> plus the composite controls
+        /// under <c>Controls/</c> that are authored the same way (the board, one key cap, the
+        /// colour picker).
+        /// <para>
+        /// It is deliberately not "every <see cref="Control"/> that is not a
+        /// <see cref="Panel"/>". <c>Controls/</c> also holds <b>leaf controls</b> drawn in code —
+        /// <see cref="KeyboardPanel"/>, <see cref="Icon"/> — which are not screens: they have no
+        /// view model, a scene for them would be a fabrication rather than a realistic one, and
+        /// <see cref="ViewRenderSmokeTests.EveryView_GetsADataContext_OrDeclaresItNeedsNone"/>
+        /// would have to grow a permanent exemption per leaf. They are covered by their own
+        /// targeted render tests instead (<c>Controls/KeyboardPanelTests</c>,
+        /// <c>Design/IconRenderTests</c>), which can drive the properties a leaf actually has.
+        /// </para>
+        /// <para>
+        /// The narrowing drops nothing that was discovered before: every type the old filter found
+        /// is a <see cref="Window"/> or a <see cref="UserControl"/>, and
+        /// <see cref="ViewRenderSmokeTests.TheViewCatalog_CoversEveryScreenTheAppCanShow"/> holds
+        /// the count and the named screens to that.
+        /// </para>
         /// </summary>
         public static IReadOnlyList<Type> ViewTypes()
         {
@@ -52,8 +70,7 @@ namespace KinesisEdit.Tests.Design
                 .GetTypes()
                 .Where(type => type.IsClass
                     && !type.IsAbstract
-                    && typeof(Control).IsAssignableFrom(type)
-                    && !typeof(Panel).IsAssignableFrom(type))
+                    && (typeof(Window).IsAssignableFrom(type) || typeof(UserControl).IsAssignableFrom(type)))
                 .OrderBy(type => type.FullName, StringComparer.Ordinal)
                 .ToArray();
         }
