@@ -6,7 +6,7 @@ namespace KinesisEdit.Services
     /// active device's store reports hidden is never presented (specs/08-settings.md §3:
     /// <c>on</c> means "hide this notification"), and a "Hide this notification?" answer is
     /// written back to that store — which in demo mode is
-    /// <see cref="NullNotificationSuppressionStore"/>, so nothing is persisted.
+    /// <see cref="NullAppPreferencesStore"/>, so nothing is persisted.
     /// </summary>
     public sealed class NotificationService : INotificationService
     {
@@ -37,7 +37,7 @@ namespace KinesisEdit.Services
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            var store = _sessionAccessor.Active?.SuppressionStore ?? NullNotificationSuppressionStore.Instance;
+            var store = _sessionAccessor.Active?.SuppressionStore ?? NullAppPreferencesStore.Instance;
             var suppressionKey = request.SuppressionKey;
 
             if (request.HasSuppressionOption && store.IsHidden(suppressionKey!))

@@ -278,11 +278,115 @@ namespace KinesisEdit.Core.Tests.Settings
         [Fact]
         public void SaveAppSettings_WithNothingSet_DoesNotCreateFile()
         {
+            // An empty model names twelve colour keys for removal, but there is nothing to remove
+            // from: a removal against a missing file is already satisfied, and only pairs may
+            // conjure app_settings.txt onto a drive that never had one.
             var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
 
             _service.SaveAppSettings(location, AppSettings.Empty);
 
             Assert.False(File.Exists(SettingsService.GetAppSettingsFilePath(location)));
+        }
+
+        [Fact]
+        public void SaveAppSettings_WithAClearedColorSlot_TakesTheLineOffTheDrive()
+        {
+            // The clear-does-not-survive-a-restart bug of issue #95: the serializer never writes
+            // `cust_color_1=` (spec 08 §3), so a merge alone left the old line in place and the
+            // swatch came back on the next load.
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "cust_color_1=[255][0][128]", "save_msg=on");
+
+            var loaded = _service.LoadAppSettings(location);
+
+            _service.SaveAppSettings(location, loaded.WithCustomColor(1, null));
+
+            var lines = File.ReadAllLines(path);
+            Assert.Equal(new[] { "save_msg=on" }, lines);
+        }
+
+        [Fact]
+        public void SaveAppSettings_ClearingSlotOne_LeavesSlotTenAlone()
+        {
+            // cust_color_1 is a prefix of cust_color_10: a StartsWith removal would delete both.
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(
+                path,
+                "cust_color_1=[255][0][128]",
+                "cust_color_10=[100][100][100]",
+                "cust_color_12=[9][9][9]");
+
+            var loaded = _service.LoadAppSettings(location);
+
+            _service.SaveAppSettings(location, loaded.WithCustomColor(1, null));
+
+            var lines = File.ReadAllLines(path);
+            Assert.Equal(
+                new[]
+                {
+                    "cust_color_10=[100][100][100]",
+                    "cust_color_12=[9][9][9]",
+                },
+                lines);
+        }
+
+        [Fact]
+        public void SaveAppSettings_WithNothingToWriteButSomethingToRemove_StillReachesTheDrive()
+        {
+            // "Nothing to write" and "nothing to remove" are different questions: a save that only
+            // clears slots produces no pairs at all and must not be short-circuited.
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "future_key=whatever", "cust_color_6=[1][2][3]");
+
+            _service.SaveAppSettings(location, AppSettings.Empty);
+
+            var lines = File.ReadAllLines(path);
+            Assert.Equal(new[] { "future_key=whatever" }, lines);
+        }
+
+        [Fact]
+        public void SaveAppSettings_WithAClearedColorSlot_StillPreservesForeignLinesByteForByte()
+        {
+            // Invariant 2 is qualified by the removal escape hatch, not weakened: only the keys
+            // named for deletion go, everything the legacy app wrote survives verbatim.
+            var location = CreateLocation(DeviceId.Tko);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(
+                path,
+                "power_user=true",
+                "thumb_mode=café",
+                "",
+                "some unparseable garbage ±",
+                "cust_color_2=[5][5][5]",
+                "future_key=whatever");
+
+            var loaded = _service.LoadAppSettings(location);
+
+            _service.SaveAppSettings(location, loaded.WithCustomColor(2, null));
+
+            var expectedBytes = BuildFileBytes(
+                "power_user=true",
+                "thumb_mode=café",
+                "",
+                "some unparseable garbage ±",
+                "future_key=whatever");
+            Assert.Equal(expectedBytes, File.ReadAllBytes(path));
+        }
+
+        [Fact]
+        public void SaveAppSettings_NeverWritesAnEmptyColorKey()
+        {
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "cust_color_1=[255][0][128]");
+
+            _service.SaveAppSettings(location, AppSettings.Empty with { IsSaveMessageHidden = true });
+
+            var lines = File.ReadAllLines(path);
+            Assert.DoesNotContain(lines, line => line.EndsWith('='));
         }
 
         [Fact]

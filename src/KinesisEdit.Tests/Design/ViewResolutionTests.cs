@@ -46,6 +46,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(SettingsSliderRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
             [typeof(SettingsToggleRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
             [typeof(SettingsChoiceRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
+            [typeof(AppPreferenceRowViewModel)] = "DataTemplate in Views/AppPreferencesView.axaml.",
             [typeof(CustomColorSlotViewModel)] = "DataTemplate in Controls/ColorPickerView.axaml.",
             [typeof(PedalInputRowViewModel)] = "DataTemplate in Views/SavantElitePedalView.axaml.",
             [typeof(PedalInvalidLineViewModel)] = "DataTemplate in Views/SavantElitePedalView.axaml.",
@@ -56,6 +57,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(AdvisoryStripViewModel)] = "Views/KeyboardEditorView.axaml hosts Views/AdvisoryStripView explicitly, on the AdvisoryStrip property.",
             [typeof(ColorPickerViewModel)] = "Views/LightingTabView.axaml hosts Controls/ColorPickerView explicitly.",
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
+            [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
             [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside the macro panel's template.",
             [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside the macro panel's template."
         };

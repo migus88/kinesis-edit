@@ -10,7 +10,9 @@ namespace KinesisEdit.Core.Settings
     /// <see cref="IVDriveFileService"/>. Saves go through the read-modify-write of
     /// <c>UpdateSettingsFile</c> (specs/08-settings.md §1) so unknown and reserved lines
     /// survive verbatim; which keys are written comes from the device's
-    /// <c>SettingsCapability</c> in the catalog — no device facts live here.
+    /// <c>SettingsCapability</c> in the catalog — no device facts live here. The app-settings
+    /// save additionally hands that merge the keys of cleared custom-color slots to delete —
+    /// the one thing the merge removes, because an empty slot has no value to write.
     /// </summary>
     public sealed class SettingsService
     {
@@ -100,8 +102,15 @@ namespace KinesisEdit.Core.Settings
         /// file exists (unknown lines survive verbatim, spec 08 §1), created outright when
         /// absent (fresh drives ship without it) — including the <c>settings/</c> folder on
         /// drives that lack one, e.g. Adv2/SE2 (specs/03-vdrive-and-files.md §4.2/§4.4). Unset
-        /// flags and unset colors are skipped — their keys are never written (spec 08 §3).
-        /// When nothing is set the file is not touched or created.
+        /// flags and unset colors are skipped — their keys are never written (spec 08 §3) — and
+        /// an unset color slot is additionally <b>removed</b>, since skipping it would leave the
+        /// old line on the drive and the swatch would come back on the next load
+        /// (<see cref="AppSettingsSerializer.SerializeRemovals"/>).
+        /// <para>
+        /// A save with nothing to write but something to remove still reaches the drive; a save
+        /// with neither does not. When the file is missing there is nothing to remove from, so
+        /// removals alone never create one — only pairs do.
+        /// </para>
         /// </summary>
         public void SaveAppSettings(VDriveLocation location, AppSettings settings)
         {
@@ -109,8 +118,9 @@ namespace KinesisEdit.Core.Settings
             ArgumentNullException.ThrowIfNull(settings);
 
             var pairs = AppSettingsSerializer.Serialize(settings);
+            var removedKeys = AppSettingsSerializer.SerializeRemovals(settings);
 
-            if (pairs.Count == 0)
+            if (pairs.Count == 0 && removedKeys.Count == 0)
             {
                 return;
             }
@@ -119,10 +129,15 @@ namespace KinesisEdit.Core.Settings
 
             try
             {
-                _fileService.UpdateSettingsFile(path, pairs);
+                _fileService.UpdateSettingsFile(path, pairs, removedKeys);
             }
             catch (FileNotFoundException)
             {
+                if (pairs.Count == 0)
+                {
+                    return;
+                }
+
                 var lines = pairs
                     .Select(pair => pair.Key + KeyValueSeparator + pair.Value)
                     .ToList();

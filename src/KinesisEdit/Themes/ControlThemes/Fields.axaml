@@ -8,7 +8,7 @@
     A field is a HOLE IN THE PANEL, not a thing on top of it: it rests on SurfaceInset with a
     SurfaceLine hairline, where a button rests on SurfaceBar with a SurfaceBorderRaised one
     (Themes/Controls.axaml, "A field (TextBox, ComboBox) rests on SurfaceInset instead"). That is
-    the single rule that makes the seven themes below read as one family.
+    the single rule that makes the eight themes below read as one family.
 
     ================================================================================================
     TEMPLATE OR BasedOn — the decision, per control, and the reason
@@ -29,9 +29,13 @@
     template and adding setters to the CONTROL is a different thing and is safe, because a
     TemplateBinding carries the control's value into the part without anybody naming the part.
 
-    The other three do own their template, because nothing in them is required to be named:
+    The other four do own their template, because nothing in them is required to be named:
       CheckBox         — ToggleButton registers `PART_ContentPresenter` opportunistically and is
                          content with any other name (Shared.axaml, consequence of contract 2).
+      SettingSwitch    — same; it targets ToggleButton rather than ToggleSwitch precisely so that it
+                         CAN own one, because ToggleSwitch declares `PART_MovingKnobs` a *required*
+                         part and the XAML compiler rejects (AVLN2205) any template without it. See
+                         its own comment.
       SelectableListRow— same, ListBoxItem is a ContentControl.
       TokenField       — a Border, which has no template at all; the theme is setters only.
 
@@ -49,6 +53,7 @@
 
       | theme             | accent border on focus                                   | halo |
       | CheckBox          | own template, set on the control                         | yes  |
+      | SettingSwitch     | own template, set on the control                         | yes  |
       | SelectableListRow | own template, set on the control                         | yes  |
       | SearchField       | Fluent's `TextControlBorderBrushFocused` -> AccentBrush   | no   |
       | MonoValueField    | same                                                     | no   |
@@ -431,6 +436,155 @@
          Contract 3, verbatim. Written last, and qualified nowhere: focus outranks every other
          state, which is why the pointer and selection setters above carry `:not(:focus-visible)`
          rather than relying on where they sit in the file. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    SETTING SWITCH — the on/off rows of the device-settings section: game mode, program lock, the two
+    Advantage2 tones and the v-Drive switch (specs/08-settings.md §2, §5; mockup 1j).
+    ================================================================================================
+
+    THE 27th THEME, and the last raw Fluent control the app still put on screen. Everything else in
+    the settings panel was already ours; a Fluent switch beside our own slider, check box and
+    drop-down read as a second design system inside one row.
+
+    IT TARGETS ToggleButton, NOT ToggleSwitch, AND THAT IS FORCED. Avalonia declares
+    `PART_MovingKnobs` a REQUIRED template part of ToggleSwitch, and the XAML compiler refuses any
+    ToggleSwitch template that omits it (AVLN2205) — so owning the template means writing a `PART_`
+    name, which contract 2 bans outright and ControlThemeBridgeTests fails on across this whole
+    directory. The three BasedOn themes above take the other way out of the same trap, but that way
+    is worse here: Fluent's ToggleSwitch paints from its own `ToggleSwitch*` resource keys rather
+    than from the control's Background/BorderBrush, so setters on the control reach almost none of
+    it, and its 200 ms knob slide could only be removed through the very `/template/ PART_` selector
+    this layer exists to delete (contract 8: nothing here animates).
+
+    ToggleButton is the same control minus that constraint — ToggleSwitch, CheckBox and ToggleButton
+    are one `IsChecked` and one `:checked` pseudo-class — so the switch is drawn here in full, with
+    the complete design ring, and the view writes `ToggleButton Classes="settingSwitch"`.
+    Themes/Controls.axaml keeps its ToggleSwitch alias block: it costs nothing, and it is what any
+    future raw ToggleSwitch would land on.
+
+    WHY IT IS NOT A CHECK BOX. The two are the same boolean and the design draws them differently on
+    purpose: a check box is one of a list the user is ticking off ("Don't ask this again"), a switch
+    is a single piece of device state that is *currently* one way or the other. The settings rows are
+    the second, which is what makes the knob's position — not a mark — the value.
+
+    IT IS THE ONE FIELD WHOSE FACE IS ITS VALUE, so the accent ramp is reached exactly as the check
+    box reaches it, through the AccentButton* aliases rather than AccentBrush directly: the colour
+    riding an accent fill flips with the variant (Themes/Controls.axaml), and the knob is drawn in
+    that same on-accent colour.
+
+    Geometry: a 40x20 track on the 4px grid at RadiusPill, with a 14px knob inset 3. That leaves the
+    knob 4..18 when off and 22..36 when on, so the two positions are unambiguous at a glance and
+    neither ever covers the track's own middle.
+  -->
+  <ControlTheme x:Key="SettingSwitch" TargetType="ToggleButton">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+
+    <!-- Contract 3: Fluent's dotted adorner would sit on top of our ring. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+
+    <!-- Contract 6: the halo is a BoxShadow with spread, drawn outside Root's bounds. -->
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ToggleButton">
+        <Grid ColumnDefinitions="Auto,*" ClipToBounds="False">
+          <Border x:Name="Root"
+                  Width="40"
+                  Height="20"
+                  ClipToBounds="False"
+                  VerticalAlignment="Center"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <Ellipse x:Name="Knob"
+                     Width="14"
+                     Height="14"
+                     Margin="3,0,0,0"
+                     HorizontalAlignment="Left"
+                     VerticalAlignment="Center"
+                     Fill="{DynamicResource TextMutedBrush}" />
+          </Border>
+
+          <!-- The settings rows carry their own caption, so this presenter is normally empty; it is
+               here so a call site that does want a label beside the switch gets the same 8px gap the
+               check box gives one. -->
+          <ContentPresenter x:Name="Label"
+                            Grid.Column="1"
+                            Margin="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            RecognizesAccessKey="True" />
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- ===== Off ============================================================================= -->
+    <Style Selector="^:pointerover:not(:pressed):not(:checked)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:checked)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <!-- ===== On ==============================================================================
+         The knob crosses to the far end and takes the on-accent colour with it; the track takes
+         the accent face. Both parts are this theme's own, which contract 2 is what permits. -->
+    <Style Selector="^:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+    </Style>
+    <Style Selector="^:checked:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
+    </Style>
+    <Style Selector="^:checked /template/ Ellipse#Knob">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="Margin" Value="0,0,3,0" />
+      <Setter Property="Fill" Value="{DynamicResource AccentButtonForeground}" />
+    </Style>
+
+    <Style Selector="^:pointerover:not(:pressed):checked">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+    </Style>
+    <Style Selector="^:pressed:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+    </Style>
+
+    <!-- ===== Disabled ========================================================================
+         Leaves the accent family entirely, exactly as the check box does: an unreachable "on" must
+         not look like an "on" that works. A disabled control is not hit-testable, so no qualifier
+         against the pointer states is needed. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <Style Selector="^:disabled /template/ Ellipse#Knob">
+      <Setter Property="Fill" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- ===== Focus ===========================================================================
+         Contract 3, verbatim; written last and qualified nowhere, which is why the states above
+         carry `:not(:focus-visible)` rather than trusting file order. -->
     <Style Selector="^:focus-visible">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>

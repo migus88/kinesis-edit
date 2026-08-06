@@ -26,6 +26,10 @@ namespace KinesisEdit.Core.Tests.Settings
         [InlineData("savesettings_msg")]
         [InlineData("windowscombo_msg")]
         [InlineData("updownkeystroke_msg")]
+        [InlineData("warn_unsaved_msg")]
+        [InlineData("reset_layer_msg")]
+        [InlineData("capture_summary_msg")]
+        [InlineData("switch_variant_msg")]
         public void Parse_WithFlagOn_HidesTheNotification(string key)
         {
             var settings = AppSettingsParser.Parse([$"{key}=on"]);
@@ -46,6 +50,10 @@ namespace KinesisEdit.Core.Tests.Settings
         [InlineData("savesettings_msg")]
         [InlineData("windowscombo_msg")]
         [InlineData("updownkeystroke_msg")]
+        [InlineData("warn_unsaved_msg")]
+        [InlineData("reset_layer_msg")]
+        [InlineData("capture_summary_msg")]
+        [InlineData("switch_variant_msg")]
         public void Parse_WithFlagMissing_LeavesFlagNullMeaningShow(string key)
         {
             var settings = AppSettingsParser.Parse(["unrelated=on"]);
@@ -64,6 +72,95 @@ namespace KinesisEdit.Core.Tests.Settings
             var settings = AppSettingsParser.Parse([$"save_msg={value}"]);
 
             Assert.Equal(expected, settings.IsSaveMessageHidden);
+        }
+
+        [Theory]
+        [InlineData("advisory_detail=on", true)]
+        [InlineData("advisory_detail=off", false)]
+        [InlineData("ADVISORY_DETAIL=on", true)]
+        public void Parse_WithAdvisoryDetail_ReadsOnAsExpandedNotAsHidden(string line, bool expected)
+        {
+            // The one key in this file whose polarity is the other way round: "on" means EXPAND
+            // the advisory, not hide it. The property name is what carries the difference.
+            var settings = AppSettingsParser.Parse([line]);
+
+            Assert.Equal(expected, settings.IsAdvisoryDetailExpanded);
+        }
+
+        [Fact]
+        public void Parse_WithAdvisoryDetailMissing_LeavesItNullMeaningOneLine()
+        {
+            var settings = AppSettingsParser.Parse(["unrelated=on"]);
+
+            Assert.Null(settings.IsAdvisoryDetailExpanded);
+        }
+
+        [Fact]
+        public void Parse_WithBothConventionsInOneFile_ReadsEachTheItsOwnWay()
+        {
+            // Proven together on purpose: the same stored value "on" means opposite things two
+            // lines apart, and only the property names say so.
+            var settings = AppSettingsParser.Parse(["reset_layer_msg=on", "advisory_detail=on"]);
+
+            Assert.True(settings.IsResetLayerConfirmationHidden);
+            Assert.True(settings.IsAdvisoryDetailExpanded);
+        }
+
+        [Fact]
+        public void Parse_WithResetKeyAndResetLayer_KeepsThePrefixSharingKeysApart()
+        {
+            // reset_key_msg and reset_layer_msg share a prefix, and SettingsLineReader matches on
+            // the '=' separator — the same rule that keeps cust_color_1 out of cust_color_10.
+            var settings = AppSettingsParser.Parse(["reset_key_msg=on", "reset_layer_msg=off"]);
+
+            Assert.True(settings.IsResetKeyMessageHidden);
+            Assert.False(settings.IsResetLayerConfirmationHidden);
+        }
+
+        [Fact]
+        public void Parse_WithEverySeventeenthKeySet_ReadsThemIndependently()
+        {
+            // No key in this file may swallow another's line by prefix.
+            var lines = new[]
+            {
+                "app_intro_msg=on",
+                "saveas_msg=off",
+                "save_msg=on",
+                "multiplay_msg=off",
+                "speed_msg=on",
+                "copy_macro_msg=off",
+                "reset_key_msg=on",
+                "app_checkfirm_msg=off",
+                "savelighting_msg=on",
+                "savesettings_msg=off",
+                "windowscombo_msg=on",
+                "updownkeystroke_msg=off",
+                "warn_unsaved_msg=on",
+                "reset_layer_msg=off",
+                "capture_summary_msg=on",
+                "switch_variant_msg=off",
+                "advisory_detail=on"
+            };
+
+            var settings = AppSettingsParser.Parse(lines);
+
+            Assert.True(settings.IsAppIntroMessageHidden);
+            Assert.False(settings.IsSaveAsMessageHidden);
+            Assert.True(settings.IsSaveMessageHidden);
+            Assert.False(settings.IsMultiplayMessageHidden);
+            Assert.True(settings.IsSpeedMessageHidden);
+            Assert.False(settings.IsCopyMacroMessageHidden);
+            Assert.True(settings.IsResetKeyMessageHidden);
+            Assert.False(settings.IsFirmwareCheckMessageHidden);
+            Assert.True(settings.IsSaveLightingMessageHidden);
+            Assert.False(settings.IsSaveSettingsMessageHidden);
+            Assert.True(settings.IsWindowsCombinationMessageHidden);
+            Assert.False(settings.IsUpDownKeystrokeMessageHidden);
+            Assert.True(settings.IsUnsavedChangesWarningHidden);
+            Assert.False(settings.IsResetLayerConfirmationHidden);
+            Assert.True(settings.IsCaptureSummaryHidden);
+            Assert.False(settings.IsSwitchVariantConfirmationHidden);
+            Assert.True(settings.IsAdvisoryDetailExpanded);
         }
 
         [Fact]
@@ -143,6 +240,13 @@ namespace KinesisEdit.Core.Tests.Settings
                 "savesettings_msg" => settings.IsSaveSettingsMessageHidden,
                 "windowscombo_msg" => settings.IsWindowsCombinationMessageHidden,
                 "updownkeystroke_msg" => settings.IsUpDownKeystrokeMessageHidden,
+                "warn_unsaved_msg" => settings.IsUnsavedChangesWarningHidden,
+                "reset_layer_msg" => settings.IsResetLayerConfirmationHidden,
+                "capture_summary_msg" => settings.IsCaptureSummaryHidden,
+                "switch_variant_msg" => settings.IsSwitchVariantConfirmationHidden,
+
+                // advisory_detail is deliberately absent: it is not a hide flag, and a switch that
+                // accepted it here would be the first step to reading it as one.
                 _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown hide-flag key."),
             };
         }

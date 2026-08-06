@@ -3,10 +3,10 @@ namespace KinesisEdit.Services
     /// <summary>
     /// The device currently being edited: the snapshot it was opened from, the snapshot the
     /// detection loop last saw for it, whether editing runs in demo mode
-    /// (specs/03-vdrive-and-files.md §3.5), and where this device's notification preferences live
+    /// (specs/03-vdrive-and-files.md §3.5), and this device's <c>app_settings.txt</c> preferences
     /// (specs/08-settings.md §3).
     /// <para>
-    /// Demo mode and the suppression store are fixed when the session opens — specs/10-apps-and-ui.md
+    /// Demo mode and the preferences store are fixed when the session opens — specs/10-apps-and-ui.md
     /// has Configure "set demo mode from the device's connected/writable state", once. Only
     /// <see cref="Device"/> and therefore <see cref="Health"/> follow the polling loop, which is
     /// what drives the editor's `v-Drive OK` / `v-Drive Error` indicator.
@@ -41,17 +41,28 @@ namespace KinesisEdit.Services
             }
         }
 
-        /// <summary>Where "Hide this notification?" answers for this device are persisted.</summary>
-        public INotificationSuppressionStore SuppressionStore { get; }
+        /// <summary>
+        /// The session's single <c>app_settings.txt</c>: preferences, custom swatches and
+        /// "Don't ask this again" answers, loaded once and shared by every consumer. Anything in
+        /// the app that reads or writes that file goes through here.
+        /// </summary>
+        public IAppPreferencesStore Preferences { get; }
 
-        /// <summary>Creates a session for <paramref name="device"/> backed by <paramref name="suppressionStore"/>.</summary>
-        public DeviceSession(DeviceSnapshot device, INotificationSuppressionStore suppressionStore)
+        /// <summary>
+        /// The same object as <see cref="Preferences"/>, seen through the narrow interface
+        /// <see cref="NotificationService"/> depends on. Kept so the notification pipeline never
+        /// learns about swatches or display preferences.
+        /// </summary>
+        public INotificationSuppressionStore SuppressionStore => Preferences;
+
+        /// <summary>Creates a session for <paramref name="device"/> backed by <paramref name="preferences"/>.</summary>
+        public DeviceSession(DeviceSnapshot device, IAppPreferencesStore preferences)
         {
             ArgumentNullException.ThrowIfNull(device);
 
             OpenedDevice = device;
             Device = device;
-            SuppressionStore = suppressionStore ?? throw new ArgumentNullException(nameof(suppressionStore));
+            Preferences = preferences ?? throw new ArgumentNullException(nameof(preferences));
         }
 
         /// <summary>Re-points the session at a newer snapshot of the same device.</summary>

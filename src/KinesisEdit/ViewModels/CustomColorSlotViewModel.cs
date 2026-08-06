@@ -35,10 +35,22 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the slot holds a color.</summary>
         public bool HasColor => _color is not null;
 
+        /// <summary>
+        /// Whether this is the slot the settings screen's swatch strip is editing. The picker
+        /// never sets it — there a slot is clicked to pick a colour, not to be edited — so it is
+        /// false everywhere else, and the strip's accent ring is the one thing it drives.
+        /// </summary>
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set => SetProperty(ref _isSelected, value);
+        }
+
         /// <summary>The slot's tooltip: its number, so the twelve identical squares are tellable apart.</summary>
         public string Caption => string.Create(CultureInfo.InvariantCulture, $"Custom {SlotNumber}");
 
         private LedColor? _color;
+        private bool _isSelected;
 
         /// <summary>Creates the empty slot numbered <paramref name="slotNumber"/>.</summary>
         public CustomColorSlotViewModel(int slotNumber)

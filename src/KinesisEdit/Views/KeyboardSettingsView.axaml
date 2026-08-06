@@ -2,83 +2,193 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:settings="clr-namespace:KinesisEdit.Core.Settings;assembly=KinesisEdit.Core"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="520"
              x:Class="KinesisEdit.Views.KeyboardSettingsView"
              x:DataType="vm:KeyboardSettingsViewModel">
-  <!-- The device-side keyboard settings of specs/08-settings.md §5. Which rows appear is decided
-       by the device's SettingsCapability, so this view knows no device: it renders whatever
-       KeyboardSettingsRows built, one DataTemplate per row kind. -->
+  <!--
+    The device-side keyboard settings of specs/08-settings.md §5, drawn as the redesign's
+    "Written to the keyboard" section (docs/design/mockups.md mockup 1j).
+
+    IT KNOWS NO DEVICE. Which rows appear is decided by the board's SettingsCapability, so this view
+    renders whatever KeyboardSettingsRows built, one DataTemplate per row kind. Capability gating is
+    ABSENCE, never disablement — 1j is explicit: "Game mode, backlight mode, and status-report speed
+    don't exist on this device, so they aren't shown at all". There is deliberately no disabled state
+    for a setting the board lacks, and no placeholder row standing in for one.
+
+    NOTHING ON THIS SCREEN IS PAINTED RED, and that is the point of the read-only treatment rather
+    than an oversight. A 2MB Advantage2 refusing writes is a fact about the hardware, not a failure
+    of anything: the banner, its dot and its sentence are on the StatusAdvisory ramp, the per-row
+    marker is plain muted meta type, and no StatusError* brush is reachable from here at all — the
+    read-failure note included, because the editor's own load dialog already carried that severity
+    and a second red surface behind it would only shout.
+  -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="0,4" Spacing="14" MaxWidth="720" HorizontalAlignment="Left">
+    <!--
+      THE SECTION LIST. Each child of this panel is one section of the tab, and a section is a
+      sectionLabel plus whatever it owns. "App & notifications" (issue #95's other half) is appended
+      here as a sibling, below this one; nothing above or below has to be restructured for it.
+    -->
+    <StackPanel Margin="0,4" Spacing="{DynamicResource Space24}" MaxWidth="720" HorizontalAlignment="Left">
 
-      <!-- Spec 08 §5.4: on a 2MB Advantage2 the whole panel is disabled with an explanatory hint,
-           which is Core's wording (SettingsMessageCatalog). -->
-      <Border Classes="card" IsVisible="{Binding IsLocked}">
-        <TextBlock Text="{Binding LockHint}" Classes="body statusWarning" TextWrapping="Wrap" />
-      </Border>
+      <!-- ===== Section: Written to the keyboard ============================================== -->
+      <StackPanel Spacing="{DynamicResource Space12}">
+        <TextBlock Text="{x:Static vm:KeyboardSettingsViewModel.DeviceSectionLabel}" Classes="sectionLabel" />
 
-      <!-- Demo mode, or a settings file that could not be read. -->
-      <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
-        <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
-      </Border>
+        <!--
+          The read-only banner of 1j, shown only on a board whose firmware refuses settings writes
+          (spec 08 §5.4: an Advantage2 with no 4MB marker). Composed from the advisory ramp exactly
+          as Views/AdvisoryStripView.axaml is — tint face, tint border, a filled dot, an amber
+          sentence — because it says the same kind of thing: here is a limit, nothing is broken, and
+          nothing is blocked.
 
-      <Border Classes="card">
-        <StackPanel Spacing="4">
+          Three voices, in narrowing scope: the statement (what is true), the explanation (what
+          still works), and Core's own gate wording as a footnote (what the app actually looked at,
+          which is the sentence a support conversation needs). Then the way out.
+        -->
+        <Border Background="{DynamicResource StatusAdvisoryTintBrush}"
+                BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource RadiusPanel}"
+                Padding="{DynamicResource PaddingCard}"
+                IsVisible="{Binding IsLocked}">
+          <Grid ColumnDefinitions="Auto,*">
+            <Ellipse Grid.Column="0"
+                     Width="8"
+                     Height="8"
+                     Margin="0,5,0,0"
+                     VerticalAlignment="Top"
+                     Fill="{DynamicResource StatusAdvisoryBrush}" />
+
+            <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="{DynamicResource Space8}">
+              <TextBlock Text="{Binding ReadOnlyBanner}" Classes="body statusWarning" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding ReadOnlyExplanation}" Classes="body muted" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding LockHint}" Classes="meta muted" TextWrapping="Wrap" />
+
+              <!-- 1j writes this caption as "Which board do I have? ↗". The arrow is the
+                   external-link mark, drawn as geometry beside the words rather than pasted into
+                   the string — a Latin-1 arrow in a caption is a glyph the shipped font may not
+                   carry. Same split, same wiring and same three parts as the empty state's
+                   "Troubleshooting tips" (Views/NoDeviceView.axaml). -->
+              <Button Classes="link"
+                      Command="{Binding WhichBoardCommand}"
+                      IsVisible="{Binding HasWhichBoardLink}"
+                      HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{x:Static settings:SettingsMessageCatalog.WhichBoardLinkCaption}"
+                             VerticalAlignment="Center" />
+                  <controls:Icon Data="{DynamicResource IconExternalLink}"
+                                 Stroke="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Demo mode, or a settings file that could not be read. Muted, not red: see the header. -->
+        <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
+          <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
+        </Border>
+
+        <!--
+          The rows. Every kind shares one geometry — caption and its one-line description on the
+          left, the control cluster on the right — so a panel of mixed sliders, switches and pickers
+          reads as one table rather than three.
+
+          THE `(read-only)` MARKER IS OUTSIDE THE DISABLED PART, in every kind. The control is what
+          cannot be touched; the value it shows is real, current and worth reading, so the marker and
+          the mono readout beside it stay on live type. A quiet meta line, never a badge: the row is
+          not flagged, it is annotated.
+        -->
+        <Border Classes="card">
           <ItemsControl ItemsSource="{Binding Rows}">
             <ItemsControl.DataTemplates>
 
               <!-- Sliders: startup profile, macro speed, status report speed. The "Disable"
                    checkbox writes 0 (08 §5.1) and only exists where the slider floor is above it. -->
               <DataTemplate DataType="vm:SettingsSliderRowViewModel">
-                <Border Classes="listRow" IsEnabled="{Binding IsEnabled}">
-                  <Grid ColumnDefinitions="240,*,44,Auto" RowDefinitions="Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0"
-                               Text="{Binding Caption}"
-                               Classes="rowCaption"
-                               VerticalAlignment="Center" />
-                    <Slider Grid.Row="0" Grid.Column="1"
-                            Minimum="{Binding Minimum}"
-                            Maximum="{Binding Maximum}"
-                            Value="{Binding Value}"
-                            TickFrequency="1"
-                            IsSnapToTickEnabled="True"
-                            VerticalAlignment="Center"
-                            IsEnabled="{Binding !IsDisabled}" />
-                    <TextBlock Grid.Row="0" Grid.Column="2"
-                               Text="{Binding ValueCaption}"
-                               Classes="monoValue"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center" />
-                    <CheckBox Grid.Row="0" Grid.Column="3"
-                              Margin="12,0,0,0"
-                              Content="{x:Static vm:SettingsSliderRowViewModel.DisableCaption}"
-                              IsChecked="{Binding IsDisabled}"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding CanDisable}" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
-                               Text="{Binding Description}"
-                               Classes="body muted"
-                               TextWrapping="Wrap" />
+                <Border Classes="listRow">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Caption}" Classes="rowCaption" />
+                      <TextBlock Text="{Binding Description}" Classes="meta muted" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- FIXED COLUMNS, not a horizontal stack: the "Disable" checkbox only exists
+                         where the slider floor is above 0, so a stack would leave the tracks and
+                         the readouts of three sliders at three different x. The widths are
+                         reserved whether the checkbox is drawn or not, and the panel reads as a
+                         table. -->
+                    <Grid Grid.Column="1" ColumnDefinitions="160,88,34,Auto" VerticalAlignment="Center">
+                      <!-- The only disabled part of the row. The slider carries a second gate of
+                           its own — the "Disable" checkbox — and Avalonia's IsEnabled is inherited,
+                           so the two compose without a converter. -->
+                      <Panel Grid.Column="0" IsEnabled="{Binding IsEnabled}">
+                        <Slider Minimum="{Binding Minimum}"
+                                Maximum="{Binding Maximum}"
+                                Value="{Binding Value}"
+                                TickFrequency="1"
+                                IsSnapToTickEnabled="True"
+                                VerticalAlignment="Center"
+                                IsEnabled="{Binding !IsDisabled}" />
+                      </Panel>
+
+                      <CheckBox Grid.Column="1"
+                                Margin="8,0,0,0"
+                                Content="{x:Static vm:SettingsSliderRowViewModel.DisableCaption}"
+                                IsChecked="{Binding IsDisabled}"
+                                VerticalAlignment="Center"
+                                IsEnabled="{Binding IsEnabled}"
+                                IsVisible="{Binding CanDisable}" />
+
+                      <!-- Mono, because it is literally the number in the settings file. -->
+                      <TextBlock Grid.Column="2"
+                                 Text="{Binding ValueCaption}"
+                                 Classes="monoValue"
+                                 TextAlignment="Right"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3"
+                                 Margin="8,0,0,0"
+                                 Text="{x:Static settings:SettingsMessageCatalog.ReadOnlyRowMarker}"
+                                 Classes="meta muted"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsReadOnly}" />
+                    </Grid>
                   </Grid>
                 </Border>
               </DataTemplate>
 
-              <!-- Toggles: game mode, program lock, the Advantage2 tones, the v-Drive switch. -->
+              <!-- Toggles: game mode, program lock, the Advantage2 tones, the v-Drive switch. The
+                   knob's position is the value, which is why there is no On/Off label beside it.
+
+                   A ToggleButton on `settingSwitch`, not an Avalonia ToggleSwitch: the switch is
+                   drawn by our own control theme, and that theme can only own a template on a type
+                   with no required prefixed template part (Themes/ControlThemes/Fields.axaml). -->
               <DataTemplate DataType="vm:SettingsToggleRowViewModel">
-                <Border Classes="listRow" IsEnabled="{Binding IsEnabled}">
-                  <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0"
-                               Text="{Binding Caption}"
-                               Classes="rowCaption"
-                               VerticalAlignment="Center" />
-                    <ToggleSwitch Grid.Row="0" Grid.Column="1"
-                                  IsChecked="{Binding IsOn}"
-                                  VerticalAlignment="Center" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                               Text="{Binding Description}"
-                               Classes="body muted"
-                               TextWrapping="Wrap" />
+                <Border Classes="listRow">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Caption}" Classes="rowCaption" />
+                      <TextBlock Text="{Binding Description}" Classes="meta muted" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="{DynamicResource Space8}"
+                                VerticalAlignment="Center">
+                      <ToggleButton Classes="settingSwitch"
+                                    IsChecked="{Binding IsOn}"
+                                    VerticalAlignment="Center"
+                                    IsEnabled="{Binding IsEnabled}" />
+                      <TextBlock Text="{x:Static settings:SettingsMessageCatalog.ReadOnlyRowMarker}"
+                                 Classes="meta muted"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsReadOnly}" />
+                    </StackPanel>
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -88,29 +198,35 @@
                    know: the placeholder says which, and the row writes the original text back
                    rather than picking an option on the user's behalf. -->
               <DataTemplate DataType="vm:SettingsChoiceRowViewModel">
-                <Border Classes="listRow" IsEnabled="{Binding IsEnabled}">
-                  <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto">
-                    <TextBlock Grid.Row="0" Grid.Column="0"
-                               Text="{Binding Caption}"
-                               Classes="rowCaption"
-                               VerticalAlignment="Center" />
-                    <ComboBox Grid.Row="0" Grid.Column="1"
-                              ItemsSource="{Binding Options}"
-                              SelectedItem="{Binding SelectedOption}"
-                              PlaceholderText="{Binding Placeholder}"
-                              MinWidth="180"
-                              HorizontalAlignment="Left"
-                              VerticalAlignment="Center">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate DataType="vm:SettingsChoice">
-                          <TextBlock Text="{Binding Caption}" />
-                        </DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                               Text="{Binding Description}"
-                               Classes="body muted"
-                               TextWrapping="Wrap" />
+                <Border Classes="listRow">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Caption}" Classes="rowCaption" />
+                      <TextBlock Text="{Binding Description}" Classes="meta muted" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="{DynamicResource Space8}"
+                                VerticalAlignment="Center">
+                      <ComboBox ItemsSource="{Binding Options}"
+                                SelectedItem="{Binding SelectedOption}"
+                                PlaceholderText="{Binding Placeholder}"
+                                MinWidth="180"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                IsEnabled="{Binding IsEnabled}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate DataType="vm:SettingsChoice">
+                            <TextBlock Text="{Binding Caption}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <TextBlock Text="{x:Static settings:SettingsMessageCatalog.ReadOnlyRowMarker}"
+                                 Classes="meta muted"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{Binding IsReadOnly}" />
+                    </StackPanel>
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -122,16 +238,39 @@
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
           </ItemsControl>
-        </StackPanel>
-      </Border>
+        </Border>
 
-      <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
-        <TextBlock Text="{x:Static vm:KeyboardSettingsViewModel.SavingCaption}"
-                   Classes="meta muted"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding IsBusy}" />
-        <Button Content="Save Settings" Command="{Binding SaveCommand}" Classes="primaryAction" />
+        <!-- Absent, not greyed, on a read-only board: there is nothing to commit, and a dead Save
+             would be one more thing on the screen saying "refused". Demo mode keeps it and disables
+             it, because there the refusal is the app's and StatusMessage already explains it. -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="{DynamicResource Space12}"
+                    HorizontalAlignment="Right"
+                    IsVisible="{Binding ShowsSaveAction}">
+          <TextBlock Text="{x:Static vm:KeyboardSettingsViewModel.SavingCaption}"
+                     Classes="meta muted"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}" />
+          <Button Content="{x:Static vm:KeyboardSettingsViewModel.SaveTitle}"
+                  Command="{Binding SaveCommand}"
+                  Classes="primaryAction" />
+        </StackPanel>
       </StackPanel>
+
+      <!-- ===== Section: App & notifications, and the custom swatches ========================= -->
+      <!--
+        The tab's other half, and nothing above it changes for it: it is one more child of the
+        section list. It is hosted explicitly rather than through a ContentControl and the view
+        locator, exactly as KeyboardEditorView hosts AdvisoryStripView and LightingTabView hosts
+        ColorPickerView — the section's own markup reaches its owner with
+        `$parent[views:AppPreferencesView]`, which needs the real control in the tree.
+
+        It is drawn for every board, including one with no keyboard settings at all: these
+        preferences describe THIS APP's behaviour on this device, not the hardware's, so the
+        capability gate above has no say over them.
+      -->
+      <views:AppPreferencesView DataContext="{Binding Preferences}" />
+
     </StackPanel>
   </ScrollViewer>
 </UserControl>

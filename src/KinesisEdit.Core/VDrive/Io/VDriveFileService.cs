@@ -73,13 +73,24 @@ namespace KinesisEdit.Core.VDrive.Io
         /// is replaced in place with "key=value" using the caller's key casing; unmanaged lines
         /// are preserved verbatim in order; keys with no matching line are appended in caller
         /// order. The file must already exist (specs/03-vdrive-and-files.md §5.2).
+        /// <para>
+        /// Lines carrying a key in <paramref name="removedKeys"/> are deleted — every
+        /// occurrence, by the same separator rule, so removing cust_color_1 never touches
+        /// cust_color_10. Deletions run before the value updates, so a key handed in both sets
+        /// ends up written rather than lost; that combination is a caller error either way.
+        /// </para>
         /// </summary>
-        public void UpdateSettingsFile(string path, IEnumerable<KeyValuePair<string, string>> values)
+        public void UpdateSettingsFile(
+            string path,
+            IEnumerable<KeyValuePair<string, string>> values,
+            IEnumerable<string>? removedKeys = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             ArgumentNullException.ThrowIfNull(values);
 
             var lines = new List<string>(ReadAllLines(path));
+
+            RemoveManagedKeys(lines, removedKeys);
 
             foreach (var pair in values)
             {
@@ -112,11 +123,48 @@ namespace KinesisEdit.Core.VDrive.Io
             }
         }
 
+        private static void RemoveManagedKeys(List<string> lines, IEnumerable<string>? removedKeys)
+        {
+            if (removedKeys is null)
+            {
+                return;
+            }
+
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var removedKey in removedKeys)
+            {
+                ArgumentException.ThrowIfNullOrEmpty(removedKey);
+
+                keys.Add(removedKey);
+            }
+
+            if (keys.Count == 0)
+            {
+                return;
+            }
+
+            lines.RemoveAll(line => IsRemovedKeyLine(line, keys));
+        }
+
         private static bool IsManagedKeyLine(string line, string key)
         {
             return line.Length > key.Length
                 && line[key.Length] == KeyValueSeparator
                 && line.StartsWith(key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The removal side of <see cref="IsManagedKeyLine"/>, stated over a set: the line's key
+        /// is everything before its first '=', which is exactly "starts with K and the char at
+        /// K.Length is '='" — so cust_color_10 is not a cust_color_1 line, and a line with no
+        /// separator carries no key at all and is never removed.
+        /// </summary>
+        private static bool IsRemovedKeyLine(string line, HashSet<string> removedKeys)
+        {
+            var separatorIndex = line.IndexOf(KeyValueSeparator);
+
+            return separatorIndex > 0 && removedKeys.Contains(line[..separatorIndex]);
         }
 
         private static IReadOnlyList<string> SplitLines(string text)

@@ -86,7 +86,8 @@
        Three types with exactly one appearance each in this app, so the bridge is the type itself:
        inventing a class to carry a theme every instance wants would only be a second name for the
        same thing. A view that ever needs a second slider (or check box, or drop-down) adds a class
-       then, and this style stays the default.
+       then, and this style stays the default. The fourth field, the setting switch, is a class —
+       see its own note below.
 
        There is deliberately no blanket `ListBoxItem` style any more. One used to sit here for the
        Search Keys picker's compact rows and leaked onto every list in the app, including the
@@ -102,6 +103,17 @@
   </Style>
   <Style Selector="ComboBox">
     <Setter Property="Theme" Value="{StaticResource ComboBox}" />
+  </Style>
+
+  <!-- The on/off rows of the device-settings section. A CLASS rather than the type, unlike the
+       three above, and for the reason the by-type rule itself gives: `ToggleButton` is a primitive
+       that other things are built out of, not a widget with one natural appearance, so a latch or a
+       segment written as a bare ToggleButton later must not silently inherit a pill and a knob.
+       (The theme targets ToggleButton rather than ToggleSwitch because ToggleSwitch declares a
+       required template part with the prefix contract 2 bans — see
+       Themes/ControlThemes/Fields.axaml.) -->
+  <Style Selector="ToggleButton.settingSwitch">
+    <Setter Property="Theme" Value="{StaticResource SettingSwitch}" />
   </Style>
 
   <!-- The one query box in the app (the Search Keys picker). Sans, not mono: it holds what the user

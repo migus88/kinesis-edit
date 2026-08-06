@@ -17,8 +17,8 @@ namespace KinesisEdit.Tests.ViewModels
     /// </summary>
     public sealed class LightingTabViewModelTests
     {
-        private readonly FakeSettingsService _settings = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeAppPreferencesStore _preferences = new();
 
         [Fact]
         public void IsSupported_ForTheFreestyleEdgeRgb_IsTrueAndForEveryOtherBoardFalse()
@@ -491,8 +491,8 @@ namespace KinesisEdit.Tests.ViewModels
         {
             var tab = new LightingTabViewModel(
                 TestDevices.CreateSnapshot(DeviceId.Tko),
-                _settings,
-                _notifications);
+                _notifications,
+                _preferences);
 
             tab.Attach(new TkoLightingModel(), []);
 
@@ -597,8 +597,8 @@ namespace KinesisEdit.Tests.ViewModels
         {
             return new LightingTabViewModel(
                 snapshot ?? CreateSnapshot(),
-                _settings,
-                _notifications);
+                _notifications,
+                _preferences);
         }
 
         private LightingTabViewModel CreateAttachedTab(

@@ -1,5 +1,8 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Core.Settings;
+using KinesisEdit.Services;
+using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 using KinesisEdit.ViewModels.Advisories;
 
@@ -206,6 +209,60 @@ namespace KinesisEdit.Tests.ViewModels
         {
             Assert.Throws<ArgumentNullException>(() => new AdvisoryStripViewModel(null!, _ => { }));
             Assert.Throws<ArgumentNullException>(() => new AdvisoryStripViewModel(_ => { }, null!));
+        }
+
+        [Fact]
+        public void AStripWithNoStore_ReadsThePreferenceAtItsDefault()
+        {
+            // The no-device case (NullAppPreferencesStore): one trimmed line, which is what
+            // `advisory_detail` absent means.
+            using var strip = new AdvisoryStripViewModel(_ => { }, _ => { });
+
+            Assert.False(strip.IsExpanded);
+        }
+
+        [Fact]
+        public void TheExpansionPreference_IsReadWithItsOwnPolarityAndNeverAsAHideFlag()
+        {
+            // `advisory_detail` is the one display preference among seventeen: stored `on` means
+            // "expand" and absent means "one line". Read it the way the twelve *_msg hide flags
+            // beside it in the same file are read, and the strip is expanded by default and
+            // collapses when the user asks for detail.
+            var store = new FakeAppPreferencesStore();
+            using var strip = new AdvisoryStripViewModel(_ => { }, _ => { }, store);
+
+            Assert.False(strip.IsExpanded);
+
+            store.SetInitial(AppSettings.Empty with { IsAdvisoryDetailExpanded = true });
+            store.Update(settings => settings);
+
+            Assert.True(strip.IsExpanded);
+
+            // A suppression flag in the same file moves nothing here.
+            store.SetInitial(AppSettings.Empty with { IsResetLayerConfirmationHidden = true });
+            store.Update(settings => settings);
+
+            Assert.False(strip.IsExpanded);
+        }
+
+        [Fact]
+        public void TheStrip_FollowsTheStoreUntilItIsDisposed()
+        {
+            // The store belongs to the device session and outlives the editor, so a strip that
+            // stayed subscribed would be re-read for every preference the next session writes.
+            var store = new FakeAppPreferencesStore();
+            var strip = new AdvisoryStripViewModel(_ => { }, _ => { }, store);
+
+            store.Update(settings => AppPreferenceCatalog.AdvisoryDetail.SetValue(settings, true));
+
+            Assert.True(strip.IsExpanded);
+
+            strip.Dispose();
+            strip.Dispose();
+
+            store.Update(settings => AppPreferenceCatalog.AdvisoryDetail.SetValue(settings, false));
+
+            Assert.True(strip.IsExpanded);
         }
 
         /// <summary>

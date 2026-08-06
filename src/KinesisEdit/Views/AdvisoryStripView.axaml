@@ -23,8 +23,33 @@
 
     AMBER, NEVER RED. The fill, the border, the dot and the sentence are all on the StatusAdvisory
     ramp. An advisory is never painted on the StatusError ramp anywhere in the app.
+
+    ONE PREFERENCE MOVES IT. `advisory_detail` ("Explain advisory warnings in full instead of one
+    line", mockup 1j) flips the sentence from trimmed to wrapped, and the fixed 30px height becomes
+    a MinHeight so the strip grows to fit. That is a layout change and nothing else: same tint,
+    same dot, same Review, no new surface — and no animation, because growth here is a state the
+    user asked for rather than a transition to sell (the motion budget is fixed and small).
+    The trimming and the margin are set by the two styles below rather than inline, because a local
+    value on the element would win over the class and the expanded state would never take.
   -->
-  <Border Height="{DynamicResource HeightAdvisoryStrip}"
+  <UserControl.Styles>
+    <Style Selector="TextBlock.advisorySentence">
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="Margin" Value="8,0,12,0" />
+    </Style>
+    <Style Selector="TextBlock.advisorySentence.expanded">
+      <Setter Property="TextTrimming" Value="None" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <!-- 6px top and bottom: one line still measures under the 30px minimum, so a short advisory
+           does not jump when the preference is on, and only a sentence that really wraps grows. -->
+      <Setter Property="Margin" Value="8,6,12,6" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- Top, not stretched: MinHeight is a floor and the strip's height is otherwise its content's,
+       so a host that hands it more room than it asked for must not inflate the bar. -->
+  <Border MinHeight="{DynamicResource HeightAdvisoryStrip}"
+          VerticalAlignment="Top"
           Background="{DynamicResource StatusAdvisoryTintBrush}"
           BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
           BorderThickness="0,0,0,1"
@@ -40,14 +65,13 @@
                Fill="{DynamicResource StatusAdvisoryBrush}"
                VerticalAlignment="Center" />
 
-      <!-- Sans, not mono: this is the app talking, not a value out of a config file. It trims
-           rather than wraps — the strip's height is fixed so a long sentence may not grow it. -->
+      <!-- Sans, not mono: this is the app talking, not a value out of a config file. It trims to
+           one line by default and wraps to its full text when `advisory_detail` is on. -->
       <TextBlock Grid.Column="1"
                  Text="{Binding AdvisorySummary}"
-                 Classes="meta statusWarning"
-                 TextTrimming="CharacterEllipsis"
-                 VerticalAlignment="Center"
-                 Margin="8,0,12,0" />
+                 Classes="meta statusWarning advisorySentence"
+                 Classes.expanded="{Binding IsExpanded}"
+                 VerticalAlignment="Center" />
 
       <!-- Bordered, as the handoff draws it. The padding and height are the strip's, not the
            button role's: SecondaryButton's own 13,8 would stand it taller than the 30px bar. -->

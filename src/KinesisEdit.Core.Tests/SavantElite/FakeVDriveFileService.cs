@@ -48,7 +48,10 @@ namespace KinesisEdit.Core.Tests.SavantElite
             _lines.AddRange(lines);
         }
 
-        public void UpdateSettingsFile(string path, IEnumerable<KeyValuePair<string, string>> values)
+        public void UpdateSettingsFile(
+            string path,
+            IEnumerable<KeyValuePair<string, string>> values,
+            IEnumerable<string>? removedKeys = null)
         {
             throw new NotSupportedException();
         }

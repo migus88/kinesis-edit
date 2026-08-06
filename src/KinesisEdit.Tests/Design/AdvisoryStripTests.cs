@@ -5,7 +5,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using KinesisEdit.Core.Settings;
+using KinesisEdit.Services;
 using KinesisEdit.Tests.Headless;
+using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 using KinesisEdit.ViewModels.Advisories;
 using KinesisEdit.Views;
@@ -31,6 +34,15 @@ namespace KinesisEdit.Tests.Design
     {
         /// <summary>The design's advisory-strip height (Themes/Geometry.axaml, <c>HeightAdvisoryStrip</c>).</summary>
         private const double StripHeight = 30;
+
+        /// <summary>
+        /// Window width for the expansion tests: narrow enough that the scene's sentence needs more
+        /// than one line, which is the only state in which "shown in full" differs from "trimmed".
+        /// </summary>
+        private const double NarrowWidth = 520;
+
+        /// <summary>Window height for those tests; the strip is measured, not the shell.</summary>
+        private const double NarrowHeight = 200;
 
         [AvaloniaTheory]
         [InlineData("Dark")]
@@ -295,6 +307,134 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("StatusAdvisoryBrush", xaml, StringComparison.Ordinal);
             Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
             Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
+        }
+
+        [AvaloniaFact]
+        public async Task TheSentence_IsOneTrimmedLineUntilThePreferenceSaysOtherwise()
+        {
+            // The default, and the only shape the strip had before `advisory_detail` existed: one
+            // ellipsised line at exactly the design's 30px, however long the sentence is.
+            using var scenes = new ViewSceneFactory();
+
+            var store = new FakeAppPreferencesStore();
+            var view = await CreateStripViewAsync(scenes, store);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark, NarrowWidth, NarrowHeight);
+
+            host.Capture();
+
+            var strip = (AdvisoryStripViewModel)view.DataContext!;
+            var sentence = SentenceOf(view);
+
+            Assert.False(strip.IsExpanded);
+            Assert.Equal(TextTrimming.CharacterEllipsis, sentence.TextTrimming);
+            Assert.Equal(TextWrapping.NoWrap, sentence.TextWrapping);
+            Assert.Equal(StripHeight, BorderOf(view).Bounds.Height);
+        }
+
+        [AvaloniaFact]
+        public async Task TheSentence_IsShownWholeAndGrowsTheStrip_WhenThePreferenceIsOn()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var store = new FakeAppPreferencesStore();
+
+            store.SetInitial(AppPreferenceCatalog.AdvisoryDetail.SetValue(AppSettings.Empty, true));
+
+            var view = await CreateStripViewAsync(scenes, store);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark, NarrowWidth, NarrowHeight);
+
+            host.Capture();
+
+            var strip = (AdvisoryStripViewModel)view.DataContext!;
+            var sentence = SentenceOf(view);
+            var border = BorderOf(view);
+
+            Assert.True(strip.IsExpanded);
+            Assert.Equal(TextTrimming.None, sentence.TextTrimming);
+            Assert.Equal(TextWrapping.Wrap, sentence.TextWrapping);
+
+            // Grown to fit, not scrolled and not clipped: the whole sentence is on screen.
+            Assert.True(
+                border.Bounds.Height > StripHeight,
+                $"The expanded strip is {border.Bounds.Height}px, so the sentence did not grow it.");
+            Assert.True(sentence.Bounds.Height > 0);
+
+            // Still an advisory: amber, and nothing about it became a new surface.
+            Assert.Equal(DesignTokens.Resolve("StatusAdvisoryTintBrush", ThemeVariant.Dark), border.Background);
+        }
+
+        [AvaloniaFact]
+        public async Task TheStrip_FollowsThePreferenceWhileItIsOnScreen()
+        {
+            // The preference is edited on the Settings tab of the very editor this strip is drawn
+            // in, so a toggle there has to move it without reopening anything.
+            using var scenes = new ViewSceneFactory();
+
+            var store = new FakeAppPreferencesStore();
+            var view = await CreateStripViewAsync(scenes, store);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark, NarrowWidth, NarrowHeight);
+
+            host.Capture();
+
+            var strip = (AdvisoryStripViewModel)view.DataContext!;
+
+            Assert.Equal(StripHeight, BorderOf(view).Bounds.Height);
+
+            store.Update(settings => AppPreferenceCatalog.AdvisoryDetail.SetValue(settings, true));
+
+            host.Capture();
+
+            Assert.True(strip.IsExpanded);
+            Assert.Equal(TextWrapping.Wrap, SentenceOf(view).TextWrapping);
+            Assert.True(BorderOf(view).Bounds.Height > StripHeight);
+
+            // And back: unticking it returns the strip to the one trimmed line.
+            store.Update(settings => AppPreferenceCatalog.AdvisoryDetail.SetValue(settings, false));
+
+            host.Capture();
+
+            Assert.False(strip.IsExpanded);
+            Assert.Equal(TextTrimming.CharacterEllipsis, SentenceOf(view).TextTrimming);
+            Assert.Equal(StripHeight, BorderOf(view).Bounds.Height);
+        }
+
+        /// <summary>
+        /// An <see cref="AdvisoryStripView"/> over a strip of this scene's advisories and
+        /// <paramref name="store"/>. The scene's own editor holds no session, so its strip reads
+        /// the default preferences; this one is built by hand to put a real store behind it.
+        /// </summary>
+        private static async Task<AdvisoryStripView> CreateStripViewAsync(
+            ViewSceneFactory scenes,
+            FakeAppPreferencesStore store)
+        {
+            var editor = await scenes.CreateEditorWithAdvisoriesAsync().ConfigureAwait(true);
+            var strip = CreateStrip(store);
+
+            strip.Project(editor.Advisories, EditorTab.Keys, editor.SelectedLayer!.Index);
+
+            Assert.True(strip.HasAdvisories);
+
+            return new AdvisoryStripView { DataContext = strip };
+        }
+
+        private static AdvisoryStripViewModel CreateStrip(FakeAppPreferencesStore store)
+        {
+            return new AdvisoryStripViewModel(_ => { }, _ => { }, store);
+        }
+
+        /// <summary>The strip's sentence, which is its only <see cref="TextBlock"/>.</summary>
+        private static TextBlock SentenceOf(Control view)
+        {
+            return view.GetVisualDescendants().OfType<TextBlock>().First();
+        }
+
+        /// <summary>The strip's own Border, for a view hosted on its own rather than in the editor.</summary>
+        private static Border BorderOf(Control view)
+        {
+            return view.GetVisualDescendants().OfType<Border>().First();
         }
 
         /// <summary>The advisory strip's own Border, or null when it is not on screen.</summary>

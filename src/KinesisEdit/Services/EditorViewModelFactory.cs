@@ -32,6 +32,7 @@ namespace KinesisEdit.Services
         private readonly IFilePickerService _filePicker;
         private readonly IVDriveFileService _files;
         private readonly IUrlLauncher _urlLauncher;
+        private readonly IDeviceSessionAccessor? _sessions;
 
         /// <summary>
         /// Creates the factory. The capture service is resolved through a delegate rather than
@@ -43,6 +44,12 @@ namespace KinesisEdit.Services
         /// URL launcher are its feature-panel dependencies (Export, Import, the firmware gates of
         /// spec 11). All of them are held here for the same reason: so the shell never accumulates
         /// a device's dependencies.
+        /// <para>
+        /// <paramref name="sessions"/> is the seam through which an editor reaches the open
+        /// device's <c>app_settings.txt</c> (<see cref="IAppPreferencesStore"/>). It is optional so
+        /// that a factory built for a test or a design scene needs no session at all, and every
+        /// preference then sits at its default.
+        /// </para>
         /// </summary>
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
@@ -53,7 +60,8 @@ namespace KinesisEdit.Services
             IFolderPickerService folderPicker,
             IFilePickerService filePicker,
             IVDriveFileService files,
-            IUrlLauncher urlLauncher)
+            IUrlLauncher urlLauncher,
+            IDeviceSessionAccessor? sessions = null)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -64,6 +72,7 @@ namespace KinesisEdit.Services
             _filePicker = filePicker ?? throw new ArgumentNullException(nameof(filePicker));
             _files = files ?? throw new ArgumentNullException(nameof(files));
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
+            _sessions = sessions;
         }
 
         /// <inheritdoc />
@@ -95,7 +104,8 @@ namespace KinesisEdit.Services
                 _folderPicker,
                 _filePicker,
                 _files,
-                _urlLauncher);
+                _urlLauncher,
+                _sessions);
         }
 
         private static bool CanRender(DeviceSnapshot device)

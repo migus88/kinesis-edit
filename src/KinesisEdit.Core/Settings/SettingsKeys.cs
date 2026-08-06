@@ -99,6 +99,40 @@ namespace KinesisEdit.Core.Settings
         public const string UpDownKeystrokeMessage = "updownkeystroke_msg";
 
         /// <summary>
+        /// Hide flag for the "you have unsaved changes" prompt shown on leaving a session.
+        /// <b>Not a spec 08 key</b> — this app adds it; see <see cref="AppSettings"/> for why that
+        /// is safe on disk. Follows the §3 convention: <c>on</c> = hide the prompt.
+        /// </summary>
+        public const string UnsavedChangesMessage = "warn_unsaved_msg";
+
+        /// <summary>
+        /// Hide flag for the "reset this layer?" confirmation. <b>Not a spec 08 key</b> — this app
+        /// adds it. Follows the §3 convention: <c>on</c> = hide the confirmation.
+        /// </summary>
+        public const string ResetLayerMessage = "reset_layer_msg";
+
+        /// <summary>
+        /// Hide flag for the "keystrokes captured" summary shown after macro recording.
+        /// <b>Not a spec 08 key</b> — this app adds it. Follows the §3 convention: <c>on</c> =
+        /// hide the summary.
+        /// </summary>
+        public const string CaptureSummaryMessage = "capture_summary_msg";
+
+        /// <summary>
+        /// Hide flag for the "switch keyboard variant?" confirmation. <b>Not a spec 08 key</b> —
+        /// this app adds it. Follows the §3 convention: <c>on</c> = hide the confirmation.
+        /// </summary>
+        public const string SwitchVariantMessage = "switch_variant_msg";
+
+        /// <summary>
+        /// Display preference for advisory strips. <b>Not a spec 08 key, and not a hide flag</b>:
+        /// its polarity is the opposite of the <c>*_msg</c> family — <c>on</c> = <b>expand</b> the
+        /// advisory to its full text, absent/<c>off</c> = the single trimmed line. Deliberately
+        /// spelled without the <c>_msg</c> suffix so the difference is visible in the key itself.
+        /// </summary>
+        public const string AdvisoryDetail = "advisory_detail";
+
+        /// <summary>
         /// Custom-color key prefix; <c>cust_color_1</c>…<c>cust_color_3</c> are prefixes of
         /// <c>cust_color_10</c>…<c>cust_color_12</c> and must never be matched by bare prefix
         /// (spec 08 §1, §3).

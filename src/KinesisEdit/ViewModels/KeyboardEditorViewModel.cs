@@ -63,6 +63,36 @@ namespace KinesisEdit.ViewModels
         /// <summary>Message prefix when the save threw; the exception's message follows it.</summary>
         public const string SaveErrorMessagePrefix = "The profile could not be saved: ";
 
+        /// <summary>Title of the confirmation raised before a layer is erased. Not a spec string.</summary>
+        public const string ResetLayerTitle = "Reset Layer";
+
+        /// <summary>
+        /// The layer-reset prompt. It says what is erased and — because nothing this app does is
+        /// written behind the user's back — that the drive is untouched until Save.
+        /// </summary>
+        public const string ResetLayerConfirmation =
+            "Do you want to clear every remap and macro on this layer? Nothing is written to the keyboard until you save.";
+
+        /// <summary>The affirmative, named after what it does rather than "Yes" (mockup 1k). It still answers <c>Yes</c>.</summary>
+        public const string ResetLayerConfirmCaption = "Clear layer";
+
+        /// <summary>Title of the confirmation raised before every layer is erased.</summary>
+        public const string ResetLayoutTitle = "Reset Layout";
+
+        /// <summary>
+        /// The whole-profile prompt. Same shape as the layer's, and deliberately different words:
+        /// the two scopes share one suppression key, so the sentence is the only thing that tells
+        /// the user which of them is about to run.
+        /// </summary>
+        public const string ResetLayoutConfirmation =
+            "Do you want to clear every remap and macro on every layer of this profile? Nothing is written to the keyboard until you save.";
+
+        /// <summary>The affirmative of the whole-profile prompt. It still answers <c>Yes</c>.</summary>
+        public const string ResetLayoutConfirmCaption = "Clear all layers";
+
+        /// <summary>The way out of either reset prompt. It still answers <c>No</c>.</summary>
+        public const string ResetDeclineCaption = "Cancel";
+
         /// <summary>Builds the caption of the profile indicator ("Profile 1").</summary>
         public static string BuildProfileCaption(int profileNumber)
         {
@@ -407,10 +437,17 @@ namespace KinesisEdit.ViewModels
         /// <summary>Drops the selected key's remap (specs/10-apps-and-ui.md, "Reset Key").</summary>
         public IRelayCommand ResetKeyCommand { get; }
 
-        /// <summary>Resets every key of the shown layer.</summary>
+        /// <summary>
+        /// Resets every key of the shown layer, after the confirmation of
+        /// <see cref="NotificationKeys.ResetLayer"/> — which the user can switch off for good on
+        /// the Settings tab ("Confirm before resetting a layer", mockup 1j).
+        /// </summary>
         public IRelayCommand ResetLayerCommand { get; }
 
-        /// <summary>Resets every key of every layer.</summary>
+        /// <summary>
+        /// Resets every key of every layer, after the same confirmation under the same key; only
+        /// the wording differs (see <see cref="ResetLayoutConfirmation"/>).
+        /// </summary>
         public IRelayCommand ResetLayoutCommand { get; }
 
         /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
@@ -461,6 +498,7 @@ namespace KinesisEdit.ViewModels
         private readonly IFolderPickerService _folderPicker;
         private readonly IVDriveFileService _files;
         private readonly IUrlLauncher _urlLauncher;
+        private readonly IAppPreferencesStore _preferences;
         private readonly ProfileImporter _importer;
         private readonly EditorOverlayHost _overlays;
         private readonly KeyboardVisual? _visual;
@@ -504,6 +542,16 @@ namespace KinesisEdit.ViewModels
         /// Creates the editor for <paramref name="device"/>. Construction is deliberately cheap —
         /// no file is touched here — so the shell can swap the view in immediately and let
         /// <see cref="LoadAsync"/> do the reading.
+        /// <para>
+        /// <paramref name="sessions"/> is how the editor reaches this device's
+        /// <c>app_settings.txt</c> (<see cref="IAppPreferencesStore"/>): the shell opens the
+        /// session <i>before</i> it builds an editor, so the active session is already the one
+        /// being edited. It is optional because an editor built with no session at all — most of
+        /// the unit tests — must still work, and then every preference sits at its default. That
+        /// is a fallback, not a shape to copy: an editor over <see cref="NullAppPreferencesStore"/>
+        /// draws its Settings tab's preferences section in its read-only face, which is the face
+        /// the app only shows for a board with no drive.
+        /// </para>
         /// </summary>
         public KeyboardEditorViewModel(
             DeviceSnapshot device,
@@ -514,7 +562,8 @@ namespace KinesisEdit.ViewModels
             IFolderPickerService folderPicker,
             IFilePickerService filePicker,
             IVDriveFileService files,
-            IUrlLauncher urlLauncher) : base(device)
+            IUrlLauncher urlLauncher,
+            IDeviceSessionAccessor? sessions = null) : base(device)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _capture = capture ?? throw new ArgumentNullException(nameof(capture));
@@ -522,6 +571,7 @@ namespace KinesisEdit.ViewModels
             _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
             _files = files ?? throw new ArgumentNullException(nameof(files));
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
+            _preferences = sessions?.Active?.Preferences ?? NullAppPreferencesStore.Instance;
             _importer = new ProfileImporter(filePicker);
             _overlays = new EditorOverlayHost(_capture);
 
@@ -529,13 +579,20 @@ namespace KinesisEdit.ViewModels
             // and shared by every layer (docs/app/domain-data.md, "Visual geometry").
             _visual = VisualCatalog.TryGet(device.DeviceId, out var visual) ? visual : null;
 
-            Settings = new KeyboardSettingsViewModel(device, settings, notifications);
-            Lighting = new LightingTabViewModel(device, settings, notifications);
+            // The two tabs that read app_settings.txt are handed the session's store rather than
+            // loading the file for themselves: one reader and one writer, or the colour picker's
+            // swatches and the settings screen's preferences show each other stale state
+            // (docs/app/settings.md). Neither parameter has a default, so an editor that forgot to
+            // thread the store is a compile error rather than a screen that quietly reads nothing.
+            Settings = new KeyboardSettingsViewModel(device, settings, notifications, _preferences, urlLauncher);
+            Lighting = new LightingTabViewModel(device, notifications, _preferences);
 
             // The strip owns the projection and the Review walk; selecting what a note is about is
             // this class's, because the board and the macro panel are. Built before SelectTab
-            // below, which projects onto it.
-            AdvisoryStrip = new AdvisoryStripViewModel(SelectAnchoredKey, SelectAnchoredMacro);
+            // below, which projects onto it. It is handed the session's preferences because one of
+            // them — `advisory_detail` — decides whether its sentence is trimmed or shown whole,
+            // and it follows that store for as long as the editor is open.
+            AdvisoryStrip = new AdvisoryStripViewModel(SelectAnchoredKey, SelectAnchoredMacro, _preferences);
 
             // The Lighting tab is rendered only for a board whose led file is the two-layer key
             // backlight model the panel edits — absent, never disabled, on every other board and on
@@ -551,8 +608,10 @@ namespace KinesisEdit.ViewModels
             // The !IsLoading && !IsBusy guard matches CanBeginRemap/CanSave: a save serializes the
             // model on a background thread, so mutating it from here mid-save would race it.
             ResetKeyCommand = new RelayCommand(ResetKey, () => SelectedKey is not null && SelectedKey.CanEdit && !IsLoading && !IsBusy);
-            ResetLayerCommand = new RelayCommand(ResetLayer, () => SelectedLayer is not null && !IsLoading && !IsBusy);
-            ResetLayoutCommand = new RelayCommand(ResetLayout, () => Layout is not null && !IsLoading && !IsBusy);
+            // Both resets ask first, so both are async; Reset Key does not, because it drops one
+            // position's remap and the spec's own reset confirmation covers macros, not remaps.
+            ResetLayerCommand = new AsyncRelayCommand(ResetLayerAsync, () => SelectedLayer is not null && !IsLoading && !IsBusy);
+            ResetLayoutCommand = new AsyncRelayCommand(ResetLayoutAsync, () => Layout is not null && !IsLoading && !IsBusy);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
             TapAndHoldCommand = new AsyncRelayCommand(OpenTapAndHoldAsync, () => CanOpenTapAndHold());
             InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
@@ -1662,9 +1721,34 @@ namespace KinesisEdit.ViewModels
             IsDirty = _session?.IsDirty == true;
         }
 
-        private void ResetLayer()
+        /// <summary>
+        /// Erases the shown layer, after the confirmation of <see cref="NotificationKeys.ResetLayer"/>.
+        /// <para>
+        /// <b>The question is asked through the notification service and nowhere else.</b> Whether
+        /// the user switched it off lives in <c>app_settings.txt</c>, and
+        /// <see cref="NotificationService"/> already short-circuits a hidden key to
+        /// <see cref="MessageBoxOutcome.ForSuppressed"/>; reading <c>IsHidden</c> here would be a
+        /// second policy for one decision. Hence <see cref="MessageBoxRequest.SuppressedResult"/>
+        /// is <c>Yes</c>: a suppressed confirmation means "go ahead", not "do nothing".
+        /// </para>
+        /// </summary>
+        private async Task ResetLayerAsync()
         {
             var layer = SelectedLayer;
+
+            if (layer is null)
+            {
+                return;
+            }
+
+            if (!await ConfirmResetAsync(ResetLayerTitle, ResetLayerConfirmation, ResetLayerConfirmCaption).ConfigureAwait(true))
+            {
+                return;
+            }
+
+            // Re-read: the confirmation is modal but the layer selection is not frozen behind it,
+            // and erasing a layer the user is no longer looking at would be the worst kind of bug.
+            layer = SelectedLayer;
 
             if (layer is null)
             {
@@ -1684,8 +1768,32 @@ namespace KinesisEdit.ViewModels
             RefreshCounters();
         }
 
-        private void ResetLayout()
+        /// <summary>
+        /// Erases every layer, after a confirmation that <b>shares</b> the layer reset's
+        /// suppression key.
+        /// <para>
+        /// One preference, not two: the catalog models a single reset confirmation
+        /// ("Confirm before resetting a layer", mockup 1j), and a user who switched it off has
+        /// answered the question "should a reset stop and ask me?" for both scopes. Leaving the
+        /// wider scope unsuppressible would put two policies behind one checkbox and leave a prompt
+        /// the settings screen cannot re-enable. What differs is the wording — the sentence names
+        /// every layer — and the stakes are bounded the same way: a reset changes memory only, and
+        /// nothing reaches the drive until Save.
+        /// </para>
+        /// </summary>
+        private async Task ResetLayoutAsync()
         {
+            if (Layout is null)
+            {
+                return;
+            }
+
+            if (!await ConfirmResetAsync(ResetLayoutTitle, ResetLayoutConfirmation, ResetLayoutConfirmCaption).ConfigureAwait(true))
+            {
+                return;
+            }
+
+            // Re-read after the box: a load or an import may have replaced the model behind it.
             var layout = Layout;
 
             if (layout is null)
@@ -1706,6 +1814,38 @@ namespace KinesisEdit.ViewModels
             _macroPanel?.RefreshFromModel();
 
             RefreshCounters();
+        }
+
+        /// <summary>
+        /// Puts one of the two reset confirmations on screen and reports whether the erase may go
+        /// ahead. False for every other answer, including a box that could not be shown at all —
+        /// a confirmation that failed must not erase anything, and must not bring the app down
+        /// either (the same rule the lighting tab's Reset All follows).
+        /// </summary>
+        private async Task<bool> ConfirmResetAsync(string title, string message, string confirmCaption)
+        {
+            MessageBoxOutcome outcome;
+
+            try
+            {
+                outcome = await _notifications.ShowMessageBoxAsync(new MessageBoxRequest
+                {
+                    Title = title,
+                    Message = message,
+                    Icon = MessageBoxIcon.Confirmation,
+                    Buttons = MessageBoxButtons.YesNo,
+                    YesCaption = confirmCaption,
+                    NoCaption = ResetDeclineCaption,
+                    SuppressionKey = NotificationKeys.ResetLayer,
+                    SuppressedResult = MessageBoxResult.Yes
+                }).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return outcome.Result == MessageBoxResult.Yes;
         }
 
         private bool CanSave()
@@ -1873,6 +2013,10 @@ namespace KinesisEdit.ViewModels
             _capture.KeystrokeCaptured -= _keystrokeCapturedHandler;
 
             Lighting.ModelChanged -= _lightingChangedHandler;
+
+            // The preferences store belongs to the device session, which outlives this editor, so
+            // the strip has to come off it here or a closed editor keeps being re-read.
+            AdvisoryStrip.Dispose();
 
             DetachTapAndHold();
 
