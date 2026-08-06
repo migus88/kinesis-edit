@@ -27,6 +27,16 @@ namespace KinesisEdit.Tests.Services
         /// </summary>
         public Exception? MessageBoxExceptionToThrow { get; set; }
 
+        /// <summary>
+        /// When set, <see cref="ShowLoading"/> throws it. The real service fans
+        /// <c>LoadingChanged</c> out to the overlay, so a view of it can fail like any other UI
+        /// callback — and a caller that flips a busy flag around the indicator must survive that.
+        /// </summary>
+        public Exception? ShowLoadingExceptionToThrow { get; set; }
+
+        /// <summary>When set, <see cref="HideLoading"/> throws it, for the same reason.</summary>
+        public Exception? HideLoadingExceptionToThrow { get; set; }
+
         public List<ToastRequest> Toasts { get; } = [];
 
         public List<MessageBoxRequest> MessageBoxes { get; } = [];
@@ -60,6 +70,11 @@ namespace KinesisEdit.Tests.Services
 
         public void ShowLoading(string? caption = null)
         {
+            if (ShowLoadingExceptionToThrow is not null)
+            {
+                throw ShowLoadingExceptionToThrow;
+            }
+
             LoadingCaption = caption ?? LoadingCaptions.Default;
             LoadingHistory.Add(LoadingCaption);
 
@@ -68,6 +83,11 @@ namespace KinesisEdit.Tests.Services
 
         public void HideLoading()
         {
+            if (HideLoadingExceptionToThrow is not null)
+            {
+                throw HideLoadingExceptionToThrow;
+            }
+
             LoadingCaption = null;
             LoadingHistory.Add(null);
 

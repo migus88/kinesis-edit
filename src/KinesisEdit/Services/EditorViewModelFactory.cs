@@ -9,8 +9,8 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Services
 {
     /// <summary>
-    /// The one place that decides which editor a device opens into: the Savant Elite2's read-only
-    /// pedal view, the keyboard editor when the board can be drawn, and the placeholder otherwise.
+    /// The one place that decides which editor a device opens into: the Savant Elite2's pedal
+    /// editor, the keyboard editor when the board can be drawn, and the placeholder otherwise.
     /// "Can be drawn" is both catalogs answering: <see cref="GeometryCatalog"/> for the key
     /// positions and <see cref="VisualCatalog"/> for where they sit. Only the Freestyle Edge RGB
     /// has an authored picture today — issues #39-#42 add the rest, and each one becomes editable
@@ -73,10 +73,12 @@ namespace KinesisEdit.Services
 
             // The pedal reads its file itself (specs/12-savant-elite.md §4.6: pedals.txt is the
             // whole model, so there is nothing for the detection loop to carry) and has no
-            // keyboard picture at all, so it is answered before the catalogs are asked.
+            // keyboard picture at all, so it is answered before the catalogs are asked. It records
+            // keystrokes exactly like the keyboard editor does (12 §5 step 3), so it resolves the
+            // same shared capture service.
             if (device.DeviceId == DeviceId.SavantElite2)
             {
-                return new SavantElitePedalViewModel(device, _pedalFiles);
+                return new SavantElitePedalViewModel(device, _pedalFiles, _captureServiceResolver(), _notifications);
             }
 
             if (!CanRender(device))

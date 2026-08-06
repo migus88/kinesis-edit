@@ -21,12 +21,14 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
+        private readonly VDriveEjectNotifier _ejectNotifier;
         private readonly DashboardViewModel _dashboard;
         private readonly MainWindowViewModel _shell;
 
         public MainWindowViewModelTests()
         {
             var ejectNotifier = new VDriveEjectNotifier(_ejectService, _notifications);
+            _ejectNotifier = ejectNotifier;
             _settings = TestDevices.CreateSettingsService(_fileService);
             _sessions = new DeviceSessionManager(_settings);
             _monitor = new DeviceMonitorService(
@@ -90,7 +92,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void OpenDevice_WithTheSavantElite2_SwapsInTheReadOnlyPedalView()
+        public async Task OpenDevice_WithTheSavantElite2_SwapsInThePedalEditor()
         {
             var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
             SetPedalFile(snapshot, "[lpedal]>[lmouse]");
@@ -98,6 +100,8 @@ namespace KinesisEdit.Tests.ViewModels
             _shell.OpenDevice(snapshot);
 
             var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            await WaitForLoadAsync(() => pedal.IsLoading);
 
             Assert.Same(pedal, _shell.CurrentView);
             Assert.Equal(PedalLoadState.Loaded, pedal.LoadState);
@@ -109,7 +113,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void OpenDevice_WithTheSavantElite2InDemoMode_ReadsNothingFromTheDrive()
+        public async Task OpenDevice_WithTheSavantElite2InDemoMode_ReadsNothingFromTheDrive()
         {
             var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2, VDriveConnectionStatus.CannotAccess);
             SetPedalFile(snapshot, "[lpedal]>[lmouse]");
@@ -118,9 +122,254 @@ namespace KinesisEdit.Tests.ViewModels
 
             var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
 
+            await WaitForLoadAsync(() => pedal.IsLoading);
+
             Assert.Equal(0, _fileService.ReadCount);
             Assert.Equal(PedalLoadState.DemoMode, pedal.LoadState);
             Assert.True(_shell.IsDemoMode);
+        }
+
+        [Fact]
+        public async Task HomeCommand_WhenTheOpenEditorRefusesToClose_LeavesItOnScreen()
+        {
+            // The shell knows nothing about what is at stake — only that the editor said no
+            // (docs/app/savant-elite.md: the pedal asks about unsaved changes).
+            var pedal = await OpenPedalWithUnsavedChangesAsync();
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Cancel };
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Same(pedal, _shell.Editor);
+            Assert.Same(pedal, _shell.CurrentView);
+            Assert.NotNull(_sessions.Active);
+            Assert.Empty(_ejectService.EjectedPaths);
+            Assert.False(_shell.IsBusy);
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(_shell.Editor);
+            Assert.Same(_dashboard, _shell.CurrentView);
+        }
+
+        [Fact]
+        public async Task HomeCommand_WhileTheOpenEditorIsSaving_IsRefusedAndEjectsNothing()
+        {
+            // The loading overlay does not take clicks and the top bar sits outside the editor, so
+            // Home is reachable during a save. Leaving would dispose the editor and eject the
+            // volume out from under a write still in flight — and tell the user their changes could
+            // not be saved, which is the opposite of what is happening.
+            var pedal = await OpenPedalWithUnsavedChangesAsync();
+            var gate = new TaskCompletionSource();
+
+            _fileService.WriteGate = gate;
+
+            var save = pedal.SaveCommand.ExecuteAsync(null);
+
+            Assert.True(pedal.IsBusy);
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Same(pedal, _shell.Editor);
+            Assert.Same(pedal, _shell.CurrentView);
+            Assert.NotNull(_sessions.Active);
+            Assert.Empty(_ejectService.EjectedPaths);
+            Assert.Empty(_notifications.MessageBoxes);
+
+            // Home is a live button here — the shell gates it on its own IsBusy, not the editor's —
+            // so the refusal has to be visible. Without the toast the click is a silent no-op.
+            var toast = Assert.Single(_notifications.Toasts);
+
+            Assert.Equal(SavantElitePedalViewModel.SaveInProgressTitle, toast.Title);
+            Assert.Equal(SavantElitePedalViewModel.SaveInProgressMessage, toast.Message);
+
+            gate.SetResult();
+
+            await save;
+
+            // Once the write is done the navigation goes through, with nothing left to ask.
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(_shell.Editor);
+            Assert.Empty(_notifications.MessageBoxes);
+            Assert.Single(_ejectService.EjectedPaths);
+        }
+
+        [Fact]
+        public async Task OpenDeviceAsync_WhenTheOpenEditorsConfirmationThrows_KeepsThatEditor()
+        {
+            // The confirmation is asked outside the guarded region: treating a failed question as a
+            // failed open would drop the editor — discarding the very unsaved changes the question
+            // exists to protect, and skipping the eject Home would have done.
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseExceptionToThrow = new InvalidOperationException("no window")
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var session = _sessions.Active;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.Same(editor, shell.Editor);
+            Assert.Same(editor, shell.CurrentView);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.Same(session, _sessions.Active);
+            Assert.False(shell.IsBusy);
+
+            var box = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(MainWindowViewModel.OpenFailureTitle, box.Title);
+            Assert.Contains("no window", box.Message);
+
+            // Nothing is wedged: once the editor can answer again, the navigation goes through.
+            editor.ConfirmCloseExceptionToThrow = null;
+            editors.EditorToReturn = null;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.IsType<EditorPlaceholderViewModel>(shell.Editor);
+            Assert.Equal(1, editor.DisposeCount);
+        }
+
+        [Fact]
+        public async Task OpenDeviceAsync_WhenDisposingTheOpenEditorThrows_StillReportsTheFailure()
+        {
+            // AbandonOpenDevice runs inside the catch of a method that must not throw, and its
+            // first real hazard is CloseEditor -> the editor's Dispose. An escape there would be
+            // exactly the unobserved exception the totality is for, with no error box shown.
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                DisposeExceptionToThrow = new InvalidOperationException("dispose failed")
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            editors.EditorToReturn = null;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            var box = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(MainWindowViewModel.OpenFailureTitle, box.Title);
+            Assert.Contains("dispose failed", box.Message);
+
+            Assert.Null(shell.Editor);
+            Assert.Same(_dashboard, shell.CurrentView);
+            Assert.Null(_sessions.Active);
+            Assert.False(shell.IsDemoMode);
+            Assert.False(shell.IsBusy);
+            Assert.Null(_notifications.LoadingCaption);
+
+            // Still usable afterwards.
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(shell.Editor);
+        }
+
+        [Fact]
+        public async Task OpenDeviceAsync_WhenTheEditorCannotBeBuilt_ReportsItAndStaysOnTheDashboard()
+        {
+            // OpenDevice forgets the task, so a throw here would be an unobserved exception leaving
+            // the shell on the dashboard with a session open, demo mode already flipped, an editor
+            // that is null and nothing said.
+            var editors = new FakeEditorViewModelFactory
+            {
+                ExceptionToThrow = new InvalidOperationException("no editor for you")
+            };
+
+            using var shell = CreateShell(editors);
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess));
+
+            var box = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(MainWindowViewModel.OpenFailureTitle, box.Title);
+            Assert.StartsWith(MainWindowViewModel.OpenFailureMessagePrefix, box.Message);
+            Assert.Contains("no editor for you", box.Message);
+            Assert.Equal(MessageBoxIcon.Error, box.Icon);
+
+            Assert.Null(shell.Editor);
+            Assert.False(shell.IsEditorOpen);
+            Assert.Same(_dashboard, shell.CurrentView);
+            Assert.Null(_sessions.Active);
+            Assert.False(shell.IsDemoMode);
+            Assert.False(shell.IsBusy);
+            Assert.False(shell.HomeCommand.CanExecute(null));
+            Assert.Null(_notifications.LoadingCaption);
+            Assert.Equal(MainWindowViewModel.DemoModeIndicator, shell.StatusIndicatorText);
+
+            // The shell is usable afterwards: the next device opens normally.
+            editors.ExceptionToThrow = null;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(shell.Editor);
+        }
+
+        [Fact]
+        public void OpenDevice_WhenTheEditorCannotBeBuilt_SwallowsNothingAndThrowsNothing()
+        {
+            // The fire-and-forget entry point the dashboard's ConfigureRequested event needs.
+            var editors = new FakeEditorViewModelFactory
+            {
+                ExceptionToThrow = new InvalidOperationException("no editor for you")
+            };
+
+            using var shell = CreateShell(editors);
+
+            shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.Single(_notifications.MessageBoxes);
+            Assert.Null(shell.Editor);
+        }
+
+        [Fact]
+        public async Task OpenDeviceAsync_WithoutADevice_ReportsItInsteadOfThrowing()
+        {
+            using var shell = CreateShell(new FakeEditorViewModelFactory());
+
+            await shell.OpenDeviceAsync(null!);
+
+            Assert.Single(_notifications.MessageBoxes);
+            Assert.Null(shell.Editor);
+            Assert.Null(_sessions.Active);
+            Assert.False(shell.IsBusy);
+        }
+
+        [Fact]
+        public async Task OpenDeviceAsync_WhenTheOpenEditorRefusesToClose_OpensNothing()
+        {
+            var pedal = await OpenPedalWithUnsavedChangesAsync();
+            var session = _sessions.Active;
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Cancel };
+
+            await _shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.Same(pedal, _shell.Editor);
+            Assert.Same(session, _sessions.Active);
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
+
+            await _shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
         }
 
         [Fact]
@@ -147,7 +396,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var editor = Assert.IsType<KeyboardEditorViewModel>(_shell.Editor);
 
-            await WaitForLoadAsync(editor);
+            await WaitForLoadAsync(() => editor.IsLoading);
 
             Assert.Equal(1, _profiles.LoadCallCount);
             Assert.NotNull(editor.Layout);
@@ -442,14 +691,46 @@ namespace KinesisEdit.Tests.ViewModels
         /// Waits for the editor's fire-and-forget load to finish. The shell never awaits it, so
         /// there is no task to hand back to the test.
         /// </summary>
-        private static async Task WaitForLoadAsync(KeyboardEditorViewModel editor)
+        private static async Task WaitForLoadAsync(Func<bool> isLoading)
         {
-            for (var attempt = 0; attempt < 500 && editor.IsLoading; attempt++)
+            for (var attempt = 0; attempt < 500 && isLoading(); attempt++)
             {
                 await Task.Delay(10);
             }
 
-            Assert.False(editor.IsLoading);
+            Assert.False(isLoading());
+        }
+
+        /// <summary>
+        /// Opens the pedal editor and programs one input, so that the editor has something to
+        /// refuse a close over.
+        /// </summary>
+        private async Task<SavantElitePedalViewModel> OpenPedalWithUnsavedChangesAsync()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+
+            SetPedalFile(snapshot, "[lpedal]>");
+
+            await _shell.OpenDeviceAsync(snapshot);
+
+            var pedal = Assert.IsType<SavantElitePedalViewModel>(_shell.Editor);
+
+            await WaitForLoadAsync(() => pedal.IsLoading);
+            await pedal.BeginEditCommand.ExecuteAsync(pedal.Inputs[0]);
+
+            _capture.RaiseKeystroke(PedalTokenMap.Resolve("a")!);
+
+            pedal.DoneCommand.Execute(null);
+
+            Assert.True(pedal.HasUnsavedChanges);
+
+            return pedal;
+        }
+
+        /// <summary>A second shell over the same collaborators, with an editor factory of its own.</summary>
+        private MainWindowViewModel CreateShell(IEditorViewModelFactory editors)
+        {
+            return new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, _ejectNotifier, editors);
         }
 
         private void SetPedalFile(DeviceSnapshot snapshot, params string[] lines)

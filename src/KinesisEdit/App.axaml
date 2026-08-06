@@ -15,6 +15,7 @@
       <converters:EnumMatchConverter x:Key="EnumMatch" />
       <converters:MessageBoxIconToGlyphConverter x:Key="MessageBoxIconGlyph" />
       <converters:HexColorToBrushConverter x:Key="HexColorToBrush" />
+      <converters:MenuItemToggleTypeConverter x:Key="MenuItemToggle" />
       <converters:HexColorToColorConverter x:Key="HexColorToColor" />
 
       <!-- Kinesis blue, the brand accent of specs/10-apps-and-ui.md "Fonts, colors, theming". -->

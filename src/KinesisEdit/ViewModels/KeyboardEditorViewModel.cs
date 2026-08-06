@@ -1353,10 +1353,14 @@ namespace KinesisEdit.ViewModels
             Exception? error = null;
 
             IsBusy = true;
-            _notifications.ShowLoading(SavingCaption);
 
             try
             {
+                // Shown inside the try, and hidden after IsBusy is cleared below: both calls fan
+                // out to the overlay, and a failure in either must not leave the flag stuck — it
+                // disables Save and every editing command for as long as the editor is open.
+                _notifications.ShowLoading(SavingCaption);
+
                 result = await Task.Run(session.Save).ConfigureAwait(true);
             }
             catch (Exception exception)
@@ -1365,9 +1369,9 @@ namespace KinesisEdit.ViewModels
             }
             finally
             {
-                _notifications.HideLoading();
-
                 IsBusy = false;
+
+                _notifications.HideLoading();
             }
 
             if (error is not null)

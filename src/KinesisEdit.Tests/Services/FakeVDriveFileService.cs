@@ -19,6 +19,13 @@ namespace KinesisEdit.Tests.Services
 
         public List<KeyValuePair<string, string>> SettingsUpdates { get; } = [];
 
+        /// <summary>
+        /// When set, a write blocks until the test completes this source — the only way to observe
+        /// an editor while its save is genuinely in flight. Blocking is deliberate: the real service
+        /// is synchronous and the editors call it from <see cref="Task.Run(Action)"/>.
+        /// </summary>
+        public TaskCompletionSource? WriteGate { get; set; }
+
         private readonly Dictionary<string, IReadOnlyList<string>> _files = new(StringComparer.Ordinal);
         private readonly HashSet<string> _unreadablePaths = new(StringComparer.Ordinal);
 
@@ -57,6 +64,8 @@ namespace KinesisEdit.Tests.Services
 
         public void WriteAllLines(string path, IReadOnlyList<string> lines, bool allowCreate = false)
         {
+            WriteGate?.Task.Wait();
+
             if (!allowCreate && !_files.ContainsKey(path))
             {
                 throw new FileNotFoundException($"{path} not found", path);

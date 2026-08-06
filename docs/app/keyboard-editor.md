@@ -50,7 +50,7 @@ Core's model raises no change notification (plain mutable POCOs), so `KeyboardKe
 
 ## `KeyboardEditorViewModel`
 
-`DeviceEditorViewModel` — the shell's abstract editor base, shared with `EditorPlaceholderViewModel` and `SavantElitePedalViewModel` ([savant-elite.md](savant-elite.md)) — supplies `Device`, `DeviceName`, `IsDemoMode` and the virtual `LoadAsync()`; `MainWindowViewModel.Editor` is typed as that base so navigation is independent of which editor a device resolves to. This class overrides `LoadAsync`.
+`DeviceEditorViewModel` — the shell's abstract editor base, shared with `EditorPlaceholderViewModel` and `SavantElitePedalViewModel` ([savant-elite.md](savant-elite.md)) — supplies `Device`, `DeviceName`, `IsDemoMode` and the virtual `LoadAsync()`/`ConfirmCloseAsync()`; `MainWindowViewModel.Editor` is typed as that base so navigation is independent of which editor a device resolves to. This class overrides `LoadAsync` and keeps the default `ConfirmCloseAsync` (always true): the unsaved-remap question is not built here yet — the pedal editor is the only one that gates its close ([savant-elite.md](savant-elite.md)).
 
 State: `IsLoading` (true until the first load finishes), `IsBusy` (a save is in flight), `Layout`, `Layers`, `SelectedLayer`, `SelectedKey`, `ListeningKey`/`IsListening`, `ProfileCaption`, `ModifiedKeyCount`/`RemapCounterCaption`, `MacroCount`/`MacroCounterCaption`, `InvalidLineMessages`/`HasInvalidLines`, `BoardWidth`/`BoardHeight`, `Tabs`/`SelectedTab`, `MacroPanel`/`IsMacroPanelVisible`, `ActiveOverlay`/`HasActiveOverlay`.
 
@@ -215,7 +215,7 @@ Five commands open the inline panels; the panels themselves and every rule and m
 
 ### Save
 
-`SaveAsync` cancels any listening and stops any macro recording first, then: `IsBusy = true` → `ShowLoading("Saving...")` → `Task.Run(session.Save)` → `HideLoading()` + `IsBusy = false` in a `finally` → report. Everything else is Core's ([profiles.md](profiles.md)): validation gating, file writes, eject, post-save wording.
+`SaveAsync` cancels any listening and stops any macro recording first, then: `IsBusy = true` → `try { ShowLoading("Saving...") → Task.Run(session.Save) }` → `IsBusy = false` **then** `HideLoading()` in a `finally` → report. Everything else is Core's ([profiles.md](profiles.md)): validation gating, file writes, eject, post-save wording. The ordering is load-bearing: both indicator calls fan out to the overlay and can fail, so `ShowLoading` sits inside the `try` (its failure is reported as the save failure it is) and the flag is cleared before `HideLoading`, because a stranded `IsBusy` disables Save and every editing command for as long as the editor is open.
 
 - **Threw** → message box `Save Profile` / `SaveErrorMessagePrefix + message`.
 - **`Success == false`** → message box listing `SaveRejectedMessage` followed by one line per `ModelViolation.Message` (04 §5.3's gate, surfaced rather than silently dropped).

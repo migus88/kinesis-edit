@@ -7,11 +7,13 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The read-only Savant Elite2 view (specs/12-savant-elite.md §5): always seven rows with the
-    /// §5 assignment text, unparseable lines surfaced rather than dropped, and the three ways
-    /// there is nothing to read — demo mode, a v-Drive without a pedals.txt, and a failed read.
+    /// What the Savant Elite2 editor shows once its file is read (specs/12-savant-elite.md §5):
+    /// always seven rows with the §5 assignment text, unparseable lines surfaced rather than
+    /// dropped, and the three ways there is nothing to read — demo mode, a v-Drive without a
+    /// pedals.txt, and a failed read. The programming half lives in
+    /// <see cref="SavantElitePedalViewModelEditingTests"/>.
     /// </summary>
-    public sealed class SavantElitePedalViewModelTests
+    public sealed class SavantElitePedalViewModelTests : IDisposable
     {
         private const string PedalsFolder = "active";
 
@@ -25,7 +27,10 @@ namespace KinesisEdit.Tests.ViewModels
                 PedalsFileName);
 
         private readonly FakeVDriveFileService _fileService = new();
+        private readonly FakeKeystrokeCaptureService _capture = new();
+        private readonly FakeNotificationService _notifications = new();
         private readonly PedalFileService _pedalFiles;
+        private readonly List<SavantElitePedalViewModel> _editors = [];
 
         public SavantElitePedalViewModelTests()
         {
@@ -33,11 +38,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Inputs_ForAnyFile_AreAllSevenInFileOrder()
+        public async Task Inputs_ForAnyFile_AreAllSevenInFileOrder()
         {
             // 12 §1: "your device will only have some of these inputs" — the file says nothing
             // about which, so every input is always listed.
-            var viewModel = Load("[lpedal]>[lmouse]");
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]");
 
             Assert.Equal(PedalInputs.Count, viewModel.Inputs.Count);
             Assert.Equal(PedalInputs.All, viewModel.Inputs.Select(row => row.Id));
@@ -47,9 +52,39 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Inputs_ForASingleAction_ShowTheBracketedAssignment()
+        public async Task Inputs_BeforeTheFileIsRead_AreAlreadyTheSevenUnassignedRows()
         {
-            var row = Load("[lpedal]>[lmouse]").Inputs[0];
+            // Construction touches no file (the shell swaps the view in first and fires LoadAsync
+            // afterwards), so the rows have to exist before it: an editor that materialized empty
+            // would flash a blank card on every open.
+            var viewModel = Create(VDriveConnectionStatus.Connected);
+
+            Assert.True(viewModel.IsLoading);
+            Assert.Equal(PedalLoadState.None, viewModel.LoadState);
+            Assert.Equal(PedalInputs.Count, viewModel.Inputs.Count);
+            Assert.All(viewModel.Inputs, row => Assert.False(row.IsAssigned));
+            Assert.Equal(0, _fileService.ReadCount);
+
+            await viewModel.LoadAsync();
+
+            Assert.False(viewModel.IsLoading);
+        }
+
+        [Fact]
+        public async Task LoadAsync_CalledTwice_ReadsTheFileOnlyOnce()
+        {
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]");
+            var reads = _fileService.ReadCount;
+
+            await viewModel.LoadAsync();
+
+            Assert.Equal(reads, _fileService.ReadCount);
+        }
+
+        [Fact]
+        public async Task Inputs_ForASingleAction_ShowTheBracketedAssignment()
+        {
+            var row = (await LoadAsync("[lpedal]>[lmouse]")).Inputs[0];
 
             Assert.True(row.IsAssigned);
             Assert.Equal(PedalInputMode.Single, row.Mode);
@@ -58,9 +93,9 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Inputs_ForAMacro_ShowTheDescribedMacroText()
+        public async Task Inputs_ForAMacro_ShowTheDescribedMacroText()
         {
-            var viewModel = Load(
+            var viewModel = await LoadAsync(
                 "{jack4}>{-shift}{-t}{+t}{+shift}{-h}{+h}{-a}{+a}{-n}{+n}{-k}{+k}{-space}{+space}{-y}{+y}{-o}{+o}{-u}{+u}{-.}{+.}",
                 "{mpedal}>{-lmouse}{+lmouse}{125}{-lmouse}{+lmouse}");
 
@@ -74,9 +109,9 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Inputs_ForAnInputTheFileDoesNotProgram_AreFlaggedUnassigned()
+        public async Task Inputs_ForAnInputTheFileDoesNotProgram_AreFlaggedUnassigned()
         {
-            var row = Load("[lpedal]>[lmouse]").Inputs[1];
+            var row = (await LoadAsync("[lpedal]>[lmouse]")).Inputs[1];
 
             Assert.False(row.IsAssigned);
             Assert.Equal(PedalInputRowViewModel.UnassignedCaption, row.AssignmentText);
@@ -84,11 +119,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Inputs_ForAnEmptyMacroLine_AreFlaggedUnassigned()
+        public async Task Inputs_ForAnEmptyMacroLine_AreFlaggedUnassigned()
         {
             // {jack1}> parses as macro mode with nothing in it; a row reading "Macro" with no
             // text would be a worse answer than one reading unassigned.
-            var row = Load("{jack1}>").Inputs[3];
+            var row = (await LoadAsync("{jack1}>")).Inputs[3];
 
             Assert.False(row.IsAssigned);
             Assert.Equal(PedalInputRowViewModel.UnassignedCaption, row.AssignmentText);
@@ -96,9 +131,9 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void InvalidLines_ForALineThatCannotBeParsed_AreSurfacedWithTheirNumberAndText()
+        public async Task InvalidLines_ForALineThatCannotBeParsed_AreSurfacedWithTheirNumberAndText()
         {
-            var viewModel = Load("[lpedal]>[lmouse]", "[jack1]>[garbage]");
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]", "[jack1]>[garbage]");
 
             Assert.True(viewModel.HasInvalidLines);
 
@@ -115,30 +150,49 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void InvalidLines_ForAFileThatParsesCompletely_AreEmpty()
+        public async Task InvalidLines_AreShownOnlyWhenTheFileHasAny()
         {
-            var viewModel = Load("[lpedal]>[lmouse]");
+            // 12 §4.6: a save regenerates every pedal line from the model, so the text of a broken
+            // line is what a save replaces — unlike a layout file, there is nothing to opt into
+            // keeping. The view shows that warning off HasInvalidLines, together with the lines
+            // themselves, so a clean file carries neither.
+            var broken = await LoadAsync("[jack1]>[garbage]");
+
+            Assert.True(broken.HasInvalidLines);
+            Assert.Equal("[jack1]>[garbage]", Assert.Single(broken.InvalidLines).Text);
+
+            var clean = await LoadAsync("[jack1]>[lmouse]");
+
+            Assert.False(clean.HasInvalidLines);
+            Assert.Empty(clean.InvalidLines);
+        }
+
+        [Fact]
+        public async Task InvalidLines_ForAFileThatParsesCompletely_AreEmpty()
+        {
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]");
 
             Assert.False(viewModel.HasInvalidLines);
             Assert.Empty(viewModel.InvalidLines);
         }
 
         [Fact]
-        public void LoadState_ForAProgrammedFile_IsLoadedWithNoNoteAndThePedalFilePath()
+        public async Task LoadState_ForAProgrammedFile_IsLoadedWithNoNoteAndThePedalFilePath()
         {
-            var viewModel = Load("[lpedal]>[lmouse]");
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]");
 
             Assert.Equal(PedalLoadState.Loaded, viewModel.LoadState);
             Assert.False(viewModel.HasStatusMessage);
             Assert.Equal(string.Empty, viewModel.StatusMessage);
             Assert.True(viewModel.HasFilePath);
             Assert.Equal(PedalFilePath, viewModel.FilePath);
+            Assert.False(viewModel.HasSaveNote);
         }
 
         [Fact]
-        public void LoadState_ForAFileThatProgramsNothing_ExplainsItIsEmpty()
+        public async Task LoadState_ForAFileThatProgramsNothing_ExplainsItIsEmpty()
         {
-            var viewModel = Load("[lpedal]>", "[mpedal]>", "[rpedal]>");
+            var viewModel = await LoadAsync("[lpedal]>", "[mpedal]>", "[rpedal]>");
 
             Assert.Equal(PedalLoadState.Loaded, viewModel.LoadState);
             Assert.Equal(SavantElitePedalViewModel.EmptyFileMessage, viewModel.StatusMessage);
@@ -146,26 +200,27 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void LoadState_WithoutAPedalFileOnTheDrive_ExplainsItRatherThanThrowing()
+        public async Task LoadState_WithoutAPedalFileOnTheDrive_ExplainsItRatherThanThrowing()
         {
-            // A pedal that has never been programmed simply has no file; 12 §5 step 8 only turns
-            // that into a prompt when saving, which this read-only view never does.
-            var viewModel = Create(VDriveConnectionStatus.Connected);
+            // A pedal that has never been programmed simply has no file; 12 §5 step 8 turns that
+            // into a save-time prompt, which here is the note next to Save.
+            var viewModel = await CreateLoadedAsync(VDriveConnectionStatus.Connected);
 
             Assert.Equal(PedalLoadState.FileMissing, viewModel.LoadState);
             Assert.Equal(SavantElitePedalViewModel.MissingFileMessage, viewModel.StatusMessage);
+            Assert.Equal(SavantElitePedalViewModel.MissingFileSaveNote, viewModel.SaveNote);
             Assert.Equal(PedalInputs.Count, viewModel.Inputs.Count);
             Assert.All(viewModel.Inputs, row => Assert.False(row.IsAssigned));
             Assert.Empty(viewModel.InvalidLines);
         }
 
         [Fact]
-        public void LoadState_WhenTheFileCannotBeRead_ReportsAReadableError()
+        public async Task LoadState_WhenTheFileCannotBeRead_ReportsAReadableError()
         {
             _fileService.SetFile(PedalFilePath, "[lpedal]>[lmouse]");
             _fileService.SetUnreadable(PedalFilePath);
 
-            var viewModel = Create(VDriveConnectionStatus.Connected);
+            var viewModel = await CreateLoadedAsync(VDriveConnectionStatus.Connected);
 
             Assert.Equal(PedalLoadState.LoadFailed, viewModel.LoadState);
             Assert.StartsWith(SavantElitePedalViewModel.LoadFailureMessagePrefix, viewModel.StatusMessage);
@@ -177,17 +232,18 @@ namespace KinesisEdit.Tests.ViewModels
         [Theory]
         [InlineData(VDriveConnectionStatus.NotDetected)]
         [InlineData(VDriveConnectionStatus.CannotAccess)]
-        public void Load_InDemoMode_TouchesNoFilesAndShowsTheDemoNote(VDriveConnectionStatus status)
+        public async Task Load_InDemoMode_TouchesNoFilesAndShowsTheDemoNote(VDriveConnectionStatus status)
         {
             // Demo mode never touches the drive (03 §3.5) — not even the present-but-unwritable
             // one a 'Cannot Access' card opens.
             _fileService.SetFile(PedalFilePath, "[lpedal]>[lmouse]");
 
-            var viewModel = Create(status);
+            var viewModel = await CreateLoadedAsync(status);
 
             Assert.Equal(0, _fileService.ReadCount);
             Assert.Equal(PedalLoadState.DemoMode, viewModel.LoadState);
             Assert.Equal(SavantElitePedalViewModel.DemoModeMessage, viewModel.StatusMessage);
+            Assert.Equal(SavantElitePedalViewModel.DemoModeSaveNote, viewModel.SaveNote);
             Assert.True(viewModel.IsDemoMode);
             Assert.False(viewModel.HasFilePath);
             Assert.Equal(PedalInputs.Count, viewModel.Inputs.Count);
@@ -195,26 +251,61 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void DeviceName_ForTheOpenPedal_ComesFromTheSnapshot()
+        public async Task DeviceName_ForTheOpenPedal_ComesFromTheSnapshot()
         {
-            var viewModel = Load("[lpedal]>[lmouse]");
+            var viewModel = await LoadAsync("[lpedal]>[lmouse]");
 
             Assert.Equal(DeviceCatalog.GetById(DeviceId.SavantElite2).DisplayName, viewModel.DeviceName);
             Assert.False(viewModel.IsDemoMode);
         }
 
-        private SavantElitePedalViewModel Load(params string[] lines)
+        [Fact]
+        public void Constructor_WithoutACollaborator_Throws()
+        {
+            var device = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
+
+            Assert.Throws<ArgumentNullException>(() => new SavantElitePedalViewModel(device, null!, _capture, _notifications));
+            Assert.Throws<ArgumentNullException>(() => new SavantElitePedalViewModel(device, _pedalFiles, null!, _notifications));
+            Assert.Throws<ArgumentNullException>(() => new SavantElitePedalViewModel(device, _pedalFiles, _capture, null!));
+        }
+
+        public void Dispose()
+        {
+            foreach (var editor in _editors)
+            {
+                editor.Dispose();
+            }
+
+            _capture.Dispose();
+        }
+
+        private async Task<SavantElitePedalViewModel> LoadAsync(params string[] lines)
         {
             _fileService.SetFile(PedalFilePath, lines);
 
-            return Create(VDriveConnectionStatus.Connected);
+            return await CreateLoadedAsync(VDriveConnectionStatus.Connected);
+        }
+
+        private async Task<SavantElitePedalViewModel> CreateLoadedAsync(VDriveConnectionStatus status)
+        {
+            var viewModel = Create(status);
+
+            await viewModel.LoadAsync();
+
+            return viewModel;
         }
 
         private SavantElitePedalViewModel Create(VDriveConnectionStatus status)
         {
-            return new SavantElitePedalViewModel(
+            var viewModel = new SavantElitePedalViewModel(
                 TestDevices.CreateSnapshot(DeviceId.SavantElite2, status),
-                _pedalFiles);
+                _pedalFiles,
+                _capture,
+                _notifications);
+
+            _editors.Add(viewModel);
+
+            return viewModel;
         }
     }
 }

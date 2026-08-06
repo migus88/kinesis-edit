@@ -21,6 +21,12 @@ namespace KinesisEdit.ViewModels
         /// <summary>Indicator text while editing without a connected, writable drive (03 §3.5).</summary>
         public const string DemoModeIndicator = "Demo Mode";
 
+        /// <summary>Title of the box raised when a device could not be opened at all.</summary>
+        public const string OpenFailureTitle = "Open Device";
+
+        /// <summary>Message prefix of that box; the exception's message follows it.</summary>
+        public const string OpenFailureMessagePrefix = "The device could not be opened: ";
+
         /// <summary>The dashboard; also the view shown whenever no editor is open.</summary>
         public DashboardViewModel Dashboard { get; }
 
@@ -151,61 +157,193 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Opens <paramref name="device"/> in the editor, in the order specs/10-apps-and-ui.md
-        /// prescribes for Configure: set demo mode from the device's connected/writable state,
-        /// record the active device, show the loading splash, swap the view in, initialize. Which
-        /// editor is built is <see cref="IEditorViewModelFactory"/>'s decision, so the shell stays
-        /// device-agnostic however many editors exist.
+        /// Opens <paramref name="device"/> in the editor and forgets the task — the form the
+        /// dashboard's <c>ConfigureRequested</c> event needs, since it hands out no place to await
+        /// one. Everything the navigation does is inside <see cref="OpenDeviceAsync"/>, which is
+        /// total.
         /// </summary>
         public void OpenDevice(DeviceSnapshot device)
         {
-            ArgumentNullException.ThrowIfNull(device);
+            _ = OpenDeviceAsync(device);
+        }
 
+        /// <summary>
+        /// Opens <paramref name="device"/> in the editor, in the order specs/10-apps-and-ui.md
+        /// prescribes for Configure: ask the open editor whether it may be closed, set demo mode
+        /// from the device's connected/writable state, record the active device, show the loading
+        /// splash, swap the view in, initialize. Which editor is built is
+        /// <see cref="IEditorViewModelFactory"/>'s decision, so the shell stays device-agnostic
+        /// however many editors exist.
+        /// <para>
+        /// <b>Total.</b> <see cref="OpenDevice"/> forgets the task it returns, so a failure anywhere
+        /// in the navigation — the session manager, an editor's constructor — would otherwise become
+        /// an unobserved exception leaving the shell on the dashboard with a session open, demo mode
+        /// already flipped and nothing said. Instead the half-done navigation is undone and the
+        /// failure is shown.
+        /// </para>
+        /// </summary>
+        public async Task OpenDeviceAsync(DeviceSnapshot device)
+        {
             if (IsBusy)
             {
                 return;
             }
 
-            IsDemoMode = device.IsDemoMode;
+            DeviceEditorViewModel? editor = null;
 
-            _sessions.Begin(device);
+            // The confirmation may put a modal question on screen, so the navigation is busy from
+            // here: without it a second Configure could open a session underneath the answer.
+            IsBusy = true;
 
-            _notifications.ShowLoading(LoadingCaptions.ForDevice(device.DisplayName));
-
-            DeviceEditorViewModel editor;
-
-            // CreateEditor reads from the v-Drive for the pedal, so the splash is hidden in a
-            // finally: an unexpected I/O failure must not leave the shell wedged behind a loading
-            // overlay with no editor and a disabled Home button.
             try
             {
-                CloseEditor();
+                // Deliberately outside the guarded region below: a confirmation that fails must
+                // abort the navigation, not abandon the editor it was asking about — dropping that
+                // editor would discard the very unsaved changes the question is there to protect.
+                if (!await ConfirmOpenAsync(device).ConfigureAwait(true))
+                {
+                    return;
+                }
 
-                editor = CreateEditor(device);
+                try
+                {
+                    IsDemoMode = device.IsDemoMode;
 
-                Editor = editor;
-                CurrentView = editor;
+                    _sessions.Begin(device);
 
-                // The detection loop keeps running: specs/10-apps-and-ui.md requires the open editor
-                // to "re-verify the device's version file every tick" to drive the v-Drive OK /
-                // v-Drive Error indicator, and here one loop serves both the dashboard and the editor.
-                UpdateStatusIndicator();
+                    // Creating an editor may still fail, so the splash is hidden in a finally: an
+                    // unexpected failure must not leave the shell wedged behind a loading overlay
+                    // with no editor and a disabled Home button.
+                    try
+                    {
+                        _notifications.ShowLoading(LoadingCaptions.ForDevice(device.DisplayName));
+
+                        CloseEditor();
+
+                        editor = CreateEditor(device);
+
+                        Editor = editor;
+                        CurrentView = editor;
+
+                        // The detection loop keeps running: specs/10-apps-and-ui.md requires the
+                        // open editor to "re-verify the device's version file every tick" to drive
+                        // the v-Drive OK / v-Drive Error indicator, and here one loop serves both
+                        // the dashboard and the editor.
+                        UpdateStatusIndicator();
+                    }
+                    finally
+                    {
+                        _notifications.HideLoading();
+                    }
+                }
+                catch (Exception exception)
+                {
+                    editor = null;
+
+                    AbandonOpenDevice();
+
+                    await ReportOpenFailureAsync(exception).ConfigureAwait(true);
+                }
             }
             finally
             {
-                _notifications.HideLoading();
+                IsBusy = false;
             }
 
-            // Whatever the editor still has to do — the keyboard editor reads its profile — happens
-            // after the view is on screen, against the editor's own loading state: the shell's
-            // splash covers the swap, not the drive read. LoadAsync never throws, which is what
-            // makes forgetting the task safe.
-            _ = editor.LoadAsync();
+            // What the editor still has to do — every editor reads its files here — happens after
+            // the view is on screen, against the editor's own loading state: the shell's splash
+            // covers the swap, not the drive read. LoadAsync never throws, which is what makes
+            // forgetting the task safe.
+            if (editor is not null)
+            {
+                _ = editor.LoadAsync();
+            }
         }
 
         private DeviceEditorViewModel CreateEditor(DeviceSnapshot device)
         {
             return _editors.Create(device);
+        }
+
+        /// <summary>
+        /// Whether the navigation may go ahead: there is a device, and the open editor agreed to be
+        /// closed. A confirmation that throws is reported and answered with "no", which leaves the
+        /// open editor on screen with everything it was holding — the alternative, treating it as a
+        /// failed open, would discard its unsaved changes without asking and skip the eject.
+        /// </summary>
+        private async Task<bool> ConfirmOpenAsync(DeviceSnapshot device)
+        {
+            try
+            {
+                ArgumentNullException.ThrowIfNull(device);
+
+                return await ConfirmEditorCloseAsync().ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                await ReportOpenFailureAsync(exception).ConfigureAwait(true);
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Puts the shell back where a failed open found it: no session, no editor, the dashboard on
+        /// screen and the indicator recomputed. Every step is idempotent, so it is safe whether the
+        /// navigation failed before or after the session was recorded.
+        /// <para>
+        /// Every step is also guarded on its own. This runs inside the <c>catch</c> of a method whose
+        /// contract is that it never throws, with the error box still to come — and the steps can
+        /// throw for real: <see cref="CloseEditor"/> disposes the editor, which for the pedal editor
+        /// stops the app-wide keystroke capture service. One failing step must neither swallow the
+        /// report nor stop the rest from putting the shell back together.
+        /// </para>
+        /// </summary>
+        private void AbandonOpenDevice()
+        {
+            RunGuarded(() => _sessions.End());
+            RunGuarded(CloseEditor);
+            RunGuarded(() =>
+            {
+                CurrentView = Dashboard;
+                IsDemoMode = false;
+            });
+            RunGuarded(UpdateStatusIndicator);
+        }
+
+        /// <summary>Runs one undo step, swallowing whatever it throws (see <see cref="AbandonOpenDevice"/>).</summary>
+        private static void RunGuarded(Action step)
+        {
+            try
+            {
+                step();
+            }
+            catch (Exception)
+            {
+                // Deliberately ignored: the failure being reported is the one that matters.
+            }
+        }
+
+        /// <summary>
+        /// Tells the user why the device did not open. Swallows a box that cannot be shown — the
+        /// window may already be gone, and a failure to report a failure must not escape a method
+        /// whose whole point is that it never throws.
+        /// </summary>
+        private async Task ReportOpenFailureAsync(Exception exception)
+        {
+            try
+            {
+                await _notifications.ShowMessageBoxAsync(new MessageBoxRequest
+                {
+                    Title = OpenFailureTitle,
+                    Message = OpenFailureMessagePrefix + exception.Message,
+                    Icon = MessageBoxIcon.Error
+                }).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                // Nothing left to try: the failure is already on its way to being invisible.
+            }
         }
 
         private async Task GoHomeAsync()
@@ -219,6 +357,11 @@ namespace KinesisEdit.ViewModels
 
             try
             {
+                if (!await ConfirmEditorCloseAsync().ConfigureAwait(true))
+                {
+                    return;
+                }
+
                 var session = _sessions.Active;
 
                 _sessions.End();
@@ -243,18 +386,34 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Asks the open editor whether it may be closed (unsaved work, an edit in progress). The
+        /// shell knows nothing about what is at stake — only whether the navigation may go ahead.
+        /// </summary>
+        private Task<bool> ConfirmEditorCloseAsync()
+        {
+            return Editor?.ConfirmCloseAsync() ?? Task.FromResult(true);
+        }
+
+        /// <summary>
         /// Drops the open editor, disposing it first. An editor may hold the app-wide keystroke
         /// capture service, which would otherwise keep swallowing keystrokes from the dashboard
-        /// behind it (docs/app/keystroke-capture.md).
+        /// behind it (docs/app/keystroke-capture.md). The reference is dropped even when the
+        /// disposal fails: an editor that could not be torn down cleanly is still gone from the
+        /// screen, and keeping it here would leave Home pointing at it.
         /// </summary>
         private void CloseEditor()
         {
-            if (Editor is IDisposable disposable)
+            try
             {
-                disposable.Dispose();
+                if (Editor is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
             }
-
-            Editor = null;
+            finally
+            {
+                Editor = null;
+            }
         }
 
         private void UpdateStatusIndicator()

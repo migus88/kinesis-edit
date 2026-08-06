@@ -4,8 +4,8 @@ using KinesisEdit.Core.Keys;
 namespace KinesisEdit.Tests.Services
 {
     /// <summary>
-    /// Hand-rolled <see cref="IKeystrokeCaptureService"/>: counts start/stop/dispose calls and
-    /// lets a test push a keystroke in as if the user had pressed a key.
+    /// Hand-rolled <see cref="IKeystrokeCaptureService"/>: counts start/stop/suspend/resume/dispose
+    /// calls and lets a test push a keystroke in as if the user had pressed a key.
     /// </summary>
     internal sealed class FakeKeystrokeCaptureService : IKeystrokeCaptureService
     {
@@ -19,14 +19,14 @@ namespace KinesisEdit.Tests.Services
         /// <summary>How often <see cref="Stop"/> was called.</summary>
         public int StopCount { get; private set; }
 
-        /// <summary>How often <see cref="Dispose"/> was called.</summary>
-        public int DisposeCount { get; private set; }
-
         /// <summary>How often <see cref="Suspend"/> was called.</summary>
         public int SuspendCount { get; private set; }
 
         /// <summary>How often <see cref="Resume"/> was called.</summary>
         public int ResumeCount { get; private set; }
+
+        /// <summary>How often <see cref="Dispose"/> was called.</summary>
+        public int DisposeCount { get; private set; }
 
         /// <summary>Whether anything is still listening to <see cref="KeystrokeCaptured"/>.</summary>
         public bool HasSubscribers => KeystrokeCaptured is not null;
@@ -58,24 +58,20 @@ namespace KinesisEdit.Tests.Services
             IsSuspended = false;
         }
 
-        /// <summary>Raises a keystroke for <paramref name="key"/>, as the real service would.</summary>
-        public void RaiseKeystroke(KeyDefinition key)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-
-            KeystrokeCaptured?.Invoke(new CapturedKeystroke
-            {
-                Key = key,
-                PhysicalKey = PhysicalKeyCode.None
-            });
-        }
-
         /// <summary>
         /// Raises a keystroke for <paramref name="key"/> struck while
-        /// <paramref name="heldModifiers"/> were down — what macro recording folds into the
-        /// step's modifier set (specs/05-key-model.md §5.1).
+        /// <paramref name="heldModifiers"/> were down — what macro recording folds into the step's
+        /// modifier set, and what the pedal editor appends to a macro entry. <see
+        /// cref="CapturedKeystroke"/> drops the held set itself when the key is a modifier
+        /// (specs/05-key-model.md §5.1).
         /// </summary>
         public void RaiseKeystroke(KeyDefinition key, params KeyDefinition[] heldModifiers)
+        {
+            RaiseKeystroke(key, PhysicalKeyCode.None, heldModifiers);
+        }
+
+        /// <summary>Raises a keystroke that also names the physical position it came from.</summary>
+        public void RaiseKeystroke(KeyDefinition key, PhysicalKeyCode physicalKey, params KeyDefinition[] heldModifiers)
         {
             ArgumentNullException.ThrowIfNull(key);
             ArgumentNullException.ThrowIfNull(heldModifiers);
@@ -83,7 +79,7 @@ namespace KinesisEdit.Tests.Services
             KeystrokeCaptured?.Invoke(new CapturedKeystroke
             {
                 Key = key,
-                PhysicalKey = PhysicalKeyCode.None,
+                PhysicalKey = physicalKey,
                 HeldModifiers = heldModifiers
             });
         }
