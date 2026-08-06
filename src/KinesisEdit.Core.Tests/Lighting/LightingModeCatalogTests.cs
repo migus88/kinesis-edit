@@ -73,6 +73,37 @@ namespace KinesisEdit.Core.Tests.Lighting
         }
 
         [Theory]
+        [InlineData(LightingMode.Disabled, "Disable")]
+        [InlineData(LightingMode.Freestyle, "Freestyle")]
+        [InlineData(LightingMode.Monochrome, "Monochrome")]
+        [InlineData(LightingMode.Breathe, "Breathe")]
+        [InlineData(LightingMode.Spectrum, "Spectrum")]
+        [InlineData(LightingMode.Wave, "Wave")]
+        [InlineData(LightingMode.FrozenWave, "Frozen Wave")]
+        [InlineData(LightingMode.Reactive, "Reactive")]
+        [InlineData(LightingMode.Ripple, "Ripple")]
+        [InlineData(LightingMode.Fireball, "Fireball")]
+        [InlineData(LightingMode.Starlight, "Starlight")]
+        [InlineData(LightingMode.Rebound, "Rebound")]
+        [InlineData(LightingMode.Loop, "Loop")]
+        [InlineData(LightingMode.Pulse, "Pulse")]
+        [InlineData(LightingMode.Rain, "Rain")]
+        [InlineData(LightingMode.PitchBlack, "Pitch Black")]
+        public void Find_PerMode_CarriesTheSpec3UiCaption(LightingMode mode, string expectedDisplayName)
+        {
+            Assert.Equal(expectedDisplayName, LightingModeCatalog.Find(mode).DisplayName);
+        }
+
+        [Fact]
+        public void All_Always_HasADistinctNonEmptyDisplayNamePerMode()
+        {
+            Assert.All(LightingModeCatalog.All, definition => Assert.False(string.IsNullOrWhiteSpace(definition.DisplayName)));
+            Assert.Equal(
+                LightingModeCatalog.All.Count,
+                LightingModeCatalog.All.Select(definition => definition.DisplayName).Distinct().Count());
+        }
+
+        [Theory]
         [InlineData("mono", LightingMode.Monochrome)]
         [InlineData("MONO", LightingMode.Monochrome)]
         [InlineData("star", LightingMode.Starlight)]

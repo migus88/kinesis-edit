@@ -9,7 +9,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void Begin_WithConnectedDevice_UsesTheVDriveBackedStore()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
 
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb));
 
@@ -21,7 +21,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void Begin_WithoutAnyDrive_UsesTheNullStore()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
 
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.Advantage2, VDriveConnectionStatus.NotDetected));
 
@@ -39,7 +39,7 @@ namespace KinesisEdit.Tests.Services
             fileService.SetFile(
                 VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!),
                 NotificationKeys.Save + "=on");
-            var manager = new DeviceSessionManager(fileService);
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
 
             var session = manager.Begin(snapshot);
             session.SuppressionStore.SetHidden(NotificationKeys.Save, false);
@@ -53,7 +53,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void UpdateActive_WithANewerSnapshot_MovesTheSessionWithoutChangingDemoMode()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.Tko));
             var store = session.SuppressionStore;
             var lost = TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.NotDetected);
@@ -69,7 +69,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void UpdateActive_WhenAFreestyleSessionReresolves_StillMatchesTheScannedSlot()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.FreestylePro));
             var reresolved = TestDevices.CreateSnapshot(DeviceId.FreestylePro) with
             {
@@ -84,7 +84,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void UpdateActive_WithoutTheSessionsDevice_LeavesItAlone()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
             var opened = TestDevices.CreateSnapshot(DeviceId.Tko);
             var session = manager.Begin(opened);
 
@@ -96,7 +96,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void UpdateActive_WithoutAnActiveSession_DoesNothing()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
 
             manager.UpdateActive([TestDevices.CreateSnapshot(DeviceId.Tko)]);
 
@@ -106,7 +106,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void End_WithActiveSession_ClearsItAndNotifies()
         {
-            var manager = new DeviceSessionManager(new FakeVDriveFileService());
+            var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
             var sessions = new List<DeviceSession?>();
             manager.ActiveChanged += session => sessions.Add(session);
 

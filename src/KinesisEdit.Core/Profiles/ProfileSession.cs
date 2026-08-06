@@ -20,7 +20,6 @@ namespace KinesisEdit.Core.Profiles
     public sealed class ProfileSession
     {
         private const string LayoutFileNamePrefix = "layout";
-        private const string LedFileNamePrefix = "led";
         private const string FileSuffix = ".txt";
 
         private static readonly IVDriveFileService _fileService = new VDriveFileService();
@@ -234,15 +233,10 @@ namespace KinesisEdit.Core.Profiles
 
         private void SaveStartupSettings(int targetProfileNumber)
         {
-            var updatedSettings = _settings with { StartupProfileNumber = targetProfileNumber };
-
-            if (_location.Device.Settings.LedMode == LedModeKind.LedFileName)
-            {
-                updatedSettings = updatedSettings with
-                {
-                    LedMode = LedFileNamePrefix + targetProfileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix
-                };
-            }
+            var updatedSettings = StartupProfileSettings.ApplyStartupProfile(
+                _location.Device.Settings,
+                _settings,
+                targetProfileNumber);
 
             _settingsService.SaveKeyboardSettings(_location, VersionFileInfo.Empty, updatedSettings);
         }
@@ -280,9 +274,10 @@ namespace KinesisEdit.Core.Profiles
 
         private static string GetLightingFilePath(VDriveLocation location, int profileNumber)
         {
-            return Path.Combine(
-                location.LightingFolderPath!,
-                LedFileNamePrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix);
+            // The led<N>.txt naming is StartupProfileSettings' — the same helper that writes the
+            // paired led_mode value (spec 07 §1.2), so the file this session reads and the file
+            // name the settings point at cannot drift apart.
+            return Path.Combine(location.LightingFolderPath!, StartupProfileSettings.GetLedFileName(profileNumber));
         }
     }
 }

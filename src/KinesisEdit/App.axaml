@@ -15,6 +15,7 @@
       <converters:EnumMatchConverter x:Key="EnumMatch" />
       <converters:MessageBoxIconToGlyphConverter x:Key="MessageBoxIconGlyph" />
       <converters:HexColorToBrushConverter x:Key="HexColorToBrush" />
+      <converters:HexColorToColorConverter x:Key="HexColorToColor" />
 
       <!-- Kinesis blue, the brand accent of specs/10-apps-and-ui.md "Fonts, colors, theming". -->
       <Color x:Key="KinesisBlueColor">#0072CE</Color>
@@ -52,6 +53,10 @@
           <SolidColorBrush x:Key="EditorTabSelectedBrush" Color="#0072CE" />
           <SolidColorBrush x:Key="EditorTabSelectedBorderBrush" Color="#0060AD" />
           <SolidColorBrush x:Key="EditorTabSelectedTextBrush" Color="#FFFFFF" />
+
+          <!-- Lighting tab (issue #16): the outline every colour square gets, so a white or a
+               black swatch is still a visible square on either background. -->
+          <SolidColorBrush x:Key="ColorSwatchBorderBrush" Color="#9AA1A9" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="StatusOkBrush" Color="#5CD37F" />
@@ -81,6 +86,8 @@
           <SolidColorBrush x:Key="EditorTabSelectedBrush" Color="#1D5B92" />
           <SolidColorBrush x:Key="EditorTabSelectedBorderBrush" Color="#4FA9EC" />
           <SolidColorBrush x:Key="EditorTabSelectedTextBrush" Color="#FFFFFF" />
+
+          <SolidColorBrush x:Key="ColorSwatchBorderBrush" Color="#6B727B" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
@@ -88,6 +95,10 @@
 
   <Application.Styles>
     <FluentTheme />
+
+    <!-- The ColorView the lighting picker wraps ships its control theme in its own assembly, so
+         FluentTheme above does not carry it; without this include the picker renders untemplated. -->
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
     <!-- Status colors: 'Connected' / 'v-Drive OK' green, failures red, demo mode amber
          (specs/10-apps-and-ui.md, "Detection loop"). Both palettes are theme-scoped, so the
@@ -252,6 +263,67 @@
     </Style>
     <Style Selector="Button.editorTab.selected /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBrush}" />
+    </Style>
+
+    <!-- ===== Lighting tab (issue #16) =========================================================
+         The mode menu: one full-width row per mode, the selected one filled like a layer pill.
+         Declared, as everywhere here, in increasing precedence. -->
+    <Style Selector="Button.modeOption">
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.modeOption /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="Button.modeOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource KeyCapHoverBrush}" />
+    </Style>
+    <Style Selector="Button.modeOption.selected">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.modeOption.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource EditorTabSelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource EditorTabSelectedTextBrush}" />
+    </Style>
+
+    <!-- One zone button (specs/07-lighting.md §4). -->
+    <Style Selector="Button.zoneButton">
+      <Setter Property="Padding" Value="12,5" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- A colour square: the premixed and custom swatches of the picker, and the fill inside the
+         effect/base colour buttons. The outline is what keeps white and black squares visible. -->
+    <Style Selector="Button.colorSwatch">
+      <Setter Property="Padding" Value="2" />
+      <Setter Property="Margin" Value="0,0,4,4" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.colorSwatchFill">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ColorSwatchBorderBrush}" />
+    </Style>
+
+    <!-- The effect / base colour buttons: which one the picker is editing reads as a filled pill. -->
+    <Style Selector="Button.colorSlot">
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.colorSlot.selected">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.colorSlot.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
     </Style>
   </Application.Styles>
 </Application>

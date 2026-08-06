@@ -23,6 +23,7 @@ namespace KinesisEdit.Services
     public sealed class EditorViewModelFactory : IEditorViewModelFactory
     {
         private readonly IProfileSessionFactory _profileSessions;
+        private readonly ISettingsService _settings;
         private readonly Func<IKeystrokeCaptureService> _captureServiceResolver;
         private readonly INotificationService _notifications;
         private readonly PedalFileService _pedalFiles;
@@ -35,11 +36,13 @@ namespace KinesisEdit.Services
         /// </summary>
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
+            ISettingsService settings,
             Func<IKeystrokeCaptureService> captureServiceResolver,
             INotificationService notifications,
             PedalFileService pedalFiles)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _captureServiceResolver = captureServiceResolver ?? throw new ArgumentNullException(nameof(captureServiceResolver));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _pedalFiles = pedalFiles ?? throw new ArgumentNullException(nameof(pedalFiles));
@@ -63,7 +66,7 @@ namespace KinesisEdit.Services
                 return new EditorPlaceholderViewModel(device);
             }
 
-            return new KeyboardEditorViewModel(device, _profileSessions, _captureServiceResolver(), _notifications);
+            return new KeyboardEditorViewModel(device, _profileSessions, _settings, _captureServiceResolver(), _notifications);
         }
 
         private static bool CanRender(DeviceSnapshot device)

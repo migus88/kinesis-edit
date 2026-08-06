@@ -122,6 +122,66 @@ namespace KinesisEdit.Core.Tests.Lighting
         }
 
         [Fact]
+        public void GetKeyBacklightDirections_ForFireball_IsEmptyOnRgbAndLeftRightOnTko()
+        {
+            // §3: "Fireball … yes (fw-gated; no direction UI on RGB) | yes (direction UI)".
+            Assert.Empty(LightingAvailability.GetKeyBacklightDirections(
+                DeviceId.FreestyleEdgeRgb,
+                LightingMode.Fireball));
+            Assert.Equal(
+                new[] { LightingDirection.Left, LightingDirection.Right },
+                LightingAvailability.GetKeyBacklightDirections(DeviceId.Tko, LightingMode.Fireball));
+
+            // The catalog stays the parse-side data source: RGB files may carry [dirright].
+            Assert.Equal(
+                new[] { LightingDirection.Left, LightingDirection.Right },
+                LightingModeCatalog.Find(LightingMode.Fireball).KeyBacklightDirections);
+        }
+
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdgeRgb)]
+        [InlineData(DeviceId.Tko)]
+        public void GetKeyBacklightDirections_ForTheDeviceAgnosticModes_MatchesTheCatalog(DeviceId deviceId)
+        {
+            // §3: the direction panel shows for Wave, Rebound and Loop on both key-backlight menus.
+            Assert.Equal(
+                new[] { LightingDirection.Down, LightingDirection.Left, LightingDirection.Up, LightingDirection.Right },
+                LightingAvailability.GetKeyBacklightDirections(deviceId, LightingMode.Wave));
+            Assert.Equal(
+                new[] { LightingDirection.Down, LightingDirection.Left, LightingDirection.Up, LightingDirection.Right },
+                LightingAvailability.GetKeyBacklightDirections(deviceId, LightingMode.Loop));
+            Assert.Equal(
+                new[] { LightingDirection.Left, LightingDirection.Up },
+                LightingAvailability.GetKeyBacklightDirections(deviceId, LightingMode.Rebound));
+        }
+
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdgeRgb, LightingMode.Monochrome)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, LightingMode.Breathe)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, LightingMode.FrozenWave)]
+        [InlineData(DeviceId.Tko, LightingMode.Rain)]
+        [InlineData(DeviceId.Tko, LightingMode.PitchBlack)]
+        [InlineData(DeviceId.Advantage2, LightingMode.Wave)]
+        [InlineData(DeviceId.Advantage360, LightingMode.Loop)]
+        public void GetKeyBacklightDirections_WithoutADirectionPanel_ReturnsEmpty(DeviceId deviceId, LightingMode mode)
+        {
+            Assert.Empty(LightingAvailability.GetKeyBacklightDirections(deviceId, mode));
+        }
+
+        [Theory]
+        [InlineData(LightingMode.Wave, new[] { LightingDirection.Left, LightingDirection.Right })]
+        [InlineData(LightingMode.Loop, new[] { LightingDirection.Left, LightingDirection.Right })]
+        [InlineData(LightingMode.Rebound, new LightingDirection[0])]
+        [InlineData(LightingMode.Monochrome, new LightingDirection[0])]
+        [InlineData(LightingMode.Fireball, new LightingDirection[0])]
+        public void GetEdgeDirections_PerMode_MatchesTheTkoEdgeRulesOfSpec23(
+            LightingMode mode,
+            LightingDirection[] expectedDirections)
+        {
+            Assert.Equal(expectedDirections, LightingAvailability.GetEdgeDirections(mode));
+        }
+
+        [Fact]
         public void IsFnLayerLightingAvailable_OnRgb_RequiresLedFirmwareOneZeroFortyFour()
         {
             var below = RgbState("1.0.121", "1.0.43");

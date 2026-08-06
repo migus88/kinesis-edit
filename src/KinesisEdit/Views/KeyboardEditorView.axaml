@@ -73,7 +73,9 @@
       </StackPanel>
     </Grid>
 
-    <!-- Section tabs. Everything but Keys is disabled until issues #15/#16 fill it in. -->
+    <!-- Section tabs, filtered by what the device carries: Macros is still disabled (issue #15),
+         Lighting is enabled only on the boards whose led file this app edits, and a device without
+         lighting or without a settings file does not get that tab at all. -->
     <ItemsControl Grid.Row="2" ItemsSource="{Binding Tabs}" Margin="0,14,0,0">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
@@ -131,11 +133,21 @@
           </Border>
         </Grid>
 
+        <!-- The lighting editor of specs/07-lighting.md §3/§4; the panels are the mode's, so this
+             is one ContentControl and the panel decides what it shows. -->
+        <ContentControl Content="{Binding Lighting}"
+                        IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}" />
+
+        <!-- The keyboard settings of specs/08-settings.md §5; the rows are the device's, so this
+             is one ContentControl and the panel decides what it shows. -->
+        <ContentControl Content="{Binding Settings}"
+                        IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Settings}" />
+
         <TextBlock Text="This section is not implemented yet."
                    Classes="muted"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
-                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Macros,Lighting,Settings'}" />
+                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Macros}" />
       </Panel>
     </Panel>
 

@@ -20,7 +20,10 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 
 - `Load` resolves `layout<n>.txt`/`led<n>.txt` from `VDriveLocation`'s computed folder paths and
   the device's `LayoutFileScheme` (`FirstProfileNumber`/`LastProfileNumber`/`HasReadOnlyFactoryProfile`,
-  and whether the device has a *profile-orchestrated* led file — see below). Every call returns a
+  and whether the device has a *profile-orchestrated* led file — see below). The led file's name
+  comes from `StartupProfileSettings.GetLedFileName` ([settings.md](settings.md)) — the same helper
+  that writes the paired `led_mode` value — so the file a session reads and the file the device is
+  pointed at are spelled in one place. Every call returns a
   **brand-new instance**; nothing is ever reloaded in place. This is deliberate: on top of
   `LayoutFileParser.Parse` already building a fresh `KeyboardLayout` per call, it is what gives
   "full-model-wipe-on-load" (04 §4.2) its guarantee at the orchestration level — there is no stale
@@ -125,8 +128,9 @@ and calls `Save()` off the UI thread; `SaveAs` and `IsDirty` have no consumer ye
   Core-level exception for it and no demo-mode parameter on `ProfileSession`.
 - **The settings-only post-save message** (`"Changes will be implemented when v-Drive is
   closed."`, 03 §5.3) — that wording belongs to a bare keyboard-settings save with no profile
-  content involved (the future settings-editor UI, issue #16); every `ProfileSession` save writes
-  profile content, so this case never arises here.
+  content involved — it lives in `SettingsMessageCatalog` and is shown by the editor's settings
+  panel (see [settings.md](settings.md)); every `ProfileSession` save writes profile content, so
+  this case never arises here.
 - **No new dependency on `Advantage2`'s dialect, and no Gen2-header awareness beyond what
   `LayoutFileParser`/`LayoutFileSerializer` already do** — this module never inspects file text
   itself; it only moves lines between the file service and the existing parsers/serializers.

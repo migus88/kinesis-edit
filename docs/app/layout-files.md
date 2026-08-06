@@ -56,5 +56,5 @@ Full regeneration; nothing survives but kept lines. Per layer in list order (Gen
 - **No SE2 pedal dialect** (spec 12) — the pedal file is not a layout dialect: `LayoutDialectResolver` returns `None`, the parser refuses the device, and `active/pedals.txt` has its own engine in [savant-elite.md](savant-elite.md).
 - **No lighting lines** (04 §3.4) — `led*.txt` belongs to [lighting.md](lighting.md); layout files never carry edge-lighting lines.
 - **No save orchestration** — file naming/numbering, profile pairing, Adv360 factory-profile write protection, and drive I/O are issue #11's layer.
-- **No invalid-line dialog** (04 §5.2) — surfacing tracked lines and their red segments is the editor UI, issue #16; this module only carries the data.
+- **No invalid-line dialog** (04 §5.2) — this module only carries the data. The editor already surfaces the tracked lines as messages (see [keyboard-editor.md](keyboard-editor.md)); the red-segment dialog itself is still unbuilt.
 - **No firmware gating** (09 §2) — e.g. the FS 24→100 macro-count gate is validation/UI territory.

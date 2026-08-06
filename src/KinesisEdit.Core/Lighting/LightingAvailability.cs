@@ -45,6 +45,53 @@ namespace KinesisEdit.Core.Lighting
         }
 
         /// <summary>
+        /// The directions the device's key-backlight direction panel offers for
+        /// <paramref name="mode"/> — empty when the mode has no direction panel there. Per
+        /// specs/07-lighting.md §3 the RGB shows the panel for Wave, Rebound and Loop only,
+        /// while "TKO also shows it for Fireball (left/right only)", so the device-agnostic
+        /// <see cref="LightingModeDefinition.KeyBacklightDirections"/> — which stays the parse-side
+        /// data source, because RGB led files in the field do carry <c>[dirleft]</c>/<c>[dirright]</c>
+        /// on Fireball lines — is narrowed to nothing for Fireball on the RGB. Modes the device's
+        /// menu does not offer at all return empty too.
+        /// </summary>
+        public static IReadOnlyList<LightingDirection> GetKeyBacklightDirections(DeviceId deviceId, LightingMode mode)
+        {
+            var definition = LightingModeCatalog.Find(mode);
+
+            var offersInMenu = deviceId switch
+            {
+                DeviceId.FreestyleEdgeRgb => definition.OffersInRgbKeyBacklightMenu,
+                DeviceId.Tko => definition.OffersInTkoKeyBacklightMenu,
+                _ => false
+            };
+
+            if (!offersInMenu)
+            {
+                return [];
+            }
+
+            if (deviceId == DeviceId.FreestyleEdgeRgb && mode == LightingMode.Fireball)
+            {
+                return [];
+            }
+
+            return definition.KeyBacklightDirections;
+        }
+
+        /// <summary>
+        /// The directions the TKO edge direction panel offers for <paramref name="mode"/>
+        /// (§2.3, §3): left/right for edge Wave and edge Loop, empty for every other edge mode
+        /// (edge Rebound writes no direction) and for modes the edge menu does not offer.
+        /// The edge context exists only on the TKO, so this takes no device.
+        /// </summary>
+        public static IReadOnlyList<LightingDirection> GetEdgeDirections(LightingMode mode)
+        {
+            var definition = LightingModeCatalog.Find(mode);
+
+            return definition.OffersInTkoEdgeMenu ? definition.EdgeDirections : [];
+        }
+
+        /// <summary>
         /// Whether Fn-layer lighting (the layer toggle in lighting mode) is available: the
         /// <see cref="FirmwareFeature.LightingLayerCustomization"/> gate — LED firmware ≥ 1.0.44
         /// on the RGB, ungated elsewhere (specs/07-lighting.md §3).
