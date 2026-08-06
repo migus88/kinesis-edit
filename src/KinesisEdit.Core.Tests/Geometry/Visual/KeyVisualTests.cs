@@ -69,5 +69,31 @@ namespace KinesisEdit.Core.Tests.Geometry.Visual
             Assert.Equal(0.0, key.Y);
             Assert.Equal(KeyCluster.Function, key.Cluster);
         }
+
+        [Fact]
+        public void Constructor_WithoutSectionOrLegends_PutsTheKeyInSectionZeroWithNoPrint()
+        {
+            var key = new KeyVisual(3, 1.0, 1.0);
+
+            Assert.Equal(0, key.Section);
+            Assert.Null(key.Legend);
+            Assert.Null(key.SecondaryLegend);
+        }
+
+        [Fact]
+        public void Constructor_WithASectionAndLegends_KeepsThemVerbatim()
+        {
+            var key = new KeyVisual(3, 1.0, 1.0, 1.0, 1.0, KeyCluster.Main, section: 2, legend: "1", secondaryLegend: "!");
+
+            Assert.Equal(2, key.Section);
+            Assert.Equal("1", key.Legend);
+            Assert.Equal("!", key.SecondaryLegend);
+        }
+
+        [Fact]
+        public void Constructor_WithANegativeSection_Throws()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new KeyVisual(0, 0.0, 0.0, section: -1));
+        }
     }
 }

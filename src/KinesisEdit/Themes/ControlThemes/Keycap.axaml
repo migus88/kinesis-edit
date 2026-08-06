@@ -4,26 +4,28 @@
     THE KEY CAP. Read Shared.axaml's header first — it carries the authoring contract, and
     BaseButton carries the template shape, the type step, the focus ring and the disabled face.
 
-    This is the densest state matrix in the app: six states compete for one 26px square, four of
-    them can be true at the same time, and the cap has neighbours 4px away that a ring must not eat.
-    Three things are therefore settled here rather than left to the file's order:
+    This is the densest state matrix in the app: five faces compete for one 26px square, four badges
+    compete for its four corners, and the cap has neighbours 4px away that a ring must not eat. Four
+    things are therefore settled here rather than left to the file's order:
 
       1. WHAT BEATS WHAT. Styles/Keyboard.axaml used to get its precedence from where a style sat in
          the file — `listening` won because it was written last. Every state below instead names the
-         states it loses to, so the matrix survives a reorder. The order pinned is the one the app
-         already behaved with, plus one deliberate change (see LOCKED):
+         states it loses to, so the matrix survives a reorder. The order pinned is:
 
-             listening  >  selected  >  :pointerover  >  locked  >  modified  >  rest
+             listening  >  selected  >  :pointerover  >  locked  >  rest
 
          read as "listening's face wins over selected's, which wins over hover's, ...". Focus sits
          outside that ladder entirely: it owns the BORDER whenever it is visible and touches no
          face, which is why every state's BorderBrush setter carries `:not(:focus-visible)` and no
          state's Background setter does.
 
+         `.modified` LEFT that ladder with issue #91: a remap is a bar, not a face — see THE BADGE
+         VOCABULARY below.
+
          `:disabled` sits outside it from the other side and beats the whole ladder: the board is
-         dimmed as a unit while a profile loads, so `.modified`, `.selected` and `.listening` all
-         carry `:not(:disabled)` and BaseButton's inset face is what a dead cap wears. `.locked` is
-         the exception and needs no qualifier — its face IS the inset surface, so the two agree.
+         dimmed as a unit while a profile loads, so `.selected` and `.listening` carry
+         `:not(:disabled)` and BaseButton's inset face is what a dead cap wears. `.locked` is the
+         exception and needs no qualifier — its face IS the inset surface, so the two agree.
 
       2. SELECTION AND FOCUS AT THE SAME TIME (contract 4, and the acceptance criterion of the
          issue). Both are drawn as spread-only shadows in the same accent at almost the same alpha —
@@ -48,6 +50,35 @@
          nothing but the class: a locked cap under the pointer, or selected, still reads as locked.
          The old matrix had hover repaint the locked face and lose the signal. Its face keeps
          following the ladder above; only the hatch and the dashed outline are unconditional.
+
+      4. THE BADGE VOCABULARY — four marks, four corners, one hue each (handoff.md, "Focus,
+         selection, key badges"): a bar across the bottom edge for a remap, a dot top-right for a
+         macro, a right-triangle bottom-right for tap-and-hold, a rounded bar top-right for an
+         advisory. Each is a PART of this template, because that is where a badge belongs: a style
+         in Styles/ reaching in here is exactly what the control-theme layer exists to remove.
+
+         WHY `.modified` IS NO LONGER A FACE. It used to paint a 14% accent fill, an accent border
+         AND lift the caption to the accent — three accent signals for one state on a 26px cap, on
+         top of the bar the design actually specifies. Mockups 1e/2a draw a remapped cap as an
+         ORDINARY RAISED CAP WEARING ONLY THE BAR (2a, at true mock scale: `background: #EEF0F1;
+         border: 1px solid #C9CFD2` with an absolutely-positioned 2px accent bar flush along the
+         bottom). So the face, the border and the caption colour are gone and the bar is the signal.
+
+         THE COLLISION THE DESIGN DOES NOT ANSWER. The macro dot and the advisory bar are both
+         specified "top-right". Settled here: THE ADVISORY BAR KEEPS THE CORNER and the macro dot
+         insets left of it by BadgeAdvisoryBarWidth + BadgeGap whenever both are true. Both stay
+         visible, and the state that wants attention keeps the position the eye is trained on.
+
+         A BADGE IS A FACT, LIKE THE HATCH. None of the four is qualified against `:disabled`, the
+         ladder, or each other (beyond the collision above): "this key carries a macro" cannot stop
+         being true because a pointer crossed it or because the board is loading.
+
+         WHETHER TO DRAW THEM AT ALL is the PICTURE's answer, not the key's — `.stateBadges`, bound
+         from KeyCapView.ShowsStateBadge. Same shape, and the same reason, as the LED strip's
+         ShowsLedStrip: the Keys tab and the Lighting tab render the very same cap view models, so
+         no state on the DataContext could separate them, and the Lighting tab wants to be about
+         colour. The four classes still say what the KEY is; `.stateBadges` says whether this
+         SURFACE draws it.
   -->
 
   <ControlTheme x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
@@ -66,11 +97,12 @@
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="VerticalContentAlignment" Value="Stretch" />
 
-    <!-- The legend is deliberately not the design's 9/400 keycap step. That step is quoted "at mock
-         scale", where a 1U cap is 30x26; KeyboardPanel draws one at up to 44px and the legend does
-         not yet scale with the board, so 9px would be a regression against the drawn art rather
-         than a match for it. It takes the 11/400 body step until the cap renderer scales its type. -->
-    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <!-- The design's keycap step, 9/400 (docs/design/handoff.md, "Typography"). It is quoted "at
+         mock scale", and the board is now laid out at exactly that scale — a 1U cap is 30x26 — and
+         scaled up as one unit by BoardScaleHost, so the type scales with the picture and 9 is the
+         authored size rather than the drawn one. Set on the Button so everything the cap holds
+         inherits it; the sub-legend steps down from here in Styles/Keyboard.axaml. -->
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeKeycapLabel}" />
     <Setter Property="FontWeight" Value="Normal" />
 
     <Setter Property="Template">
@@ -140,32 +172,97 @@
                     IsHitTestVisible="False"
                     Background="Transparent"
                     CornerRadius="{StaticResource RadiusChip}" />
+
+            <!--
+              THE FOUR BADGES. Last in the Panel, so nothing — not the caption, not the hatch, not
+              the selection ring's own band — is drawn over a mark that is the whole reason the cap
+              is being looked at. None of them is hit-testable: the cap under them is one button.
+
+              WHERE THE EDGES ARE, and why three of the four need no margin at all. The mockups
+              inset a badge 2px from the INSIDE of the cap's 1px border, i.e. 3px from its outer
+              edge. This Panel already sits exactly 3px in — Root's 1px border plus its 2px padding
+              — so its own corners ARE the mockup's corners and an alignment is the whole placement.
+              The remap bar is the exception: it is flush with the border rather than inset, so it
+              carries `Margin="-2"` to cancel Root's padding, the same pair `Rectangle#Locked` uses.
+
+              Sizes come from Themes/Geometry.axaml. The two numbers that cannot: a CornerRadius
+              resource cannot be handed to a Border's per-corner shorthand, and the advisory bar's
+              own radius has no token (RadiusChip's 3 on a 3px-tall bar would be a lozenge, and the
+              mock draws 2). Both are spelled out below with the resource they shadow.
+            -->
+
+            <!-- REMAPPED — "you changed this", one of the accent's two sanctioned meanings. Flush
+                 along the whole bottom edge, its lower corners following the cap's own (RadiusChip,
+                 one step inside the cap's 4). This is the ENTIRE remap signal; see the header. -->
+            <Border x:Name="RemapBar"
+                    Margin="-2"
+                    IsVisible="False"
+                    IsHitTestVisible="False"
+                    ClipToBounds="False"
+                    VerticalAlignment="Bottom"
+                    HorizontalAlignment="Stretch"
+                    Height="{StaticResource BadgeRemapBarHeight}"
+                    CornerRadius="0,0,3,3"
+                    Background="{DynamicResource AccentBrush}" />
+
+            <!-- MACRO — the 5px dot, top-right. Steps left of the advisory bar when both are on;
+                 see the collision rule at the foot of this file. -->
+            <Ellipse x:Name="MacroDot"
+                     IsVisible="False"
+                     IsHitTestVisible="False"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Top"
+                     Width="{StaticResource BadgeMacroDotSize}"
+                     Height="{StaticResource BadgeMacroDotSize}"
+                     Fill="{DynamicResource BadgeMacroBrush}" />
+
+            <!-- TAP-AND-HOLD — the ~6px right-triangle whose right angle is the cap's own
+                 bottom-right corner, so the mark reads as the corner being folded rather than as
+                 something sitting on the cap. Drawn at its authored coordinates (Stretch="None")
+                 inside a box of exactly BadgeTapHoldSize, which is why the path's own 6s are
+                 literals: a geometry is parsed from a string and cannot interpolate a resource,
+                 the same constraint the hatch tile records. Keep the three in step. -->
+            <Path x:Name="TapHoldMark"
+                  IsVisible="False"
+                  IsHitTestVisible="False"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Bottom"
+                  Width="{StaticResource BadgeTapHoldSize}"
+                  Height="{StaticResource BadgeTapHoldSize}"
+                  Stretch="None"
+                  Data="M 6,0 L 6,6 L 0,6 Z"
+                  Fill="{DynamicResource BadgeTapHoldBrush}" />
+
+            <!-- ADVISORY — the 12x3 rounded bar, top-right, in StatusAdvisoryStrong. Amber, never
+                 red, and it never blocks (docs/design/README.md); it is the per-key half of the
+                 "always shown twice" rule whose other half is the tab's one summary strip. It KEEPS
+                 the corner when the macro dot is also on. -->
+            <Border x:Name="AdvisoryBar"
+                    IsVisible="False"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Width="{StaticResource BadgeAdvisoryBarWidth}"
+                    Height="{StaticResource BadgeAdvisoryBarHeight}"
+                    CornerRadius="2"
+                    Background="{DynamicResource StatusAdvisoryStrongBrush}" />
           </Panel>
         </Border>
       </ControlTemplate>
     </Setter>
 
     <!--
-      MODIFIED — "this position carries a remap", and one of the accent's two sanctioned meanings
-      ("you changed this"). The 14% accent fill, with the full accent at the border; the caption
-      lifts to the accent too, from `:is(TextBlock).keyCapText.modified` in Styles/Keyboard.axaml.
+      MODIFIED sets nothing here on purpose. It has no face, no border and no caption colour: the
+      2px accent bar at the bottom edge is the whole of the remap signal (see (4) in the header).
+      `.modified` therefore does not appear in the ladder at all, and the state that used to sit at
+      its bottom is `.locked`.
 
-      Bottom of the ladder, so it names every state above it. Hover is in that list for the face and
-      not for the border, which is what the old matrix did as well: passing the pointer over a
-      remapped key lightens it without taking away the accent edge that says it was remapped.
-
-      `:not(:disabled)` is on this state and on the two below for the reason Pills.axaml's header
-      gives: Avalonia walks BasedOn first, so BaseButton's `:disabled` face is applied BEFORE
-      anything declared here and an unqualified class would win over it. The board is disabled as a
-      whole while a profile loads, and a remapped cap that kept its accent fill and accent edge
-      there would leave the picture looking live while nothing on it answered.
+      `:not(:disabled)` is on the two states below for the reason Pills.axaml's header gives:
+      Avalonia walks BasedOn first, so BaseButton's `:disabled` face is applied BEFORE anything
+      declared here and an unqualified class would win over it. The board is disabled as a whole
+      while a profile loads, and a cap that kept its accent fill and accent edge there would leave
+      the picture looking live while nothing on it answered.
     -->
-    <Style Selector="^.modified:not(:disabled):not(.locked):not(:pointerover):not(.selected):not(.listening)">
-      <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
-    </Style>
-    <Style Selector="^.modified:not(:disabled):not(.locked):not(.selected):not(.listening):not(:focus-visible)">
-      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-    </Style>
 
     <!--
       LOCKED — a position the firmware will not let anybody remap (specs/05-key-model.md §5.3): the
@@ -189,7 +286,7 @@
 
     <!--
       HOVER — the face lightens by one surface step and nothing else moves. It sets no border, so a
-      modified or locked cap keeps the edge that identifies it while the pointer is over it, and it
+      locked cap keeps the dashed edge that identifies it while the pointer is over it, and it
       loses the face to selection and to listening.
 
       `:pressed` is deliberately absent. A cap's press is answered by the selection that follows it
@@ -250,6 +347,41 @@
     -->
     <Style Selector="^.listening:not(:disabled) /template/ Border#Ring">
       <Setter Property="Margin" Value="-2" />
+    </Style>
+
+    <!--
+      THE BADGES, switched on. Each is one class and one part, and every one of them is qualified by
+      `.stateBadges` — the picture's answer to "are state badges on this surface at all?", pushed
+      down from KeyCapView.ShowsStateBadge. The four state classes are still written whatever the
+      surface is, because they say what the KEY is; only the drawing is the picture's call.
+
+      Nothing else qualifies them. A badge is a fact, like the hatch: it does not yield to the face
+      ladder, to the pointer or to `:disabled`.
+    -->
+    <Style Selector="^.stateBadges.modified /template/ Border#RemapBar">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^.stateBadges.macro /template/ Ellipse#MacroDot">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^.stateBadges.tapHold /template/ Path#TapHoldMark">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^.stateBadges.advisory /template/ Border#AdvisoryBar">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!--
+      ...and the one collision the design leaves open: the macro dot and the advisory bar are both
+      specified top-right. The bar keeps the corner and the dot steps left of it, so a cap that is
+      both still shows both and the state that wants attention stays where the eye looks for it.
+
+      14 is BadgeAdvisoryBarWidth (12) + BadgeGap (2), spelled out because a Thickness cannot be
+      composed from an x:Double in markup — the same constraint Themes/Geometry.axaml records for
+      the dashboard grid's gap. Move either resource and this moves with it.
+    -->
+    <Style Selector="^.stateBadges.macro.advisory /template/ Ellipse#MacroDot">
+      <Setter Property="Margin" Value="0,0,14,0" />
     </Style>
 
     <!-- The focus ring itself comes from BaseButton and is not restated: accent on the border,

@@ -3,18 +3,28 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using KinesisEdit.Controls;
+using KinesisEdit.Tests.Design;
 
 namespace KinesisEdit.Tests.Controls
 {
     /// <summary>
     /// The arithmetic of the keyboard picture: the only place in the app that turns key units into
-    /// pixels. Everything here is measured against a deliberately lopsided board — 10 units wide by
-    /// 5 tall — so a scale taken from the wrong axis produces a visibly different number rather
-    /// than the same one twice.
+    /// pixels. The board is drawn on a <b>cell pitch</b>, not on a cap size — every 1U cell is
+    /// <c>KeycapPitchX</c> wide and <c>KeycapPitchY</c> tall, and the cap inside it is inset by
+    /// <c>KeycapGap</c>, so pitch minus gap is the handoff's "30x26 (1u), gap 4".
     /// <para>
-    /// Layout rounding is off throughout. In the app the arranged caps are snapped to device
-    /// pixels, which is right on screen and useless here: it rounds a 0.6 px half-gap to 1 and
-    /// hides every off-by-a-fraction the panel could commit.
+    /// The pitch is deliberately <b>not square</b> (34 x 30), so a panel that took the wrong axis
+    /// produces a visibly different number rather than the same one twice — and the fixture board is
+    /// lopsided too, 10 units wide by 5 tall.
+    /// </para>
+    /// <para>
+    /// Nothing here scales: growing the picture is <see cref="BoardScaleHost"/>'s job, and the panel
+    /// reports mock scale whatever space it is offered.
+    /// </para>
+    /// <para>
+    /// Layout rounding is off throughout. In the app the arranged caps are snapped to device pixels,
+    /// which is right on screen and useless here: it hides every off-by-a-fraction the panel could
+    /// commit.
     /// </para>
     /// </summary>
     public class KeyboardPanelTests
@@ -23,113 +33,89 @@ namespace KinesisEdit.Tests.Controls
 
         private const double BoardHeight = 5;
 
+        /// <summary>The board's natural width: 10 x 34 - 4. The trailing gap is never drawn.</summary>
+        private const double NaturalWidth = (BoardWidth * KeyboardPanel.DefaultPitchX) - KeyboardPanel.DefaultGap;
+
+        /// <summary>The board's natural height: 5 x 30 - 4.</summary>
+        private const double NaturalHeight = (BoardHeight * KeyboardPanel.DefaultPitchY) - KeyboardPanel.DefaultGap;
+
+        /// <summary>The 1U cap the pitch and the gap imply: 34 - 4.</summary>
+        private const double CapWidth = KeyboardPanel.DefaultPitchX - KeyboardPanel.DefaultGap;
+
+        /// <summary>The 1U cap's height: 30 - 4.</summary>
+        private const double CapHeight = KeyboardPanel.DefaultPitchY - KeyboardPanel.DefaultGap;
+
         /// <summary>The protected layout method these tests drive directly; see MeasureBoard.</summary>
         private const string MeasureOverrideName = "MeasureOverride";
 
         [AvaloniaTheory]
-        // Both axes usable: the smaller scale wins, so the board keeps its aspect.
-        [InlineData(100, 100, 100, 50)]
-        [InlineData(1000, 50, 100, 50)]
-        // One axis unusable contributes nothing, and the other alone sets the scale. An auto-sizing
-        // or scrolling parent offers infinity; a NaN or non-positive constraint is what a parent
-        // mid-layout hands down.
-        [InlineData(double.PositiveInfinity, 100, 200, 100)]
-        [InlineData(double.NaN, 100, 200, 100)]
-        [InlineData(0, 100, 200, 100)]
-        [InlineData(-40, 100, 200, 100)]
-        [InlineData(100, double.PositiveInfinity, 100, 50)]
-        [InlineData(100, double.NaN, 100, 50)]
-        [InlineData(100, 0, 100, 50)]
-        [InlineData(100, -40, 100, 50)]
-        public void MeasureOverride_ScalesFromTheUsableAxesAlone(
-            double availableWidth,
-            double availableHeight,
-            double expectedWidth,
-            double expectedHeight)
+        // Whatever is on offer, the answer is the same: the panel draws at mock scale and the whole
+        // picture is grown by BoardScaleHost, so a panel that shrank here would scale it twice.
+        [InlineData(1000, 1000)]
+        [InlineData(100, 100)]
+        [InlineData(double.PositiveInfinity, double.PositiveInfinity)]
+        [InlineData(double.NaN, 100)]
+        [InlineData(0, 0)]
+        [InlineData(-40, 100)]
+        public void MeasureOverride_ReportsTheSectionAtMockScale(double availableWidth, double availableHeight)
         {
             var panel = CreatePanel();
 
-            Assert.Equal(new Size(expectedWidth, expectedHeight), MeasureBoard(panel, availableWidth, availableHeight));
+            Assert.Equal(
+                new Size(NaturalWidth, NaturalHeight),
+                MeasureBoard(panel, availableWidth, availableHeight));
+        }
+
+        [AvaloniaFact]
+        public void Measure_ThroughTheLayoutSystem_ReportsTheSameSize()
+        {
+            var panel = CreatePanel();
+
+            // The same arithmetic, reached the way the layout system reaches it, so the direct
+            // MeasureOverride calls cannot drift away from the real wiring.
+            panel.Measure(Size.Infinity);
+
+            Assert.Equal(new Size(NaturalWidth, NaturalHeight), panel.DesiredSize);
+        }
+
+        [AvaloniaFact]
+        public void ARowOfSixSingleUnitCaps_IsExactlyTwoHundredPixelsWide()
+        {
+            // Six caps of 30 with five gaps of 4: 6 x 34 - 4 = 200. The trailing gap is not drawn,
+            // which is what makes the section's box the caps' own extent and not a pitch wider.
+            var panel = CreatePanel(boardWidth: 6, boardHeight: 1);
+            var caps = new Border[6];
+
+            for (var index = 0; index < caps.Length; index++)
+            {
+                caps[index] = AddKey(panel, unitX: index, unitY: 0);
+            }
+
+            Arrange(panel);
+
+            Assert.Equal(200, panel.DesiredSize.Width);
+            Assert.Equal(200, caps[^1].Bounds.Right, 6);
+            Assert.Equal(0, caps[0].Bounds.Left, 6);
         }
 
         [AvaloniaTheory]
-        [InlineData(double.PositiveInfinity, double.PositiveInfinity)]
-        [InlineData(double.NaN, double.NaN)]
-        [InlineData(0, 0)]
-        [InlineData(double.PositiveInfinity, 0)]
-        [InlineData(-1, double.NaN)]
-        public void MeasureOverride_WithNeitherAxisUsable_FallsBackToTheNaturalUnitSize(double width, double height)
+        [InlineData(0, 0, 0, 0)]
+        [InlineData(1, 0, KeyboardPanel.DefaultPitchX, 0)]
+        [InlineData(0, 1, 0, KeyboardPanel.DefaultPitchY)]
+        [InlineData(2, 3, 2 * KeyboardPanel.DefaultPitchX, 3 * KeyboardPanel.DefaultPitchY)]
+        [InlineData(0.5, 0.25, 0.5 * KeyboardPanel.DefaultPitchX, 0.25 * KeyboardPanel.DefaultPitchY)]
+        public void Arrange_PutsEveryCapOnTheCellPitch(
+            double unitX,
+            double unitY,
+            double expectedLeft,
+            double expectedTop)
         {
             var panel = CreatePanel();
+            var cap = AddKey(panel, unitX, unitY);
 
-            Assert.Equal(44.0, KeyboardPanel.NaturalUnitSize);
-            Assert.Equal(
-                new Size(BoardWidth * KeyboardPanel.NaturalUnitSize, BoardHeight * KeyboardPanel.NaturalUnitSize),
-                MeasureBoard(panel, width, height));
-        }
+            Arrange(panel);
 
-        [AvaloniaFact]
-        public void Measure_ThroughTheLayoutSystem_ReportsTheScaledBoard()
-        {
-            var panel = CreatePanel();
-
-            // The same arithmetic as above, but reached the way the layout system reaches it, so
-            // the direct MeasureOverride calls cannot drift away from the real wiring.
-            panel.Measure(new Size(100, 100));
-
-            Assert.Equal(new Size(100, 50), panel.DesiredSize);
-        }
-
-        [AvaloniaFact]
-        public void Measure_WithAnUnconstrainedWidth_ReportsTheBoardTheHeightAllows()
-        {
-            var panel = CreatePanel();
-
-            panel.Measure(new Size(double.PositiveInfinity, 100));
-
-            Assert.Equal(new Size(200, 100), panel.DesiredSize);
-        }
-
-        [AvaloniaFact]
-        public void Arrange_OnTheNonBindingAxis_CentresTheBoard()
-        {
-            var panel = CreatePanel();
-            var child = AddKey(panel, unitX: 0, unitY: 0);
-
-            Arrange(panel, 200, 200);
-
-            // Width binds at 20 px per unit, so the 5-unit-tall board is 100 px in a 200 px box and
-            // the spare 100 px is split above and below it.
-            Assert.Equal(HalfGap(20), child.Bounds.X, 6);
-            Assert.Equal(50 + HalfGap(20), child.Bounds.Y, 6);
-        }
-
-        [AvaloniaFact]
-        public void Arrange_WhenTheBoardFillsBothAxes_CentresNothing()
-        {
-            var panel = CreatePanel();
-            var child = AddKey(panel, unitX: 0, unitY: 0);
-
-            Arrange(panel, 200, 100);
-
-            Assert.Equal(HalfGap(20), child.Bounds.X, 6);
-            Assert.Equal(HalfGap(20), child.Bounds.Y, 6);
-        }
-
-        [AvaloniaFact]
-        public void Arrange_SplitsTheGapAcrossBothEdgesOfEveryCap()
-        {
-            var panel = CreatePanel();
-            var child = AddKey(panel, unitX: 0, unitY: 0);
-
-            Arrange(panel, 200, 100);
-
-            var scale = 20.0;
-
-            Assert.Equal(0.06, KeyboardPanel.KeyGapUnits, 6);
-            Assert.Equal(HalfGap(scale), child.Bounds.X, 6);
-            Assert.Equal(scale - (2 * HalfGap(scale)), child.Bounds.Width, 6);
-            Assert.Equal(scale - (2 * HalfGap(scale)), child.Bounds.Height, 6);
+            Assert.Equal(new Rect(expectedLeft, expectedTop, CapWidth, CapHeight), cap.Bounds);
         }
 
         [AvaloniaFact]
@@ -139,11 +125,11 @@ namespace KinesisEdit.Tests.Controls
             var left = AddKey(panel, unitX: 0, unitY: 0);
             var right = AddKey(panel, unitX: 1, unitY: 0);
 
-            Arrange(panel, 200, 100);
+            Arrange(panel);
 
-            // Half a gap on each facing edge is what makes the space between two caps one whole
-            // gap, and the space at the board's own edge half of one.
-            Assert.Equal(KeyboardPanel.KeyGapUnits * 20, right.Bounds.X - (left.Bounds.X + left.Bounds.Width), 6);
+            // The gap is a single inset on the trailing edge rather than half a gap on each side,
+            // which is what keeps a wide cap's width its span in pitches minus one gap.
+            Assert.Equal(KeyboardPanel.DefaultGap, right.Bounds.X - left.Bounds.Right, 6);
         }
 
         [AvaloniaFact]
@@ -153,36 +139,70 @@ namespace KinesisEdit.Tests.Controls
             var top = AddKey(panel, unitX: 0, unitY: 0);
             var bottom = AddKey(panel, unitX: 0, unitY: 1);
 
-            Arrange(panel, 200, 100);
+            Arrange(panel);
 
-            Assert.Equal(KeyboardPanel.KeyGapUnits * 20, bottom.Bounds.Y - (top.Bounds.Y + top.Bounds.Height), 6);
+            Assert.Equal(KeyboardPanel.DefaultGap, bottom.Bounds.Y - top.Bounds.Bottom, 6);
+        }
+
+        [AvaloniaTheory]
+        [InlineData(2, (2 * KeyboardPanel.DefaultPitchX) - KeyboardPanel.DefaultGap)]
+        [InlineData(2.25, (2.25 * KeyboardPanel.DefaultPitchX) - KeyboardPanel.DefaultGap)]
+        [InlineData(3.5, (3.5 * KeyboardPanel.DefaultPitchX) - KeyboardPanel.DefaultGap)]
+        public void Arrange_WithAWideCap_SpansItsPitchesLessTheOneGap(double unitWidth, double expectedWidth)
+        {
+            // A 2U Backspace is 2 x 34 - 4 = 64, not two 30s and a gap drawn between them.
+            var panel = CreatePanel();
+            var cap = AddKey(panel, unitX: 2, unitY: 3, unitWidth: unitWidth);
+
+            Arrange(panel);
+
+            Assert.Equal(2 * KeyboardPanel.DefaultPitchX, cap.Bounds.X, 6);
+            Assert.Equal(3 * KeyboardPanel.DefaultPitchY, cap.Bounds.Y, 6);
+            Assert.Equal(expectedWidth, cap.Bounds.Width, 6);
         }
 
         [AvaloniaFact]
         public void Arrange_WithACapNarrowerThanTheGap_ClampsToZeroRatherThanGoingNegative()
         {
             var panel = CreatePanel();
-            var child = AddKey(panel, unitX: 0, unitY: 0, unitWidth: 0.02, unitHeight: 0.01);
+            var cap = AddKey(panel, unitX: 0, unitY: 0, unitWidth: 0.05, unitHeight: 0.05);
 
-            Arrange(panel, 200, 100);
+            Arrange(panel);
 
-            // 0.02 u at 20 px/u is 0.4 px against a 1.2 px gap. A negative Rect throws, so the
-            // sliver collapses instead.
-            Assert.Equal(0, child.Bounds.Width);
-            Assert.Equal(0, child.Bounds.Height);
+            // 0.05 U is 1.7 px across against a 4 px gap. A negative Rect throws, so the sliver
+            // collapses instead.
+            Assert.Equal(0, cap.Bounds.Width);
+            Assert.Equal(0, cap.Bounds.Height);
         }
 
         [AvaloniaFact]
-        public void Arrange_WithAWideCap_ScalesItsWidthWithTheRest()
+        public void Arrange_SubtractsThePanelsOwnKeyUnitOrigin()
         {
+            // What lets one panel draw a SECTION of a board: the caps keep the board-absolute units
+            // arrow navigation reads, and the panel re-bases nothing but its own placement.
             var panel = CreatePanel();
-            var space = AddKey(panel, unitX: 2, unitY: 3, unitWidth: 3, unitHeight: 1);
 
-            Arrange(panel, 200, 100);
+            panel.UnitOriginX = 10.25;
+            panel.UnitOriginY = 1;
 
-            Assert.Equal((2 * 20) + HalfGap(20), space.Bounds.X, 6);
-            Assert.Equal((3 * 20) + HalfGap(20), space.Bounds.Y, 6);
-            Assert.Equal((3 * 20) - (2 * HalfGap(20)), space.Bounds.Width, 6);
+            var corner = AddKey(panel, unitX: 10.25, unitY: 1);
+            var inland = AddKey(panel, unitX: 12.25, unitY: 3);
+
+            Arrange(panel);
+
+            Assert.Equal(new Point(0, 0), corner.Bounds.Position);
+            Assert.Equal(2 * KeyboardPanel.DefaultPitchX, inland.Bounds.X, 6);
+            Assert.Equal(2 * KeyboardPanel.DefaultPitchY, inland.Bounds.Y, 6);
+        }
+
+        [AvaloniaFact]
+        public void TheKeyUnitOrigin_DefaultsToTheBoardsOwn()
+        {
+            // A one-piece board is one section standing at 0,0 and says nothing about an origin.
+            var panel = new KeyboardPanel();
+
+            Assert.Equal(0, panel.UnitOriginX);
+            Assert.Equal(0, panel.UnitOriginY);
         }
 
         [AvaloniaTheory]
@@ -207,7 +227,7 @@ namespace KinesisEdit.Tests.Controls
             var first = AddKey(panel, unitX: 0, unitY: 0);
             var second = AddKey(panel, unitX: 1, unitY: 0);
 
-            Arrange(panel, 200, 100);
+            Arrange(panel);
 
             Assert.NotEqual(default, first.Bounds);
             Assert.NotEqual(default, second.Bounds);
@@ -217,7 +237,7 @@ namespace KinesisEdit.Tests.Controls
             // empty picture, so every one of them has to be arranged to nothing.
             panel.BoardWidth = 0;
 
-            Arrange(panel, 200, 100);
+            Arrange(panel);
 
             Assert.Equal(default, first.Bounds);
             Assert.Equal(default, second.Bounds);
@@ -230,9 +250,59 @@ namespace KinesisEdit.Tests.Controls
 
             AddKey(panel, unitX: 0, unitY: 0);
 
-            Arrange(panel, 200, 100);
+            panel.Measure(Size.Infinity);
+            panel.Arrange(new Rect(0, 0, 200, 100));
 
             Assert.Equal(new Size(200, 100), panel.Bounds.Size);
+        }
+
+        [AvaloniaFact]
+        public void ThePitchAndGap_DefaultToTheirGeometryTokens()
+        {
+            // The panel's C# fallbacks are what a design-time preview and a targeted test draw on.
+            // They are not a second source of truth: if Themes/Geometry.axaml moves, this says so.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                Assert.Equal(KeyboardPanel.DefaultPitchX, (double)DesignTokens.Resolve("KeycapPitchX", variant));
+                Assert.Equal(KeyboardPanel.DefaultPitchY, (double)DesignTokens.Resolve("KeycapPitchY", variant));
+                Assert.Equal(KeyboardPanel.DefaultGap, (double)DesignTokens.Resolve("KeycapGap", variant));
+            }
+        }
+
+        [AvaloniaFact]
+        public void ChangingThePitchAndGap_MovesTheBoard()
+        {
+            // The link the tokens are handed in for: the pitch is a property, not a literal baked
+            // into the arithmetic, so a change in Themes/Geometry.axaml reaches the glass.
+            var panel = CreatePanel();
+            var cap = AddKey(panel, unitX: 1, unitY: 1);
+
+            panel.PitchX = 50;
+            panel.PitchY = 40;
+            panel.Gap = 10;
+
+            Arrange(panel);
+
+            Assert.Equal(new Rect(50, 40, 40, 30), cap.Bounds);
+            Assert.Equal(new Size((BoardWidth * 50) - 10, (BoardHeight * 40) - 10), panel.DesiredSize);
+        }
+
+        [AvaloniaFact]
+        public void ThePanel_ScalesNothing()
+        {
+            // The regression BoardScaleHost exists to prevent: a panel that also scaled would scale
+            // the picture twice, and the caps would part company with everything drawn on them.
+            var panel = CreatePanel();
+            var cap = AddKey(panel, unitX: 1, unitY: 1);
+
+            panel.Measure(new Size(NaturalWidth * 4, NaturalHeight * 4));
+            panel.Arrange(new Rect(0, 0, NaturalWidth * 4, NaturalHeight * 4));
+
+            Assert.Equal(new Rect(
+                KeyboardPanel.DefaultPitchX,
+                KeyboardPanel.DefaultPitchY,
+                CapWidth,
+                CapHeight), cap.Bounds);
         }
 
         [AvaloniaFact]
@@ -293,9 +363,8 @@ namespace KinesisEdit.Tests.Controls
 
         /// <summary>
         /// Invokes <c>MeasureOverride</c> directly. The public <c>Measure</c> cannot ask these
-        /// questions: it rejects a NaN constraint outright, and it clamps the answer to the space
-        /// it offered — which would hide the very fallback this panel exists to provide when the
-        /// offered space says nothing.
+        /// questions: it rejects a NaN constraint outright, and the panel's whole claim is that the
+        /// offered space changes nothing — which is only interesting if the offer can be absurd.
         /// </summary>
         private static Size MeasureBoard(KeyboardPanel panel, double width, double height)
         {
@@ -307,17 +376,16 @@ namespace KinesisEdit.Tests.Controls
             return (Size)method.Invoke(panel, [new Size(width, height)])!;
         }
 
-        private static double HalfGap(double scale)
-        {
-            return KeyboardPanel.KeyGapUnits * scale / 2;
-        }
-
-        private static void Arrange(KeyboardPanel panel, double width, double height)
+        /// <summary>
+        /// Measures the panel unconstrained and arranges it at exactly the size it asked for, which
+        /// is what <see cref="BoardScaleHost"/> does to it in the app.
+        /// </summary>
+        private static void Arrange(KeyboardPanel panel)
         {
             panel.InvalidateMeasure();
             panel.InvalidateArrange();
-            panel.Measure(new Size(width, height));
-            panel.Arrange(new Rect(0, 0, width, height));
+            panel.Measure(Size.Infinity);
+            panel.Arrange(new Rect(default, panel.DesiredSize));
         }
     }
 }

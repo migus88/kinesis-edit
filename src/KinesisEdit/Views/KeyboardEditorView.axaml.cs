@@ -19,10 +19,10 @@ namespace KinesisEdit.Views
     /// <summary>
     /// The keyboard editor view, resolved from <see cref="KeyboardEditorViewModel"/> by
     /// <see cref="ViewLocator"/>. Everything it shows is bound; the only code here is the editor's
-    /// keyboard grammar — the Escape route out of an open feature panel and out of the remap's
-    /// listening state, the arrow/⌥n/⌘F/⌘S/⌘W table of docs/design/mockups.md <c>2b</c> — plus the
-    /// two selection handlers that turn a segment or a tab being chosen back into the command the
-    /// buttons they replaced used to run.
+    /// keyboard grammar — the Escape route out of an open feature panel, out of the remap's
+    /// listening state and out of an armed <c>Copy key…</c>, the arrow/⌥n/⌘F/⌘S/⌘W table of
+    /// docs/design/mockups.md <c>2b</c> — plus the two selection handlers that turn a segment or a
+    /// tab being chosen back into the command the buttons they replaced used to run.
     /// </summary>
     public partial class KeyboardEditorView : UserControl
     {
@@ -162,6 +162,14 @@ namespace KinesisEdit.Views
         /// the panel. It stands down for that keystroke, so the <em>next</em> Escape closes the
         /// panel.
         /// </para>
+        /// <para>
+        /// <b>The order is explicit: panel, then capture, then an armed copy.</b> `2b`'s grammar
+        /// says Escape "leaves capture mode first", so the listening key is cancelled before the
+        /// armed <c>Copy key…</c> pick — even though the editor never lets both be live at once
+        /// (arming a copy ends a listen, and starting a remap ends a copy), which is what keeps
+        /// this a stated order rather than a lucky one. A copy is armed by a click and finished by
+        /// a click, so nothing swallows the Escape that cancels it.
+        /// </para>
         /// </summary>
         private static void HandleEscape(KeyboardEditorViewModel viewModel, KeyEventArgs e, bool takenByOverlay)
         {
@@ -176,14 +184,23 @@ namespace KinesisEdit.Views
                 return;
             }
 
-            if (!viewModel.CancelRemapCommand.CanExecute(null))
+            if (viewModel.CancelRemapCommand.CanExecute(null))
+            {
+                e.Handled = true;
+
+                viewModel.CancelRemapCommand.Execute(null);
+
+                return;
+            }
+
+            if (!viewModel.CancelCopyKeyCommand.CanExecute(null))
             {
                 return;
             }
 
             e.Handled = true;
 
-            viewModel.CancelRemapCommand.Execute(null);
+            viewModel.CancelCopyKeyCommand.Execute(null);
         }
 
         /// <summary>
