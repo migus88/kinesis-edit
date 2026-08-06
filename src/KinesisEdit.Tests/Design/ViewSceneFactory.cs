@@ -42,6 +42,26 @@ namespace KinesisEdit.Tests.Design
         private KeyboardEditorViewModel? _editor;
 
         /// <summary>
+        /// The notification service every scene shares, for a test that hosts <c>MainWindow</c>
+        /// itself (its second constructor takes one).
+        /// </summary>
+        public INotificationService Notifications => _notifications;
+
+        /// <summary>
+        /// The staged profile session the shared editor loaded, for a test that has to see a write
+        /// actually land — ⌘S, most of all. Null until an editor has loaded.
+        /// </summary>
+        public FakeProfileSession? Session => _profiles.SessionToReturn;
+
+        /// <summary>
+        /// The capture service every editor of this scene is wired to. It attaches no window
+        /// handler of its own, so a test that needs the <b>real</b> ordering — the service
+        /// previewing a key on the window <em>above</em> the editor view — pushes keystrokes in
+        /// through it from a tunnel handler of its own.
+        /// </summary>
+        public FakeKeystrokeCaptureService Capture => _capture;
+
+        /// <summary>
         /// Every <b>screen</b> the app declares: a whole surface the app hosts and hands a view
         /// model, which in this app is always a <see cref="Window"/> or a
         /// <see cref="UserControl"/> — the views under <c>Views/</c> plus the composite controls
@@ -134,11 +154,82 @@ namespace KinesisEdit.Tests.Design
 
             _disposables.Add(editor);
 
+            // The editor draws its own toolbar, whose Home button and status chip come from the
+            // shell as data (IShellChrome). Without this the chrome renders blank in every frame
+            // this factory feeds — which is exactly the failure the interface exists to avoid.
+            editor.Shell = CreateShell();
+
             await editor.LoadAsync().ConfigureAwait(true);
 
             _editor = editor;
 
             return editor;
+        }
+
+        /// <summary>
+        /// The shared editor with a duplicate-key advisory on the shown layer, so a scene can draw
+        /// the amber strip. It is produced through the app's own remap path — select a cap, start
+        /// listening, push a keystroke in from the capture fake — rather than by writing to the
+        /// model behind the editor's back, because the rebuild hook (<c>RefreshCounters</c>) is
+        /// half of what these scenes are meant to exercise.
+        /// </summary>
+        public async Task<KeyboardEditorViewModel> CreateEditorWithAdvisoriesAsync()
+        {
+            var editor = await CreateEditorAsync().ConfigureAwait(true);
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            // The board already carries this token on its first position, so one remap puts it on
+            // two — which is exactly what DuplicateKeyScan reports.
+            Remap(editor, layer, TestLayouts.RgbDigitOneKeyIndex, layer.Keys[0].Key.OriginalKey);
+
+            if (editor.AdvisoryStrip.AdvisoryCount == 0)
+            {
+                throw new InvalidOperationException("The duplicate remap produced no advisory.");
+            }
+
+            return editor;
+        }
+
+        /// <summary>
+        /// A second keyboard editor, for <paramref name="deviceId"/> rather than for the Freestyle
+        /// Edge RGB the shared one uses. It is what a scene needs to render the chrome of a board
+        /// with a different capability set — the TKO, whose led file this app cannot edit yet, so
+        /// its strip carries no Lighting tab at all.
+        /// </summary>
+        public KeyboardEditorViewModel CreateEditorFor(DeviceId deviceId)
+        {
+            var editor = new KeyboardEditorViewModel(
+                TestDevices.CreateSnapshot(deviceId),
+                _profiles,
+                TestDevices.CreateSettingsService(_files),
+                _capture,
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher);
+
+            _disposables.Add(editor);
+
+            editor.Shell = CreateShell();
+
+            return editor;
+        }
+
+        /// <summary>
+        /// Makes the staged profile session report itself dirty, so a scene can drive the amber
+        /// Save through the very binding the app uses. The session is built lazily by the factory,
+        /// so this is only meaningful after an editor has loaded.
+        /// </summary>
+        public void MarkSessionDirty()
+        {
+            if (_profiles.SessionToReturn is null)
+            {
+                throw new InvalidOperationException("No profile session has been loaded yet.");
+            }
+
+            _profiles.SessionToReturn.IsDirty = true;
         }
 
         /// <summary>
@@ -285,6 +376,10 @@ namespace KinesisEdit.Tests.Design
 
                 _disposables.Add(editor);
 
+                // Demo mode still draws the editor's own bar, so it still needs the shell — and
+                // this scene is the one the Demo Mode bar's "Connect a device" action binds through.
+                editor.Shell = CreateShell(withDevices: false);
+
                 await editor.LoadAsync().ConfigureAwait(true);
 
                 return editor;
@@ -375,6 +470,13 @@ namespace KinesisEdit.Tests.Design
                 return CreateDeviceCard();
             }
 
+            // The status chip binds to an IShellChrome, which is what the shell view model is —
+            // the same object the editor reaches it through.
+            if (viewType == typeof(StatusChipView))
+            {
+                return CreateShell();
+            }
+
             if (viewType == typeof(WebToolCardView))
             {
                 return CreateWebToolCard();
@@ -393,6 +495,13 @@ namespace KinesisEdit.Tests.Design
             if (viewType == typeof(KeyboardEditorView))
             {
                 return await CreateEditorAsync().ConfigureAwait(true);
+            }
+
+            // The strip binds to its own view model, and it is hidden when the section has nothing
+            // to say — so its scene is the strip of an editor that actually has something to say.
+            if (viewType == typeof(AdvisoryStripView))
+            {
+                return (await CreateEditorWithAdvisoriesAsync().ConfigureAwait(true)).AdvisoryStrip;
             }
 
             if (viewType == typeof(KeyboardSettingsView))
@@ -456,6 +565,25 @@ namespace KinesisEdit.Tests.Design
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Remaps one position through the editor's own workflow: select, listen, receive. The
+        /// capture fake pushes the keystroke in exactly as the real service would.
+        /// </summary>
+        private void Remap(
+            KeyboardEditorViewModel editor,
+            KeyboardLayerViewModel layer,
+            int keyIndex,
+            KeyDefinition assignment)
+        {
+            var key = layer.FindByIndex(keyIndex)
+                ?? throw new InvalidOperationException($"The layer has no position {keyIndex}.");
+
+            editor.SelectKeyCommand.Execute(key);
+            editor.BeginRemapCommand.Execute(null);
+
+            _capture.RaiseKeystroke(assignment);
         }
 
         private DeviceMonitorService CreateMonitor(bool withDevices = true)

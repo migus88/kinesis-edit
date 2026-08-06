@@ -40,11 +40,11 @@ namespace KinesisEdit.Tests.Design
             foreach (var (viewTypeName, className, themeKey) in new[]
             {
                 (typeof(KeyCapView).FullName!, "keyCap", "KeyCapButton"),
+                (typeof(StatusChipView).FullName!, "statusChip", "StatusPill"),
 
-                // The app bar. The status chip is the shell's own readout — the device card's
-                // status is a bare line, not a lozenge — and the nav pills were unclassed Fluent
-                // buttons until the dashboard rebuild.
-                (typeof(MainWindow).FullName!, "statusChip", "StatusPill"),
+                // The app bar. The nav pills were unclassed Fluent buttons until the dashboard
+                // rebuild; its status chip is now the shared StatusChipView above, which the
+                // editor's toolbar draws too.
                 (typeof(MainWindow).FullName!, "navPill", "NavPill"),
 
                 // The dashboard. Three button roles that had a bridge and no call site at all
@@ -55,6 +55,12 @@ namespace KinesisEdit.Tests.Design
                 (typeof(WebToolCardView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(DashboardView).FullName!, "secondary", "SecondaryButton"),
 
+                // The editor shell: the ⌥n legend on each layer segment of the tab bar, its two
+                // button roles, and the advisory strip's bordered `Review N`.
+                (typeof(KeyboardEditorView).FullName!, "kbd", "KbdChip"),
+                (typeof(KeyboardEditorView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(KeyboardEditorView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(AdvisoryStripView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
                 (typeof(TapAndHoldOverlayView).FullName!, "actionField", "TokenField"),
@@ -237,9 +243,10 @@ namespace KinesisEdit.Tests.Design
 
                 Assert.Same(Theme("TabStripItem"), container.Theme);
 
-                // A tab this app has not built yet is shown disabled rather than hidden, and the
-                // strip's own scoped style is what still carries that.
-                Assert.Equal(editor.Tabs[index].IsEnabled, container.IsEnabled);
+                // Every tab the strip carries works: a section this app cannot open for this board
+                // is not rendered at all, so nothing in the strip is ever disabled and the scoped
+                // TabStripItem style that used to bind IsEnabled is gone.
+                Assert.True(container.IsEnabled, $"The {editor.Tabs[index].Caption} tab rendered disabled.");
             }
         }
 

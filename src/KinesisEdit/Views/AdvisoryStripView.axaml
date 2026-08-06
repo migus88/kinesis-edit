@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:advisories="clr-namespace:KinesisEdit.ViewModels.Advisories"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="30"
+             x:Class="KinesisEdit.Views.AdvisoryStripView"
+             x:DataType="advisories:AdvisoryStripViewModel">
+  <!--
+    The editor's advisory strip (docs/design/handoff.md § "Editor shell", mockup 1e): an amber tint,
+    a dot, one calm sentence and a bordered `Review N`.
+
+    ONE STRIP, NOT FOUR. "One summary strip per tab" is satisfied by one control in one row whose
+    sentence and count are the *open* section's — AdvisoryStripViewModel.AdvisorySummary and
+    .AdvisoryCount are already narrowed to the selected tab (and, on the Layout tab, to the shown
+    layer) by the editor, which projects the set onto it. Four copies would be four things to keep
+    in step.
+
+    IT NEVER BLOCKS AND IT NEVER MOVES THE BOARD. The whole strip is inside one Border that is
+    hidden when the section has nothing to say, so the row it sits in collapses to zero and the
+    picture below does not shift as the user edits; and nothing here is a gate — `Review` selects
+    what the note is about and changes nothing.
+
+    AMBER, NEVER RED. The fill, the border, the dot and the sentence are all on the StatusAdvisory
+    ramp. An advisory is never painted on the StatusError ramp anywhere in the app.
+  -->
+  <Border Height="{DynamicResource HeightAdvisoryStrip}"
+          Background="{DynamicResource StatusAdvisoryTintBrush}"
+          BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
+          BorderThickness="0,0,0,1"
+          Padding="24,0"
+          IsVisible="{Binding HasAdvisories}">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <!-- The dot is the strip's own mark: a filled disc rather than one of the three icon
+           families, because it says "there is something here", not what kind of thing it is —
+           the sentence beside it does that. -->
+      <Ellipse Grid.Column="0"
+               Width="8"
+               Height="8"
+               Fill="{DynamicResource StatusAdvisoryBrush}"
+               VerticalAlignment="Center" />
+
+      <!-- Sans, not mono: this is the app talking, not a value out of a config file. It trims
+           rather than wraps — the strip's height is fixed so a long sentence may not grow it. -->
+      <TextBlock Grid.Column="1"
+                 Text="{Binding AdvisorySummary}"
+                 Classes="meta statusWarning"
+                 TextTrimming="CharacterEllipsis"
+                 VerticalAlignment="Center"
+                 Margin="8,0,12,0" />
+
+      <!-- Bordered, as the handoff draws it. The padding and height are the strip's, not the
+           button role's: SecondaryButton's own 13,8 would stand it taller than the 30px bar. -->
+      <Button Grid.Column="2"
+              Classes="secondary"
+              Content="{Binding ReviewCaption}"
+              Command="{Binding ReviewAdvisoriesCommand}"
+              Padding="10,0"
+              Height="22"
+              VerticalAlignment="Center" />
+    </Grid>
+  </Border>
+</UserControl>

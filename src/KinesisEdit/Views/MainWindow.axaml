@@ -4,7 +4,6 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
         xmlns:views="clr-namespace:KinesisEdit.Views"
-        xmlns:controls="clr-namespace:KinesisEdit.Controls"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="680"
         x:Class="KinesisEdit.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -16,12 +15,17 @@
   <!-- One window, swapped views: the dashboard, or the editor opened by Configure
        (specs/10-apps-and-ui.md, "Opening a device" / "Home"). Native chrome, OS theme. -->
   <Grid RowDefinitions="Auto,*">
+    <!-- The app bar, and the shell's half of the "exactly one 46px bar" rule: an editor that draws
+         its own toolbar carries the same Home / device / Save / status pill, so this one steps
+         aside for it rather than stacking a second bar and a second status chip
+         (MainWindowViewModel.IsShellChromeVisible). -->
     <Border Grid.Row="0"
             Background="{DynamicResource SurfaceBarBrush}"
             BorderBrush="{DynamicResource SurfaceLineBrush}"
             BorderThickness="0,0,0,1"
             Height="{DynamicResource HeightToolbar}"
-            Padding="16,0">
+            Padding="16,0"
+            IsVisible="{Binding IsShellChromeVisible}">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
           <!-- The app mark (docs/design/handoff.md:115): an 18px accent tile carrying a 700 mono
@@ -80,45 +84,10 @@
                      VerticalAlignment="Center"
                      IsVisible="{Binding HasLastRefreshed}" />
 
-          <!-- 'v-Drive OK' / 'v-Drive Error' / 'Demo Mode', as a chip whose fill cross-fades when
-               the detection loop changes its mind; the text inside swaps instantly. -->
-          <Border Classes="statusChip"
-                  VerticalAlignment="Center"
-                  Classes.ok="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                  Classes.warning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                  Classes.error="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
-                  Classes.demo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <!-- The state mark, one per severity and each with its own pen, so exactly one is
-                   visible. Demo mode deliberately has none: the state marks describe what the app
-                   found on a drive, and demo mode is the absence of one - inventing a mark for it
-                   would put a fourth family in a set of three. -->
-              <Panel Width="{DynamicResource IconSize}"
-                     Height="{DynamicResource IconSize}"
-                     VerticalAlignment="Center">
-                <controls:Icon Data="{DynamicResource IconConnected}"
-                               Stroke="{DynamicResource StatusOkTextBrush}"
-                               IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}" />
-                <controls:Icon Data="{DynamicResource IconConnectedCore}"
-                               Fill="{DynamicResource StatusOkTextBrush}"
-                               IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}" />
-                <controls:Icon Data="{DynamicResource IconWarning}"
-                               Stroke="{DynamicResource StatusAdvisoryTextBrush}"
-                               IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}" />
-                <controls:Icon Data="{DynamicResource IconCannotAccess}"
-                               Stroke="{DynamicResource StatusErrorTextBrush}"
-                               IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
-              </Panel>
-
-              <TextBlock Classes="pill"
-                         Text="{Binding StatusIndicatorText}"
-                         VerticalAlignment="Center"
-                         Classes.statusOk="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                         Classes.statusWarning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                         Classes.statusError="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
-                         Classes.statusDemo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}" />
-            </StackPanel>
-          </Border>
+          <!-- The status chip is its own view: the editor's toolbar draws the same one, and a
+               copy would drift. It binds to an IShellChrome, which this view model is, so the
+               inherited DataContext is already the right one. -->
+          <views:StatusChipView VerticalAlignment="Center" />
         </StackPanel>
       </Grid>
     </Border>

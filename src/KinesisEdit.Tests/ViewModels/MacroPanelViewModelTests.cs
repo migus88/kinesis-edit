@@ -7,6 +7,7 @@ using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
+using KinesisEdit.ViewModels.Advisories;
 
 namespace KinesisEdit.Tests.ViewModels
 {
@@ -827,6 +828,95 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroPanelViewModel.BuildMacroCountLimitMessage(panel.MaxMacroCount!.Value), panel.Message);
             Assert.Equal(panel.MaxMacroCount, layout.MacroCount);
             Assert.Equal(0, target.MacroCount);
+        }
+
+        /// <summary>
+        /// The amber dot on a macro row. It is <b>reported, never refused</b>: an over-budget macro
+        /// keeps its row, its edit and its save — the dot is the whole consequence, and there is no
+        /// red anywhere in it (the three budget readouts flipped to the advisory ramp with it).
+        /// </summary>
+        [Fact]
+        public void Advisories_MarkTheRowsTheyAnchorTo_AndNothingElse()
+        {
+            var panel = CreateRgbPanel(out var layout, out _);
+            var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
+            var over = FindEmptyMacroKey(layout);
+
+            over.SetMacro(1, CreateMacro(layout, limit + 1));
+
+            var within = FindEmptyMacroKey(layout);
+
+            within.SetMacro(1, CreateMacro(layout, 1));
+
+            panel.RefreshFromModel();
+            panel.Advisories = EditorAdvisories.Build(layout);
+
+            var overRow = Assert.Single(panel.Macros, row => ReferenceEquals(row.Key, over));
+            var withinRow = Assert.Single(panel.Macros, row => ReferenceEquals(row.Key, within));
+
+            Assert.True(overRow.HasAdvisory);
+            Assert.False(withinRow.HasAdvisory);
+
+            // The budget still reports rather than refuses: both macros are in the profile.
+            Assert.Equal(2, layout.MacroCount);
+            Assert.True(panel.Budget.IsMacroCountOverBudget == false);
+        }
+
+        [Fact]
+        public void Advisories_SurviveARowRebuild()
+        {
+            // The rows are rebuilt by every readout refresh, and the editor pushes the set in only
+            // after a mutation — so a rebuild that forgot to re-apply would drop the dots the next
+            // time the user clicked a slot.
+            var panel = CreateRgbPanel(out var layout, out _);
+            var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
+            var over = FindEmptyMacroKey(layout);
+
+            over.SetMacro(1, CreateMacro(layout, limit + 1));
+
+            panel.RefreshFromModel();
+            panel.Advisories = EditorAdvisories.Build(layout);
+
+            Assert.True(Assert.Single(panel.Macros).HasAdvisory);
+
+            panel.RefreshFromModel();
+
+            Assert.True(Assert.Single(panel.Macros).HasAdvisory);
+        }
+
+        [Fact]
+        public void Advisories_DefaultToNoneAndAreClearedByAnEmptySet()
+        {
+            var panel = CreateRgbPanel(out var layout, out _);
+            var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
+
+            FindEmptyMacroKey(layout).SetMacro(1, CreateMacro(layout, limit + 1));
+
+            panel.RefreshFromModel();
+
+            // Nothing pushed in yet: a panel says nothing it was not told.
+            Assert.False(Assert.Single(panel.Macros).HasAdvisory);
+
+            panel.Advisories = EditorAdvisories.Build(layout);
+
+            Assert.True(Assert.Single(panel.Macros).HasAdvisory);
+
+            panel.Advisories = EditorAdvisories.Empty;
+
+            Assert.False(Assert.Single(panel.Macros).HasAdvisory);
+        }
+
+        private static Macro CreateMacro(KeyboardLayout layout, int keystrokes)
+        {
+            var macro = layout.CreateMacro();
+            var key = TestLayouts.Gen1Key("a");
+
+            for (var index = 0; index < keystrokes; index++)
+            {
+                macro.AddKeystroke(new Keystroke(key));
+            }
+
+            return macro;
         }
 
         private static MacroPanelViewModel RecordAsync(out KeyboardLayout layout, params string[] tokens)

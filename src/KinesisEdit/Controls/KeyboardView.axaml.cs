@@ -1,6 +1,9 @@
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
+using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Controls
 {
@@ -52,6 +55,37 @@ namespace KinesisEdit.Controls
         public KeyboardView()
         {
             InitializeComponent();
+        }
+
+        /// <summary>
+        /// Puts the keyboard focus on the cap of the position with ordinal
+        /// <paramref name="keyIndex"/>, as an arrow key reaching it would — the
+        /// <see cref="NavigationMethod.Directional"/> hint is what raises
+        /// <c>:focus-visible</c>, so the ring appears (mockup <c>2b</c>: "mouse clicks suppress it,
+        /// arrow/Tab summon it"), and selection and focus then coexist on one cap as the design
+        /// requires. Returns false when the picture carries no such cap, or has not been laid out
+        /// yet.
+        /// <para>
+        /// It is the narrowest thing the editor could be given: the picture already owns the caps
+        /// it builds, so nothing outside has to know how a cap is put together. It reaches a cap's
+        /// own <see cref="ContentControl.Content"/> — the <c>Button</c> the cap view declares — and
+        /// never a template part, which stays the exclusive business of
+        /// <c>Themes/ControlThemes/</c>.
+        /// </para>
+        /// </summary>
+        public bool TryFocusKey(int keyIndex)
+        {
+            foreach (var cap in this.GetVisualDescendants().OfType<KeyCapView>())
+            {
+                if (cap.DataContext is not KeyboardKeyViewModel key || key.Index != keyIndex)
+                {
+                    continue;
+                }
+
+                return cap.Content is Control target && target.Focus(NavigationMethod.Directional);
+            }
+
+            return false;
         }
     }
 }

@@ -36,24 +36,73 @@
     <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
     <Setter Property="FontWeight" Value="SemiBold" />
 
-    <Style Selector="^:pointerover:not(:pressed)">
+    <!-- Every state style of this ramp carries `:not(.dirty)`, and every state style of the amber
+         below requires `.dirty`. That is contract 5 for the one class in the app that takes a
+         button OFF its own ramp: the two sets are disjoint by selector, so which one wins is never
+         a question of which was declared last. -->
+    <Style Selector="^:pointerover:not(:pressed):not(.dirty)">
       <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
       <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
     </Style>
-    <Style Selector="^:pointerover:not(:pressed):not(:focus-visible)">
+    <Style Selector="^:pointerover:not(:pressed):not(.dirty):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPointerOver}" />
     </Style>
 
-    <Style Selector="^:pressed">
+    <Style Selector="^:pressed:not(.dirty)">
       <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
       <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
     </Style>
-    <Style Selector="^:pressed:not(:focus-visible)">
+    <Style Selector="^:pressed:not(.dirty):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPressed}" />
     </Style>
 
     <!-- Disabled comes from BaseButton, which is exactly the treatment the accent ramp wants: it
          leaves the accent family entirely for SurfaceInset + TextDisabled. -->
+
+    <!--
+      DIRTY. "Save turns amber whenever the session is dirty" (docs/design/handoff.md § Editor
+      shell). The one place in the app where a button LEAVES the accent for a status hue while
+      staying the surface's committing action: the amber is not an advisory about the save, it is
+      the unsaved work saying it is there.
+
+      Only the fill and the border move. The label stays the accent ramp's AccentButtonForeground —
+      near-black on dark, white on light — because the amber is variant-independent and no neutral
+      role in the palette is dark in BOTH variants; taking the accent's own label keeps the light
+      variant no worse than the accent face already is (2.9:1 on the amber against 2.75:1 on the
+      accent, both recorded in docs/app/design-system.md § "Known gaps").
+
+      Two strengths, walked the way Eject and Discard walk theirs: StatusAdvisoryStrong rests, the
+      brighter StatusAdvisory lifts on hover, and a press falls back to the resting strength.
+
+      CONTRACT 5, SPELLED OUT RATHER THAN LEFT TO FILE ORDER. `.dirty` and `:pressed` can both be
+      true, and so can `.dirty` and `:pointerover`. The accent ramp above stands down for `.dirty`
+      in its own selectors, and the rules below split the amber's states between them, so every
+      pair of styles that could paint this button is disjoint and REORDERING THIS FILE CHANGES
+      NOTHING:
+
+        rest, and any press (pointer or keyboard)  -> StatusAdvisoryStrong
+        hover with no press                        -> StatusAdvisory
+
+      `:pressed` without `:pointerover` is a keyboard press (Space/Enter on a focused Save), which
+      lands in the first rule with the rest state, exactly as a pointer press does. Every one of
+      them carries `:not(:disabled)`, because BasedOn puts BaseButton's disabled face first and an
+      unqualified `.dirty` would leave a dead Save wearing a live amber one; and the border setters
+      carry `:not(:focus-visible)`, because the focus ring owns the border whenever it is visible
+      (contract 3).
+    -->
+    <Style Selector="^.dirty:not(:disabled):not(:pointerover), ^.dirty:not(:disabled):pointerover:pressed">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryStrongBrush}" />
+    </Style>
+    <Style Selector="^.dirty:not(:disabled):not(:pointerover):not(:focus-visible), ^.dirty:not(:disabled):pointerover:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryStrongBrush}" />
+    </Style>
+
+    <Style Selector="^.dirty:not(:disabled):pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryBrush}" />
+    </Style>
+    <Style Selector="^.dirty:not(:disabled):pointerover:not(:pressed):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    </Style>
   </ControlTheme>
 
   <!--

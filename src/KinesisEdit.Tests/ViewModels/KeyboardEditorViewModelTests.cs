@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Lighting;
 using KinesisEdit.Core.Model;
@@ -154,30 +155,25 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(
                 new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
                 editor.Tabs.Select(tab => tab.Tab));
-            Assert.All(editor.Tabs, tab => Assert.True(tab.IsEnabled));
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
             Assert.All(editor.Tabs, tab => Assert.True(editor.SelectTabCommand.CanExecute(tab)));
         }
 
         [Fact]
-        public void SelectedTab_SetToATabWithNothingBehindIt_StaysOnTheKeysTab()
+        public void Tabs_ForABoardThisAppCannotLight_CarryNoLightingTabAtAll()
         {
-            // The TKO's led file adds an edge section this panel does not edit (#40), so its
-            // Lighting tab is present but dark — and a tab with nothing behind it stays shut
-            // whichever way it is asked for, the two-way binding included.
+            // The TKO's led file adds an edge section this panel does not edit (#40). The tab used
+            // to be rendered and disabled; the design's law is capability-driven absence, so the
+            // section is simply not on the strip and cannot be reached by any route.
             var editor = CreateEditor(TestDevices.CreateSnapshot(DeviceId.Tko));
-            var lighting = Assert.Single(editor.Tabs, tab => tab.Tab == EditorTab.Lighting);
 
-            Assert.False(lighting.IsEnabled);
-            Assert.False(editor.SelectTabCommand.CanExecute(lighting));
+            Assert.DoesNotContain(EditorTab.Lighting, editor.Tabs.Select(tab => tab.Tab));
 
             editor.SelectedTab = EditorTab.Lighting;
-            editor.SelectTabCommand.Execute(lighting);
 
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
-            Assert.False(lighting.IsSelected);
         }
 
         [Fact]
@@ -473,6 +469,380 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(editor.IsBusy);
         }
 
+        // ===== The editor's own chrome (issue #90) ===========================================
+        //
+        // The toolbar this editor draws replaces the shell's app bar, so everything the bar shows
+        // has to be on this view model: the flag that hides the shell's, the mount path, the shell
+        // it reaches Home and the status chip through, and the dirty flag behind the amber Save.
+
+        [Fact]
+        public void ProvidesOwnChrome_IsTrue_SoTheShellHidesItsOwnBar()
+        {
+            // The mockups draw exactly one 46px bar while editing. The placeholder editor, which
+            // draws none of its own, is the counter-example that keeps the flag honest.
+            var editor = CreateEditor();
+            var placeholder = new EditorPlaceholderViewModel(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.True(editor.ProvidesOwnChrome);
+            Assert.False(placeholder.ProvidesOwnChrome);
+        }
+
+        [Fact]
+        public void MountPath_ForAConnectedDrive_IsTheDrivesRootPathAndIsShown()
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+            var editor = CreateEditor(snapshot);
+
+            Assert.Equal(snapshot.Location!.RootPath, editor.MountPath);
+            Assert.True(editor.HasMountPath);
+        }
+
+        [Fact]
+        public void MountPath_InDemoMode_IsHiddenEvenWhenADriveIsMounted()
+        {
+            // Demo mode is entered for a drive that is merely not writable, so a path exists — but
+            // nothing is written to it, and printing it would claim otherwise.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                VDriveConnectionStatus.CannotAccess));
+
+            Assert.False(editor.HasMountPath);
+        }
+
+        [Fact]
+        public void Shell_IsNullUntilTheShellAssignsIt()
+        {
+            // Which is why every binding through it has to degrade to an empty chip: the headless
+            // scenes host this view on its own.
+            var editor = CreateEditor();
+
+            Assert.Null(editor.Shell);
+
+            var chrome = new FakeShellChrome();
+
+            editor.Shell = chrome;
+
+            Assert.Same(chrome, editor.Shell);
+        }
+
+        [Fact]
+        public async Task IsDirty_ForAFreshlyLoadedProfile_IsFalse()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.False(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_InDemoMode_StaysFalseBecauseThereIsNoSession()
+        {
+            var editor = CreateEditor(TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                VDriveConnectionStatus.CannotAccess));
+
+            await editor.LoadAsync();
+
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            editor.ResetKeyCommand.Execute(null);
+
+            Assert.False(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterALoadThatFoundADirtySession_FollowsTheSession()
+        {
+            // The load path itself: Apply ends in RefreshCounters, which re-reads the session.
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(editor.IsDirty);
+        }
+
+        /// <summary>
+        /// One case per mutation path. The session's own <c>IsDirty</c> is staged rather than
+        /// derived, because what is under test is that the path <b>re-asks</b> it at all: nothing
+        /// pushes a notification when Core's model is mutated, so a path that forgets the refresh
+        /// leaves Save grey while the user has unsaved work — the whole defect this feature exists
+        /// to prevent.
+        /// </summary>
+        public static TheoryData<string> MutationPaths()
+        {
+            return new TheoryData<string>
+            {
+                "remap",
+                "resetKey",
+                "resetLayer",
+                "resetLayout",
+                "macroAssign",
+                "lightingMode"
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(MutationPaths))]
+        public async Task IsDirty_AfterEveryMutationPath_ReReadsTheSession(string path)
+        {
+            var lighting = new LightingModel();
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                Lighting = lighting
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.False(editor.IsDirty);
+
+            _profiles.SessionToReturn.IsDirty = true;
+
+            RunMutation(editor, path);
+
+            Assert.True(editor.IsDirty, $"The '{path}' path did not refresh the dirty state.");
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterALightingLayerSwitchThatNormalizedTheDirection_ReReadsTheSession()
+        {
+            // The eighth lighting write site, and the one that was silent. Rebound offers only
+            // Left and Up (specs/07-lighting.md §3), so a file carrying `down` on a rebound layer
+            // is rewritten the moment that layer is shown — a real write into the profile's model,
+            // with no counter to move and, until this was fixed, no ModelChanged either. The
+            // session went dirty and Save stayed grey.
+            var lighting = new LightingModel();
+
+            lighting.FnLayer.Mode = LightingMode.Rebound;
+            lighting.FnLayer.Direction = LightingDirection.Down;
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                Lighting = lighting
+            };
+
+            // The Fn layer is behind the LightingLayerCustomization gate (LED ≥ 1.0.44, §3), so the
+            // fixture has to name a firmware that passes it or the switch is refused outright.
+            var editor = await CreateLoadedEditorAsync(CreateRgbWithLightingFirmware());
+
+            Assert.False(editor.IsDirty);
+            Assert.True(editor.Lighting.Layers[1].IsEnabled, "The Fn layer is locked on this fixture.");
+
+            _profiles.SessionToReturn.IsDirty = true;
+
+            editor.Lighting.SelectLayerCommand.Execute(editor.Lighting.Layers[1]);
+
+            Assert.Equal(LightingDirection.Left, lighting.FnLayer.Direction);
+            Assert.True(editor.IsDirty, "The lighting layer switch rewrote the direction without saying so.");
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterALightingLayerSwitchThatChangedNothing_IsNotAnnounced()
+        {
+            // The other half: a layer whose persisted direction the mode already accepts is not
+            // written at all, so switching to it must not report a change the user did not make.
+            var lighting = new LightingModel();
+
+            lighting.FnLayer.Mode = LightingMode.Rebound;
+            lighting.FnLayer.Direction = LightingDirection.Up;
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                Lighting = lighting
+            };
+
+            var editor = await CreateLoadedEditorAsync(CreateRgbWithLightingFirmware());
+
+            _profiles.SessionToReturn.IsDirty = true;
+
+            editor.Lighting.SelectLayerCommand.Execute(editor.Lighting.Layers[1]);
+
+            Assert.Equal(LightingDirection.Up, lighting.FnLayer.Direction);
+            Assert.False(editor.IsDirty);
+        }
+
+        /// <summary>
+        /// A connected Freestyle Edge RGB whose LED firmware clears every §3 gate — the fixture the
+        /// Fn lighting layer needs.
+        /// </summary>
+        private static DeviceSnapshot CreateRgbWithLightingFirmware()
+        {
+            return TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                versionFile: TestDevices.CreateVersionFile(DeviceId.FreestyleEdgeRgb, "1.0.121", "1.0.58"));
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterASettingsEdit_StaysFalse()
+        {
+            // Deliberate, and verified rather than assumed: the settings panel writes the device's
+            // *settings* file through its own Save (docs/app/settings.md) and never touches the
+            // layout or the lighting model, so it is not a profile-dirty path. The staged flag
+            // proves the point — nothing here re-asks the session, because nothing here changed it.
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb));
+
+            var editor = await CreateLoadedEditorAsync();
+
+            _profiles.SessionToReturn.IsDirty = true;
+
+            var slider = Assert.IsType<SettingsSliderRowViewModel>(
+                editor.Settings.Rows.First(row => row is SettingsSliderRowViewModel));
+
+            slider.Value = slider.Maximum;
+
+            Assert.False(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterAnImport_ReReadsTheSession()
+        {
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb));
+
+            var editor = await CreateLoadedEditorAsync();
+
+            _profiles.SessionToReturn.IsDirty = true;
+            _filePicker.SetFile("layout3.txt", "[F1]>[esc]");
+
+            await editor.ImportCommand.ExecuteAsync(null);
+
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterASuccessfulSave_IsCleared()
+        {
+            // Cleared outright rather than re-read: Core captures the dirty baseline at load and
+            // Save does not move it (docs/app/profiles.md), so the session goes on reporting itself
+            // dirty once it has been written.
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(editor.IsDirty);
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.False(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterASaveThatValidationStopped_StaysSet()
+        {
+            // Nothing was written, so nothing may claim the work is safe.
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true,
+                ResultToReturn = new ProfileSaveResult
+                {
+                    Success = false,
+                    Violations =
+                    [
+                        new ModelViolation
+                        {
+                            Kind = ModelViolationKind.MacroCountExceeded,
+                            Message = "The layout holds 120 macros; the device allows 100."
+                        }
+                    ],
+                    Ejected = false
+                }
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterASaveThatThrew_StaysSet()
+        {
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true,
+                SaveExceptionToThrow = new IOException("the v-Drive went away")
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task IsDirty_AfterASaveAndThenAnotherEdit_IsSetAgain()
+        {
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.False(editor.IsDirty);
+
+            RunMutation(editor, "resetLayout");
+
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task Layers_CarryTheirShortcutHint()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.Equal(
+                new[]
+                {
+                    KeyboardLayerViewModel.BuildShortcutHint(0, KeyCaption.IsMacOs),
+                    KeyboardLayerViewModel.BuildShortcutHint(1, KeyCaption.IsMacOs)
+                },
+                editor.Layers.Select(layer => layer.ShortcutHint));
+        }
+
+        private void RunMutation(KeyboardEditorViewModel editor, string path)
+        {
+            var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            switch (path)
+            {
+                case "remap":
+                    editor.SelectKeyCommand.Execute(key);
+                    editor.BeginRemapCommand.Execute(null);
+                    _capture.RaiseKeystroke(KeyRegistry.FindByToken("esc", TokenDialect.Gen1)!);
+                    break;
+                case "resetKey":
+                    editor.SelectKeyCommand.Execute(key);
+                    editor.ResetKeyCommand.Execute(null);
+                    break;
+                case "resetLayer":
+                    editor.ResetLayerCommand.Execute(null);
+                    break;
+                case "resetLayout":
+                    editor.ResetLayoutCommand.Execute(null);
+                    break;
+                case "macroAssign":
+                    editor.SelectedTab = EditorTab.Macros;
+                    editor.SelectKeyCommand.Execute(key);
+                    editor.MacroPanel!.InsertKeystroke(KeyRegistry.FindByToken("a", TokenDialect.Gen1)!);
+                    editor.MacroPanel.AssignCommand.Execute(null);
+                    break;
+                case "lightingMode":
+                    editor.Lighting.SelectModeCommand.Execute(
+                        editor.Lighting.Modes.Single(mode => mode.Mode == LightingMode.Wave));
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(path), path, "Unknown mutation path.");
+            }
+        }
+
         [Fact]
         public async Task Dispose_StopsCaptureAndDetachesFromIt()
         {
@@ -487,9 +857,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, _capture.StopCount);
         }
 
-        private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync()
+        private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync(DeviceSnapshot? snapshot = null)
         {
-            var editor = CreateEditor();
+            var editor = CreateEditor(snapshot);
 
             await editor.LoadAsync();
 

@@ -135,6 +135,8 @@ namespace KinesisEdit.ViewModels
                 if (SetProperty(ref _speed, clamped) && SelectedLayer is not null)
                 {
                     SelectedLayer.State.Speed = clamped;
+
+                    RaiseModelChanged();
                 }
             }
         }
@@ -178,6 +180,21 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Erases every per-key color of the layer, after the §4 confirmation.</summary>
         public IAsyncRelayCommand ResetAllCommand { get; }
+
+        /// <summary>
+        /// Raised after every write into the profile's <see cref="LightingModel"/>. This panel has
+        /// no save path of its own — <c>ProfileSession.Save</c> serializes whatever the session's
+        /// Lighting holds — so a lighting edit still makes the <b>session</b> dirty, and the
+        /// editor's Save has to turn amber for it. Core's model announces nothing, so the write
+        /// sites say so here.
+        /// <para>
+        /// It may fire for a write that changed nothing (re-reading a layer assigns the speed it
+        /// just read). That is harmless: the consumer re-asks
+        /// <c>IProfileSession.IsDirty</c>, which compares serialized lines rather than trusting the
+        /// notification.
+        /// </para>
+        /// </summary>
+        public event EventHandler? ModelChanged;
 
         private readonly DeviceSnapshot _device;
         private readonly INotificationService _notifications;
@@ -365,6 +382,8 @@ namespace KinesisEdit.ViewModels
             {
                 _isSynchronizing = false;
             }
+
+            RaiseModelChanged();
         }
 
         /// <summary>
@@ -397,11 +416,23 @@ namespace KinesisEdit.ViewModels
 
             // A direction the mode does not accept would be written as the default anyway
             // (specs/07-lighting.md §2.4 item 5), so the control and the file are kept in step.
+            //
+            // THIS IS A WRITE INTO THE PROFILE'S MODEL, and it is announced like the other six.
+            // Rebound offers only Left and Up, so a layer whose file carries Down normalizes the
+            // moment it is shown — a mode pick, a layer switch, or the load itself — and without
+            // the notification the session would be dirty with a grey Save (invariant 16).
+            var hasNormalized = state.Direction != current.Direction;
+
             state.Direction = current.Direction;
 
             foreach (var entry in Directions)
             {
                 entry.IsSelected = ReferenceEquals(entry, current);
+            }
+
+            if (hasNormalized)
+            {
+                RaiseModelChanged();
             }
         }
 
@@ -479,6 +510,8 @@ namespace KinesisEdit.ViewModels
             {
                 BaseColor.Assign(state, color);
             }
+
+            RaiseModelChanged();
         }
 
         private void SelectDirection(LightingDirectionViewModel? direction)
@@ -496,6 +529,8 @@ namespace KinesisEdit.ViewModels
             {
                 entry.IsSelected = ReferenceEquals(entry, direction);
             }
+
+            RaiseModelChanged();
         }
 
         /// <summary>
@@ -516,6 +551,7 @@ namespace KinesisEdit.ViewModels
             state.SetKeyColor(key.Key.OriginalKey.Code, Picker.Color);
 
             RefreshOverlays();
+            RaiseModelChanged();
         }
 
         /// <summary>
@@ -544,6 +580,7 @@ namespace KinesisEdit.ViewModels
             }
 
             RefreshOverlays();
+            RaiseModelChanged();
         }
 
         private int? ResolveKeyCode(int topLayerKeyCode)
@@ -600,6 +637,7 @@ namespace KinesisEdit.ViewModels
             state.ClearKeyColors();
 
             RefreshOverlays();
+            RaiseModelChanged();
         }
 
         /// <summary>
@@ -621,6 +659,18 @@ namespace KinesisEdit.ViewModels
             }
 
             board.ApplyColorOverlays(KeyColorOverlay.Build(_device.Device, _model, board.Layer));
+        }
+
+        /// <summary>
+        /// Announces a write into the profile's lighting model. Every one of the eight write sites
+        /// on this panel ends here — the mode, the speed, the direction, either colour swatch, a
+        /// painted key, a painted zone, "Reset All", and the direction <b>normalization</b> of
+        /// <see cref="RefreshDirections"/> — because <see cref="ModelChanged"/> is what turns the
+        /// editor's Save amber.
+        /// </summary>
+        private void RaiseModelChanged()
+        {
+            ModelChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void NotifyCommands()

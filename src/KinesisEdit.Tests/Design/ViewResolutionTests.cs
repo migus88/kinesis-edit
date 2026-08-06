@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using KinesisEdit.ViewModels;
+using KinesisEdit.ViewModels.Advisories;
 
 namespace KinesisEdit.Tests.Design
 {
@@ -55,6 +56,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(PedalSpecialActionGroupViewModel)] = "ControlTheme in Views/SavantElitePedalView.axaml (a MenuItem).",
 
             // Bound into their parent's markup by property; never hosted as content.
+            [typeof(AdvisoryStripViewModel)] = "Views/KeyboardEditorView.axaml hosts Views/AdvisoryStripView explicitly, on the AdvisoryStrip property.",
             [typeof(ColorPickerViewModel)] = "Views/LightingTabView.axaml hosts Controls/ColorPickerView explicitly.",
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
             [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside the macro panel's template.",

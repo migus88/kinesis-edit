@@ -119,6 +119,27 @@ Types:
 
 **Invariant:** a device's visual indices must be *exactly* the index set of its logical geometry layers — no missing key, no extra key, no overlapping rectangles. Enforced in both directions by `KinesisEdit.Core.Tests/Geometry/Visual`; adding a device visual means adding the matching set-equality test.
 
+### Spatial navigation — `KeyAdjacency`
+
+`KeyAdjacency.Next(KeyboardVisual visual, int fromIndex, NavigationDirection direction)` → the `KeyVisual` a user moving that way should land on, or **null** when nothing lies that way (a board edge, or an index the visual does not carry — the caller keeps its current selection). `NavigationDirection` is `None`/`Up`/`Down`/`Left`/`Right`; `None` throws `ArgumentOutOfRangeException`, a null visual throws `ArgumentNullException`. Pure geometry, device-agnostic: any authored board works, including ones not yet written.
+
+Scoring, best first — rectangle overlap plus centre distance:
+
+1. A candidate's **centre** must lie strictly on the direction's side of the source's centre (epsilon `1e-6`; coordinates are doubles).
+2. Candidates whose **perpendicular span overlaps** the source's span — the Y span for Left/Right, the X span for Up/Down — always beat those that do not.
+3. A candidate with **no** perpendicular overlap is admitted only per the asymmetric rule below; when admitted it ranks behind every overlapping candidate.
+4. Inside a tier: smaller primary-axis centre distance, then smaller perpendicular centre distance.
+5. Tie-break on ascending `Index`, so symmetric boards answer deterministically (from the "s" cap, Down ties two shift-row caps and the lower index wins).
+
+**The non-overlapping tier is asymmetric by direction. Do not "simplify" the asymmetry out — each half is load-bearing:**
+
+- **Left/Right require row overlap**: a candidate that shares none of the source's Y span is discarded outright. "The key to my left" is always on my row; there is no board where it is not. Without the rule, the 2U `hk0` at the board's top-left (centre X `1.0`) pulled in every 1U hotkey below it (centre X `0.5` — strictly left, no Y overlap), and Left on the top-left key walked the user diagonally down the hotkey column instead of returning null.
+- **Up/Down keep the fallback, bounded by a 45° cone** (`perpendicularDistance <= primaryDistance`). Deleting the vertical fallback would strand real keys: the Advantage2 and Advantage360 thumb clusters sit clear of the main well with **no X overlap at all**, so a thumb key one row down and one unit across must stay reachable. The cone is what keeps that from also licensing a three-row diagonal teleport across the board.
+
+**No row or column arithmetic — this is the constraint, not a style preference.** `KeyVisual` carries only X/Y/Width/Height in key units, and the boards have no rows or columns to recover: the Freestyle Edge RGB lays hotkey column, left half, 1U split gap and right half into one continuous coordinate space, and the right half's rows are staggered by a *different* offset per row (0.0 / 0.25 / 0.5 / 0.75). Bucketing keys into integer rows or columns answers wrongly on exactly those rows. Compare centres and spans, never bare `X`/`Y` — caps differ in width and height (2U Backspace, 3.5U space bar). Crossing the split gap needs no special case: the row overlap wins the scoring on its own.
+
+`KeyAdjacencyTests` pins the four directions, both crossings of the split gap, entering/leaving the hotkey column, the board edges (including `hk0`'s Left), the two halves of the asymmetric rule on synthetic visuals, an unknown index, **and a breadth-first walk that must reach all 95 keys** — the reachability test is what catches a scoring bug the per-direction cases miss, and it is the guard that a tighter rule has not orphaned a cap. If a key ever becomes unreachable, widen the cone; never delete the walk. A new authored board should add its own reachability test.
+
 ## Load-bearing invariants
 
 1. **Spec order + first match.** `KeyRegistry.Entries` order and first-match lookup reproduce the legacy resolution of intentionally duplicated codes/tokens (spec 05 §7). Never sort, dedupe, or reorder.

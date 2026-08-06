@@ -32,8 +32,7 @@ namespace KinesisEdit.Tests.ViewModels
             // EditorTabViewModelTests' and KeyboardEditorViewModelTests' subject, not this file's.
             var editor = await CreateLoadedEditorAsync();
 
-            Assert.True(editor.Tabs[0].IsEnabled);
-            Assert.True(editor.Tabs[1].IsEnabled);
+            Assert.Equal(EditorTab.Keys, editor.Tabs[0].Tab);
             Assert.Equal(EditorTab.Macros, editor.Tabs[1].Tab);
             Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
         }
@@ -194,6 +193,75 @@ namespace KinesisEdit.Tests.ViewModels
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
             Assert.Empty(editor.MacroPanel.Steps.Items);
+        }
+
+        /// <summary>
+        /// Invariant 6, at the level it is actually decided: <b>Escape is a remappable key, not a
+        /// shortcut</b>. The capture service swallows every physical key it resolves while a key
+        /// listens, Escape included — a keyboard must be able to carry an Escape remap — so the
+        /// keystroke arrives here like any other and becomes the assignment. By the time the
+        /// view's own Escape handler runs, listening is over and <c>CancelRemapCommand</c> can no
+        /// longer execute, which is what stops the two from double-firing.
+        /// </summary>
+        [Fact]
+        public async Task KeystrokeCaptured_WithEscapeWhileAKeyIsListening_IsAssignedRatherThanTreatedAsCancel()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var key = SelectDigitOne(editor);
+
+            editor.BeginRemapCommand.Execute(null);
+
+            Assert.True(editor.CancelRemapCommand.CanExecute(null));
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("esc"));
+
+            Assert.True(key.IsModified);
+            Assert.Equal(TestLayouts.Gen1Key("esc"), key.Key.ModifiedOrOriginalKey);
+            Assert.Equal("Remap (1)", editor.RemapCounterCaption);
+            Assert.False(editor.IsListening);
+            Assert.False(editor.CancelRemapCommand.CanExecute(null));
+        }
+
+        /// <summary>
+        /// Gate 1 of the editor's keyboard grammar, from the side that decides it: the three
+        /// consumers of "one keystroke, one target" are exactly the three states in which no
+        /// shortcut may be handled at all.
+        /// </summary>
+        [Fact]
+        public async Task IsCaptureActive_IsTrueForEachOfTheThreeKeystrokeConsumers()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.False(editor.IsCaptureActive);
+
+            SelectDigitOne(editor);
+
+            editor.BeginRemapCommand.Execute(null);
+
+            Assert.True(editor.IsCaptureActive);
+
+            editor.CancelRemapCommand.Execute(null);
+
+            Assert.False(editor.IsCaptureActive);
+
+            editor.SelectTabCommand.Execute(editor.Tabs[1]);
+            editor.MacroPanel!.RecordCommand.Execute(null);
+
+            Assert.True(editor.IsCaptureActive);
+
+            editor.MacroPanel.StopRecordingCommand.Execute(null);
+
+            Assert.False(editor.IsCaptureActive);
+
+            editor.ShowOverlay(new SinkOverlay());
+
+            Assert.True(editor.IsCaptureActive);
+
+            // An open panel that is *not* waiting for a keypress is not a keystroke consumer: it
+            // suspended capture, so ⌘S there is a save and not a swallowed 's'.
+            editor.ShowOverlay(new TextEntryOverlay());
+
+            Assert.False(editor.IsCaptureActive);
         }
 
         /// <summary>

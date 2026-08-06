@@ -1,0 +1,62 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="140" d:DesignHeight="28"
+             x:Class="KinesisEdit.Views.StatusChipView"
+             x:DataType="vm:IShellChrome">
+  <!--
+    'v-Drive OK' / 'v-Drive Error' / 'Demo Mode', as a chip whose fill cross-fades when the detection
+    loop changes its mind; the text inside swaps instantly.
+
+    It is a view of its own because two surfaces now draw it: the shell's app bar, and the editor's
+    own toolbar for an editor that ProvidesOwnChrome (only one of the two is ever on screen — see
+    MainWindowViewModel.IsShellChromeVisible). A copy would drift, and the chip is four bound classes
+    on the Border plus four more on the label, which is exactly the kind of thing that drifts
+    silently.
+
+    Its DataContext is an IShellChrome, so the shell binds it to itself and the editor binds it to
+    `Shell`. It deliberately does NOT reach up the visual tree: every headless suite renders an
+    editor view standalone, where such a lookup resolves to nothing and this chip would come out
+    blank in the frames used to verify the screen.
+  -->
+  <Border Classes="statusChip"
+          VerticalAlignment="Center"
+          Classes.ok="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+          Classes.warning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+          Classes.error="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
+          Classes.demo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}">
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <!-- The state mark, one per severity and each with its own pen, so exactly one is visible.
+           Demo mode deliberately has none: the state marks describe what the app found on a drive,
+           and demo mode is the absence of one - inventing a mark for it would put a fourth family
+           in a set of three. -->
+      <Panel Width="{DynamicResource IconSize}"
+             Height="{DynamicResource IconSize}"
+             VerticalAlignment="Center">
+        <controls:Icon Data="{DynamicResource IconConnected}"
+                       Stroke="{DynamicResource StatusOkTextBrush}"
+                       IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}" />
+        <controls:Icon Data="{DynamicResource IconConnectedCore}"
+                       Fill="{DynamicResource StatusOkTextBrush}"
+                       IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}" />
+        <controls:Icon Data="{DynamicResource IconWarning}"
+                       Stroke="{DynamicResource StatusAdvisoryTextBrush}"
+                       IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}" />
+        <controls:Icon Data="{DynamicResource IconCannotAccess}"
+                       Stroke="{DynamicResource StatusErrorTextBrush}"
+                       IsVisible="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+      </Panel>
+
+      <TextBlock Classes="pill"
+                 Text="{Binding StatusIndicatorText}"
+                 VerticalAlignment="Center"
+                 Classes.statusOk="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                 Classes.statusWarning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                 Classes.statusError="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
+                 Classes.statusDemo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}" />
+    </StackPanel>
+  </Border>
+</UserControl>
