@@ -10,7 +10,7 @@
        (specs/11-feature-dialogs.md §11.9, "Loading"). -->
   <Border Classes="overlayCard" MinWidth="240">
     <StackPanel Spacing="10">
-      <TextBlock Text="{Binding Caption}" HorizontalAlignment="Center" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Caption}" Classes="body" HorizontalAlignment="Center" TextWrapping="Wrap" />
       <ProgressBar IsIndeterminate="True" Width="200" />
     </StackPanel>
   </Border>

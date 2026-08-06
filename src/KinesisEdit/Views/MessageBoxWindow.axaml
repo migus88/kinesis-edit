@@ -26,7 +26,7 @@
                  Classes.messageIconWarning="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
                  Classes.messageIconError="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
 
-      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding Message}" Classes="modalBody" TextWrapping="Wrap" VerticalAlignment="Center" />
     </StackPanel>
 
     <StackPanel Grid.Row="1" Spacing="12" Margin="0,20,0,0">

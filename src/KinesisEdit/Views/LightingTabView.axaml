@@ -17,8 +17,8 @@
     <StackPanel Spacing="12" Margin="0,4">
 
       <!-- Demo mode: everything is explorable, nothing is written (03 §3.5). -->
-      <Border Classes="card" Padding="16,12" IsVisible="{Binding HasStatusMessage}">
-        <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextWrapping="Wrap" />
+      <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
+        <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
       </Border>
 
       <!-- Layer switch. The two layers are fully independent (§4), and the Fn pill is disabled
@@ -43,7 +43,7 @@
         </ItemsControl>
 
         <TextBlock Text="{Binding LayerLockHint}"
-                   Classes="muted"
+                   Classes="body muted"
                    TextWrapping="Wrap"
                    VerticalAlignment="Center"
                    IsVisible="{Binding !IsLayerCustomizationAvailable}" />
@@ -52,6 +52,8 @@
       <Grid ColumnDefinitions="180,*,Auto" ColumnSpacing="16">
 
         <!-- The mode menu (§3): membership and firmware gating are the view model's. -->
+        <!-- Tighter than a card's own padding: the rows inside carry theirs, so the menu would
+             otherwise read as double-inset. 8 is the spacing scale's second step. -->
         <Border Grid.Column="0" Classes="card" Padding="8" VerticalAlignment="Top">
           <ItemsControl ItemsSource="{Binding Modes}">
             <ItemsControl.ItemsPanel>
@@ -105,7 +107,7 @@
 
           <!-- Speed 1-9 (§2.1). -->
           <Grid ColumnDefinitions="80,*,32" IsVisible="{Binding Panels.ShowsSpeed}">
-            <TextBlock Grid.Column="0" Text="Speed" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="0" Text="SPEED" Classes="sectionLabel" VerticalAlignment="Center" />
             <Slider Grid.Column="1"
                     Minimum="{Binding MinimumSpeed}"
                     Maximum="{Binding MaximumSpeed}"
@@ -115,13 +117,14 @@
                     VerticalAlignment="Center" />
             <TextBlock Grid.Column="2"
                        Text="{Binding Speed}"
+                       Classes="monoValue"
                        HorizontalAlignment="Right"
                        VerticalAlignment="Center" />
           </Grid>
 
           <!-- Direction (§3). Rebound's two entries read "Horizontal"/"Vertical". -->
           <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Panels.ShowsDirection}">
-            <TextBlock Text="Direction" FontWeight="SemiBold" Width="80" VerticalAlignment="Center" />
+            <TextBlock Text="DIRECTION" Classes="sectionLabel" Width="80" VerticalAlignment="Center" />
             <ItemsControl ItemsSource="{Binding Directions}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -142,7 +145,7 @@
 
           <!-- Zone buttons and "Reset All": Freestyle and Breathe only (§3, §4). -->
           <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsZones}">
-            <TextBlock Text="Zones" FontWeight="SemiBold" />
+            <TextBlock Text="ZONES" Classes="sectionLabel" />
             <ItemsControl ItemsSource="{Binding Zones}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -181,7 +184,7 @@
            wired to the colour-assign command instead of the remap one. -->
       <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsPerKeyColors}">
         <TextBlock Text="Click a key to paint it with the selected colour; black erases it."
-                   Classes="muted" />
+                   Classes="body muted" />
 
         <Border Classes="keyboardBoard"
                 IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">

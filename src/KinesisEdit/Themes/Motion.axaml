@@ -1,0 +1,94 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:av="clr-namespace:Avalonia;assembly=Avalonia.Base"
+                    xmlns:layout="clr-namespace:Avalonia.Layout;assembly=Avalonia.Base"
+                    xmlns:controls="clr-namespace:Avalonia.Controls;assembly=Avalonia.Controls">
+  <!--
+    The motion budget (docs/design/mockups.md, mockup 2b). It is a budget, not a suggestion:
+    nothing in the app may animate for longer than the duration named here, and nothing may
+    animate that is not in this table.
+
+    Layer and tab switching is the one deliberate zero. Quoting the design source:
+      "Layer switching is deliberately unanimated - the spec says it will be used constantly,
+       and 200 ms x 200 switches is the difference between an instrument and a website."
+    `DurationTabSwap` therefore exists only so the zero is documented; there is no
+    `TabSwapTransitions` resource and there must never be one. A zero-duration transition still
+    costs a frame of bookkeeping per switch, so those containers get no `Transitions` at all.
+
+    Every other motion comes in two flavours, `...Full` and `...Reduced`. Reduced is fades only:
+    no rise, no slide, no height animation. Views and styles never name either one - they bind
+    `{DynamicResource <Name>Transitions}`, and MotionResourceBinder points that alias at the set
+    the resolved IMotionSettings chose, once, at startup (see Services/MotionResourceBinder.cs).
+  -->
+
+  <!-- ===== Durations ==================================================================== -->
+  <sys:TimeSpan x:Key="DurationStatusCrossFade">0:0:0.22</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationListInsert">0:0:0.16</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationTabSwap">0:0:0</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationPopoverIn">0:0:0.12</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationModalIn">0:0:0.14</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationToast">0:0:0.18</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationToastDwell">0:0:5</sys:TimeSpan>
+  <sys:TimeSpan x:Key="DurationRecordingPulse">0:0:1.4</sys:TimeSpan>
+
+  <!-- ===== Full budget ================================================================= -->
+
+  <!-- A status chip changing state cross-fades its fill; the text inside it swaps instantly. -->
+  <Transitions x:Key="StatusFillTransitionsFull">
+    <BrushTransition Property="{x:Static controls:Border.BackgroundProperty}" Duration="0:0:0.22" />
+    <BrushTransition Property="{x:Static controls:Border.BorderBrushProperty}" Duration="0:0:0.22" />
+  </Transitions>
+
+  <!-- A newly detected device card animates in at the end of the list, height only. Nothing
+       else re-lays out and nothing is ever reordered by a refresh. -->
+  <Transitions x:Key="ListInsertTransitionsFull">
+    <DoubleTransition Property="{x:Static layout:Layoutable.HeightProperty}" Duration="0:0:0.16" Easing="CubicEaseOut" />
+  </Transitions>
+
+  <!-- Popover: fade plus a 2px rise, which is the RenderTransform half of this pair. -->
+  <Transitions x:Key="PopoverTransitionsFull">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.12" />
+    <TransformOperationsTransition Property="{x:Static av:Visual.RenderTransformProperty}" Duration="0:0:0.12" />
+  </Transitions>
+
+  <!-- Modal and its scrim: fade only, even in the full budget. -->
+  <Transitions x:Key="ModalTransitionsFull">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.14" />
+  </Transitions>
+  <Transitions x:Key="ScrimTransitionsFull">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.14" />
+  </Transitions>
+
+  <!-- Toast in and out; the 5s dwell between them is DurationToastDwell, owned by the caller. -->
+  <Transitions x:Key="ToastTransitionsFull">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.18" />
+    <TransformOperationsTransition Property="{x:Static av:Visual.RenderTransformProperty}" Duration="0:0:0.18" />
+  </Transitions>
+
+  <!-- ===== Reduced budget ==============================================================
+       Fades survive; movement does not. The empty collection is deliberate - assigning an
+       empty Transitions is how a control ends up with no animation while the alias key stays
+       resolvable. -->
+  <Transitions x:Key="StatusFillTransitionsReduced">
+    <BrushTransition Property="{x:Static controls:Border.BackgroundProperty}" Duration="0:0:0.22" />
+    <BrushTransition Property="{x:Static controls:Border.BorderBrushProperty}" Duration="0:0:0.22" />
+  </Transitions>
+
+  <Transitions x:Key="ListInsertTransitionsReduced" />
+
+  <Transitions x:Key="PopoverTransitionsReduced">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.12" />
+  </Transitions>
+
+  <Transitions x:Key="ModalTransitionsReduced">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.14" />
+  </Transitions>
+  <Transitions x:Key="ScrimTransitionsReduced">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.14" />
+  </Transitions>
+
+  <Transitions x:Key="ToastTransitionsReduced">
+    <DoubleTransition Property="{x:Static av:Visual.OpacityProperty}" Duration="0:0:0.18" />
+  </Transitions>
+</ResourceDictionary>

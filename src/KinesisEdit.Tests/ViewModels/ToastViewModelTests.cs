@@ -32,6 +32,36 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void IsShown_StartsLowered_SoTheFirstFrameIsTheArrivingOne()
+        {
+            var viewModel = new ToastViewModel(new ToastRequest
+            {
+                Message = "Safe To Remove Hardware"
+            });
+
+            Assert.False(viewModel.IsShown);
+        }
+
+        [Fact]
+        public void IsShown_WhenRaised_RaisesPropertyChangedSoTheFadeRuns()
+        {
+            var viewModel = new ToastViewModel(new ToastRequest
+            {
+                Message = "Safe To Remove Hardware"
+            });
+
+            var changed = new List<string?>();
+
+            viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+            viewModel.IsShown = true;
+            viewModel.IsShown = true;
+
+            Assert.True(viewModel.IsShown);
+            Assert.Equal([nameof(ToastViewModel.IsShown)], changed);
+        }
+
+        [Fact]
         public void Title_WhenProvided_IsReported()
         {
             var viewModel = new ToastViewModel(new ToastRequest

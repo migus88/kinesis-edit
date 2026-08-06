@@ -124,7 +124,7 @@ namespace KinesisEdit.ViewModels
         private ViewModelBase _currentView;
         private DeviceEditorViewModel? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
-        private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Warning;
+        private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Demo;
         private bool _isDemoMode;
         private bool _isBusy;
         private bool _isDisposed;
@@ -463,8 +463,10 @@ namespace KinesisEdit.ViewModels
                     StatusIndicatorSeverity = StatusSeverity.Error;
                     break;
                 default:
+                    // Demo mode, not an advisory: no drive is being written to, which the design
+                    // gives its own colour rather than folding into amber.
                     StatusIndicatorText = DemoModeIndicator;
-                    StatusIndicatorSeverity = StatusSeverity.Warning;
+                    StatusIndicatorSeverity = StatusSeverity.Demo;
                     break;
             }
         }

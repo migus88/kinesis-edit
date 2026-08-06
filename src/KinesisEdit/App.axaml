@@ -4,7 +4,13 @@
              xmlns:local="clr-namespace:KinesisEdit"
              x:Class="KinesisEdit.App"
              RequestedThemeVariant="Default">
-  <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+  <!--
+    Composition only. This file wires the view locator, the converters, the theme and the design
+    system together and defines nothing itself: no colour, no style, no size. Tokens live in
+    Themes/, the styles built on them in Styles/, and a view that needs either names it.
+
+    "Default" follows the OS theme variant; "Dark" or "Light" pin it.
+  -->
 
   <Application.DataTemplates>
     <local:ViewLocator />
@@ -18,79 +24,24 @@
       <converters:MenuItemToggleTypeConverter x:Key="MenuItemToggle" />
       <converters:HexColorToColorConverter x:Key="HexColorToColor" />
 
-      <!-- Kinesis blue, the brand accent of specs/10-apps-and-ui.md "Fonts, colors, theming". -->
-      <Color x:Key="KinesisBlueColor">#0072CE</Color>
+      <!-- The design system (docs/design/). Tokens carries the colour roles in Dark and Light
+           theme dictionaries; Geometry the radii, paddings and the spacing scale; Motion the
+           budget. Typography is a Styles rather than a ResourceDictionary — a resource dictionary
+           cannot hold Style elements — so it is included under Application.Styles below instead of
+           merged here.
 
-      <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="StatusOkBrush" Color="#15803D" />
-          <SolidColorBrush x:Key="StatusWarningBrush" Color="#B45309" />
-          <SolidColorBrush x:Key="StatusErrorBrush" Color="#C0261F" />
-          <SolidColorBrush x:Key="AccentTextBrush" Color="#0060AD" />
-          <SolidColorBrush x:Key="ShellBarBrush" Color="#F2F3F5" />
-          <SolidColorBrush x:Key="ShellBarBorderBrush" Color="#D8DADD" />
-          <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
-          <SolidColorBrush x:Key="CardBorderBrush" Color="#D8DADD" />
-          <SolidColorBrush x:Key="OverlayBrush" Color="#FFFFFF" />
-          <SolidColorBrush x:Key="MutedTextBrush" Color="#5A6169" />
-
-          <!-- Keyboard picture (issue #14): the board it sits on, the cap, and the four cap
-               states. Every one of them exists in both variants, because the editor is the
-               densest surface in the app and a single hard-coded color would be unreadable in
-               one of the two themes. -->
-          <SolidColorBrush x:Key="KeyboardBoardBrush" Color="#ECEEF1" />
-          <SolidColorBrush x:Key="KeyboardBoardBorderBrush" Color="#D8DADD" />
-          <SolidColorBrush x:Key="KeyCapBrush" Color="#FFFFFF" />
-          <SolidColorBrush x:Key="KeyCapBorderBrush" Color="#C3C8CE" />
-          <SolidColorBrush x:Key="KeyCapTextBrush" Color="#1F2328" />
-          <SolidColorBrush x:Key="KeyCapHoverBrush" Color="#E4EFFA" />
-          <SolidColorBrush x:Key="KeyCapModifiedBrush" Color="#D8E9FB" />
-          <SolidColorBrush x:Key="KeyCapModifiedBorderBrush" Color="#8CB8E4" />
-          <SolidColorBrush x:Key="KeyCapLockedBrush" Color="#E3E5E8" />
-          <SolidColorBrush x:Key="KeyCapLockedBorderBrush" Color="#D2D5D9" />
-          <SolidColorBrush x:Key="KeyCapSelectedBorderBrush" Color="#0072CE" />
-          <SolidColorBrush x:Key="KeyCapListeningBrush" Color="#FDEFCB" />
-          <SolidColorBrush x:Key="KeyCapListeningBorderBrush" Color="#B45309" />
-          <SolidColorBrush x:Key="EditorTabSelectedBrush" Color="#0072CE" />
-          <SolidColorBrush x:Key="EditorTabSelectedBorderBrush" Color="#0060AD" />
-          <SolidColorBrush x:Key="EditorTabSelectedTextBrush" Color="#FFFFFF" />
-
-          <!-- Lighting tab (issue #16): the outline every colour square gets, so a white or a
-               black swatch is still a visible square on either background. -->
-          <SolidColorBrush x:Key="ColorSwatchBorderBrush" Color="#9AA1A9" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="StatusOkBrush" Color="#5CD37F" />
-          <SolidColorBrush x:Key="StatusWarningBrush" Color="#E0A030" />
-          <SolidColorBrush x:Key="StatusErrorBrush" Color="#F1706A" />
-          <SolidColorBrush x:Key="AccentTextBrush" Color="#4FA9EC" />
-          <SolidColorBrush x:Key="ShellBarBrush" Color="#22242A" />
-          <SolidColorBrush x:Key="ShellBarBorderBrush" Color="#3A3D45" />
-          <SolidColorBrush x:Key="CardBrush" Color="#2A2D34" />
-          <SolidColorBrush x:Key="CardBorderBrush" Color="#3A3D45" />
-          <SolidColorBrush x:Key="OverlayBrush" Color="#2A2D34" />
-          <SolidColorBrush x:Key="MutedTextBrush" Color="#A6ADB6" />
-
-          <SolidColorBrush x:Key="KeyboardBoardBrush" Color="#1D1F24" />
-          <SolidColorBrush x:Key="KeyboardBoardBorderBrush" Color="#3A3D45" />
-          <SolidColorBrush x:Key="KeyCapBrush" Color="#343841" />
-          <SolidColorBrush x:Key="KeyCapBorderBrush" Color="#494E58" />
-          <SolidColorBrush x:Key="KeyCapTextBrush" Color="#E7EAEE" />
-          <SolidColorBrush x:Key="KeyCapHoverBrush" Color="#414855" />
-          <SolidColorBrush x:Key="KeyCapModifiedBrush" Color="#1F3D59" />
-          <SolidColorBrush x:Key="KeyCapModifiedBorderBrush" Color="#3D74A8" />
-          <SolidColorBrush x:Key="KeyCapLockedBrush" Color="#292C32" />
-          <SolidColorBrush x:Key="KeyCapLockedBorderBrush" Color="#383C43" />
-          <SolidColorBrush x:Key="KeyCapSelectedBorderBrush" Color="#4FA9EC" />
-          <SolidColorBrush x:Key="KeyCapListeningBrush" Color="#4A3A17" />
-          <SolidColorBrush x:Key="KeyCapListeningBorderBrush" Color="#E0A030" />
-          <SolidColorBrush x:Key="EditorTabSelectedBrush" Color="#1D5B92" />
-          <SolidColorBrush x:Key="EditorTabSelectedBorderBrush" Color="#4FA9EC" />
-          <SolidColorBrush x:Key="EditorTabSelectedTextBrush" Color="#FFFFFF" />
-
-          <SolidColorBrush x:Key="ColorSwatchBorderBrush" Color="#6B727B" />
-        </ResourceDictionary>
-      </ResourceDictionary.ThemeDictionaries>
+           Controls comes last because it is an alias map over the other two: it redeclares the
+           FluentTheme's own control keys (ButtonBackground, ComboBoxBorderBrush, ...) against
+           those roles, so the base controls paint from the design system instead of from Fluent's
+           palette. It has to live here, in Application.Resources, rather than in Styles/ — that is
+           the scope Avalonia consults before Application.Styles, which is where FluentTheme's
+           originals are. -->
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://KinesisEdit/Themes/Tokens.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/Geometry.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/Motion.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/Controls.axaml" />
+      </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>
 
@@ -101,267 +52,17 @@
          FluentTheme above does not carry it; without this include the picker renders untemplated. -->
     <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
-    <!-- Status colors: 'Connected' / 'v-Drive OK' green, failures red, demo mode amber
-         (specs/10-apps-and-ui.md, "Detection loop"). Both palettes are theme-scoped, so the
-         same class reads correctly in the OS light and dark variants. -->
-    <Style Selector="TextBlock.statusOk">
-      <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}" />
-    </Style>
-    <Style Selector="TextBlock.statusWarning">
-      <Setter Property="Foreground" Value="{DynamicResource StatusWarningBrush}" />
-    </Style>
-    <Style Selector="TextBlock.statusError">
-      <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
-    </Style>
+    <!-- The type half of the design system: the two IBM Plex families and the type scale, as named
+         TextBlock classes plus raw sizes. It also puts Plex Sans on the window, so the whole tree
+         inherits it. -->
+    <StyleInclude Source="avares://KinesisEdit/Themes/Typography.axaml" />
 
-    <Style Selector="TextBlock.messageIconAccent">
-      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
-    </Style>
-    <Style Selector="TextBlock.messageIconWarning">
-      <Setter Property="Foreground" Value="{DynamicResource StatusWarningBrush}" />
-    </Style>
-    <Style Selector="TextBlock.messageIconError">
-      <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
-    </Style>
-
-    <Style Selector="TextBlock.heading">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-    </Style>
-    <Style Selector="TextBlock.messageIcon">
-      <Setter Property="FontSize" Value="28" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="MinWidth" Value="28" />
-      <Setter Property="TextAlignment" Value="Center" />
-    </Style>
-
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="{DynamicResource CardBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="16" />
-    </Style>
-    <Style Selector="Border.overlayCard">
-      <Setter Property="Background" Value="{DynamicResource OverlayBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="16,12" />
-      <Setter Property="BoxShadow" Value="0 4 16 0 #33000000" />
-    </Style>
-
-    <!-- ===== Keyboard editor (issue #14) =====================================================
-         The one button of a surface that commits something (the editor's Save). -->
-    <Style Selector="Button.primaryAction">
-      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-
-    <!-- The board the keyboard picture is drawn on. -->
-    <Style Selector="Border.keyboardBoard">
-      <Setter Property="Background" Value="{DynamicResource KeyboardBoardBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyboardBoardBorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Padding" Value="12" />
-    </Style>
-
-    <!-- One key cap. Its chrome is set on the Button's template presenter rather than on the
-         Button, because the Fluent theme's own :pointerover / :pressed / :disabled setters target
-         that presenter and would otherwise win over a Background set here. The cap states are
-         declared in increasing precedence — later styles override earlier ones — so a listening
-         key always reads as listening, whatever else it also is. -->
-    <Style Selector="Button.keyCap">
-      <Setter Property="Padding" Value="2" />
-      <Setter Property="MinWidth" Value="0" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="Button.keyCap /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapBorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="4" />
-    </Style>
-    <Style Selector="Button.keyCap.modified /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapModifiedBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapModifiedBorderBrush}" />
-    </Style>
-    <Style Selector="Button.keyCap.locked /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapLockedBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapLockedBorderBrush}" />
-    </Style>
-    <Style Selector="Button.keyCap:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapHoverBrush}" />
-    </Style>
-    <Style Selector="Button.keyCap.selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapSelectedBorderBrush}" />
-      <Setter Property="BorderThickness" Value="2" />
-    </Style>
-    <Style Selector="Button.keyCap.listening /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapListeningBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapListeningBorderBrush}" />
-      <Setter Property="BorderThickness" Value="2" />
-    </Style>
-
-    <Style Selector="TextBlock.keyCapText">
-      <Setter Property="Foreground" Value="{DynamicResource KeyCapTextBrush}" />
-    </Style>
-    <Style Selector="TextBlock.keyCapText.modified">
-      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="TextBlock.keyCapText.locked">
-      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-    </Style>
-
-    <!-- Layer switcher: one pill per layer, scaling from the two of a Freestyle Edge RGB to the
-         five of an Advantage 360 without any change here. -->
-    <Style Selector="Button.layerTab">
-      <Setter Property="Padding" Value="14,6" />
-      <Setter Property="MinWidth" Value="64" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.layerTab /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="CornerRadius" Value="14" />
-    </Style>
-    <Style Selector="Button.layerTab.selected">
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.layerTab.selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource EditorTabSelectedBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBorderBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource EditorTabSelectedTextBrush}" />
-    </Style>
-
-    <!-- Editor tab strip. Only the selected tab is underlined; a tab with nothing behind it stays
-         visibly disabled, which is why the Fluent :disabled foreground is left alone. -->
-    <Style Selector="Button.editorTab">
-      <Setter Property="Padding" Value="16,7" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.editorTab /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0,0,0,2" />
-      <Setter Property="CornerRadius" Value="0" />
-    </Style>
-    <Style Selector="Button.editorTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapHoverBrush}" />
-    </Style>
-    <Style Selector="Button.editorTab.selected">
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.editorTab.selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBrush}" />
-    </Style>
-
-    <!-- ===== Feature panels (issue #15) =====================================================
-         The panels of specs/11-feature-dialogs.md render inline over the editor rather than as
-         separate windows, so the scrim is what makes them read as modal: it dims the editor and,
-         being hit-test visible, swallows every click aimed at it. Translucent black works in both
-         theme variants, which is why it is a literal rather than a theme brush. -->
-    <Style Selector="Border.overlayScrim">
-      <Setter Property="Background" Value="#66000000" />
-    </Style>
-    <Style Selector="TextBlock.overlayTitle">
-      <Setter Property="FontSize" Value="16" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-
-    <!-- The small caption over a field or a group of them, in the panels and the macro editor. -->
-    <Style Selector="TextBlock.fieldLabel">
-      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-
-    <!-- A read-only action field: it shows what the next captured keystroke (or the Search Keys
-         picker) put there, and must not be a TextBox — focus in one auto-suspends capture, which
-         is exactly what the Tap and Hold fields need to stay clear of. -->
-    <Style Selector="Border.actionField">
-      <Setter Property="Background" Value="{DynamicResource CardBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Padding" Value="8,6" />
-      <Setter Property="MinHeight" Value="32" />
-    </Style>
-    <Style Selector="Border.actionField.armed">
-      <Setter Property="Background" Value="{DynamicResource KeyCapListeningBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource KeyCapListeningBorderBrush}" />
-      <Setter Property="BorderThickness" Value="2" />
-    </Style>
-
-    <!-- ===== Lighting tab (issue #16) =========================================================
-         The mode menu: one full-width row per mode, the selected one filled like a layer pill.
-         Declared, as everywhere here, in increasing precedence. -->
-    <Style Selector="Button.modeOption">
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-    </Style>
-    <Style Selector="Button.modeOption /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="4" />
-    </Style>
-    <Style Selector="Button.modeOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource KeyCapHoverBrush}" />
-    </Style>
-    <Style Selector="Button.modeOption.selected">
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.modeOption.selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource EditorTabSelectedBrush}" />
-      <Setter Property="Foreground" Value="{DynamicResource EditorTabSelectedTextBrush}" />
-    </Style>
-
-    <!-- One zone button (specs/07-lighting.md §4). -->
-    <Style Selector="Button.zoneButton">
-      <Setter Property="Padding" Value="12,5" />
-      <Setter Property="Margin" Value="0,0,6,6" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-
-    <!-- A colour square: the premixed and custom swatches of the picker, and the fill inside the
-         effect/base colour buttons. The outline is what keeps white and black squares visible. -->
-    <Style Selector="Button.colorSwatch">
-      <Setter Property="Padding" Value="2" />
-      <Setter Property="Margin" Value="0,0,4,4" />
-      <Setter Property="MinWidth" Value="0" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Border.colorSwatchFill">
-      <Setter Property="Width" Value="20" />
-      <Setter Property="Height" Value="20" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{DynamicResource ColorSwatchBorderBrush}" />
-    </Style>
-
-    <!-- The effect / base colour buttons: which one the picker is editing reads as a filled pill. -->
-    <Style Selector="Button.colorSlot">
-      <Setter Property="Padding" Value="10,6" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.colorSlot.selected">
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.colorSlot.selected /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="{DynamicResource EditorTabSelectedBrush}" />
-      <Setter Property="BorderThickness" Value="2" />
-    </Style>
+    <!-- The shared style layer, split by concern. Order matters only between Typography and these:
+         a role style may override a scale step, never the other way round. -->
+    <StyleInclude Source="avares://KinesisEdit/Styles/Text.axaml" />
+    <StyleInclude Source="avares://KinesisEdit/Styles/Surfaces.axaml" />
+    <StyleInclude Source="avares://KinesisEdit/Styles/Buttons.axaml" />
+    <StyleInclude Source="avares://KinesisEdit/Styles/Keyboard.axaml" />
+    <StyleInclude Source="avares://KinesisEdit/Styles/Editor.axaml" />
   </Application.Styles>
 </Application>

@@ -1,0 +1,63 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The shape half of the design system (docs/design/handoff.md §"Geometry").
+
+    Everything sits on a 4px grid. These are theme-independent: a corner radius does not change
+    when the OS flips to light, so they live outside `ThemeDictionaries` and resolve in either
+    variant.
+  -->
+
+  <!-- Radii. Four steps plus the pill. Panels and cards are the roundest thing in the app;
+       keycaps and the little kbd chips are tighter, so a dense board does not read as blobby. -->
+  <CornerRadius x:Key="RadiusPanel">8</CornerRadius>
+  <CornerRadius x:Key="RadiusControl">5</CornerRadius>
+  <CornerRadius x:Key="RadiusKeycap">4</CornerRadius>
+  <CornerRadius x:Key="RadiusChip">3</CornerRadius>
+  <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+
+  <!-- Padding rhythms. Avalonia's two-value Thickness is "horizontal,vertical", which is the
+       reverse of the CSS shorthand the handoff is written in: its "8,13" button padding is
+       13 horizontal by 8 vertical, hence "13,8" here. -->
+  <Thickness x:Key="PaddingCard">14</Thickness>
+  <Thickness x:Key="PaddingInspectorSection">12</Thickness>
+  <Thickness x:Key="PaddingButton">13,8</Thickness>
+  <Thickness x:Key="PaddingTab">13,0</Thickness>
+
+  <!-- The spacing scale. Nothing in a view should use a gap that is not one of these six. -->
+  <x:Double x:Key="Space4">4</x:Double>
+  <x:Double x:Key="Space8">8</x:Double>
+  <x:Double x:Key="Space12">12</x:Double>
+  <x:Double x:Key="Space16">16</x:Double>
+  <x:Double x:Key="Space24">24</x:Double>
+  <x:Double x:Key="Space32">32</x:Double>
+
+  <!-- Chrome. Fixed heights, because the toolbar and the tab strip must not grow with their
+       content — a device with a long name may not push the board down. -->
+  <x:Double x:Key="HeightToolbar">46</x:Double>
+  <x:Double x:Key="HeightTabBar">38</x:Double>
+  <x:Double x:Key="HeightAdvisoryStrip">30</x:Double>
+
+  <!-- Rails and gutters. The inspector widens only on the macro-editing variant, where the
+       recorded step list needs the room. -->
+  <x:Double x:Key="WidthInspectorRail">268</x:Double>
+  <x:Double x:Key="WidthInspectorRailWide">300</x:Double>
+  <x:Double x:Key="GutterSplit">26</x:Double>
+
+  <!-- The dashboard card grid: two columns, and a 2px status rail flush against the left edge
+       of every card. -->
+  <x:Double x:Key="CardGridGap">12</x:Double>
+  <x:Double x:Key="WidthCardStatusRail">2</x:Double>
+
+  <!-- Icons are geometry, never raster: a 16px box drawn with a 1.5px square-capped stroke. -->
+  <x:Double x:Key="IconSize">16</x:Double>
+  <x:Double x:Key="IconStrokeThickness">1.5</x:Double>
+
+  <!-- The busy spinner: a 14px circle with one quadrant left transparent. -->
+  <x:Double x:Key="SpinnerSize">14</x:Double>
+  <x:Double x:Key="SpinnerStrokeThickness">1.5</x:Double>
+
+  <!-- Hatching, for a locked key and for an LED that is off: 45 degrees at a 4px pitch. -->
+  <x:Double x:Key="HatchPitch">4</x:Double>
+  <x:Double x:Key="HatchAngle">45</x:Double>
+</ResourceDictionary>

@@ -1,0 +1,249 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The colour half of the design system (docs/design/handoff.md §"Design tokens").
+
+    Every token is a pair: a `<Role>Color` and the `<Role>Brush` built from it. Roles, never
+    colour names — a view asks for `SurfacePanelBrush`, never for "#16191C". Both dictionaries
+    below carry exactly the same key set; a token that exists in one variant and not the other is
+    a bug, because the app follows the OS theme and either variant can be the live one.
+
+    Light is not an inversion of dark: surfaces climb toward white as they come forward
+    (canvas -> panel -> key) where dark climbs away from black, and the status hues darken for
+    contrast while keeping their hue identity (docs/design/mockups.md, law 2a).
+  -->
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- ================================================================================
+         DARK — the primary showcase variant.
+         ================================================================================ -->
+    <ResourceDictionary x:Key="Dark">
+
+      <!-- Surfaces: the elevation ramp. Canvas is furthest away, key faces are nearest. -->
+      <Color x:Key="SurfaceCanvasColor">#0F1214</Color>
+      <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="{StaticResource SurfaceCanvasColor}" />
+      <Color x:Key="SurfacePanelColor">#16191C</Color>
+      <SolidColorBrush x:Key="SurfacePanelBrush" Color="{StaticResource SurfacePanelColor}" />
+      <Color x:Key="SurfaceInsetColor">#131619</Color>
+      <SolidColorBrush x:Key="SurfaceInsetBrush" Color="{StaticResource SurfaceInsetColor}" />
+      <Color x:Key="SurfaceBarColor">#1C2024</Color>
+      <SolidColorBrush x:Key="SurfaceBarBrush" Color="{StaticResource SurfaceBarColor}" />
+      <Color x:Key="SurfaceRaisedColor">#23272C</Color>
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+      <Color x:Key="SurfaceLineColor">#2C3136</Color>
+      <SolidColorBrush x:Key="SurfaceLineBrush" Color="{StaticResource SurfaceLineColor}" />
+      <Color x:Key="SurfaceLineHighColor">#3A4046</Color>
+      <SolidColorBrush x:Key="SurfaceLineHighBrush" Color="{StaticResource SurfaceLineHighColor}" />
+      <Color x:Key="SurfaceBorderRaisedColor">#31363B</Color>
+      <SolidColorBrush x:Key="SurfaceBorderRaisedBrush" Color="{StaticResource SurfaceBorderRaisedColor}" />
+      <Color x:Key="SurfaceThumbnailColor">#262B30</Color>
+      <SolidColorBrush x:Key="SurfaceThumbnailBrush" Color="{StaticResource SurfaceThumbnailColor}" />
+      <Color x:Key="SurfaceKeySelectedColor">#2A2F35</Color>
+      <SolidColorBrush x:Key="SurfaceKeySelectedBrush" Color="{StaticResource SurfaceKeySelectedColor}" />
+
+      <!-- Text. Six steps, from the primary reading colour down to disabled. -->
+      <Color x:Key="TextPrimaryColor">#E8EBED</Color>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+      <Color x:Key="TextSecondaryColor">#C6CCD1</Color>
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+      <Color x:Key="TextBodyMutedColor">#98A1A8</Color>
+      <SolidColorBrush x:Key="TextBodyMutedBrush" Color="{StaticResource TextBodyMutedColor}" />
+      <Color x:Key="TextMutedColor">#7B858C</Color>
+      <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+      <Color x:Key="TextFaintColor">#6C757C</Color>
+      <SolidColorBrush x:Key="TextFaintBrush" Color="{StaticResource TextFaintColor}" />
+      <Color x:Key="TextDisabledColor">#545C62</Color>
+      <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabledColor}" />
+
+      <!-- Accent. It means exactly two things: selection/focus, and "you changed this".
+           `AccentText` is the colour that sits ON an accent fill, not accent-coloured text. -->
+      <Color x:Key="AccentColor">#5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+      <Color x:Key="AccentTextColor">#0F1214</Color>
+      <SolidColorBrush x:Key="AccentTextBrush" Color="{StaticResource AccentTextColor}" />
+      <Color x:Key="AccentLinkHoverColor">#8FBCFB</Color>
+      <SolidColorBrush x:Key="AccentLinkHoverBrush" Color="{StaticResource AccentLinkHoverColor}" />
+      <Color x:Key="AccentSelectionFillColor">#245B9DF9</Color>
+      <SolidColorBrush x:Key="AccentSelectionFillBrush" Color="{StaticResource AccentSelectionFillColor}" />
+      <Color x:Key="AccentSelectedRingColor">#3E6FA8</Color>
+      <SolidColorBrush x:Key="AccentSelectedRingBrush" Color="{StaticResource AccentSelectedRingColor}" />
+      <Color x:Key="AccentFocusHaloColor">#475B9DF9</Color>
+      <SolidColorBrush x:Key="AccentFocusHaloBrush" Color="{StaticResource AccentFocusHaloColor}" />
+      <Color x:Key="AccentKeyHaloColor">#4D5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentKeyHaloBrush" Color="{StaticResource AccentKeyHaloColor}" />
+
+      <!-- Status. Amber is the only warning colour — the app never shows red for an advisory;
+           red is reserved for genuine failure and for the macro Record dot. -->
+      <Color x:Key="StatusOkColor">#4FBF8B</Color>
+      <SolidColorBrush x:Key="StatusOkBrush" Color="{StaticResource StatusOkColor}" />
+      <Color x:Key="StatusOkTextColor">#7ED3AC</Color>
+      <SolidColorBrush x:Key="StatusOkTextBrush" Color="{StaticResource StatusOkTextColor}" />
+      <Color x:Key="StatusOkTintColor">#1F4FBF8B</Color>
+      <SolidColorBrush x:Key="StatusOkTintBrush" Color="{StaticResource StatusOkTintColor}" />
+      <Color x:Key="StatusOkTintBorderColor">#614FBF8B</Color>
+      <SolidColorBrush x:Key="StatusOkTintBorderBrush" Color="{StaticResource StatusOkTintBorderColor}" />
+      <Color x:Key="StatusAdvisoryColor">#DDA94E</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryBrush" Color="{StaticResource StatusAdvisoryColor}" />
+      <Color x:Key="StatusAdvisoryStrongColor">#C08A21</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryStrongBrush" Color="{StaticResource StatusAdvisoryStrongColor}" />
+      <Color x:Key="StatusAdvisoryTextColor">#C9B48A</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTextBrush" Color="{StaticResource StatusAdvisoryTextColor}" />
+      <Color x:Key="StatusAdvisoryTintColor">#1FDDA94E</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTintBrush" Color="{StaticResource StatusAdvisoryTintColor}" />
+      <Color x:Key="StatusAdvisoryTintBorderColor">#61C08A21</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTintBorderBrush" Color="{StaticResource StatusAdvisoryTintBorderColor}" />
+      <Color x:Key="StatusErrorColor">#E4685E</Color>
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusErrorColor}" />
+      <Color x:Key="StatusErrorTextColor">#EE9C94</Color>
+      <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{StaticResource StatusErrorTextColor}" />
+      <Color x:Key="StatusErrorTintColor">#1FE4685E</Color>
+      <SolidColorBrush x:Key="StatusErrorTintBrush" Color="{StaticResource StatusErrorTintColor}" />
+      <Color x:Key="StatusErrorTintBorderColor">#61E4685E</Color>
+      <SolidColorBrush x:Key="StatusErrorTintBorderBrush" Color="{StaticResource StatusErrorTintBorderColor}" />
+      <Color x:Key="StatusDemoColor">#B58CF6</Color>
+      <SolidColorBrush x:Key="StatusDemoBrush" Color="{StaticResource StatusDemoColor}" />
+      <Color x:Key="StatusDemoTintColor">#1FB58CF6</Color>
+      <SolidColorBrush x:Key="StatusDemoTintBrush" Color="{StaticResource StatusDemoTintColor}" />
+      <Color x:Key="StatusDemoTintBorderColor">#61B58CF6</Color>
+      <SolidColorBrush x:Key="StatusDemoTintBorderBrush" Color="{StaticResource StatusDemoTintBorderColor}" />
+
+      <!-- Badge hues: the keycap overlays and the LED accents. `BadgeLed` deliberately repeats
+           the demo purple — two roles, one colour, so neither call site knows about the other. -->
+      <Color x:Key="BadgeMacroColor">#C77DD8</Color>
+      <SolidColorBrush x:Key="BadgeMacroBrush" Color="{StaticResource BadgeMacroColor}" />
+      <Color x:Key="BadgeTapHoldColor">#35A26D</Color>
+      <SolidColorBrush x:Key="BadgeTapHoldBrush" Color="{StaticResource BadgeTapHoldColor}" />
+      <Color x:Key="BadgeLightingPreviewColor">#57C4D8</Color>
+      <SolidColorBrush x:Key="BadgeLightingPreviewBrush" Color="{StaticResource BadgeLightingPreviewColor}" />
+      <Color x:Key="BadgeLedColor">#B58CF6</Color>
+      <SolidColorBrush x:Key="BadgeLedBrush" Color="{StaticResource BadgeLedColor}" />
+
+      <!-- Elevation. Flat elevation is a 1px SurfaceLine border and no shadow at all; only
+           popovers and modals cast one. The halos are spread-only shadows, never offset
+           outlines: focus is 3px of accent at 28% alpha, a selected keycap 2px at 30%. -->
+      <Color x:Key="ScrimColor">#9E080A0C</Color>
+      <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
+      <BoxShadows x:Key="ShadowPopover">0 8 24 0 #80000000</BoxShadows>
+      <BoxShadows x:Key="ShadowModal">0 24 60 0 #99000000</BoxShadows>
+      <BoxShadows x:Key="ShadowFocusHalo">0 0 0 3 #475B9DF9</BoxShadows>
+      <BoxShadows x:Key="ShadowKeyHalo">0 0 0 2 #4D5B9DF9</BoxShadows>
+    </ResourceDictionary>
+
+    <!-- ================================================================================
+         LIGHT.
+         ================================================================================ -->
+    <ResourceDictionary x:Key="Light">
+
+      <!-- Surfaces climb toward white as they come forward. Canvas and inset share a value:
+           the inset rails read as inset against the panels they sit next to, not against the
+           window. -->
+      <Color x:Key="SurfaceCanvasColor">#F4F5F6</Color>
+      <SolidColorBrush x:Key="SurfaceCanvasBrush" Color="{StaticResource SurfaceCanvasColor}" />
+      <Color x:Key="SurfacePanelColor">#FFFFFF</Color>
+      <SolidColorBrush x:Key="SurfacePanelBrush" Color="{StaticResource SurfacePanelColor}" />
+      <Color x:Key="SurfaceInsetColor">#F4F5F6</Color>
+      <SolidColorBrush x:Key="SurfaceInsetBrush" Color="{StaticResource SurfaceInsetColor}" />
+      <Color x:Key="SurfaceBarColor">#FAFBFB</Color>
+      <SolidColorBrush x:Key="SurfaceBarBrush" Color="{StaticResource SurfaceBarColor}" />
+      <Color x:Key="SurfaceRaisedColor">#EEF0F1</Color>
+      <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+      <Color x:Key="SurfaceLineColor">#DDE1E3</Color>
+      <SolidColorBrush x:Key="SurfaceLineBrush" Color="{StaticResource SurfaceLineColor}" />
+      <Color x:Key="SurfaceLineHighColor">#C9CFD2</Color>
+      <SolidColorBrush x:Key="SurfaceLineHighBrush" Color="{StaticResource SurfaceLineHighColor}" />
+      <Color x:Key="SurfaceBorderRaisedColor">#C9CFD2</Color>
+      <SolidColorBrush x:Key="SurfaceBorderRaisedBrush" Color="{StaticResource SurfaceBorderRaisedColor}" />
+      <Color x:Key="SurfaceThumbnailColor">#EEF0F1</Color>
+      <SolidColorBrush x:Key="SurfaceThumbnailBrush" Color="{StaticResource SurfaceThumbnailColor}" />
+      <Color x:Key="SurfaceKeySelectedColor">#E4E7E9</Color>
+      <SolidColorBrush x:Key="SurfaceKeySelectedBrush" Color="{StaticResource SurfaceKeySelectedColor}" />
+
+      <!-- Light deliberately collapses two pairs of text steps — Secondary == BodyMuted and
+           Faint == Disabled — because the dark ramp has more headroom than the light one.
+           All six keys stay so every call site works in both variants. -->
+      <Color x:Key="TextPrimaryColor">#14181B</Color>
+      <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+      <Color x:Key="TextSecondaryColor">#4A5158</Color>
+      <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+      <Color x:Key="TextBodyMutedColor">#4A5158</Color>
+      <SolidColorBrush x:Key="TextBodyMutedBrush" Color="{StaticResource TextBodyMutedColor}" />
+      <Color x:Key="TextMutedColor">#6C757C</Color>
+      <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+      <Color x:Key="TextFaintColor">#8A9298</Color>
+      <SolidColorBrush x:Key="TextFaintBrush" Color="{StaticResource TextFaintColor}" />
+      <Color x:Key="TextDisabledColor">#8A9298</Color>
+      <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabledColor}" />
+
+      <!-- The accent hue itself is variant-independent; only the colour that sits on top of it
+           flips, to white. -->
+      <Color x:Key="AccentColor">#5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+      <Color x:Key="AccentTextColor">#FFFFFF</Color>
+      <SolidColorBrush x:Key="AccentTextBrush" Color="{StaticResource AccentTextColor}" />
+      <Color x:Key="AccentLinkHoverColor">#8FBCFB</Color>
+      <SolidColorBrush x:Key="AccentLinkHoverBrush" Color="{StaticResource AccentLinkHoverColor}" />
+      <Color x:Key="AccentSelectionFillColor">#245B9DF9</Color>
+      <SolidColorBrush x:Key="AccentSelectionFillBrush" Color="{StaticResource AccentSelectionFillColor}" />
+      <Color x:Key="AccentSelectedRingColor">#3E6FA8</Color>
+      <SolidColorBrush x:Key="AccentSelectedRingBrush" Color="{StaticResource AccentSelectedRingColor}" />
+      <Color x:Key="AccentFocusHaloColor">#475B9DF9</Color>
+      <SolidColorBrush x:Key="AccentFocusHaloBrush" Color="{StaticResource AccentFocusHaloColor}" />
+      <Color x:Key="AccentKeyHaloColor">#4D5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentKeyHaloBrush" Color="{StaticResource AccentKeyHaloColor}" />
+
+      <!-- Status hues darken for contrast on light while keeping their hue identity. The tints
+           stay translucent, so they are re-mixed from the darkened hue rather than reused. -->
+      <Color x:Key="StatusOkColor">#35A26D</Color>
+      <SolidColorBrush x:Key="StatusOkBrush" Color="{StaticResource StatusOkColor}" />
+      <Color x:Key="StatusOkTextColor">#1D7A52</Color>
+      <SolidColorBrush x:Key="StatusOkTextBrush" Color="{StaticResource StatusOkTextColor}" />
+      <Color x:Key="StatusOkTintColor">#1F4FBF8B</Color>
+      <SolidColorBrush x:Key="StatusOkTintBrush" Color="{StaticResource StatusOkTintColor}" />
+      <Color x:Key="StatusOkTintBorderColor">#6135A26D</Color>
+      <SolidColorBrush x:Key="StatusOkTintBorderBrush" Color="{StaticResource StatusOkTintBorderColor}" />
+      <Color x:Key="StatusAdvisoryColor">#DDA94E</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryBrush" Color="{StaticResource StatusAdvisoryColor}" />
+      <Color x:Key="StatusAdvisoryStrongColor">#C08A21</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryStrongBrush" Color="{StaticResource StatusAdvisoryStrongColor}" />
+      <Color x:Key="StatusAdvisoryTextColor">#7A5A11</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTextBrush" Color="{StaticResource StatusAdvisoryTextColor}" />
+      <Color x:Key="StatusAdvisoryTintColor">#1FDDA94E</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTintBrush" Color="{StaticResource StatusAdvisoryTintColor}" />
+      <Color x:Key="StatusAdvisoryTintBorderColor">#61C08A21</Color>
+      <SolidColorBrush x:Key="StatusAdvisoryTintBorderBrush" Color="{StaticResource StatusAdvisoryTintBorderColor}" />
+      <Color x:Key="StatusErrorColor">#B0453C</Color>
+      <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusErrorColor}" />
+      <Color x:Key="StatusErrorTextColor">#B0453C</Color>
+      <SolidColorBrush x:Key="StatusErrorTextBrush" Color="{StaticResource StatusErrorTextColor}" />
+      <Color x:Key="StatusErrorTintColor">#1FB0453C</Color>
+      <SolidColorBrush x:Key="StatusErrorTintBrush" Color="{StaticResource StatusErrorTintColor}" />
+      <Color x:Key="StatusErrorTintBorderColor">#61B0453C</Color>
+      <SolidColorBrush x:Key="StatusErrorTintBorderBrush" Color="{StaticResource StatusErrorTintBorderColor}" />
+      <Color x:Key="StatusDemoColor">#7A4FD0</Color>
+      <SolidColorBrush x:Key="StatusDemoBrush" Color="{StaticResource StatusDemoColor}" />
+      <Color x:Key="StatusDemoTintColor">#1F7A4FD0</Color>
+      <SolidColorBrush x:Key="StatusDemoTintBrush" Color="{StaticResource StatusDemoTintColor}" />
+      <Color x:Key="StatusDemoTintBorderColor">#617A4FD0</Color>
+      <SolidColorBrush x:Key="StatusDemoTintBorderBrush" Color="{StaticResource StatusDemoTintBorderColor}" />
+
+      <!-- Badge hues are variant-independent: they sit on a keycap, not on the window. -->
+      <Color x:Key="BadgeMacroColor">#C77DD8</Color>
+      <SolidColorBrush x:Key="BadgeMacroBrush" Color="{StaticResource BadgeMacroColor}" />
+      <Color x:Key="BadgeTapHoldColor">#35A26D</Color>
+      <SolidColorBrush x:Key="BadgeTapHoldBrush" Color="{StaticResource BadgeTapHoldColor}" />
+      <Color x:Key="BadgeLightingPreviewColor">#57C4D8</Color>
+      <SolidColorBrush x:Key="BadgeLightingPreviewBrush" Color="{StaticResource BadgeLightingPreviewColor}" />
+      <Color x:Key="BadgeLedColor">#B58CF6</Color>
+      <SolidColorBrush x:Key="BadgeLedBrush" Color="{StaticResource BadgeLedColor}" />
+
+      <!-- The scrim and the shadows are the same in both variants: they are the absence of
+           light, and dimming a light window uses the same near-black at the same alpha. -->
+      <Color x:Key="ScrimColor">#9E080A0C</Color>
+      <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
+      <BoxShadows x:Key="ShadowPopover">0 8 24 0 #80000000</BoxShadows>
+      <BoxShadows x:Key="ShadowModal">0 24 60 0 #99000000</BoxShadows>
+      <BoxShadows x:Key="ShadowFocusHalo">0 0 0 3 #475B9DF9</BoxShadows>
+      <BoxShadows x:Key="ShadowKeyHalo">0 0 0 2 #4D5B9DF9</BoxShadows>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

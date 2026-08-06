@@ -16,25 +16,34 @@
        (specs/10-apps-and-ui.md, "Opening a device" / "Home"). Native chrome, OS theme. -->
   <Grid RowDefinitions="Auto,*">
     <Border Grid.Row="0"
-            Background="{DynamicResource ShellBarBrush}"
-            BorderBrush="{DynamicResource ShellBarBorderBrush}"
+            Background="{DynamicResource SurfaceBarBrush}"
+            BorderBrush="{DynamicResource SurfaceLineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="16,10">
+            Height="{DynamicResource HeightToolbar}"
+            Padding="16,0">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button Content="Home" Command="{Binding HomeCommand}" />
           <Button Content="Settings" Command="{Binding SettingsCommand}" />
           <Button Content="Help" Command="{Binding HelpCommand}" />
         </StackPanel>
 
-        <!-- 'v-Drive OK' green / 'v-Drive Error' red / 'Demo Mode' amber. -->
-        <TextBlock Grid.Column="2"
-                   VerticalAlignment="Center"
-                   FontWeight="SemiBold"
-                   Text="{Binding StatusIndicatorText}"
-                   Classes.statusOk="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                   Classes.statusWarning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                   Classes.statusError="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+        <!-- 'v-Drive OK' / 'v-Drive Error' / 'Demo Mode', as a chip whose fill cross-fades when the
+             detection loop changes its mind; the text inside swaps instantly. -->
+        <Border Grid.Column="2"
+                Classes="statusChip"
+                VerticalAlignment="Center"
+                Classes.ok="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                Classes.warning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                Classes.error="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
+                Classes.demo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}">
+          <TextBlock Classes="pill"
+                     Text="{Binding StatusIndicatorText}"
+                     Classes.statusOk="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                     Classes.statusWarning="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                     Classes.statusError="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}"
+                     Classes.statusDemo="{Binding StatusIndicatorSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Demo}" />
+        </Border>
       </Grid>
     </Border>
 

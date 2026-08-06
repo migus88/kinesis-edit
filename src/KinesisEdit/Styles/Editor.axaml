@@ -1,0 +1,127 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The editor's own chrome: the section tab strip, the read-only action fields of the spec 11
+    panels, the lighting mode menu and the colour swatches.
+  -->
+
+  <!--
+    ===== Tabs ===============================================================================
+    Only the selected tab is underlined; a tab with nothing behind it stays visibly disabled,
+    which is why the Fluent `:disabled` foreground is left alone. The strip is a fixed 38 high so
+    a long tab caption cannot push the board down.
+
+    The tab strip is unanimated, and that is the design decision, not an omission:
+      "Layer switching is deliberately unanimated - the spec says it will be used constantly, and
+       200 ms x 200 switches is the difference between an instrument and a website."
+    A zero-duration transition is not the same thing as no transition; these containers get none.
+    Declaring none is not the same thing as having none either — Fluent's Button control theme
+    ships a 75 ms RenderTransform press animation that every Button inherits — so the tab clears
+    `Transitions` outright.
+  -->
+  <Style Selector="Button.editorTab">
+    <Setter Property="Transitions" Value="{x:Null}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingTab}" />
+    <Setter Property="Height" Value="{DynamicResource HeightTabBar}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.editorTab /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0,0,0,2" />
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+  <Style Selector="Button.editorTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+  </Style>
+  <Style Selector="Button.editorTab.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.editorTab.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <!-- There is deliberately nothing here that switches a page transition off. Neither the section
+       tabs nor the layer switch is a TabControl: both are Buttons in an ItemsControl over a Panel
+       whose children toggle IsVisible, so no container in the app owns a page transition in the
+       first place. Avalonia 11's TabControl carries no PageTransition property either — Carousel
+       is the only container that does, and the app uses none. A tab strip added later must keep
+       it that way. -->
+
+  <!-- ===== Action fields =====================================================================
+       A read-only field showing what the next captured keystroke (or the Search Keys picker) put
+       there. It must not be a TextBox — focus in one auto-suspends capture, which is exactly what
+       the Tap and Hold fields need to stay clear of. Armed, it wears the advisory border the
+       listening key wears. -->
+  <Style Selector="Border.actionField">
+    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+    <Setter Property="MinHeight" Value="32" />
+  </Style>
+  <Style Selector="Border.actionField.armed">
+    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- ===== Lighting mode menu ================================================================
+       One full-width row per mode, the selected one filled like a layer pill. Declared, as
+       everywhere here, in increasing precedence. -->
+  <Style Selector="Button.modeOption">
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
+  <Style Selector="Button.modeOption /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+  </Style>
+  <Style Selector="Button.modeOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+  </Style>
+  <Style Selector="Button.modeOption.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.modeOption.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+
+  <!-- ===== Colour swatches ===================================================================
+       The premixed and custom squares of the picker, and the fill inside the effect/base colour
+       buttons. The fill's outline is what keeps a white or a black square visible; its Background
+       is device LED data, so it is the one place a colour legitimately arrives as a hex string
+       from a config file rather than as a token. -->
+  <Style Selector="Button.colorSwatch">
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="Margin" Value="0,0,4,4" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Border.colorSwatchFill">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusChip}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+  </Style>
+
+  <!-- Which of the effect / base colour buttons the picker is editing reads as an accent ring. -->
+  <Style Selector="Button.colorSlot">
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.colorSlot.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.colorSlot.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+</Styles>

@@ -16,9 +16,11 @@ namespace KinesisEdit
         // Avalonia configuration, don't remove; also used by visual designer.
         public static AppBuilder BuildAvaloniaApp()
         {
+            // No .WithInterFont(): the app ships IBM Plex Sans and IBM Plex Mono itself as
+            // embedded Avalonia resources (Assets/Fonts, wired in Themes/Typography.axaml), so
+            // there is no font package to register here.
             return AppBuilder.Configure<App>()
                 .UsePlatformDetect()
-                .WithInterFont()
                 .LogToTrace();
         }
     }

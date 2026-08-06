@@ -7,11 +7,12 @@
              x:Class="KinesisEdit.Views.EditorPlaceholderView"
              x:DataType="vm:EditorPlaceholderViewModel">
   <StackPanel Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
-    <TextBlock Text="{Binding DeviceName}" Classes="heading" HorizontalAlignment="Center" />
-    <TextBlock Text="{Binding Message}" Classes="muted" HorizontalAlignment="Center" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding DeviceName}" Classes="pageTitle" HorizontalAlignment="Center" />
+    <TextBlock Text="{Binding Message}" Classes="body muted" HorizontalAlignment="Center" TextWrapping="Wrap" />
+    <!-- Purple, not amber: demo mode means "nothing is written", which the design gives its own
+         colour; amber is reserved for advisories. -->
     <TextBlock Text="{x:Static vm:MainWindowViewModel.DemoModeIndicator}"
-               Classes="statusWarning"
-               FontWeight="SemiBold"
+               Classes="pill statusDemo"
                HorizontalAlignment="Center"
                IsVisible="{Binding IsDemoMode}" />
   </StackPanel>

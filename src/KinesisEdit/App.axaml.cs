@@ -32,6 +32,7 @@ namespace KinesisEdit
         private AvaloniaKeystrokeCaptureService? _captureService;
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
+        private IMotionSettings? _motionSettings;
 
         /// <summary>Loads the application XAML.</summary>
         public override void Initialize()
@@ -42,6 +43,12 @@ namespace KinesisEdit
         /// <summary>Builds the object graph, shows the shell, and arms the detection loop.</summary>
         public override void OnFrameworkInitializationCompleted()
         {
+            // Before any window exists, because the alias resources it writes are what the
+            // views' transitions bind to. Resolved once here and never re-read: the OS
+            // accessibility setting is a launch-time question (docs/app/design-system.md).
+            _motionSettings = MotionSettings.CreateForCurrentPlatform();
+            MotionResourceBinder.Apply(this, _motionSettings);
+
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 if (desktop.Args?.Contains(KeystrokeSpikeArgument) == true)

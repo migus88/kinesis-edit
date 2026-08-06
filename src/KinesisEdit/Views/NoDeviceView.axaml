@@ -12,7 +12,7 @@
        whole catalog, so the instruction text and the support link follow the selection. -->
   <Border Classes="card" MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
     <StackPanel Spacing="16">
-      <TextBlock Text="{Binding Title}" Classes="heading" />
+      <TextBlock Text="{Binding Title}" Classes="pageTitle" />
 
       <ComboBox ItemsSource="{Binding Devices}"
                 SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
@@ -24,7 +24,7 @@
         </ComboBox.ItemTemplate>
       </ComboBox>
 
-      <TextBlock Text="{Binding InstructionText}" TextWrapping="Wrap" Classes="muted" />
+      <TextBlock Text="{Binding InstructionText}" TextWrapping="Wrap" Classes="body muted" />
 
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button Content="{x:Static vm:NoDeviceViewModel.ScanButtonCaption}" Command="{Binding ScanCommand}" />

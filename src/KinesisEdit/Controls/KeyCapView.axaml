@@ -8,10 +8,10 @@
              x:Class="KinesisEdit.Controls.KeyCapView"
              x:DataType="vm:KeyboardKeyViewModel">
   <!-- One key cap. The cap is a Button so it is focusable and clickable without code-behind; all
-       of its chrome comes from the 'keyCap' style classes in App.axaml, which is also where the
-       four states (selected / listening / modified / locked) get their theme brushes. The click
-       goes to the editor through the containing KeyboardView, so nothing here knows what a remap
-       is (specs/10-apps-and-ui.md, "Remap workflow"). -->
+       of its chrome comes from the 'keyCap' style classes in Styles/Keyboard.axaml, which is also
+       where the four states (selected / listening / modified / locked) get their theme brushes.
+       The click goes to the editor through the containing KeyboardView, so nothing here knows what
+       a remap is (specs/10-apps-and-ui.md, "Remap workflow"). -->
   <Button Classes="keyCap"
           Classes.selected="{Binding IsSelected}"
           Classes.listening="{Binding IsListening}"
@@ -37,7 +37,7 @@
            the cap's own state stays readable next to it. -->
       <Border Grid.Row="1"
               Height="3"
-              CornerRadius="2"
+              CornerRadius="{DynamicResource RadiusChip}"
               Margin="1,2,1,0"
               IsVisible="{Binding HasColorOverlay}"
               Background="{Binding ColorOverlayHex, Converter={StaticResource HexColorToBrush}}" />

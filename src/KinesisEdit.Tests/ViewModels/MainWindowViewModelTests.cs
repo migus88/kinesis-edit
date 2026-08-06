@@ -462,7 +462,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(_shell.IsDemoMode);
             Assert.True(_shell.Editor!.IsDemoMode);
             Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
-            Assert.Equal(StatusSeverity.Warning, _shell.StatusIndicatorSeverity);
+            Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
         }
 
         [Fact]
@@ -624,7 +624,55 @@ namespace KinesisEdit.Tests.ViewModels
             _monitor.Refresh();
 
             Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
-            Assert.Equal(StatusSeverity.Warning, _shell.StatusIndicatorSeverity);
+            Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
+        }
+
+        [Fact]
+        public void StatusIndicator_BeforeTheFirstScan_AlreadyReportsDemoMode()
+        {
+            // The field initialisers are the state the chip renders in the instant between the
+            // shell being constructed and the detection loop first answering, so they carry the
+            // same pair the demo branch below sets rather than a fourth, transient one.
+            Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
+            Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
+        }
+
+        [Fact]
+        public void StatusIndicator_DemoMode_IsNotAnAdvisory()
+        {
+            // docs/design/: amber is the *only* warning colour and means "advisory, never blocks".
+            // Demo mode means "nothing is written", which is its own state with its own colour, so
+            // it must never land on the amber ramp.
+            _monitor.Refresh();
+
+            Assert.NotEqual(StatusSeverity.Warning, _shell.StatusIndicatorSeverity);
+        }
+
+        [Fact]
+        public void StatusIndicator_AcrossEveryDriveState_UsesADistinctSeverityPerState()
+        {
+            // The four states of the design's vocabulary each mean one thing, so no two of the
+            // shell's own indicator states may share a severity.
+            var severities = new List<StatusSeverity>();
+
+            // Nothing detected at all.
+            _monitor.Refresh();
+            severities.Add(_shell.StatusIndicatorSeverity);
+
+            // A drive with no readable version file. This runs before SetDrive below, because the
+            // fake file service keeps what it is given and a version file written once stays
+            // readable for the rest of the test.
+            _scanner.SetResult(TestDevices.CreateLocation(DeviceId.Tko));
+            _monitor.Refresh();
+            severities.Add(_shell.StatusIndicatorSeverity);
+
+            // A drive whose version file parses.
+            SetDrive(DeviceId.Tko);
+            _monitor.Refresh();
+            severities.Add(_shell.StatusIndicatorSeverity);
+
+            Assert.Equal(new[] { StatusSeverity.Demo, StatusSeverity.Error, StatusSeverity.Ok }, severities);
+            Assert.Equal(severities.Count, severities.Distinct().Count());
         }
 
         [Fact]
