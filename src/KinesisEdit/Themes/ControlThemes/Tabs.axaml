@@ -1,0 +1,244 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The tab family. Read Shared.axaml's header first — it carries the authoring contract, and
+    BaseButton carries the template, the geometry, the type step, the focus ring and the disabled
+    face that ModeOption at the bottom of this file derives from.
+
+      TabStrip / TabStripItem  the editor's section strip: Layout, Macros, Lighting, Settings.
+      ModeOption               one row of the lighting mode rail.
+
+    These are Avalonia's own TabStrip and TabStripItem — the header row of a tab control without a
+    content host, which is exactly what the editor has: the strip selects, and a Panel below it
+    toggles which page is visible. Nothing here templates a TabControl, and nothing here owns a page
+    transition; see Themes/Motion.axaml, and Styles/Editor.axaml's note on why the app has no
+    container that could carry one.
+
+    THE UNDERLINE AND THE FOCUS RING SHARE NOTHING. docs/design/handoff.md draws the active tab as
+    `box-shadow: inset 0 -2px 0 #5B9DF9` — a 2px accent line flush with the tab's bottom edge — and
+    the app drew it, until this file, as a `0,0,0,2` BorderBrush on the content presenter. That
+    cannot survive contract 3: the focus ring is also a BorderBrush, so a merely focused tab would
+    have painted itself an accent underline and read as the active one. The underline is therefore
+    its own template part, which leaves BorderBrush free to be the ring and nothing else. An active
+    tab that is also focused shows both, and they are different shapes.
+  -->
+
+  <!--
+    ONE TAB. 12px type stepping 400 -> 500 and TextMuted -> TextPrimary as it becomes active, which
+    is the whole of the inactive/active distinction besides the underline (mockups 1e, 2a draw the
+    two at `font: 400 12px/1` and `font: 500 12px/1`).
+
+    Active is the mock's own colour, TextPrimary. Inactive is one step brighter than the mock's: 1e
+    sets it at what the dark variant calls TextFaint, and this takes TextMuted, because that is the
+    role every other unselected control label in the app rests at — a segment (Segmented.axaml), a
+    filter chip (Pills.axaml) — and a tab is a control label rather than incidental text. TextFaint
+    is the placeholder step (Themes/Controls.axaml).
+  -->
+  <ControlTheme x:Key="TabStripItem" TargetType="TabStripItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="0" />
+
+    <!-- Zero, and PaddingTab moved onto the label inside the template instead. A Border's Padding
+         shrinks its child, and the underline IS that child: padding the Root would hold the
+         underline 13px clear of each end of the tab, where the design runs it the full width. A
+         consumer that sets Padding still widens the tab, and then legitimately moves the underline
+         with it — the same thing a CSS inset shadow does. -->
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+
+    <!-- Contract 3: our ring replaces Fluent's dotted adorner rather than doubling up with it. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+
+    <!-- Contract 6: the halo is a BoxShadow with spread, drawn outside Root's own bounds. -->
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <!-- Contract 8. The budget's other deliberate zero: "tab / layer swap - 0 ms - instant, no
+         slide". Cleared outright rather than set to a zero duration, because a zero-duration
+         transition still costs a frame of bookkeeping per switch. -->
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="TabStripItem">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <Panel>
+            <ContentPresenter x:Name="Label"
+                              Padding="{StaticResource PaddingTab}"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+
+            <!-- The active mark. Transparent until selection paints it, so acquiring it costs no
+                 reflow. The negative margin is the Root's own 1px border, which the ring uses and
+                 the underline has to sit OVER rather than inside: without it the line would float a
+                 pixel above the tab's bottom edge and stop a pixel short of each end. Both are
+                 accent whenever both are visible, so the overlap paints the same colour twice. -->
+            <Border x:Name="Underline"
+                    Height="2"
+                    Margin="-1,0,-1,-1"
+                    VerticalAlignment="Bottom"
+                    HorizontalAlignment="Stretch"
+                    Background="Transparent" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Contract 5. Selection outranks hover: the active tab under the pointer is still the active
+         tab, so the hover fill carries `:not(:selected)` rather than relying on file order. -->
+    <Style Selector="^:pointerover:not(:selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- Active: the weight, the colour and the mark. The mark is a template part rather than the
+         Root's bottom border - see the header - and it is the one thing here a state cannot set on
+         the control, because a tab has no property for it. Contract 2: reaching into a template
+         this ControlTheme itself declares is the idiomatic form of exactly that.
+
+         Contract 5, and the qualifier Pills.axaml's header calls easy to miss: `:not(:disabled)`.
+         The dim face below would win the label back on its own — it is written after this - but
+         nothing there touches the mark, which lives on a part rather than on the control, so an
+         unqualified `:selected` would leave a gated tab wearing a full accent underline over a
+         TextDisabled label. Said in the selector instead, so the underline goes out with the rest
+         of the state rather than needing a reset of its own. -->
+    <Style Selector="^:selected:not(:disabled)">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="^:selected:not(:disabled) /template/ Border#Underline">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- A tab with nothing behind it - Lighting on a board this app does not light, Settings on a
+         device with no settings file - stays visible and dim. The design would rather such a tab
+         were not rendered at all ("absent features are not shown, not disabled"), which is the
+         editor's decision to make and not this theme's. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- Contract 3, verbatim. The ring owns BorderBrush; the underline is a separate part, so a tab
+         that is both active and focused shows a 1px accent rectangle, its halo, AND the 2px mark. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    THE STRIP. A fixed 38 high on the inset surface with a hairline under it, "because the toolbar
+    and the tab strip must not grow with their content - a device with a long name may not push the
+    board down" (Themes/Geometry.axaml). 12 horizontal padding and a 2 gap between tabs, as
+    mockups 1e and 2a draw it.
+
+    ClipToBounds stays false (contract 6): the first tab's focus halo is painted 3px outside the
+    strip's left edge.
+  -->
+  <ControlTheme x:Key="TabStrip" TargetType="TabStrip">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="Height" Value="{StaticResource HeightTabBar}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <!-- No SelectionMode setter, unlike SegmentedControl: SelectingItemsControl declares that
+         property protected and only ListBox re-exposes it, so a TabStrip cannot be told
+         AlwaysSelected from markup. It is the strip's consumer that keeps a section open. -->
+
+    <!-- So a consumer names only the outer key and the containers follow. -->
+    <Setter Property="ItemContainerTheme" Value="{StaticResource TabStripItem}" />
+
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="2" ClipToBounds="False" />
+      </ItemsPanelTemplate>
+    </Setter>
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="TabStrip">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ItemsPresenter x:Name="Items" ItemsPanel="{TemplateBinding ItemsPanel}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+  <!--
+    ONE ROW OF THE LIGHTING MODE RAIL (mockup 2f). Chromeless until the pointer arrives, like a list
+    entry, because the rail is a column of a dozen of them and a border each would read as a dozen
+    buttons.
+
+    DEVIATION FROM docs/design/. 2f draws the chosen row as the 14% accent tint with a full accent
+    border, not as an accent fill; this fills it, on issue #86's instruction and to say the same
+    thing the layer segment beside it says. The mock's geometry and type are followed (RadiusControl,
+    `padding: 7px 9px`, 11px stepping 400 -> 500). Flipping back is Background ->
+    AccentSelectionFillBrush, Foreground -> TextPrimaryBrush, plus an AccentBrush border.
+  -->
+  <ControlTheme x:Key="ModeOption" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+
+    <!-- 9 horizontal by 7 vertical, the rail's own rhythm rather than a button's 13x8. -->
+    <Setter Property="Padding" Value="9,7" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="^.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="^.selected:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <!-- A rail row keeps no face when it is disabled; BaseButton's inset face would give it one. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

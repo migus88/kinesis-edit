@@ -1,0 +1,204 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    ================================================================================================
+    THE CONTROL-THEME LAYER — the authoring contract. Read this before writing Pills.axaml,
+    Segmented.axaml, Tabs.axaml, Fields.axaml or Keycap.axaml.
+    ================================================================================================
+
+    Themes/Controls.axaml puts FluentTheme's own templates on our palette by redeclaring the keys
+    they read. That is enough for a plain Button or ComboBox and it is not enough for the redesign:
+    a layer pill, a tab, a key cap and a token field are shapes Fluent does not draw, and the old
+    way of forcing them — a class selector in Styles/ reaching into Fluent's template through
+    `/template/ ContentPresenter#PART_ContentPresenter` — was a hack that broke the moment Fluent
+    moved a part. This directory replaces the template outright instead.
+
+    THE CONTRACT
+    ============
+
+    1. WRITE YOUR OWN TEMPLATE; NEVER REACH INTO A THEME YOU DO NOT OWN. Each ControlTheme sets its
+       own `Template` whose root is a `Border x:Name="Root"` that template-binds Background,
+       BorderBrush, BorderThickness, CornerRadius and Padding. A state then sets those properties
+       ON THE CONTROL — `<Style Selector="^:pointerover"><Setter Property="Background" .../></Style>`
+       — and the template binding carries them to the Border. That is what removes the need for the
+       PART_ContentPresenter hack: nothing outranks a value set on the control itself.
+
+    2. TARGETING YOUR OWN TEMPLATE PARTS IS CORRECT. `^:focus-visible /template/ Border#Root` inside
+       the ControlTheme that declares that Border is idiomatic Avalonia and is what Fluent itself
+       does. The ban is on a class selector in Styles/ reaching into somebody else's template.
+       Name parts `Root`, `Halo`, `Underline`, ... — never with a `PART_` prefix.
+
+       One consequence of dropping the `PART_ContentPresenter` name: the ContentPresenter is no
+       longer registered with the ContentControl, so button content hangs off the presenter rather
+       than off the button in the logical tree. Bindings, styles and DataContext are unaffected; a
+       `{Binding $parent[SomeAncestor]}` written INSIDE a themed button's content would not be, so
+       put those bindings on the button itself.
+
+    3. THE FOCUS RING — 1px accent border + the 3px 28% halo, never an offset outline, because it
+       has to read on a 26px key cap without eating its neighbour. Copy this verbatim:
+
+           <Style Selector="^:focus-visible">
+             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+           </Style>
+           <Style Selector="^:focus-visible /template/ Border#Root">
+             <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+           </Style>
+
+       `:focus-visible` is Avalonia 11.3's own pseudo-class and already has the semantics the design
+       asks for — a pointer press does not raise it, Tab and the arrow keys do — so no input-source
+       tracking is needed. Suppress Fluent's adorner (`FocusAdorner = {x:Null}`) so the two rings do
+       not double up. Anything derived from BaseButton below inherits all of this.
+
+    4. FOCUS AND SELECTION COEXIST AND STAY DISTINGUISHABLE. Selection is the filled face and a ring
+       drawn in the accent family; focus is the halo outside it. A control that is both shows both.
+
+    5. STATE PRECEDENCE IS EXPLICIT, NOT INHERITED FROM DECLARATION ORDER. Avalonia has no selector
+       specificity — the last matching setter wins — so a matrix that relies on file order breaks
+       the moment somebody reorders it. Where two states can be true at once, say so in the
+       selector. The two that recur here:
+         - the focus ring owns the border whenever it is visible, so every pointer-state BorderBrush
+           setter carries `:not(:focus-visible)`;
+         - selection outranks hover, so a hover setter on a selectable control carries
+           `:not(.selected)`.
+       BaseButton's styles are applied before a derived theme's (Avalonia walks `BasedOn` first),
+       which is why the qualifiers, not the order, are what make this correct.
+
+    6. `ClipToBounds` STAYS FALSE on anything that draws the halo — a BoxShadow is painted outside
+       the Border's own bounds and a clip erases it.
+
+    7. COLOURS ARE ALWAYS `{DynamicResource}`; they live in theme dictionaries and a StaticResource
+       would snapshot one variant at load. Shapes from Themes/Geometry.axaml are theme-independent
+       and may be `{StaticResource}`. A hex literal outside Themes/Tokens.axaml is a bug and fails a
+       test.
+
+    8. NOTHING HERE ANIMATES. The motion budget (Themes/Motion.axaml) lists every animation the app
+       may have and a button hover is not on it. Writing our own templates also drops the 75ms
+       RenderTransform press animation Fluent's Button ships, which is the reason `Button.layerTab`
+       and `Button.editorTab` had to clear `Transitions` by hand.
+
+    This file holds what the rest of the directory shares: the hatch tile, and the base button
+    theme that carries the template, the geometry, the type and the focus ring.
+  -->
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!--
+      THE HATCH TILE. Two jobs, one meaning: a locked key ("not yours to edit") and an LED that is
+      off — "off is hatched, never black", because black is a colour a key can legitimately be lit.
+
+      Themes/Geometry.axaml fixes the shape at HatchAngle 45 degrees and HatchPitch 4; the pitch is
+      spelled as the literal 4 below because a RelativeRect and a path geometry are parsed from
+      strings and cannot interpolate a resource. Keep the two in step.
+
+      Drawn as filled bands rather than stroked lines so the drawing's natural bounds are EXACTLY
+      the 4x4 tile: a pen would widen the bounds by half its thickness, the tile brush would map
+      those wider bounds onto SourceRect, and the pattern would drift out of register at every seam.
+      Each band is the region where (x + y) falls in [0, 1.5] modulo 4, which is periodic over the
+      tile in both axes — so a stripe leaving the right edge re-enters the next tile exactly where
+      it left, at any control size.
+
+      The colour is a role, not a value, and it is declared once per variant here because a brush in
+      a plain (non-theme) dictionary would resolve its colour against the APPLICATION's variant
+      rather than the window's.
+    -->
+    <ResourceDictionary x:Key="Dark">
+      <DrawingBrush x:Key="HatchBrush"
+                    TileMode="Tile"
+                    Stretch="Fill"
+                    SourceRect="0,0,4,4"
+                    DestinationRect="0,0,4,4">
+        <DrawingBrush.Drawing>
+          <GeometryDrawing Brush="{StaticResource SurfaceLineHighBrush}"
+                           Geometry="M 0,0 L 1.5,0 L 0,1.5 Z M 4,0 L 4,1.5 L 1.5,4 L 0,4 Z" />
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <DrawingBrush x:Key="HatchBrush"
+                    TileMode="Tile"
+                    Stretch="Fill"
+                    SourceRect="0,0,4,4"
+                    DestinationRect="0,0,4,4">
+        <DrawingBrush.Drawing>
+          <GeometryDrawing Brush="{StaticResource SurfaceLineHighBrush}"
+                           Geometry="M 0,0 L 1.5,0 L 0,1.5 Z M 4,0 L 4,1.5 L 1.5,4 L 0,4 Z" />
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!--
+    THE BASE BUTTON. Every button-shaped control in the app is a `Button` — the action buttons, the
+    layer pills, the section tabs, a lighting zone chip and the key cap all are — so the template,
+    the geometry, the type step, the focus ring and the disabled face are declared once here and
+    each concrete theme derives from it with `BasedOn="{StaticResource BaseButton}"` and declares
+    only its own colour ramp.
+
+    It paints nothing of its own: a transparent face and a transparent 1px border. Transparent
+    rather than absent so that (a) the whole face is hit-testable and (b) a theme that shows a
+    border only when focused does not reflow when it appears — the thickness is always there, only
+    the brush changes.
+
+    Type is the design's control step, 12/500 sans (docs/design/handoff.md, "Typography"); the
+    accent primary lifts to 600 as the mockups draw it.
+  -->
+  <ControlTheme x:Key="BaseButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="{StaticResource PaddingButton}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+
+    <!-- Contract 3: Fluent's dotted adorner would sit on top of our ring. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+
+    <!-- Contract 6: the halo is a BoxShadow with spread, drawn outside Root's bounds. -->
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter x:Name="Label"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            RecognizesAccessKey="True" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- The neutral disabled face, shared by everything that has a face at all: it leaves whatever
+         family the button belongs to entirely, because a Save with nothing to save must not look
+         like a Save that works. The chromeless themes (ghost, link, row) override it back to
+         transparent. A disabled control is not hit-testable, so it can never also be :pointerover
+         or :pressed and needs no qualifier. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- Contract 3. Declared here so no concrete theme has to remember it, and qualified nowhere:
+         focus outranks every pointer state, which is why those carry `:not(:focus-visible)`. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

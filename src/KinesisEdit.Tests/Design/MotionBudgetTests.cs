@@ -98,9 +98,19 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            var animated = view.GetVisualDescendants()
+            var containers = view.GetVisualDescendants()
                 .OfType<Control>()
                 .Where(IsLayerOrTabContainer)
+                .ToArray();
+
+            // A guard that matched nothing would pass for the wrong reason, and what it has to match
+            // changed when the switch became a ListBox and the strip a TabStrip: the trough, the
+            // strip, and one generated container per layer and per tab.
+            Assert.True(
+                containers.Length >= 6,
+                $"Only {containers.Length} layer/tab containers were found; the guard is not reaching them.");
+
+            var animated = containers
                 .Where(control => control.Transitions is { Count: > 0 })
                 .Select(Describe)
                 .ToArray();
@@ -111,10 +121,10 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public void NoAuthoredMarkup_DeclaresAPageTransition()
         {
-            // Neither the section tabs nor the layer switch is a TabControl: both are Buttons in an
-            // ItemsControl over a Panel whose children toggle IsVisible. Carousel is the only
-            // Avalonia container that owns a page transition, so the guard is that neither it nor
-            // the property it exposes appears anywhere.
+            // The section strip is a TabStrip and the layer switch a ListBox, over a Panel whose
+            // children toggle IsVisible: neither is a content host, so neither could carry a page
+            // transition. Carousel is the only Avalonia container that owns one, so the guard is
+            // that neither it nor the property it exposes appears anywhere.
             var offenders = AuthoredXaml.Files()
                 .Select(file => (file.Key, Markup: AuthoredXaml.WithoutComments(file.Value)))
                 .Where(file => file.Markup.Contains("PageTransition", StringComparison.Ordinal)
@@ -302,8 +312,9 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// A control that switches a layer or a tab: the pill itself, or the
-        /// <see cref="ItemsControl"/> that holds the strip.
+        /// A control that switches a layer or a tab: the container generated for one of them, or the
+        /// <see cref="ItemsControl"/> holding the strip — which is now the segmented control's
+        /// trough and the section strip, both of which are <see cref="ItemsControl"/>s themselves.
         /// </summary>
         private static bool IsLayerOrTabContainer(Control control)
         {

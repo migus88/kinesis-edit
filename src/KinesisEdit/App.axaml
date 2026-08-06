@@ -55,6 +55,19 @@
         <ResourceInclude Source="avares://KinesisEdit/Themes/DeviceArt.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/LightingMarks.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/Controls.axaml" />
+
+        <!-- The control themes. These come after Controls.axaml because they build on the same
+             roles and, unlike it, replace a control's template outright rather than recolouring
+             Fluent's. Shared.axaml is first: it carries the focus ring and the hatch tile that the
+             rest reference. A class named by a view is pointed at one of these by a bridge style
+             in Styles/ - see docs/app/design-system.md. -->
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Shared.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Buttons.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Pills.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Segmented.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Tabs.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Fields.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Keycap.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

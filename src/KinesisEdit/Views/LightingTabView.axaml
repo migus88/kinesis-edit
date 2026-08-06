@@ -21,26 +21,30 @@
         <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
       </Border>
 
-      <!-- Layer switch. The two layers are fully independent (§4), and the Fn pill is disabled
+      <!-- Layer switch. The two layers are fully independent (§4), and the Fn segment is disabled
            below the LED 1.0.44 gate (§3), which is also what hides the base-colour swatch. -->
       <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-        <ItemsControl ItemsSource="{Binding Layers}" VerticalAlignment="Center">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="6" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
+        <!-- The same segmented control the Keys tab's layer switch is, for the same reason: one of
+             N, one tab stop. `SelectedItem` reads the panel one way — SelectLayer owns that
+             property — and the selection change runs the command the pills used to. -->
+        <ListBox Theme="{StaticResource SegmentedControl}"
+                 ItemsSource="{Binding Layers}"
+                 SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
+                 SelectionChanged="OnLayerSelectionChanged">
+          <!-- The Fn segment below the LED 1.0.44 gate: shown and dimmed rather than hidden,
+               because the layer exists and the reason is printed beside it. Scoped to this list, so
+               it cannot outrank another one's container theme. -->
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem" x:DataType="vm:LightingLayerViewModel">
+              <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
             <DataTemplate DataType="vm:LightingLayerViewModel">
-              <Button Classes="layerTab"
-                      Classes.selected="{Binding IsSelected}"
-                      Content="{Binding Caption}"
-                      IsEnabled="{Binding IsEnabled}"
-                      Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectLayerCommand}"
-                      CommandParameter="{Binding}" />
+              <TextBlock Text="{Binding Caption}" />
             </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          </ListBox.ItemTemplate>
+        </ListBox>
 
         <TextBlock Text="{Binding LayerLockHint}"
                    Classes="body muted"
@@ -142,7 +146,14 @@
                        VerticalAlignment="Center" />
           </Grid>
 
-          <!-- Direction (§3). Rebound's two entries read "Horizontal"/"Vertical". -->
+          <!-- Direction (§3). Rebound's two entries read "Horizontal"/"Vertical".
+
+               Deliberately still a row of buttons rather than the segmented control the layer
+               switch became: the panel replaces the whole Directions collection whenever the mode
+               changes and states the chosen one only as each entry's IsSelected, so a
+               SelectingItemsControl would have nothing to bind its selection to — and, with
+               AlwaysSelected, would silently write direction 0 into the model on every mode change.
+               `ToggleSegment` is the same "chosen is accent-filled" face, driven by that class. -->
           <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Panels.ShowsDirection}">
             <TextBlock Text="DIRECTION" Classes="sectionLabel" Width="80" VerticalAlignment="Center" />
             <ItemsControl ItemsSource="{Binding Directions}">
@@ -153,7 +164,7 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:LightingDirectionViewModel">
-                  <Button Classes="layerTab"
+                  <Button Classes="toggleSegment"
                           Classes.selected="{Binding IsSelected}"
                           Content="{Binding Caption}"
                           Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectDirectionCommand}"
@@ -201,7 +212,9 @@
       </Grid>
 
       <!-- Per-key colouring (§4): the same generic picture the Keys tab uses, with the click
-           wired to the colour-assign command instead of the remap one. -->
+           wired to the colour-assign command instead of the remap one — and with the LED strip
+           asked for, which is what makes this picture a lighting surface and the Keys tab's not
+           (an unlit key hatches here and shows nothing at all there). -->
       <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsPerKeyColors}">
         <TextBlock Text="Click a key to paint it with the selected colour; black erases it."
                    Classes="body muted" />
@@ -209,6 +222,7 @@
         <Border Classes="keyboardBoard"
                 IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
           <controls:KeyboardView DataContext="{Binding Board}"
+                                 ShowsLedStrips="True"
                                  KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).AssignKeyColorCommand}" />
         </Border>
       </StackPanel>

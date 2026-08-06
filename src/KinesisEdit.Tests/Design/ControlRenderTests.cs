@@ -64,6 +64,12 @@ namespace KinesisEdit.Tests.Design
         [InlineData("Light")]
         public void APrimaryAction_CarriesTheOnAccentColour(string variantName)
         {
+            // The same intent as before the control-theme layer landed, asserted against the
+            // template that layer writes: the button's own label sits on the on-accent colour. The
+            // part it reaches for is now `Label` in our own ControlTheme rather than Fluent's
+            // `PART_ContentPresenter`, and the value arrives by inheritance from the Button instead
+            // of from a state setter aimed at the presenter — which is the whole point of the
+            // change (see Themes/ControlThemes/Shared.axaml).
             var variant = ToVariant(variantName);
             var button = new Button { Classes = { "primaryAction" }, Content = "Save" };
 
@@ -71,11 +77,10 @@ namespace KinesisEdit.Tests.Design
 
             var presenter = button.GetVisualDescendants()
                 .OfType<ContentPresenter>()
-                .Single(candidate => candidate.Name == "PART_ContentPresenter");
+                .Single(candidate => candidate.Name == "Label");
 
-            Assert.Equal(
-                DesignTokens.Resolve("AccentTextBrush", variant),
-                presenter.Foreground);
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), button.Foreground);
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), presenter.Foreground);
         }
 
         /// <summary>Every view that lays rows out with <c>Border.listRow</c>.</summary>

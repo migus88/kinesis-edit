@@ -115,12 +115,18 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-paints the layer's colour strips from a freshly built
-        /// <see cref="KeyColorOverlay"/> map. A key the map does not mention loses its strip, so
-        /// this is the whole-layer form and not a merge — erasing a colour has to be visible too.
+        /// Re-paints the layer's colours from a freshly built <see cref="KeyColorOverlay"/> map. A
+        /// key the map does not mention goes back to unlit, so this is the whole-layer form and not
+        /// a merge — erasing a colour has to be visible too.
         /// <para>
         /// The overlay cannot come from <see cref="RefreshFromModel"/>: it lives in the lighting
         /// model, which no layout parser ever writes into <see cref="KeyboardKey.KeyColor"/>.
+        /// </para>
+        /// <para>
+        /// This says nothing about whether an LED row is <b>drawn</b>. One layer view model is
+        /// rendered by two pictures — the editor's Keys tab and the Lighting tab's board — so
+        /// "lighting is on screen" is not a fact this object could hold; it belongs to the picture
+        /// (<c>KeyboardView.ShowsLedStrips</c>). Here a key is either lit or not.
         /// </para>
         /// </summary>
         public void ApplyColorOverlays(IReadOnlyDictionary<int, string>? colorOverlays)

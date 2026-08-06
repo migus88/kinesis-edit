@@ -1,6 +1,6 @@
-# Design system (Themes, Styles, Assets/Fonts, motion, icons, the headless test harness)
+# Design system (Themes, ControlThemes, Styles, Assets/Fonts, motion, icons, the headless test harness)
 
-The implementation of `docs/design/` inside `KinesisEdit`: the colour/shape/type/motion tokens as Avalonia resources, the drawn marks (state icons, device silhouettes, lighting-mode marks) and the leaf control that paints them, the shared style layer built on them, the two embedded IBM Plex families, the reduce-motion switch, and the headless UI test harness that guards all of it. `docs/design/` states the laws; this doc is how they are spelled in the app, plus every place the implementation deliberately differs and why.
+The implementation of `docs/design/` inside `KinesisEdit`: the colour/shape/type/motion tokens as Avalonia resources, the drawn marks (state icons, device silhouettes, lighting-mode marks) and the leaf control that paints them, the **control-theme layer** that templates every shape the app draws itself, the shared style layer built on them, the two embedded IBM Plex families, the reduce-motion switch, and the headless UI test harness that guards all of it. `docs/design/` states the laws; this doc is how they are spelled in the app, plus every place the implementation deliberately differs and why.
 
 **Read this before touching any view, style or user-facing string** — together with `docs/design/README.md`, which is the design source and must never be rewritten to match the code.
 
@@ -14,20 +14,27 @@ The implementation of `docs/design/` inside `KinesisEdit`: the colour/shape/type
 | `Themes/DeviceArt.axaml` | `ResourceDictionary` | 7 device silhouettes, one per programmable board, all in one 92×56 box. |
 | `Themes/LightingMarks.axaml` | `ResourceDictionary` | 16 lighting-mode marks, one per `LightingMode` member. |
 | `Themes/Controls.axaml` | `ResourceDictionary` + `ThemeDictionaries` | Alias map putting FluentTheme's own control keys onto our roles. 267 keys per variant + 2 shape aliases. |
+| `Themes/ControlThemes/Shared.axaml` | `ResourceDictionary` (+ `ThemeDictionaries` for the hatch) | **The authoring contract, in its header comment — read it before writing a theme.** The `HatchBrush` tile and `BaseButton`. |
+| `Themes/ControlThemes/Buttons.axaml` | `ResourceDictionary` | 7 button roles: primary, secondary, eject, discard, ghost, link, row. |
+| `Themes/ControlThemes/Pills.axaml` | `ResourceDictionary` | 4 lozenges: the status readout, the nav pill, the filter chip, the kbd chip. |
+| `Themes/ControlThemes/Segmented.axaml` | `ResourceDictionary` | The segmented trough + its container, and the standalone two-state toggle. |
+| `Themes/ControlThemes/Tabs.axaml` | `ResourceDictionary` | The section strip + its container, and one lighting-mode row. |
+| `Themes/ControlThemes/Fields.axaml` | `ResourceDictionary` | 7 field themes: search, mono value, token, slider, check box, combo box, selectable row. |
+| `Themes/ControlThemes/Keycap.axaml` | `ResourceDictionary` | `KeyCapButton` — the app's densest state matrix, and the concentric selection/focus rings. |
 | `Controls/Icon.cs` | C# | The leaf control that draws one mark: the fit, the pen, the caps. No colour, no motion. |
 | `Converters/GeometryResources.cs`, `DeviceArtConverter`, `LightingModeMarkConverter` | C# | Enum → geometry key → resolved `Geometry`, for the two families that are driven by data. |
 | `Styles/Text.axaml` | `Styles` | Text *roles* (colour and emphasis) layered over the type scale. |
 | `Styles/Surfaces.axaml` | `Styles` | Window, cards, overlays, scrim, popovers, toasts, the status chip, framed lists and hairline rows, the device-art frame, the logo tile. |
-| `Styles/Buttons.axaml` | `Styles` | `primaryAction`, `rowButton`, `zoneButton`, `ListBoxItem`, `ProgressBar`. |
-| `Styles/Keyboard.axaml` | `Styles` | The board, the key cap and its four states, the recording pulse, the layer pill. |
-| `Styles/Editor.axaml` | `Styles` | Editor tab strip, action fields, lighting mode menu and its mode marks, colour swatches. |
+| `Styles/Buttons.axaml` | `Styles` | The class → `Theme` bridges for the button roles and the three by-type field bridges; `zoneButton` and `ProgressBar` paint. |
+| `Styles/Keyboard.axaml` | `Styles` | The board, the key cap's bridge, the legend roles, the recording pulse. |
+| `Styles/Editor.axaml` | `Styles` | Bridges for the action field, the mode row and the colour slot; the mode marks and the colour swatches. |
 | `Styles/Icons.axaml` | `Styles` | The two `Icon` classes: `.deviceArt` (the shared box) and `.spinner` (box + rotation). |
 | `Assets/Fonts/` | `AvaloniaResource` | IBM Plex Sans 400/500/600/700, IBM Plex Mono 400/500/600, `LICENSE.txt` (SIL OFL). |
 | `Services/IMotionSettings`, `MotionResourceBinder`, `IReduceMotionDetector` | C# | Reduce-motion detection and the alias binding it drives. |
 
 **There are two files named `Icons.axaml`** — `Themes/Icons.axaml` holds the geometry, `Styles/Icons.axaml` holds the two style classes. They are different kinds of file (`ResourceDictionary` vs `Styles`) merged in different places, so a change made in the wrong one resolves to nothing. `IconCatalogTests.BothIconFiles_AreVisibleToTheseGuards` asserts the test harness reads both and that they differ.
 
-`App.axaml` is **composition only** — 83 lines: data templates, converters, `FluentTheme`, the ColorPicker style include, the seven `ResourceInclude`s and the seven `StyleInclude`s. It defines no colour, no size and no style, and it must stay that way.
+`App.axaml` is **composition only** — 96 lines: data templates, converters, `FluentTheme`, the ColorPicker style include, the fourteen `ResourceInclude`s and the seven `StyleInclude`s. It defines no colour, no size and no style, and it must stay that way.
 
 ## How a view consumes it
 
@@ -36,6 +43,7 @@ The implementation of `docs/design/` inside `KinesisEdit`: the colour/shape/type
 3. **Every colour role is a pair.** `<Role>Color` is a `Color`, `<Role>Brush` the `SolidColorBrush` built from it. Use the brush for `Background`/`BorderBrush`/`Foreground`; the `Color` half exists for `GradientStop`, animation, and for the Fluent keys that are typed `Color`.
 4. **Every key exists in both variants.** Asserted, not assumed — see `TokenCompletenessTests`.
 5. **Type = scale class + role class.** `Classes="meta muted"` composes the 11/400 sans step from `Themes/Typography.axaml` with the muted foreground from `Styles/Text.axaml`. The scale never sets a colour; the role never sets a size (except `.badge` and `.rowCaption`, which are single-purpose).
+6. **Name a class, never a template part.** `Classes="primaryAction"` is the authoring API; a bridge style in `Styles/` points that class at a `ControlTheme` which owns the template and the whole state matrix. A `/template/` selector outside `Themes/ControlThemes/` is a bug and fails a test — see "The control-theme layer".
 
 Two laws that decide which token you are allowed to reach for:
 
@@ -124,7 +132,7 @@ They sit on a key cap, not on the window, so they do not flip.
 
 `BadgeLed` and dark `StatusDemo` are the same colour under two role names, deliberately: neither call site should have to know about the other. They part company on light, where the *status* hue darkens for contrast and the badge does not.
 
-Remaining keycap badge geometry the design specifies (not yet drawn — see "Known gaps"): remapped = 2 px accent bar on the bottom edge; advisory = 12×3 px `StatusAdvisoryStrong` rounded bar top-right; locked = 45° hatched fill + dashed border.
+Remaining keycap badge geometry the design specifies (not yet drawn — see "Known gaps"): remapped = 2 px accent bar on the bottom edge; advisory = 12×3 px `StatusAdvisoryStrong` rounded bar top-right. **Locked is drawn** — 45° hatched fill + dashed border, in `KeyCapButton`; see "The hatch tile".
 
 ### Elevation and scrim
 
@@ -173,7 +181,7 @@ Everything on a 4 px grid. Theme-independent, so declared outside `ThemeDictiona
 | `IconSize` / `IconStrokeThickness` | 16 / 1.5 | The icon law's grid and pen — see "Icons and device art". Never raster |
 | `IconSizeDialog` | 24 | A dialog's type mark, drawn larger than a rail icon: it is the one thing that says what kind of interruption this is. The only sanctioned departure from `IconSize` |
 | `SpinnerSize` / `SpinnerStrokeThickness` | 14 / 1.5 | One quadrant transparent, 1.1 s linear spin |
-| `HatchPitch` / `HatchAngle` | 4 / 45 | Locked keys and LED-off fills |
+| `HatchPitch` / `HatchAngle` | 4 / 45 | Locked keys and LED-off fills. The tile itself is `HatchBrush`, and it re-spells the pitch as a literal — see "The hatch tile" |
 
 **Avalonia's two-value `Thickness` is `horizontal,vertical`** — the reverse of the CSS shorthand the handoff is written in. The handoff's "buttons 8×13" is therefore `13,8` here.
 
@@ -208,7 +216,7 @@ Families (both under SIL OFL, embedded — see "Fonts"):
 | `.logoMark` | `FontSizeLogoMark` | 10/700 mono | The app mark's "K" in the app bar, and nothing else |
 | `.keycapLabel` | `FontSizeKeycapLabel` | 9/400 sans | Key legend at mock scale — **defined but unused, see "Known gaps"** |
 
-`TextBox.monoValue` repeats the family/size setters, because a `TextBox` is not a `TextBlock` and the `:is(TextBlock)` selectors cannot reach it.
+`TextBox.monoValue` is **not** a scale class: a `TextBox` is not a `TextBlock`, so the `:is(TextBlock)` selectors cannot reach it, and the thing it names is a whole control rather than a type step. It bridges to the `MonoValueField` control theme, which carries the mono family and size together with the quiet inset face a table of typed values wants.
 
 Two implementation notes that are not free choices:
 
@@ -365,21 +373,27 @@ An `Icon` paints from a brush property, not from `TextElement.Foreground`, so it
 
 Split by concern rather than one dumping ground. Order in `App.axaml` matters only between `Typography` and these: a role style may override a scale step, never the reverse.
 
+Most of what used to live here is now a **bridge**: a one-setter style pointing a class at a `ControlTheme`. What stays is paint that belongs to no control type (surfaces, text roles) and the handful of properties a call site genuinely varies.
+
 | File | Classes |
 |---|---|
-| `Text.axaml` | `.muted`, `.sectionLabel` (colour half), `.badge`, `.rowCaption`, `TextBox.monoValue`, `.statusOk/.statusWarning/.statusError/.statusDemo`, `.logoMark` (colour half) |
-| `Surfaces.axaml` | `:is(Window)`, `Border.card`, `Border.deviceCard`, `Border.deviceArtFrame`, `Border.logoTile`, `Border.overlayCard` (+`.modalCard`), `Border.overlayScrim` (+`.open`), `ContentControl.overlayHost` (+`.open`), `ContentControl.popover` (+`.open`), `FlyoutPresenter`, `MenuFlyoutPresenter`, `Border.toast` (+`.shown`), `Border.statusChip` (+`.ok/.warning/.error/.demo`), `Border.listFrame`, `Border.listRow`, `Border.entryPanel`, `Border.entryBox` |
-| `Buttons.axaml` | `Button.primaryAction`, `Button.rowButton` (+`.selected`), `Button.zoneButton`, `ListBoxItem`, `ProgressBar` |
-| `Keyboard.axaml` | `Border.keyboardBoard`, `Button.keyCap` (+`.modified/.locked/.selected/.listening`), `.keyCapText` (+`.modified/.locked`), the recording pulse, `Button.layerTab` (+`.selected`) |
-| `Editor.axaml` | `Button.editorTab` (+`.selected`), `Border.actionField` (+`.armed`), `Button.modeOption` (+`.selected`), `Icon.modeMark` (+`.filled`, +`.selected`), `Button.colorSwatch`, `Border.colorSwatchFill`, `Button.colorSlot` (+`.selected`) |
+| `Text.axaml` | `.muted`, `.sectionLabel` (colour half), `.badge`, `.rowCaption`, `TextBox.monoValue` **(bridge → `MonoValueField`)**, `.statusOk/.statusWarning/.statusError/.statusDemo`, `.logoMark` (colour half) |
+| `Surfaces.axaml` | `:is(Window)`, `Border.card`, `Border.deviceCard`, `Border.deviceArtFrame`, `Border.logoTile`, `Border.overlayCard` (+`.modalCard`), `Border.overlayScrim` (+`.open`), `ContentControl.overlayHost` (+`.open`), `ContentControl.popover` (+`.open`), `FlyoutPresenter`, `MenuFlyoutPresenter`, `Border.toast` (+`.shown`), `Border.statusChip` **(bridge → `StatusPill`)**, `Border.listFrame`, `Border.listRow`, `Border.entryPanel`, `Border.entryBox` **(bridge → `TokenField`, + `MinHeight` 44)** |
+| `Buttons.axaml` | Bridges for `.primaryAction`, `.secondary`, `.eject`, `.discard`, `.ghost`, `.link`, `.rowButton`, `.navPill`, `.toggleSegment`, `TextBox.searchField`, and the three by-type bridges `Slider` / `CheckBox` / `ComboBox`; plus `Button.zoneButton` and `ProgressBar`, which are paint |
+| `Keyboard.axaml` | `Border.keyboardBoard`, `Button.keyCap` **(bridge → `KeyCapButton`)**, `.keyCapText` (+`.modified/.locked`), the recording pulse |
+| `Editor.axaml` | `Border.actionField` **(bridge → `TokenField`)**, `Button.modeOption` **(bridge → `ModeOption`)**, `Button.colorSlot` **(bridge → `SecondaryButton`)** (+`.selected`, which adds the accent ring), `Icon.modeMark` (+`.filled`, +`.selected`), `Button.colorSwatch`, `Border.colorSwatchFill` |
 | `Icons.axaml` | `Icon.deviceArt` (the 92×56 box), `Icon.spinner` (the 14×14 box + the rotation) |
 
 Four conventions that recur and are easy to get wrong:
 
 1. **`:is(TextBlock)`, never `TextBlock`.** An Avalonia type selector matches the exact type; several of these roles render on `SelectableTextBlock` (unparsed file lines, the pedal entry box), which a bare selector silently skips.
-2. **Paint a button through `/template/ ContentPresenter#PART_ContentPresenter`.** Fluent's `:pointerover`/`:pressed`/`:disabled` setters target that presenter, and a `Background` set on the `Button` itself loses to them.
-3. **Declare states in increasing precedence.** Later styles win, so a listening key always reads as listening whatever else it also is.
+2. **Never name a template part.** A style here that reached into Fluent's `/template/ ContentPresenter#PART_ContentPresenter` was the *old* way to out-rank Fluent's own state setters; it is now banned outright and asserted against. Paint a control by giving it a `ControlTheme` whose root template-binds its face, then set properties **on the control**. See "The control-theme layer".
+3. **Declare states in increasing precedence — but do not rely on it.** Later styles win, and a `ControlTheme`'s own states are applied *before* an app style's, so precedence is spelled with `:not(...)` qualifiers inside a theme rather than left to file order.
 4. **Animate through a class, not through `IsVisible`.** `IsVisible="False"` collapses a control instantly and gives a transition nothing to run on; `.open`/`.shown` re-evaluates the `Opacity` setter and the transition plays. `Border.listRow`'s separator is a *top* border on every row but the first (`ContentPresenter:nth-child(1) > Border.listRow` clears it) — a bottom border would leave a trailing hairline under the last row.
+
+**A bridge sets the theme and, wherever it can, nothing else.** A `Style` setter outranks a `ControlTheme` setter, so every extra property in a bridge is a property the theme no longer decides. Two bridges legitimately add one: `Border.entryBox` adds `MinHeight="44"` (a pedal macro wraps over several lines) and `Button.colorSlot.selected` adds the accent ring that says which colour slot the picker is editing.
+
+**There is deliberately no blanket `ListBoxItem` style any more.** One used to sit in `Buttons.axaml` for the Search Keys picker's compact rows and leaked onto every list in the app — including the segmented control's, where, being an app style, it outranked the container theme and gave a segment 8,4 padding instead of the theme's 11,4. The picker names `ItemContainerTheme="{StaticResource SelectableListRow}"` instead.
 
 ## The Fluent control-alias layer — `Themes/Controls.axaml`
 
@@ -402,7 +416,7 @@ Four conventions that recur and are easy to get wrong:
 | pressed | `SurfaceLine` | `SurfaceLineHigh` | `TextPrimary` |
 | disabled | `SurfaceInset` | `SurfaceLine` | `TextDisabled` |
 
-A *field* (`TextBox`, `ComboBox`) rests on `SurfaceInset` instead — it is a hole in the panel, not a thing on top of it — and takes the accent on its border when focused.
+A *field* (`TextBox`, `ComboBox`) rests on `SurfaceInset` instead — it is a hole in the panel, not a thing on top of it — and takes the accent on its border when focused. That one rule is what makes the seven themes in `ControlThemes/Fields.axaml` read as one family.
 
 **The accent ramp is the one place the variants diverge.** `AccentText` flips (near-black in dark, white in light), so a state that brightens the fill is legible in dark and illegible in light. Each variant therefore moves the fill *away* from its own label colour: dark brightens on hover (`AccentLinkHover`) and deepens on press (`AccentSelectedRing`); light deepens on hover (`AccentSelectedRing`) and lifts back to base accent on press. Disabled leaves the accent family entirely (`SurfaceInset` + `TextDisabled`) — a Save with nothing to save must not look like a Save that works.
 
@@ -415,7 +429,178 @@ A *field* (`TextBox`, `ComboBox`) rests on `SurfaceInset` instead — it is a ho
 3. **Check the type.** Fluent types a scatter of keys as `Color` rather than `SolidColorBrush` (`ExpanderHeaderBackground`, `ScrollBarThumbBackgroundColor`, `SystemAccentColor`, …). Aliasing one of those to a `…Brush` role leaves the control drawing *nothing*. Point it at the `…Color` half and add it to `ControlPaletteTests.ColorAliases`.
 4. Add one representative key to `ControlPaletteTests.SharedAliases` (or `ThePaletteCovers_EveryControlTypeTheAppPutsOnScreen`) so the family cannot be dropped wholesale later.
 
-Fluent exposes no key for a few things; those are set as ordinary styles in `Styles/Buttons.axaml` instead — `ListBoxItem` padding, `ProgressBar`'s bar and trough. `ListBoxItem` selection/hover comes from the shared `SystemControlHighlightList*` keys, which is why those are mapped.
+Fluent exposes no key for a few things; those are set as ordinary styles in `Styles/Buttons.axaml` instead — `ProgressBar`'s bar and trough. `ListBoxItem` selection/hover comes from the shared `SystemControlHighlightList*` keys, which is why those are mapped.
+
+**One block of it is now dead.** The 43 `CheckBox*` aliases per variant are read only by Fluent's own `CheckBox` control theme, and nothing uses that theme any more — `Styles/Buttons.axaml` puts every `CheckBox` in the app on the `CheckBox` control theme, which writes its own template. They are kept because `ControlPaletteTests` names `CheckBoxCheckBackgroundFillChecked` explicitly, twice (in `SharedAliases` and in the per-control-type coverage list). Deleting the block means editing those assertions first, not just the markup.
+
+## The control-theme layer — `Themes/ControlThemes/`
+
+`Themes/Controls.axaml` puts FluentTheme's *own* templates on our palette. That is enough for a plain button or drop-down and it is not enough for the redesign: a layer pill, a tab, a key cap and a token field are shapes Fluent does not draw. The pre-redesign answer was a class selector in `Styles/` reaching into Fluent's template through `/template/ ContentPresenter#PART_ContentPresenter` — 22 selectors did that, purely to out-rank Fluent's own `:pointerover`/`:pressed`/`:disabled` setters. It made every restyled control fight the theme underneath it and made state precedence an accident of declaration order.
+
+This directory replaces the template outright instead. **Seven files, 26 `ControlTheme`s**, merged in `App.axaml` under `Application.Resources` **after `Controls.axaml`** — they build on the same roles and, unlike it, replace a template rather than recolour one, so they must be able to name its keys (`PrimaryActionButton` and `CheckBox` both reach for the `AccentButton*` aliases, which is where the per-variant accent divergence is already written down). `Shared.axaml` is first: it carries the hatch tile and `BaseButton`, which the rest reference.
+
+### The authoring contract
+
+`Shared.axaml`'s header comment is the normative copy; this is the condensation.
+
+1. **Write your own template; never reach into a theme you do not own.** Each `ControlTheme` sets a `Template` whose root is a `Border x:Name="Root"` template-binding `Background`, `BorderBrush`, `BorderThickness`, `CornerRadius` and `Padding`. A state then sets those properties **on the control** and the template binding carries them to the `Border`. Nothing outranks a value set on the control itself, which is exactly what the `PART_ContentPresenter` hack existed to fake.
+2. **Targeting your own template part is correct.** `^:focus-visible /template/ Border#Root` inside the theme that *declares* that `Border` is idiomatic Avalonia and is what Fluent itself does. The ban is on a selector in `Styles/` or a view reaching into somebody else's template. **Never use a `PART_` prefix** — parts are named `Root`, `Label`, `Ring`, `Underline`, `Glyph`, `Locked`, `Items`.
+3. **The focus ring** — see below.
+4. **Focus and selection coexist and stay distinguishable.** Selection is the filled face and a ring in the accent family; focus is the halo outside it. A control that is both shows both.
+5. **State precedence is explicit, not inherited from declaration order.** Avalonia has no selector specificity — the last matching setter wins — and `BasedOn` styles are applied *before* the derived theme's, so file order is not a safe ordering. Three qualifiers recur: every pointer-state `BorderBrush` setter carries `:not(:focus-visible)` (the focus ring owns the border whenever it is visible); every hover setter on a selectable control carries `:not(.selected)` / `:not(:selected)`; and every selected-state setter carries **`:not(:disabled)`**, because `BasedOn` puts `BaseButton`'s disabled face *first* and an unqualified `.selected` would win over it — a dead control keeping a live accent face and only the dead label colour. `:pointerover` and `:pressed` are both raised while the pointer is down, so hover fills carry `:not(:pressed)` too. The one state that needs no qualifier against `:disabled` is hover: a disabled control is not hit-testable.
+6. **`ClipToBounds` stays false on anything that draws the halo.** A `BoxShadow` is painted outside the `Border`'s own bounds; a clip anywhere between it and the window erases it. On a key cap that means the `Button`, `Root`, the inner `Panel`, `Ring` **and** `KeyCapView` itself.
+7. **Colours are always `{DynamicResource}`** (they live in theme dictionaries; a `StaticResource` snapshots one variant at load). Shapes from `Themes/Geometry.axaml` are theme-independent and may be `{StaticResource}`.
+8. **Nothing here animates.** The motion budget lists every animation the app may have and a button hover is not on it. Writing our own templates also drops Fluent's 75 ms `RenderTransform` press animation, which is why the pre-redesign layer/tab pills had to clear `Transitions` by hand.
+
+One consequence of rule 2 worth knowing: dropping the `PART_ContentPresenter` name means the presenter is no longer registered with the `ContentControl`, so a themed button's content hangs off the presenter rather than off the button in the logical tree. Bindings, styles and `DataContext` are unaffected — but a `{Binding $parent[SomeAncestor]}` written *inside* a themed button's content would be, so put those on the button (`KeyCapView` does).
+
+### Registry
+
+`Theme` column: how a call site reaches it. A class is bridged in `Styles/`; `Theme=` / `ItemContainerTheme=` is named in the view. Every theme deriving from `BaseButton` inherits the disabled face and the focus ring on top of the states listed.
+
+| Key | `TargetType` | Based on | States it carries | Reached by |
+|---|---|---|---|---|
+| `BaseButton` | `Button` | — | `:disabled`, `:focus-visible` (+ halo on `Border#Root`) | Nothing directly — every button theme's `BasedOn` |
+| `PrimaryActionButton` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` (via the `AccentButton*` aliases) | `Classes="primaryAction"` |
+| `SecondaryButton` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` | `Classes="secondary"`; also `Classes="colorSlot"` |
+| `EjectButton` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` (the green three-strength walk) | `Classes="eject"` |
+| `DiscardButton` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` (the red walk) | `Classes="discard"` |
+| `GhostButton` | `Button` | `BaseButton` | rest (chromeless) / `:pointerover` / `:pressed` / `:disabled` (overridden back to transparent) | `Classes="ghost"` |
+| `LinkButton` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` / `:disabled` (transparent) | `Classes="link"` |
+| `RowButton` | `Button` | `BaseButton` | `:pointerover` / `:pressed` / `.selected` / `:disabled` (transparent) | `Classes="rowButton"` |
+| `StatusPill` | **`Border`** | — | `.ok` / `.warning` / `.error` / `.demo`; carries `StatusFillTransitions` | `Classes="statusChip"` |
+| `NavPill` | `Button` | `BaseButton` | `:pointerover` / `:pressed` / `.selected` (raised neutral, **not** accent) | `Classes="navPill"` |
+| `FilterChip` | `Button` | `BaseButton` | rest / `:pointerover` / `:pressed` / `.selected` | **Nothing yet** — substrate for the key-inspector issue |
+| `KbdChip` | **`ContentControl`** | — | `:disabled` only | **Nothing yet** |
+| `SegmentedItem` | `ListBoxItem` | — | `:pointerover` / `:pressed` / `:selected` / `:disabled` / `:focus-visible` (+ halo) | `SegmentedControl`'s `ItemContainerTheme` |
+| `SegmentedControl` | `ListBox` | — | none (the trough); `SelectionMode="AlwaysSelected"` | `Theme=` in `KeyboardEditorView` and `LightingTabView` |
+| `ToggleSegment` | `Button` | `BaseButton` | `:pointerover` / `:pressed` / `.selected` (accent fill) | `Classes="toggleSegment"` |
+| `TabStripItem` | `TabStripItem` | — | `:pointerover` / `:selected` (+ `Border#Underline`) / `:disabled` / `:focus-visible` (+ halo) | `TabStrip`'s `ItemContainerTheme` |
+| `TabStrip` | `TabStrip` | — | none (the strip); fixed `HeightTabBar` + a hairline under it | `Theme=` in `KeyboardEditorView` |
+| `ModeOption` | `Button` | `BaseButton` | `:pointerover` / `:pressed` / `.selected` (accent fill) / `:disabled` (transparent) | `Classes="modeOption"` |
+| `SearchField` | `TextBox` | **Fluent's `TextBox`** | `:pointerover:not(:focus)` / **`:focus`** / `:disabled`; a drawn `Path` on `InnerLeftContent` | `Classes="searchField"` |
+| `MonoValueField` | `TextBox` | **Fluent's `TextBox`** | `:pointerover:not(:focus)` / **`:focus`** / `:disabled` | `Classes="monoValue"` |
+| `TokenField` | **`Border`** | — | `:pointerover:not(.armed)` / `.armed` (the amber advisory tint at 2 px — "press something now") / `:disabled`. Not focusable, so no ring | `Classes="actionField"`, `Classes="entryBox"` |
+| `Slider` | `Slider` | **Fluent's `Slider`** | `:pointerover:not(:focus-visible)` / `:focus-visible` / `:disabled` (frame dropped) | The by-type style `Slider` |
+| `CheckBox` | `CheckBox` | — | unchecked `:pointerover`/`:pressed`; `:checked` / `:indeterminate` (+ their hover and press) / `:disabled` / `:focus-visible` (+ halo); `Path#Glyph` swaps tick ↔ dash | The by-type style `CheckBox` |
+| `ComboBox` | `ComboBox` | **Fluent's `ComboBox`** | `:pointerover:not(:pressed):not(:focus)` / `:pressed:not(:focus)` / **`:focus`** / `:disabled` | The by-type style `ComboBox` |
+| `SelectableListRow` | `ListBoxItem` | — | `:pointerover` / `:pressed` / `:selected` (inset ring) / `:disabled` / `:focus-visible` (+ halo) | `ItemContainerTheme=` in `SearchKeysOverlayView` |
+| `KeyCapButton` | `Button` | `BaseButton` | `.modified` / `.locked` (+ `Rectangle#Locked`) / `:pointerover` / `.selected` (+ `Border#Ring`) / `.listening` | `Classes="keyCap"` |
+
+`Shared.axaml` also declares `HatchBrush`, which is a brush rather than a theme — see "The hatch tile".
+
+**Several themes are ready before their screen is, deliberately** — the theme landing first means the screen has something to name. Today `FilterChip` and `KbdChip` have no bridge at all (substrate for the key-inspector issue), and five more are bridged but written by no view yet: `secondary`, `eject`, `discard`, `ghost` and `link`, whose call sites (the dashboard card's Eject and Configure, the leave-with-unsaved modal's Discard, a toast's dismiss, "Which board do I have?") arrive with the screen rebuilds. `ControlThemeFoundationTests` proves the bridge on a synthetic control; `ControlThemeBridgeTests` proves it on a real view, and only covers the classes a view actually writes. (`SearchField` is not among them: `SearchKeysOverlayView` writes `Classes="searchField"` today and `ControlThemeBridgeTests` asserts it, even though that panel's surrounding layout is still pre-redesign.)
+
+### The class → `Theme` bridge
+
+Views keep `Classes=` as the authoring API. A bridge is one style, one setter:
+
+```xml
+<Style Selector="Button.primaryAction">
+  <Setter Property="Theme" Value="{StaticResource PrimaryActionButton}" />
+</Style>
+```
+
+Extend the pattern rather than inventing one. Three shapes exist, and which to use is decided by whether the app would ever want a second appearance for that type:
+
+- **A class**, for anything with competing variants — every button role, the key cap, the token field, the status pill, the search field.
+- **The type itself**, for a type with exactly one appearance in the app: `Slider`, `CheckBox`, `ComboBox`. Inventing a class every instance would carry is only a second name for the same thing. A view that ever needs a second slider adds a class then, and the by-type style stays the default.
+- **`Theme=` / `ItemContainerTheme=` at the call site**, where the control already has a theme-shaped API and a class would add indirection with nothing in it: `SegmentedControl`, `TabStrip`, `SelectableListRow`.
+
+A bridge that is missing fails **silently** — the control keeps Fluent's template and merely looks a little wrong, which is exactly what no rendering test can see. `ControlThemeBridgeTests` is what catches it, on the real views.
+
+### The `layerTab` split
+
+`Button.layerTab` was one class doing three unrelated jobs at seven call sites, and `Button.editorTab` a fourth. Both classes are **gone**; `ControlThemeBridgeTests.NoViewStillWrites_AClassTheControlThemeLayerReplaced` fails if either reappears. The mapping, because the old names are still what a stale doc or comment will say:
+
+| Old call site | Now |
+|---|---|
+| `KeyboardEditorView` — layer switch | A `ListBox` on `SegmentedControl` (containers on `SegmentedItem`) |
+| `LightingTabView` — layer switch | The same, plus a scoped `ListBoxItem` style carrying the LED 1.0.44 gate onto `IsEnabled` |
+| `KeyboardEditorView` — macro-slot picker | `Button.navPill` → `NavPill` |
+| `KeyboardEditorView` — macro co-triggers | `Button.toggleSegment` → `ToggleSegment` |
+| `LightingTabView` — direction | `Button.toggleSegment` → `ToggleSegment` |
+| `SavantElitePedalView` — Single Action / Macro latch (×2) | `Button.toggleSegment` → `ToggleSegment` |
+| `KeyboardEditorView` — `editorTab`, the section strip | A `TabStrip` on `TabStrip` (containers on `TabStripItem`), with a scoped `TabStripItem` style carrying `IsEnabled` |
+
+The split is not cosmetic: a layer switch is **one-of-N** (a `SelectingItemsControl`), a co-trigger is an **independent latch** (a `Button` driven by `Classes.selected`), and a macro slot is neither — it is a nav pill, whose active face is the *raised neutral* surface rather than the accent, because "where you already are" is not one of the accent's two meanings.
+
+Two keyboard consequences of the one-of-N controls, both from Avalonia's own defaults rather than from anything this layer sets:
+
+- The **layer switchers** take **one tab stop for the whole group** (`ListBox` overrides `KeyboardNavigation.TabNavigation` to `Once`) and arrow keys move the selection inside it (`ListBox.OnKeyDown`), where each pill used to be its own tab stop.
+- The **section strip** does *not* collapse to one tab stop — `TabStrip`'s `TabNavigation` default is `Continue` and nothing overrides it — but `TabStrip.OnGotFocus` makes **selection follow focus**, so moving focus onto a tab now opens that section. With the old buttons, focus and section were independent.
+
+Neither view binds selection two-way: `SelectedItem` / `SelectedValue` is `Mode=OneWay` off the view model, and a `SelectionChanged` handler runs the very command the buttons used to. The view model stays the single owner of which layer or section is open, which is what lets the lighting tab *refuse* a firmware-gated layer and snap the segment back.
+
+### The focus ring
+
+**1 px accent border + a 3 px 28 % halo, never an offset outline** (`handoff.md:98`). The halo is `ShadowFocusHalo` (`0 0 0 3 #475B9DF9`) — spread only, no offset, no blur — so it hugs the control's own shape and reads on a 26 px key cap without eating its neighbour. Declared once, on `BaseButton`, and copied verbatim into the themes that do not derive from it:
+
+```xml
+<Style Selector="^:focus-visible">
+  <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+</Style>
+<Style Selector="^:focus-visible /template/ Border#Root">
+  <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+</Style>
+```
+
+Two things follow that save a search:
+
+- **There is no input-source service to find, and none should be written.** `:focus-visible` is Avalonia 11.3's own pseudo-class and already has the semantics the design asks for: a pointer press does not raise it, Tab and the arrow keys do. Every theme also sets `FocusAdorner="{x:Null}"` so Fluent's dotted adorner does not double up with the ring.
+- **Text fields ring on `:focus`, not `:focus-visible`, deliberately.** A button clicked with the mouse needs no further confirmation, but a `TextBox` clicked into must still say so — that is where the caret now is and the user is about to type. `SearchField`, `MonoValueField` and `ComboBox` therefore take the accent border on any focus. It is the one place the ring is louder than on a button.
+
+**Where the halo reaches.** Four field themes cannot own their template — `TextBox.OnApplyTemplate` does `NameScope.Get<TextPresenter>("PART_TextPresenter")` and `Get` *throws* when the part is missing; `ComboBox` needs `PART_Popup`, `Slider` needs `PART_Track` and its two repeat buttons. A hand-written template would have to carry a `PART_` name, which contract 2 forbids, so those four derive from Fluent's theme with `BasedOn` and extend it. A halo there would need a setter aimed at Fluent's own `Border#PART_BorderElement`, which is the very thing this layer exists to remove. So:
+
+| Theme | Accent border on focus | Halo |
+|---|---|---|
+| Every `BaseButton` descendant, `SegmentedItem`, `TabStripItem`, `SelectableListRow`, `CheckBox` | own template, set on the control | **yes** |
+| `SearchField`, `MonoValueField` | Fluent's `TextControlBorderBrushFocused` → `AccentBrush`, plus the theme's own `:focus` setter | no |
+| `ComboBox` | Fluent's `ComboBoxBackgroundBorderBrushFocused` → `AccentBrush`, plus its own `:focus` setter | no |
+| `Slider` | the theme's `BorderBrush`, carried by Fluent's root `TemplateBinding` | no |
+| `TokenField` | n/a — a `Border` is not focusable, by design | n/a |
+
+Every row is a visible, non-offset keyboard focus ring, which is the requirement; only the halo is missing on the four, and for a stated reason.
+
+### Focus + selection on a key cap
+
+The hardest case in the app: six states compete for one 26 px square, four can be true at once, and the caps are 4 px apart. `Keycap.axaml` settles three things rather than leaving them to file order.
+
+**The pinned ladder** — `listening > selected > :pointerover > locked > modified > rest` — read as "listening's *face* wins over selected's". Every state names the states it loses to, so a reorder cannot change the matrix. Focus sits outside the ladder entirely: it owns the **border** whenever it is visible and touches no face, which is why every state's `BorderBrush` setter carries `:not(:focus-visible)` and no state's `Background` setter does. `:disabled` sits outside it from the other side and beats the whole ladder — the board is dimmed as a unit while a profile loads — so `.modified`, `.selected` and `.listening` all carry `:not(:disabled)` and a dead cap wears `BaseButton`'s inset face. `.locked` needs no such qualifier: its face *is* the inset surface.
+
+**Selection and focus are concentric.** Both are spread-only shadows in the same accent at almost the same alpha — 2 px at 30 % (`ShadowKeyHalo`) for selection, 3 px at 28 % (`ShadowFocusHalo`) for focus. **Stacking them outward failed**: laid on the same element, or one outside the other, they merge into a single slightly denser band and stop being tellable apart. So:
+
+- **selection paints the outer 2 px of the cap, inward from its edge** — `Border#Ring`, an empty transparent border with `Margin="-1"`. The inner `Panel` already sits 3 px in (`Root`'s 1 px border + its 2 px padding), so `-1` walks it back to 2; a spread-only shadow is drawn outside its element and clipped out beneath it, so a 2 px spread from there paints exactly the cap's outer 2 px. That `-1` is measured against a **1 px** border, so `.listening` — the one state that doubles the thickness — restates it as `-2`, keeping the band flush with the edge rather than floating a pixel inside it.
+- **focus paints 3 px outward from that same edge** — `ShadowFocusHalo` on `Border#Root`, from `BaseButton`.
+
+A cap that is both wears a continuous 5 px band with its 1 px accent border at the seam, each half still readable, and nothing of the selection ring lands on a neighbour. Mechanically the second element is unavoidable: a `Border` has exactly one `BoxShadow`, `BaseButton` has already spoken for `Root`'s, and two `{DynamicResource}` entries cannot be composed into one `BoxShadows` value in XAML.
+
+The selection ring is **not** qualified against `.listening` — the key that is listening is the key that is selected, and losing the ring at the moment the cap starts waiting for a keystroke would read as the selection having moved. The face and border do yield to listening (amber tint, 2 px advisory border). It *is* qualified against `:disabled`, like the face and the border: the ring is drawn in the accent, and a dead cap wears no accent.
+
+**Locked is a fact, not a mood.** The hatch and dashed outline are unconditional on `.locked`: a locked cap under the pointer, or selected, still reads as locked. The old matrix let hover repaint the locked face and lose the signal. Only the *face* follows the ladder. A locked cap is still a live button — clicking it selects it and the inspector explains the refusal — so it is never `:disabled`.
+
+### The hatch tile
+
+`HatchBrush`, in `Shared.axaml`, declared once per theme variant (a brush in a plain dictionary would resolve its colour against the *application*'s variant rather than the window's). 45° at `HatchPitch` 4, painted in `SurfaceLineHigh`.
+
+**It is drawn as filled bands, not stroked lines.** A pen widens a drawing's natural bounds by half its thickness; the tile brush then maps those wider bounds onto `SourceRect` and the pattern drifts out of register at every seam. Filled, the geometry's bounds are exactly the 4×4 tile. Each band is the region where `(x + y)` falls in `[0, 1.5]` modulo 4 — periodic over the tile in both axes, so a stripe leaving the right edge re-enters the next tile exactly where it left, at any control size. The pitch is spelled as the literal `4` inside the brush because a `RelativeRect` and a path geometry are parsed from strings and cannot interpolate a resource; `HatchPitch` in `Themes/Geometry.axaml` is the record of the number, and the two must be kept in step.
+
+Two consumers, one meaning:
+
+- **A locked key cap** — `Rectangle#Locked` in `KeyCapButton`, which both fills with the hatch and strokes the dashed outline, because a `Border` cannot dash in Avalonia 11 and a `Rectangle` can do both in one part. Its `Margin="-2"` cancels `Root`'s 2 px padding so the hatch reaches the inside of the border; the two numbers are a pair. The dash takes the *hatch's* colour, not the border role — locked is one material.
+- **An LED that is off** — the LED strip in `KeyCapView`, hatched underneath, with the colour (when there is one) covering it.
+
+**Off is hatched, never black**, because black is a colour a key can legitimately be lit.
+
+**The hatch answers "this LED is off", never "lighting is not on screen".** The strip is drawn in three states, and it takes two answers from two different places:
+
+| Lighting on screen? | This key lit? | The strip |
+|---|---|---|
+| no | — | not drawn at all |
+| yes | no | the hatch |
+| yes | yes | the colour, over the hatch |
+
+The second answer is the cap's own `HasColorOverlay`. The first is **`KeyboardView.ShowsLedStrips`**, handed to each cap as `KeyCapView.ShowsLedStrip`, and it is a property of the *picture* rather than of the key: the editor's Keys tab and the Lighting tab render the very same `KeyboardLayerViewModel` and cap view models (`KeyboardEditorViewModel.Apply` hands its `Layers` straight to `LightingTabViewModel.Attach`), so no view-model state could tell the two surfaces apart. Only `LightingTabView` sets it, so the Keys tab has no LED row — which is what the mockups draw. Off by default, so a board opts in rather than out, and a cap hosted alone (a test, a design-time scene) shows no strip. `KeyboardViewTests` pins the two-surface disagreement; `KeycapThemeTests` pins the three states at the glass.
 
 ## Motion budget — `Themes/Motion.axaml`
 
@@ -440,8 +625,8 @@ A budget, not a suggestion: nothing may animate longer than the table says, and 
 Three consequences:
 
 1. **`DurationTabSwap` exists only so the zero is documented.** There is no `TabSwapTransitions` resource and there must never be one — a zero-duration transition still costs a frame of bookkeeping per switch. `MotionBudgetTests.NoTabSwapTransitionsResource_Exists` asserts the absence.
-2. **Declaring no `Transitions` is not the same as having none.** Fluent's `Button` control theme ships a **75 ms `RenderTransform` press animation** that every `Button` in the app inherits — including the layer pills and the section tabs. `Button.layerTab` and `Button.editorTab` therefore set `Transitions="{x:Null}"` explicitly. Without that the layer switch animates after all, and because it is a *movement* it would run under reduce-motion too.
-3. **No container in the app owns a page transition.** Neither the section tabs nor the layer switch is a `TabControl`: both are `Button`s in an `ItemsControl` over a `Panel` whose children toggle `IsVisible`. Avalonia 11's `TabControl` has no `PageTransition` property either; `Carousel` is the only container that does and the app uses none. `MotionBudgetTests.NoAuthoredMarkup_DeclaresAPageTransition` keeps it that way.
+2. **Declaring no `Transitions` is not the same as having none.** Fluent's `Button` control theme ships a **75 ms `RenderTransform` press animation** that every `Button` in the app used to inherit — including the layer pills and the section tabs. Writing our own templates drops it, but `SegmentedControl`, `SegmentedItem`, `TabStrip`, `TabStripItem`, `ToggleSegment` and `ModeOption` still set `Transitions="{x:Null}"` explicitly, because a theme that inherits from Fluent's (or a future one that does) would bring it back. Cleared outright rather than set to a zero duration: a zero-duration transition still costs a frame of bookkeeping per switch. `MotionBudgetTests` counts the containers it found before asserting, so a guard that stopped reaching them cannot pass for the wrong reason.
+3. **No container in the app owns a page transition.** The section strip is a `TabStrip` and the layer switch a `ListBox`, over a `Panel` whose children toggle `IsVisible`: neither is a content host, so neither *could* carry one. Avalonia 11's `TabControl` has no `PageTransition` property either; `Carousel` is the only container that does and the app uses none. `MotionBudgetTests.NoAuthoredMarkup_DeclaresAPageTransition` keeps it that way.
 
 ### Reduce-motion, and how a style consumes it
 
@@ -512,6 +697,11 @@ Two mechanics that cost real time to discover:
 1. **Transitions run on wall-clock time, and ticking the render timer does not advance them.** `AvaloniaHeadlessPlatform.ForceRenderTimerTick()` reports the *stopwatch* elapsed time, so calling it in a loop renders the same instant over and over. A surface whose `.open` class was just set is still at `Opacity="0"` and the PNG comes back blank. **Wait ~300 ms of real time (a `Task.Delay`) before capturing anything that fades in**, then tick and capture. `ThemedHost.Capture()` retries the tick five times, which covers the "first tick was spent on layout" case but cannot substitute for real elapsed time.
 2. **Turn `UseLayoutRounding` off in layout-arithmetic tests.** In the app, arranged caps are snapped to device pixels, which is right on screen and useless in a test: it rounds a 0.6 px half-gap to 1 and hides every off-by-a-fraction. `KeyboardPanelTests` sets `UseLayoutRounding = false` on both the panel and its children.
 
+Two more that cost real time when testing a control theme:
+
+3. **Raise pseudo-classes *after* `ThemedHost.Show`, never before.** `Button` re-syncs `:pressed` from its `IsPressed` property when its template is applied, so a pressed state set before the first layout pass is silently wiped and the test asserts the resting face. Set `:pointerover`, `:pressed`, `:focus-visible` and friends on the shown control.
+4. **`BoxShadow` is a `BoxShadows` struct, not a nullable list.** It is never null, so "no halo" is `Assert.Equal(0, root.BoxShadow.Count)` and reading one is `root.BoxShadow[0].Spread`. A null check compiles against nothing useful and a `Assert.Null` would never fire.
+
 **Frame capture is a diagnostic, not a suite.** Run it ad hoc, look at the PNG, delete it. **There is deliberately no golden-image comparison anywhere in the tests, and none should be added** — pixel baselines break on a font-rasteriser update, an Avalonia patch release, a different CI runner, and a one-pixel layout change that nobody minds, and the resulting churn buries the regressions that matter. The suite asserts on *resolved values and named pixels* instead (see `FramePixels` below), which is stable.
 
 ## What each suite guards
@@ -526,7 +716,13 @@ Two mechanics that cost real time to discover:
 | `Design/ViewResolutionTests` | `ViewLocator` name-matching | A renamed or moved view model silently degrading to the diagnostic `TextBlock`; a stale exclusion-list entry |
 | `Design/ViewRenderSmokeTests` | Every view, under both variants, loads + styles + draws | A broken `StaticResource`, an unparseable brush or geometry, a `DataTemplate` naming a moved type, a selector referring to a template part that no longer exists, a setter whose value cannot coerce |
 | `Design/ControlPaletteTests` | `Controls.axaml` | A Fluent key left unmapped — it still resolves, to Fluent's own grey, so nothing throws and nothing looks obviously wrong; a `Color`-typed key aliased to a brush role, which makes the control draw nothing |
-| `Design/ControlRenderTests` | The palette **at the glass** | A resource that resolves correctly but never reaches the control, because a Fluent state setter targeting `PART_ContentPresenter` outranks a `Background` on the control itself |
+| `Design/ControlRenderTests` | The palette **at the glass** | A resource that resolves correctly but never reaches the control. It reads the themed template's own `Label` presenter now, and asserts the value arrives by *inheritance from the control* rather than from a state setter aimed at a presenter |
+| `Design/ControlThemeFoundationTests` | `Shared.axaml` + the seven button roles | A theme that stops resolving in one variant; a class whose bridge went missing; a state painting the wrong token in either variant; the halo appearing on a pointer press or missing on Tab — including **driven through Avalonia's real input pipeline** (a genuine button-down, then a genuine Tab, on one window), which is the only way to assert the acceptance criterion's own wording rather than the `NavigationMethod` hint it implies; a pointer state out-ranking the focus ring; the link ramp acquiring a face; the hatch tile losing its token colour or flattening into a solid; a bridge style naming a template part |
+| `Design/PillThemeTests` | The four lozenges | A status variant losing its tint pair or the two becoming indistinguishable at the glass; the pill acquiring a face at rest or losing the 220 ms cross-fade; a selected pill that is hovered reading as unselected, or a *disabled* one reading as selected; a clickable pill losing its lozenge radius; the kbd chip losing its mono type or its `Root` part |
+| `Design/SegmentedAndTabThemeTests` | The trough, the strip and their containers | A container theme that stops being applied by the outer theme; a pressed segment flickering out of its selected face, or beating the hover face by file order rather than by its selector (read from the source, because the two agree at the glass); a *disabled* toggle still reading as on; the active tab's underline vanishing, appearing on an inactive tab, surviving on a disabled tab, or being drawn by focus instead of selection; a segment or tab acquiring a `Transitions`; a `/template/` selector escaping its own `ControlTheme` |
+| `Design/FieldThemeTests` | The seven field themes | A theme that resolves but never reaches its control; a state painting the wrong face or border; a *pointer* focus of a text field failing to show the accent border (the deliberate `:focus` rule); the halo appearing on the four `BasedOn` themes or missing on the two that own their template; the search glyph missing, or shared between fields because a `Setter` handed out one instance; the mono/sans split collapsing; the check-box glyph appearing unchecked or the indeterminate dash reverting to a tick; a hex literal creeping in |
+| `Design/KeycapThemeTests` | The cap's state matrix | Any state painting the wrong token; the pinned ladder reordering; a *disabled* cap keeping a live face in any of the three accent/advisory states; hover repainting a locked cap's hatch; a locked cap losing the dash or the hatch; a resting cap drawing either; the selection ring reaching a neighbouring cap, or falling short of the cap's own edge on a listening one (the border doubles, the ring's margin has to follow); focus and selection merging into one band; the focus ring losing to a state border; the LED strip's three states — an unlit key on a lighting board going dark instead of hatched, a lit one not covering the hatch, or **either of them drawing a strip on a board that is not showing lighting at all**; a `PART_`-prefixed part name |
+| `Design/ControlThemeBridgeTests` | The wiring, on the **real views** | A bridge that went missing (the control silently keeps Fluent's template); the picker's rows losing their container theme; the layer switch or section strip losing its theme or its per-container gating; a selection change no longer running the command the pills used to, in either direction; a firmware-gated layer leaving the segment desynced; **any markup outside `Themes/ControlThemes/` naming a template part**, and **a `PART_` prefix anywhere at all, including inside the layer** (the two scans are separate, and both strip comments first, because the contract quotes the name it forbids); a view still writing `layerTab` or `editorTab` |
 | `Design/MotionBudgetTests` | The budget | A duration off the table; a `TabSwapTransitions` resource appearing; a layer/tab container acquiring a `Transitions`; a page transition; movement leaking into the reduced set; `MotionResourceBinder` failing to re-point an alias |
 | `Design/IconCatalogTests` | The three geometry dictionaries' structure | A dictionary written but never merged into `App.axaml` — every key then resolves to nothing and draws an icon-shaped hole; a key without its family's prefix; a duplicate key; a colour creeping into a shape file; a mark dropped from the fixed state/action set; the two `Icons.axaml` files being read as one |
 | `Design/IconCoverageTests` | Coverage, driven by the domain | **The blind spot no markup guard can see**: a key looked up from C# rather than from XAML. A device added to the catalog with no art; a new `LightingMode` with no mark; art for a device the app cannot configure (which would promise an editor that does not exist); a mark naming nothing |
@@ -534,6 +730,7 @@ Two mechanics that cost real time to discover:
 | `Design/IconRenderTests` | `Icon` at the glass | A mark fitted to its ink instead of its box; a stroke-only mark drawn filled; a silhouette stretched instead of letterboxed; a mark not centred in a slot larger than its fit; the pen scaling with the geometry so a large icon reads as a fat one; `Icon`'s C# defaults drifting from `IconSize`/`IconStrokeThickness` |
 | `Design/SpinnerMotionTests` | The one icon that moves | The style's written-out duration drifting from `DurationSpinnerRotation`; the loop stopping short of a full turn, easing, or not repeating; the class losing the scanning mark or its 14×14 box; the rotation origin leaving the centre (the arc then orbits); the spinner acquiring a `…Full`/`…Reduced` pair; reduce-motion freezing it |
 | `Controls/KeyboardPanelTests` | The board's unit→pixel arithmetic | Scale taken from the wrong axis; an infinite/NaN/≤0 constraint contributing; the `NaturalUnitSize` fallback; asymmetric gaps; a negative cap width; the invalid-board path failing to arrange children |
+| `Controls/KeyboardViewTests` | The one thing the picture decides for its caps | `ShowsLedStrips` defaulting to on, or not reaching the caps the `ItemTemplate` builds; the two pictures of one layer agreeing about the LED row, which is the regression that put the flag on the surface in the first place |
 
 ### Why `ResourceReferenceTests` exists
 
@@ -565,6 +762,7 @@ Use it when the question is "does this control *end up* painted with that role",
 2. Bump the count tripwires if you add a batch of views (`TheViewCatalog_CoversEveryScreenTheAppCanShow`, `EveryViewOfTheApp_IsVisibleToThisGuard`).
 3. A view model rendered by an explicit `DataTemplate` rather than by the locator goes on `ViewResolutionTests._excluded` **with the reason**; `EveryExclusion_StatesWhy` and `TheExclusionList_HasNoStaleEntries` police that list.
 4. New token → `TokenValueTests` row. New motion → `Motion.axaml` (both flavours) + `MotionResourceBinder.Aliases` + a `MotionBudgetTests` row. New Fluent control family → `Controls.axaml` in both variants + `ControlPaletteTests`. New mark → the right geometry dictionary, under its family's prefix; the `Icon*` suites pick it up by reflection, except a new *state/action* mark, which also goes on `IconCatalogTests._stateAndActionMarks`.
+5. New **control theme** → the right file under `Themes/ControlThemes/`, a bridge in `Styles/` (or a `Theme=` at the call site), a row in the registry above, and rows in the matching theme suite's `TheoryData`: none of those suites discovers themes by reflection — every key, class and state is enumerated by hand, deliberately, because the expected token per state is the assertion.
 
 ---
 
@@ -620,17 +818,42 @@ The framing for the device-art rows: `handoff.md:123` asks for "all 7 known mode
 | The state-mark family is connected / not-detected / cannot-access / scanning | **Demo mode gets no state mark** | The state marks describe what the app found on a drive; demo mode is the *absence* of a drive state. Inventing a mark for it would put a fourth family in a set of three. Its chip still carries its own hue and label |
 | `IconWarning` == `IconCannotAccess` and `IconConnected` == `IconNotDetected` are byte-identical path data | Kept as **four separate keys**, with the pairs named as exemptions in `IconGridTests` | The design draws each pair as one shape separated by pen and colour (amber advisory vs red failure; solid vs dashed ring). Separate keys mean a call site names the thing it means, so a later divergence in one cannot silently restyle the other — and the mirror test fails if a pair *stops* being shared, so the exemption cannot go stale |
 
+## Deviations in the control-theme layer
+
+| Conflict / gap in the source | Resolution shipped | Why |
+|---|---|---|
+| Mockups `1e`/`2a` draw the layer switcher's **selected segment** as a raised neutral face (dark `#23272C` on a `#131619` trough with a `#3A4046` border; light `#FFFFFF` on `#EEF0F1` with `#C9CFD2`) | **Accent-filled** (`SegmentedItem:selected`) | Issue #86's own instruction, and it keeps the accent law legible — selection is one of the accent's two meanings. The handoff also calls this control's other consumer, the lighting speed bars, "accent-filled" verbatim (`handoff.md:150`). The mock's *geometry* is followed exactly: 2 px trough padding and gap, `RadiusControl` outside `RadiusChip`, 11 px stepping 400 → 500. Flipping back is three setters under `^:selected` |
+| Mockup `2f` draws the **selected lighting-mode row** as the 14 % accent *tint* with a full accent border | **Accent-filled** (`ModeOption.selected`) | The same instruction, and so the row says what the layer segment beside it says. Geometry and type follow the mock (`RadiusControl`, 9,7 padding, 11 px 400 → 500). Flipping back is `AccentSelectionFillBrush` + `TextPrimaryBrush` + an `AccentBrush` border |
+| The handoff draws a key cap's selection halo as a CSS **outer** box-shadow (`2px rgba(91,157,249,0.3)`) | Drawn **inward**, on `Border#Ring` | Focus is 3 px at 28 % and selection 2 px at 30 % — the same accent at almost the same alpha. Stacked outward they merge into one slightly denser band and stop being distinguishable, which the design explicitly requires them to stay. Concentric (selection inward, focus outward) keeps both readable and keeps the selection ring off the neighbouring cap |
+| Contract 1 says every template is rooted at a `Border x:Name="Root"` | `SearchField`, `MonoValueField`, `ComboBox` and `Slider` **inherit Fluent's template** via `BasedOn` | Their `OnApplyTemplate` calls `NameScope.Get<T>("PART_…")`, which *throws* when the part is missing (`PART_TextPresenter`, `PART_Popup`, `PART_Track`). Owning the template would mean carrying a `PART_` name, which contract 2 forbids. They get the accent focus border but **no halo**: a halo is a `BoxShadow`, only a `Border` has one, and reaching Fluent's `Border#PART_BorderElement` is the exact practice this layer exists to remove |
+| Contract 1, again | `CheckBox`'s template root is a **`Grid`**, not `Border#Root` | The design wants the ring on the *box*, not the whole control: a halo around control-plus-label would bleed into the settings rows above and below. `Root` still exists, still template-binds, and is still what the halo lands on — it is the 16 px box, with the label a sibling |
+| Mockup `1e`'s search field draws a leading **`⌕` (U+2315)** | A drawn `Path` on `InnerLeftContent` | Neither embedded IBM Plex family carries U+2315 (checked against the glyph typeface), so the character would fall through to a platform substitute or tofu. The design's own icon law — "16 px grid, 1.5 px stroke, square caps, geometry only" — is what a drawn magnifier is. The `<Template>` wrapper is load-bearing: a `Setter` holding a bare control hands the *same instance* to every search field, and a control has one parent |
+| The obvious shape for a token/action field is a `TextBox` | `TokenField` targets **`Border`** | Focus inside a `TextBox` suspends keystroke capture (`KeystrokeCaptureSession.IsSuspended`), so a focusable token field would swallow the very keypress it exists to record. It is a *display*; the capture is armed by the button beside it. It therefore carries no focus ring either — a `Border` is not focusable |
+| Mockups `1e`/`2h` set the filter-chip labels at **10 px sans** | **11/500** (`FontSizeMeta` + `BaseButton`'s Medium) | The type scale has no sans-10 step — 10 is the mono section label — and the handoff's own table puts pill labels at 11/500. The mock's 10 is the dense-area setting of a 1000 px-wide picture, not a scale step |
+| The **light** mockup inverts the chosen filter chip (near-black fill, white text) where the dark one merely raises it | Both variants take the dark mock's role walk: `SurfaceRaised` face, `TextSecondary` label | Painting a chip with a *text* role is not expressible in this token system, and it would be the only place in the app where light is an inversion rather than the same roles resolved differently |
+| `RadiusControl` (5) is the control radius | `CheckBox` uses **`RadiusChip`** (3) | A 5 px radius on a 16 px box reads as a lozenge. 3 is the chip step and is what the mock draws |
+| The mockups imply a tight slider row | The `Slider` keeps **Fluent's 50 px extent**, so its focus ring boxes more empty space than the mock implies | Fluent's horizontal slider is a 20 px track row with 15 of clearance above and below for tick bars the app never turns on. Pinning `Height` to 32 does *not* fix it — the template's rows are fixed, so the thumb simply hangs out of the bottom. Tightening means rewriting `Grid#HorizontalTemplate`, which needs the `PART_` names this layer refuses. The ring tells the truth about the control's real extent |
+| The design's keycap legend is **9/400** | The cap stays on the **11/400** body step | Unchanged from issue #85 and for the same reason — see "Known gaps" |
+| `KbdChip` prints a keystroke, which is not "a value that exists verbatim in a config file" | **Mono anyway**, at 10/500 | A small stretch of the mono law, taken because the mockups set these in Plex Mono for the same underlying reason the law exists: it is a literal, not the app talking |
+| A tab's active mark is `box-shadow: inset 0 -2px 0 #5B9DF9` — i.e. a border | Its **own template part** (`Border#Underline`) | The focus ring is also a `BorderBrush`. Drawn as a border, a merely *focused* tab would paint itself an accent underline and read as the active one. A separate part leaves `BorderBrush` free to be the ring and nothing else, and an active-and-focused tab shows both as different shapes |
+| The design would rather a feature a device lacks were **not rendered at all** than disabled | `TabStripItem` and `SegmentedItem` both carry a `:disabled` face | Whether to render is the *editor's* decision, not the theme's — and two cases genuinely want dimming rather than absence: a section this app has not built yet (so the editor's shape does not change when it arrives) and the lighting Fn layer below the LED 1.0.44 gate, where the layer exists and the reason is printed beside it |
+| `handoff.md:186` offers "restyled `ListBox` … **or** `RadioButton` group styled as segments" | **`ListBox`** | Every call site is already an `ItemsControl` over a collection of view models, so a `ListBox` keeps the view a data binding. A `RadioButton` group would need a group name and an `IsChecked` converter per item, and would lose the one-tab-stop-per-group keyboard behaviour a `SelectingItemsControl` gives for free |
+| `SegmentedControl` sets `SelectionMode="AlwaysSelected"`; the section strip does not | `TabStrip` has no such setter | `SelectingItemsControl` declares `SelectionMode` **protected** and only `ListBox` re-exposes it, so a `TabStrip` cannot be told `AlwaysSelected` from markup. Its consumer keeps a section open instead |
+
 ## Known gaps handed to later issues
 
 The design system is complete; the *screens* built on it are not. Everything below is a deliberate deferral, not an oversight — the redesign epic ([#57](https://github.com/migus88/kinesis-edit/issues/57)) owns them.
 
 - **The dashboard is still a `WrapPanel` of fixed 320 px cards.** The handoff specifies a 2-column grid at gap 12, with a 2 px status rail flush against each card's left edge. `CardGridGap` and `WidthCardStatusRail` are defined and unused.
-- **`Configure` is not an accent primary.** The card's primary action is a plain button.
+- **The device card's buttons are still unclassed.** `Configure` is not an accent primary and `Eject` is not the green-tinted one; both themes exist (`PrimaryActionButton`, `EjectButton`) and the card has not been rebuilt on them yet.
 - **The editor's dirty-state Save treatment is unimplemented.** The handoff says Save "turns amber whenever the session is dirty"; today it is a static `Button.primaryAction`.
 - **Light `Button.primaryAction` at rest measures 2.75:1** (white `AccentText` on the `#5B9DF9` accent fill), below WCAG AA for normal text. This is the handoff's own Accent/AccentText pairing shipped faithfully; the alternative — accent as a *foreground* on a neutral face — is worse (2.4–2.8:1) and was the defect this replaced. Dark is fine at 6.84:1. Raising light means changing a design token and belongs with the designer, not in a style file.
 - **Light `StatusDemo` on its own tint is 4.2–4.6:1** — the AA boundary. See the status table above.
-- **`FontSizeKeycapLabel` (9) is defined but no cap uses it.** The design quotes 9/400 "at mock scale", where a 1U cap is 30×26; `KeyboardPanel` draws a cap at up to 44 px and the legend does not yet scale with the board, so 9 px would be a regression against the drawn art rather than a match for it. `Button.keyCap` takes the 11/400 body step until the cap renderer scales its own type. `.keycapLabel` waits for that.
-- **No keycap badges are drawn yet** — the remapped bar, macro dot, tap-and-hold triangle, advisory bar and locked hatching all have tokens and metrics (`BadgeMacro`, `BadgeTapHold`, `HatchPitch`, `HatchAngle`) and no renderer.
+- **`FontSizeKeycapLabel` (9) is defined but no cap uses it.** The design quotes 9/400 "at mock scale", where a 1U cap is 30×26; `KeyboardPanel` draws a cap at up to 44 px and the legend does not yet scale with the board, so 9 px would be a regression against the drawn art rather than a match for it. `KeyCapButton` takes the 11/400 body step until the cap renderer scales its own type. `.keycapLabel` waits for that.
+- **The keycap badges are still unimplemented** — the remapped 2 px accent bar, the 5 px macro dot, the tap-and-hold corner triangle and the advisory bar all have tokens (`BadgeMacro`, `BadgeTapHold`, `StatusAdvisoryStrong`) and no renderer. **Locked is done**: `KeyCapButton` draws the hatch and the dashed outline. Adding a badge means a part in that template, not a style reaching into it.
+- **A board whose LEDs are not per-key would still hatch every cap.** The half of this that mattered is closed: "lighting is not on screen" is now `KeyboardView.ShowsLedStrips` and the Keys tab draws no LED row (see "The hatch tile"). What remains is the other half — `HasColorOverlay` is false both for a key whose LED is off and for a key on a device that has no per-key LED at all, because `KeyColorOverlay.Build` drops black entries and yields nothing whatsoever for a device outside `LightingKind.PerKeyRgb`. Today the two coincide: the Lighting tab's per-key board is only reachable on the Edge RGB. The **TKO edge-zone editor ([#40](https://github.com/migus88/kinesis-edit/issues/40))** and the **Advantage360 indicator editor ([#41](https://github.com/migus88/kinesis-edit/issues/41))** are where they part, and a board that paints zones or six fixed indicators needs its own answer — probably not this cap strip at all — rather than a per-cap hatch standing in for LEDs the hardware does not have.
+- **The `CheckBox*` alias block in `Themes/Controls.axaml` is dead** — 43 keys per variant that only Fluent's own `CheckBox` theme reads, and nothing uses that theme now. It cannot simply be deleted: `ControlPaletteTests` asserts `CheckBoxCheckBackgroundFillChecked` by name twice.
+- **`FilterChip` and `KbdChip` have no bridge yet, and five bridged button roles have no call site** (`secondary`, `eject`, `discard`, `ghost`, `link`). All deliberate; see the registry note.
 - **Four call sites still draw a glyph rather than a mark**, deliberately: the `▲▼` steppers in `TapAndHoldOverlayView` and `MacroDelayOverlayView`, the `✕` and `•` in `KeyboardEditorView`, and the `▾` in `SavantElitePedalView`. Their views are rewritten by later redesign issues, and drawing a mark for a control that is about to be replaced would be work thrown away twice. (Keycap legends — `KeyRegistry.GlyphText`, `PedalSpecialActions` — are **not** in this list: they are domain data, not icons, and stay type forever.)
 - **`Border.statusChip` has no `.unknown`.** `StatusSeverity.Unknown` renders an unfilled chip, which is what the transitional state should look like.
 - **Flyout/menu popover transitions are bounded but not driven.** Avalonia raises no open/closed pseudo-class on a `FlyoutPresenter`, so the budget currently only bounds property changes the presenter makes of its own accord.
@@ -640,12 +863,15 @@ The design system is complete; the *screens* built on it are not. Everything bel
 1. **No colour value outside `Themes/`.** Enforced by test.
 2. **Both theme variants carry identical key sets** — in `Tokens.axaml` *and* in `Controls.axaml`. The app follows the OS theme; a key present in one variant is a colour that disappears on half the machines.
 3. **`App.axaml` stays composition only.**
-4. **`Controls.axaml` stays in `Application.Resources`.** Moving it to `Application.Styles` silently un-does the whole control palette.
-5. **Tab and layer containers carry no `Transitions` at all** — and must clear Fluent's inherited one explicitly.
-6. **Views and styles bind the bare motion alias**, never `…Full`/`…Reduced` directly.
-7. **View models expose enums and strings, never brushes.** `EnumMatchConverter` maps them to style classes, which keeps the view models toolkit-free *and* lets `DynamicResource` re-resolve when the OS theme flips at runtime.
-8. **The three geometry dictionaries carry no colour** — even though they live in `Themes/`, which is the one folder allowed to hold hex. A shape is a shape; the call site names the token it is painted with, or the icon freezes at one theme's colour.
-9. **An `Icon` fits its authoring box, never its ink.** Ink-fitting destroys the shared centre of the state marks, the relative proportion of the seven boards, and the spinner's rotation centre.
+4. **`Controls.axaml` stays in `Application.Resources`, and the control themes stay after it.** Moving `Controls.axaml` to `Application.Styles` silently un-does the whole control palette; merging the control themes before it leaves `PrimaryActionButton` and `CheckBox` unable to see the `AccentButton*` aliases.
+5. **Only `Themes/ControlThemes/` may name a template part**, and never with a `PART_` prefix. Anywhere else, a `/template/` selector is a bug and fails `ControlThemeBridgeTests.NoMarkupOutsideTheControlThemeLayer_NamesATemplatePart`.
+6. **A bridge sets `Theme` and, wherever it can, nothing else.** A `Style` setter outranks a `ControlTheme` setter, so every extra property is one the theme no longer decides — and a blanket type style leaks across every list, panel and strip in the app.
+7. **State precedence lives in the selector, not in file order.** Avalonia has no specificity, and `BasedOn` styles are applied first. Where two states can be true at once, qualify.
+8. **Tab and layer containers carry no `Transitions` at all** — and must clear an inherited one explicitly.
+9. **Views and styles bind the bare motion alias**, never `…Full`/`…Reduced` directly.
+10. **View models expose enums and strings, never brushes.** `EnumMatchConverter` maps them to style classes, which keeps the view models toolkit-free *and* lets `DynamicResource` re-resolve when the OS theme flips at runtime.
+11. **The three geometry dictionaries carry no colour** — even though they live in `Themes/`, which is the one folder allowed to hold hex. A shape is a shape; the call site names the token it is painted with, or the icon freezes at one theme's colour.
+12. **An `Icon` fits its authoring box, never its ink.** Ink-fitting destroys the shared centre of the state marks, the relative proportion of the seven boards, and the spinner's rotation centre.
 
 ## Deliberately not here
 
@@ -653,3 +879,5 @@ The design system is complete; the *screens* built on it are not. Everything bel
 - **No golden images.** See above — a deliberate refusal, not a missing feature.
 - **No app-level theme picker.** `RequestedThemeVariant="Default"` follows the OS. Pinning a variant is a preference a later issue may add; `ThemedHost` already proves both variants work.
 - **No animation framework.** Six `Transitions` pairs and one `Style.Animations` loop are the whole motion surface, and the budget says that is all there may be.
+- **No custom input-source tracking for the focus ring.** Avalonia 11.3's `:focus-visible` already suppresses on pointer press and raises on Tab and the arrow keys. A service that re-derived that would be a second, divergent answer to a question the framework answers.
+- **No `RadioButton`-based segmented control, and no `ToggleButton`.** Every one-of-N group is a `SelectingItemsControl`; every independent latch is a `Button` driven by `Classes.selected`.

@@ -6,13 +6,18 @@
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="44" d:DesignHeight="44"
              x:Class="KinesisEdit.Controls.KeyCapView"
-             x:DataType="vm:KeyboardKeyViewModel">
+             x:DataType="vm:KeyboardKeyViewModel"
+             ClipToBounds="False">
   <!-- One key cap. The cap is a Button so it is focusable and clickable without code-behind; all
-       of its chrome comes from the 'keyCap' style classes in Styles/Keyboard.axaml, which is also
-       where the four states (selected / listening / modified / locked) get their theme brushes.
-       The click goes to the editor through the containing KeyboardView, so nothing here knows what
-       a remap is (specs/10-apps-and-ui.md, "Remap workflow"). -->
+       of its chrome comes from the KeyCapButton control theme in Themes/ControlThemes/Keycap.axaml,
+       which owns the template and the whole state matrix (selected / listening / modified /
+       locked). The click goes to the editor through the containing KeyboardView, so nothing here
+       knows what a remap is (specs/10-apps-and-ui.md, "Remap workflow").
+
+       ClipToBounds is off on the way out as well as in: a focused cap casts a 3px halo past its own
+       bounds into a grid whose caps are 4px apart, and a clip anywhere along the chain erases it. -->
   <Button Classes="keyCap"
+          ClipToBounds="False"
           Classes.selected="{Binding IsSelected}"
           Classes.listening="{Binding IsListening}"
           Classes.modified="{Binding IsModified}"
@@ -34,13 +39,37 @@
                  VerticalAlignment="Center" />
 
       <!-- The key's LED colour (ledN.txt), shown as a strip rather than as the cap background so
-           the cap's own state stays readable next to it. -->
+           the cap's own state stays readable next to it. Three states, and they need two answers
+           from two different places:
+
+             1. LIGHTING IS NOT ON SCREEN — no strip at all. The Keys tab edits assignments; a row
+                of LED bars under every cap on it is a readout of something nobody asked about, and
+                the mockups draw no such row (docs/design/mockups.md, 1e and 2a).
+             2. LIGHTING IS ON SCREEN AND THIS LED IS OFF — the hatch. "Off is hatched, never black"
+                (docs/design/handoff.md:105 and :151, and again at mockups.md:176 and :333), because
+                black is a colour a key can legitimately be lit.
+             3. LIGHTING IS ON SCREEN AND THIS LED IS LIT — the colour, covering the hatch.
+
+           HasColorOverlay is the second answer and means exactly "this key is lit". The first is
+           ShowsLedStrip, and it is a property of the PICTURE rather than of the key: the Keys tab
+           and the Lighting tab render the same KeyboardKeyViewModel instances (see
+           KeyboardLayerViewModel.ApplyColorOverlays), so no state on the cap's DataContext could
+           ever separate them. KeyboardView owns it and hands it to each cap it builds.
+
+           The cap does not change size either way — KeyboardPanel lays every cap out from its unit
+           rectangle — but the caption's box inside it is 5px shorter on a lighting board, which is
+           the row this strip occupies. -->
       <Border Grid.Row="1"
               Height="3"
               CornerRadius="{DynamicResource RadiusChip}"
               Margin="1,2,1,0"
-              IsVisible="{Binding HasColorOverlay}"
-              Background="{Binding ColorOverlayHex, Converter={StaticResource HexColorToBrush}}" />
+              ClipToBounds="True"
+              IsVisible="{Binding $parent[controls:KeyCapView].ShowsLedStrip}"
+              Background="{DynamicResource HatchBrush}">
+        <Border CornerRadius="{DynamicResource RadiusChip}"
+                IsVisible="{Binding HasColorOverlay}"
+                Background="{Binding ColorOverlayHex, Converter={StaticResource HexColorToBrush}}" />
+      </Border>
     </Grid>
   </Button>
 </UserControl>

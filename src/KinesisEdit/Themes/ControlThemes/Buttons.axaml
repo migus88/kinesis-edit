@@ -1,0 +1,243 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The button family. Read Shared.axaml's header first — it carries the authoring contract, and
+    BaseButton below carries the template, the geometry, the type step, the focus ring and the
+    disabled face. Each theme here therefore declares only its own colour ramp.
+
+    A view never names a theme: it keeps writing `Classes="primaryAction"` and one bridge style per
+    class in Styles/Buttons.axaml points the class at the theme. The class stays the authoring API,
+    so no view changed when this landed.
+
+    Two rules from the contract show up in every ramp below and are worth spotting once:
+      - the pointer states set BorderBrush through `:not(:focus-visible)`, because the focus ring
+        owns the border whenever it is visible (contract 3 and 5);
+      - `:pressed` is written after `:pointerover` and never overlaps it, because Avalonia raises
+        both while the pointer is down; the fills are therefore split with `:not(:pressed)` rather
+        than left to file order.
+  -->
+
+  <!--
+    PRIMARY ACTION — Save, Configure, Ok, Assign, Launch in Demo Mode. The one button of a surface
+    that commits something, and one of the accent's two sanctioned meanings ("you changed this").
+
+    An accent FILL with AccentText on it, not accent-coloured text: the accent as a foreground on a
+    neutral face measures 2.4-2.8:1 in the light theme, which is not a legible label.
+
+    This is the one ramp that reaches for the AccentButton* keys of Themes/Controls.axaml instead of
+    naming roles directly, and it has to: the colour that sits ON the fill flips with the variant
+    (near-black in dark, white in light), so each variant must move the fill AWAY from its own label
+    colour — dark brightens on hover and deepens on press, light does the reverse. Those keys are
+    where that divergence is already written down, per variant.
+  -->
+  <ControlTheme x:Key="PrimaryActionButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPointerOver}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPressed}" />
+    </Style>
+
+    <!-- Disabled comes from BaseButton, which is exactly the treatment the accent ramp wants: it
+         leaves the accent family entirely for SurfaceInset + TextDisabled. -->
+  </ControlTheme>
+
+  <!--
+    SECONDARY — Home, Scan for v-Drive, Cancel, Retry access. The bordered neutral button, and the
+    default choice for anything that is not the one committing action.
+
+    The neutral ramp of docs/app/design-system.md: SurfaceBar rests, SurfaceRaised lifts on hover,
+    SurfaceLine sinks on press, and the border steps from SurfaceBorderRaised to SurfaceLineHigh.
+    The label rests on TextSecondary and comes up to TextPrimary under the pointer, which is what
+    the mockups draw (#C6CCD1 at rest).
+  -->
+  <ControlTheme x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    EJECT — the green-tinted button on a device card, and the only place the app releases a drive
+    ("nothing ejects implicitly"). It is tinted rather than filled because it is a deliberate
+    action, not the card's primary one.
+
+    The status ramp has three strengths of the same hue and the state matrix walks them: the 12%
+    tint rests, the 38% tint-border strength fills on hover, and a press snaps the outline and the
+    label to the full hue. Nothing leaves the green family, so the button never reads as a
+    different control mid-click.
+  -->
+  <ControlTheme x:Key="EjectButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource StatusOkTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusOkTintBorderBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource StatusOkTextBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource StatusOkTintBorderBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource StatusOkTintBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    DISCARD — "throw the edits away" in the leave-with-unsaved modal. The error ramp, and the only
+    button in the app that is red: red means genuine loss here, never an advisory (an advisory is
+    amber and never blocks). Same three-strength walk as Eject.
+  -->
+  <ControlTheme x:Key="DiscardButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource StatusErrorTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorTintBorderBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource StatusErrorTextBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource StatusErrorTintBorderBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource StatusErrorTintBorderBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    GHOST — chromeless until the pointer arrives: a toast's dismiss, an inline "Review 3", the
+    small actions that must not compete with the button beside them. It keeps its 1px border at
+    rest and merely paints it transparent, so acquiring one on hover or on focus costs no reflow.
+  -->
+  <ControlTheme x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- A ghost keeps no face when it is disabled; BaseButton's inset face would give it one. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    LINK — "Which board do I have? ↗". Text only, no chrome and no padding, so it sits inside a
+    sentence at the weight of body copy rather than reading as a control.
+
+    This is the accent used as a foreground, which the primary action deliberately refuses; it is
+    legitimate here because a link is not a filled face and because the accent's job on it is
+    "follow me", the same selection/navigation meaning. Hover lifts to AccentLinkHover, press
+    settles on the deeper AccentSelectedRing.
+  -->
+  <ControlTheme x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed)">
+      <Setter Property="Foreground" Value="{DynamicResource AccentLinkHoverBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Foreground" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ROW — a full-width flat button that reads as a list entry: a macro in the profile's list, a
+    recorded step, a row of the token picker. Its content is authored by the view (usually a
+    stack of classed TextBlocks), so it stretches its content and does not impose the control type
+    step on it.
+
+    Selection outranks hover (contract 5): a selected row that the pointer happens to be over is
+    still a selected row, and the `:not(.selected)` qualifier says so rather than leaving it to the
+    order the styles happen to appear in. The selected face is the 14% accent fill with the
+    AccentSelectedRing border the design names for exactly this — a selected ROW — while focus, when
+    it is also present, takes the border to the full accent and adds the halo outside it. Both are
+    therefore visible at once and still tell each other apart.
+  -->
+  <ControlTheme x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+
+    <Style Selector="^.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    </Style>
+    <Style Selector="^.selected:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>
