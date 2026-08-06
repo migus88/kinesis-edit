@@ -15,6 +15,7 @@ namespace KinesisEdit.Tests.ViewModels
     public sealed class KeyboardEditorViewModelRoutingTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
+        private readonly FakeSettingsService _settings = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeFolderPickerService _folderPicker = new();
@@ -24,17 +25,17 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
-        public async Task Tabs_TheKeysAndMacrosTabs_AreEnabledAndTheRestAreNot()
+        public async Task Tabs_TheMacrosTab_IsTheSecondOneAndIsReachable()
         {
+            // The precondition of every routing test below: the panel these tests drive is behind
+            // an open tab. Which sections the strip carries for which device is
+            // EditorTabViewModelTests' and KeyboardEditorViewModelTests' subject, not this file's.
             var editor = await CreateLoadedEditorAsync();
 
             Assert.True(editor.Tabs[0].IsEnabled);
             Assert.True(editor.Tabs[1].IsEnabled);
             Assert.Equal(EditorTab.Macros, editor.Tabs[1].Tab);
             Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
-
-            // Lighting and Settings are issue #16 and stay visible-but-disabled.
-            Assert.All(editor.Tabs.Skip(2), tab => Assert.False(tab.IsEnabled));
         }
 
         [Fact]
@@ -429,6 +430,7 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = new KeyboardEditorViewModel(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
+                _settings,
                 _capture,
                 _notifications,
                 _folderPicker,

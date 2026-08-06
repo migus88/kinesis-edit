@@ -14,6 +14,7 @@ namespace KinesisEdit.Tests.ViewModels
     public sealed class KeyboardEditorViewModelRemapTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
+        private readonly FakeSettingsService _settings = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeFolderPickerService _folderPicker = new();
@@ -271,6 +272,7 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = new KeyboardEditorViewModel(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
+                _settings,
                 _capture,
                 _notifications,
                 _folderPicker,

@@ -73,7 +73,7 @@ namespace KinesisEdit.Tests.Services
             var fileService = new FakeVDriveFileService();
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess);
             fileService.SetFile(VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!), "save_msg=off");
-            var sessions = new DeviceSessionManager(fileService);
+            var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
             sessions.Begin(snapshot);
             var presenter = CreateSuppressingPresenter();
             var service = new NotificationService(presenter, sessions);
@@ -96,7 +96,7 @@ namespace KinesisEdit.Tests.Services
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko);
             var settingsPath = VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!);
             fileService.SetFile(settingsPath, "save_msg=off");
-            var sessions = new DeviceSessionManager(fileService);
+            var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
             sessions.Begin(snapshot);
             var presenter = CreateSuppressingPresenter();
             var service = new NotificationService(presenter, sessions);
@@ -113,7 +113,7 @@ namespace KinesisEdit.Tests.Services
         {
             var presenter = CreateSuppressingPresenter();
             var fileService = new FakeVDriveFileService();
-            var service = new NotificationService(presenter, new DeviceSessionManager(fileService));
+            var service = new NotificationService(presenter, new DeviceSessionManager(TestDevices.CreateSettingsService(fileService)));
 
             await service.ShowMessageBoxAsync(CreateSuppressibleRequest());
 

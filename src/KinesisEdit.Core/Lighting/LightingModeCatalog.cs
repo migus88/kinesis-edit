@@ -96,6 +96,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Disabled,
+                    DisplayName = "Disable",
                     OffersInRgbKeyBacklightMenu = true,
                     OffersInTkoKeyBacklightMenu = true,
                     OffersInTkoEdgeMenu = true
@@ -103,6 +104,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Freestyle,
+                    DisplayName = "Freestyle",
                     HasPerKeyColors = true,
                     OffersInRgbKeyBacklightMenu = true,
                     OffersInTkoKeyBacklightMenu = true,
@@ -111,6 +113,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Monochrome,
+                    DisplayName = "Monochrome",
                     KeyBacklightToken = "mono",
                     EdgeToken = "mono_edge",
                     WritesEffectColor = true,
@@ -121,6 +124,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Breathe,
+                    DisplayName = "Breathe",
                     KeyBacklightToken = "breathe",
                     EdgeToken = "breathe_edge",
                     WritesSpeed = true,
@@ -132,6 +136,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Spectrum,
+                    DisplayName = "Spectrum",
                     KeyBacklightToken = "spectrum",
                     EdgeToken = "spectrum_edge",
                     WritesSpeed = true,
@@ -142,6 +147,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Wave,
+                    DisplayName = "Wave",
                     KeyBacklightToken = "wave",
                     EdgeToken = "wave_edge",
                     WritesSpeed = true,
@@ -154,6 +160,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.FrozenWave,
+                    DisplayName = "Frozen Wave",
                     EdgeToken = "frozenwave_edge",
                     HasPerKeyColors = true,
                     OffersInTkoEdgeMenu = true
@@ -161,6 +168,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Reactive,
+                    DisplayName = "Reactive",
                     KeyBacklightToken = "reactive",
                     WritesSpeed = true,
                     WritesEffectColor = true,
@@ -171,6 +179,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Ripple,
+                    DisplayName = "Ripple",
                     KeyBacklightToken = "ripple",
                     WritesSpeed = true,
                     WritesEffectColor = true,
@@ -182,6 +191,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Fireball,
+                    DisplayName = "Fireball",
                     KeyBacklightToken = "fireball",
                     WritesSpeed = true,
                     WritesEffectColor = true,
@@ -194,6 +204,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Starlight,
+                    DisplayName = "Starlight",
                     KeyBacklightToken = "star",
                     WritesSpeed = true,
                     WritesEffectColor = true,
@@ -204,6 +215,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Rebound,
+                    DisplayName = "Rebound",
                     KeyBacklightToken = "rebound",
                     EdgeToken = "rebound_edge",
                     WritesSpeed = true,
@@ -217,6 +229,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Loop,
+                    DisplayName = "Loop",
                     KeyBacklightToken = "loop",
                     EdgeToken = "loop_edge",
                     WritesSpeed = true,
@@ -231,6 +244,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Pulse,
+                    DisplayName = "Pulse",
                     KeyBacklightToken = "pulse",
                     EdgeToken = "pulse_edge",
                     WritesSpeed = true,
@@ -241,6 +255,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.Rain,
+                    DisplayName = "Rain",
                     KeyBacklightToken = "rain",
                     WritesSpeed = true,
                     WritesEffectColor = true,
@@ -251,6 +266,7 @@ namespace KinesisEdit.Core.Lighting
                 new LightingModeDefinition
                 {
                     Mode = LightingMode.PitchBlack,
+                    DisplayName = "Pitch Black",
                     KeyBacklightToken = "black",
                     IsReserved = true
                 }

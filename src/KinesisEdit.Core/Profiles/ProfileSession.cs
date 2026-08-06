@@ -303,15 +303,10 @@ namespace KinesisEdit.Core.Profiles
 
         private void SaveStartupSettings(int targetProfileNumber)
         {
-            var updatedSettings = _settings with { StartupProfileNumber = targetProfileNumber };
-
-            if (_location.Device.Settings.LedMode == LedModeKind.LedFileName)
-            {
-                updatedSettings = updatedSettings with
-                {
-                    LedMode = ProfileFileNames.Lighting(targetProfileNumber)
-                };
-            }
+            var updatedSettings = StartupProfileSettings.ApplyStartupProfile(
+                _location.Device.Settings,
+                _settings,
+                targetProfileNumber);
 
             _settingsService.SaveKeyboardSettings(_location, VersionFileInfo.Empty, updatedSettings);
         }
@@ -347,6 +342,9 @@ namespace KinesisEdit.Core.Profiles
 
         private static string GetLightingFilePath(VDriveLocation location, int profileNumber)
         {
+            // ProfileFileNames.Lighting is StartupProfileSettings.GetLedFileName — the same helper
+            // that writes the paired led_mode value (spec 07 §1.2), so the file this session reads
+            // and the file name the settings point at cannot drift apart.
             return Path.Combine(location.LightingFolderPath!, ProfileFileNames.Lighting(profileNumber));
         }
     }

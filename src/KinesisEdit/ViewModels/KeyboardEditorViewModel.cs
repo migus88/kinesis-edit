@@ -171,10 +171,27 @@ namespace KinesisEdit.ViewModels
         public double BoardHeight => _visual?.Height ?? 0;
 
         /// <summary>
-        /// The editor's sections. <see cref="EditorTab.Lighting"/> and
-        /// <see cref="EditorTab.Settings"/> are disabled placeholders (issue #16).
+        /// The editor's sections, filtered by what the device carries
+        /// (<see cref="EditorTabViewModel.CreateAll"/>): Keys and Macros always, Lighting and
+        /// Settings only where the board has one, and Lighting disabled where its led file is not
+        /// the model <see cref="LightingTabViewModel"/> edits.
         /// </summary>
         public IReadOnlyList<EditorTabViewModel> Tabs { get; }
+
+        /// <summary>
+        /// The Settings tab's panel (docs/app/settings.md). Always built — it is cheap and reads
+        /// nothing on its own — but only reachable when <see cref="Tabs"/> carries
+        /// <see cref="EditorTab.Settings"/>, i.e. when the device has an app-managed settings file.
+        /// </summary>
+        public KeyboardSettingsViewModel Settings { get; }
+
+        /// <summary>
+        /// The Lighting tab's panel (docs/app/lighting.md). Always built, like
+        /// <see cref="Settings"/>, and pointed at the profile's lighting model by
+        /// <see cref="LoadAsync"/>; only reachable on a device
+        /// <see cref="LightingTabViewModel.IsSupported"/> accepts.
+        /// </summary>
+        public LightingTabViewModel Lighting { get; }
 
         /// <summary>The open section.</summary>
         public EditorTab SelectedTab
@@ -370,6 +387,7 @@ namespace KinesisEdit.ViewModels
         public KeyboardEditorViewModel(
             DeviceSnapshot device,
             IProfileSessionFactory profileSessions,
+            ISettingsService settings,
             IKeystrokeCaptureService capture,
             INotificationService notifications,
             IFolderPickerService folderPicker,
@@ -390,7 +408,14 @@ namespace KinesisEdit.ViewModels
             // and shared by every layer (docs/app/domain-data.md, "Visual geometry").
             _visual = VisualCatalog.TryGet(device.DeviceId, out var visual) ? visual : null;
 
-            Tabs = EditorTabViewModel.CreateAll();
+            Settings = new KeyboardSettingsViewModel(device, settings, notifications);
+            Lighting = new LightingTabViewModel(device, settings, notifications);
+
+            // The Lighting tab is enabled for the boards whose led file is the two-layer key
+            // backlight model the panel edits; the tab is already absent on a device without
+            // lighting hardware. The question is device-level on purpose: this constructor runs
+            // before any profile has been read, and demo mode never reads one at all.
+            Tabs = EditorTabViewModel.CreateAll(device.Device, Lighting.IsAvailable);
 
             SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab?.IsEnabled == true);
             SelectLayerCommand = new RelayCommand<KeyboardLayerViewModel>(SelectLayer);
@@ -460,6 +485,12 @@ namespace KinesisEdit.ViewModels
             {
                 IsLoading = false;
             }
+
+            // The Settings tab reads its own file, and reports its own failures inline, so a
+            // settings read can never stop the picture from appearing. The Lighting tab only
+            // reads the picker's stored swatches; its model came with the profile above.
+            await Settings.LoadAsync().ConfigureAwait(true);
+            await Lighting.LoadAsync().ConfigureAwait(true);
 
             if (outcome.Error is not null)
             {
@@ -558,6 +589,12 @@ namespace KinesisEdit.ViewModels
 
             SelectLayer(Layers.Count > 0 ? Layers[0] : null);
             RefreshCounters();
+
+            // The lighting panel edits the very model the session hands out, so mutating it is
+            // all a lighting save takes (ProfileSession.Save writes led<n>.txt whenever Lighting
+            // is non-null). It shares these layer view models, which is how a recoloured key
+            // repaints on the Keys tab too.
+            Lighting.Attach(outcome.Session?.Lighting, Layers);
         }
 
         private void AttachMacroPanel(KeyboardLayout? layout)
@@ -653,14 +690,20 @@ namespace KinesisEdit.ViewModels
 
         private void SelectTab(EditorTab tab)
         {
-            // A tab with nothing behind it stays shut whichever way it is asked for, so a two-way
-            // binding cannot open what the command refuses.
-            if (FindTab(tab) is { IsEnabled: false })
+            // A tab with nothing behind it — disabled, or absent because the device does not carry
+            // that section at all — stays shut whichever way it is asked for, so a two-way binding
+            // cannot open what the command refuses.
+            if (FindTab(tab) is not { IsEnabled: true })
             {
                 return;
             }
 
-            // Recording belongs to the macro panel; leaving it must not keep swallowing keys.
+            // Both consumers of the app-wide capture service are ended here, or it keeps
+            // swallowing keystrokes behind the section the user moved to: listening belongs to the
+            // keyboard picture, and recording to the macro panel — which the Macros tab is allowed
+            // to keep, because that is the section it belongs to.
+            CancelRemap();
+
             if (tab != EditorTab.Macros)
             {
                 _macroPanel?.StopRecording();
@@ -1388,6 +1431,10 @@ namespace KinesisEdit.ViewModels
 
         private void NotifyCommands()
         {
+            // SelectTabCommand is deliberately absent: a tab's IsEnabled is fixed at construction
+            // (EditorTabViewModel builds the strip from device-level facts only, including the
+            // lighting one) and the command's predicate reads nothing but its parameter, so there
+            // is no state here that could change its answer.
             BeginRemapCommand.NotifyCanExecuteChanged();
             CancelRemapCommand.NotifyCanExecuteChanged();
             ResetKeyCommand.NotifyCanExecuteChanged();

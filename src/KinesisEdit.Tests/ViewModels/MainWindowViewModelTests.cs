@@ -18,6 +18,7 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
+        private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
         private readonly DashboardViewModel _dashboard;
@@ -26,7 +27,8 @@ namespace KinesisEdit.Tests.ViewModels
         public MainWindowViewModelTests()
         {
             var ejectNotifier = new VDriveEjectNotifier(_ejectService, _notifications);
-            _sessions = new DeviceSessionManager(_fileService);
+            _settings = TestDevices.CreateSettingsService(_fileService);
+            _sessions = new DeviceSessionManager(_settings);
             _monitor = new DeviceMonitorService(
                 new VDriveMonitor(_scanner, _neverPolls),
                 _fileService,
@@ -37,6 +39,7 @@ namespace KinesisEdit.Tests.ViewModels
             // of what OpenDevice has to get right.
             var editors = new EditorViewModelFactory(
                 _profiles,
+                _settings,
                 () => _capture,
                 _notifications,
                 new PedalFileService(_fileService),

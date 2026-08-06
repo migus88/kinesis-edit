@@ -1,4 +1,5 @@
 using System.Globalization;
+using KinesisEdit.Core.Settings;
 
 namespace KinesisEdit.Core.Profiles
 {
@@ -12,7 +13,6 @@ namespace KinesisEdit.Core.Profiles
     internal static class ProfileFileNames
     {
         private const string LayoutPrefix = "layout";
-        private const string LightingPrefix = "led";
         private const string FileSuffix = ".txt";
 
         /// <summary>The layout file name of <paramref name="profileNumber"/>, e.g. <c>layout1.txt</c>.</summary>
@@ -21,10 +21,15 @@ namespace KinesisEdit.Core.Profiles
             return LayoutPrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix;
         }
 
-        /// <summary>The led file name of <paramref name="profileNumber"/>, e.g. <c>led1.txt</c>.</summary>
+        /// <summary>
+        /// The led file name of <paramref name="profileNumber"/>, e.g. <c>led1.txt</c>. Delegated
+        /// rather than restated: the very same name is written into <c>led_mode</c> by
+        /// <see cref="StartupProfileSettings"/> (07 §1.2), and two spellings of it would be free to
+        /// drift apart.
+        /// </summary>
         public static string Lighting(int profileNumber)
         {
-            return LightingPrefix + profileNumber.ToString(CultureInfo.InvariantCulture) + FileSuffix;
+            return StartupProfileSettings.GetLedFileName(profileNumber);
         }
     }
 }

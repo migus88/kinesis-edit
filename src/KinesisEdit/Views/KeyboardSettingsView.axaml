@@ -1,0 +1,149 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="520"
+             x:Class="KinesisEdit.Views.KeyboardSettingsView"
+             x:DataType="vm:KeyboardSettingsViewModel">
+  <!-- The device-side keyboard settings of specs/08-settings.md §5. Which rows appear is decided
+       by the device's SettingsCapability, so this view knows no device: it renders whatever
+       KeyboardSettingsRows built, one DataTemplate per row kind. -->
+  <UserControl.Styles>
+    <!-- One hairline between rows, drawn as a top border so the last row leaves no trailing line. -->
+    <Style Selector="Border.settingsRow">
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="0,12,0,12" />
+    </Style>
+    <Style Selector="TextBlock.rowCaption">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="0,4" Spacing="14" MaxWidth="720" HorizontalAlignment="Left">
+
+      <!-- Spec 08 §5.4: on a 2MB Advantage2 the whole panel is disabled with an explanatory hint,
+           which is Core's wording (SettingsMessageCatalog). -->
+      <Border Classes="card" Padding="16,12" IsVisible="{Binding IsLocked}">
+        <TextBlock Text="{Binding LockHint}" Classes="statusWarning" TextWrapping="Wrap" />
+      </Border>
+
+      <!-- Demo mode, or a settings file that could not be read. -->
+      <Border Classes="card" Padding="16,12" IsVisible="{Binding HasStatusMessage}">
+        <TextBlock Text="{Binding StatusMessage}" Classes="muted" TextWrapping="Wrap" />
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="4">
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.DataTemplates>
+
+              <!-- Sliders: startup profile, macro speed, status report speed. The "Disable"
+                   checkbox writes 0 (08 §5.1) and only exists where the slider floor is above it. -->
+              <DataTemplate DataType="vm:SettingsSliderRowViewModel">
+                <Border Classes="settingsRow" IsEnabled="{Binding IsEnabled}">
+                  <Grid ColumnDefinitions="240,*,44,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="{Binding Caption}"
+                               Classes="rowCaption"
+                               VerticalAlignment="Center" />
+                    <Slider Grid.Row="0" Grid.Column="1"
+                            Minimum="{Binding Minimum}"
+                            Maximum="{Binding Maximum}"
+                            Value="{Binding Value}"
+                            TickFrequency="1"
+                            IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding !IsDisabled}" />
+                    <TextBlock Grid.Row="0" Grid.Column="2"
+                               Text="{Binding ValueCaption}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center" />
+                    <CheckBox Grid.Row="0" Grid.Column="3"
+                              Margin="12,0,0,0"
+                              Content="{x:Static vm:SettingsSliderRowViewModel.DisableCaption}"
+                              IsChecked="{Binding IsDisabled}"
+                              VerticalAlignment="Center"
+                              IsVisible="{Binding CanDisable}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                               Text="{Binding Description}"
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+
+              <!-- Toggles: game mode, program lock, the Advantage2 tones, the v-Drive switch. -->
+              <DataTemplate DataType="vm:SettingsToggleRowViewModel">
+                <Border Classes="settingsRow" IsEnabled="{Binding IsEnabled}">
+                  <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="{Binding Caption}"
+                               Classes="rowCaption"
+                               VerticalAlignment="Center" />
+                    <ToggleSwitch Grid.Row="0" Grid.Column="1"
+                                  IsChecked="{Binding IsOn}"
+                                  VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                               Text="{Binding Description}"
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+
+              <!-- The Freestyle Edge's led_mode: brightness 0-9, Pitch black, Breathe (08 §5.3).
+                   Nothing is selected while the file carries no value, or one this app does not
+                   know: the placeholder says which, and the row writes the original text back
+                   rather than picking an option on the user's behalf. -->
+              <DataTemplate DataType="vm:SettingsChoiceRowViewModel">
+                <Border Classes="settingsRow" IsEnabled="{Binding IsEnabled}">
+                  <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="{Binding Caption}"
+                               Classes="rowCaption"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="0" Grid.Column="1"
+                              ItemsSource="{Binding Options}"
+                              SelectedItem="{Binding SelectedOption}"
+                              PlaceholderText="{Binding Placeholder}"
+                              MinWidth="180"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate DataType="vm:SettingsChoice">
+                          <TextBlock Text="{Binding Caption}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                               Text="{Binding Description}"
+                               Classes="muted"
+                               TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+
+            </ItemsControl.DataTemplates>
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+        <TextBlock Text="{x:Static vm:KeyboardSettingsViewModel.SavingCaption}"
+                   Classes="muted"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding IsBusy}" />
+        <Button Content="Save Settings" Command="{Binding SaveCommand}" Classes="primaryAction" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

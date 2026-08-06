@@ -11,9 +11,9 @@
              x:DataType="vm:KeyboardEditorViewModel">
   <!-- The per-device editor of specs/10-apps-and-ui.md: the device and its open profile, the
        layer switch, the section tabs, the keyboard picture the remap workflow runs on, the macro
-       panel of the Macros tab, and the feature panels of specs/11-feature-dialogs.md rendered as
-       an overlay over all of it. The picture itself is the generic KeyboardView; everything
-       device-specific reaches it as data. -->
+       panel of the Macros tab, the Lighting and Settings panels, and the feature panels of
+       specs/11-feature-dialogs.md rendered as an overlay over all of it. The picture itself is the
+       generic KeyboardView; everything device-specific reaches it as data. -->
   <UserControl.Styles>
     <!-- A macro-list / step row: a full-width, flat button that reads as a list entry. -->
     <Style Selector="Button.rowButton">
@@ -107,9 +107,11 @@
         </StackPanel>
       </Grid>
 
-      <!-- Section tabs plus the feature panels of spec 11. Lighting and Settings stay disabled
-           until issue #16 fills them in; every feature button reports its own availability
-           through the command's CanExecute, so there is no visibility logic here. -->
+      <!-- Section tabs plus the feature buttons of spec 11. The strip is filtered by what the
+           device carries: Lighting is enabled only on the boards whose led file this app edits, and
+           a device without lighting or without a settings file does not get that tab at all. Every
+           feature button reports its own availability through the command's CanExecute, so there is
+           no visibility logic here. -->
       <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,14,0,0">
         <ItemsControl Grid.Column="0" ItemsSource="{Binding Tabs}" VerticalAlignment="Bottom">
           <ItemsControl.ItemsPanel>
@@ -403,11 +405,15 @@
             </ContentControl>
           </Grid>
 
-          <TextBlock Text="This section is not implemented yet."
-                     Classes="muted"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Lighting,Settings'}" />
+          <!-- The lighting editor of specs/07-lighting.md §3/§4; the panels are the mode's, so this
+               is one ContentControl and the panel decides what it shows. -->
+          <ContentControl Content="{Binding Lighting}"
+                          IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}" />
+
+          <!-- The keyboard settings of specs/08-settings.md §5; the rows are the device's, so this
+               is one ContentControl and the panel decides what it shows. -->
+          <ContentControl Content="{Binding Settings}"
+                          IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Settings}" />
         </Panel>
       </Panel>
 

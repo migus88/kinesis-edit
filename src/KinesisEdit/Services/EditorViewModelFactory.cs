@@ -24,6 +24,7 @@ namespace KinesisEdit.Services
     public sealed class EditorViewModelFactory : IEditorViewModelFactory
     {
         private readonly IProfileSessionFactory _profileSessions;
+        private readonly ISettingsService _settings;
         private readonly Func<IKeystrokeCaptureService> _captureServiceResolver;
         private readonly INotificationService _notifications;
         private readonly PedalFileService _pedalFiles;
@@ -36,13 +37,16 @@ namespace KinesisEdit.Services
         /// Creates the factory. The capture service is resolved through a delegate rather than
         /// held directly, for the same reason the message-box presenter resolves its owner window
         /// through one: it is built over the shell window, which does not exist while the
-        /// composition root wires the view models (docs/app/app-shell.md). The two pickers, the
-        /// file service and the URL launcher are the keyboard editor's feature-panel dependencies
-        /// (Export, Import, the firmware gates of spec 11) and are held here for the same reason
-        /// everything else is: so the shell never accumulates a device's dependencies.
+        /// composition root wires the view models (docs/app/app-shell.md). The settings seam feeds
+        /// the editor's Settings and Lighting tabs — it is the app's single reader/writer of the
+        /// settings files (docs/app/settings.md) — and the two pickers, the file service and the
+        /// URL launcher are its feature-panel dependencies (Export, Import, the firmware gates of
+        /// spec 11). All of them are held here for the same reason: so the shell never accumulates
+        /// a device's dependencies.
         /// </summary>
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
+            ISettingsService settings,
             Func<IKeystrokeCaptureService> captureServiceResolver,
             INotificationService notifications,
             PedalFileService pedalFiles,
@@ -52,6 +56,7 @@ namespace KinesisEdit.Services
             IUrlLauncher urlLauncher)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _captureServiceResolver = captureServiceResolver ?? throw new ArgumentNullException(nameof(captureServiceResolver));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _pedalFiles = pedalFiles ?? throw new ArgumentNullException(nameof(pedalFiles));
@@ -82,6 +87,7 @@ namespace KinesisEdit.Services
             return new KeyboardEditorViewModel(
                 device,
                 _profileSessions,
+                _settings,
                 _captureServiceResolver(),
                 _notifications,
                 _folderPicker,

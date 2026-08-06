@@ -77,8 +77,24 @@ namespace KinesisEdit.ViewModels
             set => SetProperty(ref _isListening, value);
         }
 
-        /// <summary>The key's LED colour as <c>#RRGGBB</c>, or null when it has none.</summary>
-        public string? ColorOverlayHex { get; }
+        /// <summary>
+        /// The key's LED colour as <c>#RRGGBB</c>, or null when it has none. Settable and
+        /// notifying because the Lighting tab re-paints keys while the editor is open
+        /// (docs/app/keyboard-editor.md, "The Lighting tab"): the colour lives in the lighting
+        /// model, not in <see cref="KeyboardKey"/>, so it is pushed in through
+        /// <see cref="KeyboardLayerViewModel.ApplyColorOverlays"/> rather than re-read here.
+        /// </summary>
+        public string? ColorOverlayHex
+        {
+            get => _colorOverlayHex;
+            set
+            {
+                if (SetProperty(ref _colorOverlayHex, value))
+                {
+                    OnPropertyChanged(nameof(HasColorOverlay));
+                }
+            }
+        }
 
         /// <summary>Whether the key carries a colour overlay.</summary>
         public bool HasColorOverlay => ColorOverlayHex is not null;
@@ -86,6 +102,7 @@ namespace KinesisEdit.ViewModels
         private readonly KeyVisual _visual;
         private readonly TokenDialect _dialect;
         private string _caption;
+        private string? _colorOverlayHex;
         private bool _isModified;
         private bool _isSelected;
         private bool _isListening;
@@ -96,7 +113,7 @@ namespace KinesisEdit.ViewModels
             Key = key ?? throw new ArgumentNullException(nameof(key));
             _visual = visual ?? throw new ArgumentNullException(nameof(visual));
             _dialect = dialect;
-            ColorOverlayHex = colorOverlayHex;
+            _colorOverlayHex = colorOverlayHex;
 
             _caption = KeyCaption.ForKey(key, dialect);
             _isModified = key.IsModified;

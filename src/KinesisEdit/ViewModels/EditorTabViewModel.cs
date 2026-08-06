@@ -1,9 +1,12 @@
+using KinesisEdit.Core.Devices;
+
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
     /// One entry of the editor's tab strip: its caption, whether it can be opened yet, and
-    /// whether it is the open one. The tabs that later issues fill in are shown disabled rather
-    /// than hidden, so the editor's shape does not change when they arrive.
+    /// whether it is the open one. A tab whose device could never have content behind it is
+    /// omitted; a tab that this app has not built yet is shown disabled rather than hidden, so
+    /// the editor's shape does not change when it arrives.
     /// </summary>
     public sealed class EditorTabViewModel : ViewModelBase
     {
@@ -13,31 +16,51 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the macro tab.</summary>
         public const string MacrosCaption = "Macros";
 
-        /// <summary>Caption of the lighting tab (issue #16).</summary>
+        /// <summary>Caption of the lighting tab.</summary>
         public const string LightingCaption = "Lighting";
 
-        /// <summary>Caption of the settings tab (issue #16).</summary>
+        /// <summary>Caption of the settings tab.</summary>
         public const string SettingsCaption = "Settings";
 
         /// <summary>
-        /// Builds the tab strip in spec order. <see cref="EditorTab.Keys"/> and
-        /// <see cref="EditorTab.Macros"/> are enabled; <see cref="EditorTab.Lighting"/> and
-        /// <see cref="EditorTab.Settings"/> stay disabled because issue #16 has not filled them in
-        /// yet — the lighting model is read only to paint the key caps' colour strip, and nothing
-        /// edits the settings files. They are shown rather than hidden because a visibly
-        /// unavailable tab beats one that silently shows nothing (the same rule the shell's
-        /// Settings/Help buttons follow), and because the editor's shape must not change when they
-        /// arrive.
+        /// Builds the tab strip for <paramref name="device"/> in spec order, filtered by what the
+        /// device can actually carry:
+        /// <list type="bullet">
+        /// <item>the Lighting tab is <b>omitted</b> for a device without lighting hardware
+        /// (<see cref="LightingKind.None"/>: Freestyle Pro, Advantage2) — there is no lighting
+        /// file to edit, so an empty panel would be a lie;</item>
+        /// <item>the Settings tab is <b>omitted</b> for a device with no app-managed settings file
+        /// (<c>SettingsCapability.None</c>: Savant Elite2, CROSSFIRE, Advantage 360 Professional);</item>
+        /// <item>the Macros tab is always present and always enabled — the panel behind it reads
+        /// the device's own macro capability and says so itself on a board that has none
+        /// (<c>MacroPanelViewModel.NotSupportedMessage</c>), which is one place fewer for the two
+        /// answers to disagree.</item>
+        /// </list>
+        /// <paramref name="isLightingEnabled"/> is the switch the lighting panel sets from
+        /// <see cref="LightingTabViewModel.IsSupported"/>: a lit board whose led file this app
+        /// cannot edit yet keeps a visible but disabled tab.
         /// </summary>
-        public static IReadOnlyList<EditorTabViewModel> CreateAll()
+        public static IReadOnlyList<EditorTabViewModel> CreateAll(DeviceDefinition device, bool isLightingEnabled)
         {
-            return
-            [
-                new EditorTabViewModel(EditorTab.Keys, KeysCaption, isEnabled: true),
-                new EditorTabViewModel(EditorTab.Macros, MacrosCaption, isEnabled: true),
-                new EditorTabViewModel(EditorTab.Lighting, LightingCaption, isEnabled: false),
-                new EditorTabViewModel(EditorTab.Settings, SettingsCaption, isEnabled: false)
-            ];
+            ArgumentNullException.ThrowIfNull(device);
+
+            var tabs = new List<EditorTabViewModel>(4)
+            {
+                new(EditorTab.Keys, KeysCaption, isEnabled: true),
+                new(EditorTab.Macros, MacrosCaption, isEnabled: true)
+            };
+
+            if (device.Lighting.Kind != LightingKind.None)
+            {
+                tabs.Add(new EditorTabViewModel(EditorTab.Lighting, LightingCaption, isLightingEnabled));
+            }
+
+            if (KeyboardSettingsViewModel.HasSettings(device))
+            {
+                tabs.Add(new EditorTabViewModel(EditorTab.Settings, SettingsCaption, isEnabled: true));
+            }
+
+            return tabs;
         }
 
         /// <summary>Which section this entry opens.</summary>

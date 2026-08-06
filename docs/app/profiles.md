@@ -16,14 +16,17 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 | `KinesisEdit.Core.Profiles` | `ProfileReadOnlyException` | The Advantage 360 profile-0 guard | 02 "Profiles 0-9" |
 | `KinesisEdit.Core.Profiles` | `ProfileSaveMessageCatalog` | Per-device-family post-save wording (data only, like `FirmwareGateCatalog`) | 03 §5.3; 07 §1.3; 10 |
 | `KinesisEdit.Core.Profiles` | `ProfileLightingCodec` (internal) | Device → `LedFileParser`/`LedFileSerializer` dispatch | 07 §1.1-§1.4 |
-| `KinesisEdit.Core.Profiles` | `ProfileFileNames` (internal) | The one `layout<n>.txt` / `led<n>.txt` naming, shared by the drive paths, the `led_mode` settings value, and an export's base names | 03 §4.1; 07 §1.2; 11 §11.5 |
+| `KinesisEdit.Core.Profiles` | `ProfileFileNames` (internal) | The one `layout<n>.txt` / `led<n>.txt` naming, shared by the drive paths and an export's base names; its led name **delegates to** `StartupProfileSettings.GetLedFileName`, which is what also writes `led_mode` | 03 §4.1; 07 §1.2; 11 §11.5 |
 | `KinesisEdit.Core.Transfer` | `ProfileExportPlanner.Plan(session, selection)` | The files an export writes, layout first ([feature-dialogs.md](feature-dialogs.md)) | 11 §11.5 |
 
 ## `ProfileSession`
 
 - `Load` resolves `layout<n>.txt`/`led<n>.txt` from `VDriveLocation`'s computed folder paths and
   the device's `LayoutFileScheme` (`FirstProfileNumber`/`LastProfileNumber`/`HasReadOnlyFactoryProfile`,
-  and whether the device has a *profile-orchestrated* led file — see below). Every call returns a
+  and whether the device has a *profile-orchestrated* led file — see below). Both names come from
+  `ProfileFileNames`, whose led name is `StartupProfileSettings.GetLedFileName`
+  ([settings.md](settings.md)) — the same helper that writes the paired `led_mode` value — so the
+  file a session reads and the file the device is pointed at are spelled in one place. Every call returns a
   **brand-new instance**; nothing is ever reloaded in place. This is deliberate: on top of
   `LayoutFileParser.Parse` already building a fresh `KeyboardLayout` per call, it is what gives
   "full-model-wipe-on-load" (04 §4.2) its guarantee at the orchestration level — there is no stale
@@ -160,8 +163,9 @@ even reaches Core's guard — while an export only needs a session to exist, whi
   Core-level exception for it and no demo-mode parameter on `ProfileSession`.
 - **The settings-only post-save message** (`"Changes will be implemented when v-Drive is
   closed."`, 03 §5.3) — that wording belongs to a bare keyboard-settings save with no profile
-  content involved (the future settings-editor UI, issue #16); every `ProfileSession` save writes
-  profile content, so this case never arises here.
+  content involved — it lives in `SettingsMessageCatalog` and is shown by the editor's settings
+  panel (see [settings.md](settings.md)); every `ProfileSession` save writes profile content, so
+  this case never arises here.
 - **No new dependency on `Advantage2`'s dialect, and no Gen2-header awareness beyond what
   `LayoutFileParser`/`LayoutFileSerializer` already do** — this module never inspects file text
   itself; it only moves lines between the file service and the existing parsers/serializers.

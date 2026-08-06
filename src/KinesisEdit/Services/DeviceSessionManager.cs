@@ -1,5 +1,3 @@
-using KinesisEdit.Core.VDrive.Io;
-
 namespace KinesisEdit.Services
 {
     /// <summary>
@@ -19,12 +17,12 @@ namespace KinesisEdit.Services
         /// <summary>Raised whenever <see cref="Active"/> changes, with the new session or null.</summary>
         public event Action<DeviceSession?>? ActiveChanged;
 
-        private readonly IVDriveFileService _fileService;
+        private readonly ISettingsService _settings;
 
-        /// <summary>Creates the manager; <paramref name="fileService"/> backs v-Drive suppression stores.</summary>
-        public DeviceSessionManager(IVDriveFileService fileService)
+        /// <summary>Creates the manager; <paramref name="settings"/> backs v-Drive suppression stores.</summary>
+        public DeviceSessionManager(ISettingsService settings)
         {
-            _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         }
 
         /// <summary>Opens a session for <paramref name="device"/>, replacing any session already active.</summary>
@@ -89,9 +87,7 @@ namespace KinesisEdit.Services
                 return NullNotificationSuppressionStore.Instance;
             }
 
-            var store = new VDriveNotificationSuppressionStore(
-                _fileService,
-                VDriveNotificationSuppressionStore.GetFilePath(device.Location));
+            var store = new VDriveNotificationSuppressionStore(_settings, device.Location);
 
             // The file is still there and still readable when the drive is merely not writable,
             // and specs/08-settings.md §3 bans saving in demo mode, not loading — so a demo

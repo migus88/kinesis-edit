@@ -1,5 +1,4 @@
 using KinesisEdit.Core.Geometry;
-using KinesisEdit.Core.Keys;
 
 namespace KinesisEdit.Core.Lighting
 {
@@ -17,7 +16,7 @@ namespace KinesisEdit.Core.Lighting
         public static LightingSectionContext RgbKeyBacklight { get; } = new(
             isEdge: false,
             appliesFnTranslation: true,
-            BuildKeyCodes(GeometryCatalog.FreestyleEdgeRgb.Layers[0].Keys));
+            LightingKeyCodeResolver.Resolve(GeometryCatalog.FreestyleEdgeRgb.Layers[0].Keys));
 
         /// <summary>
         /// Key-backlight context of the TKO. No Fn-layer token translation: the §5.5 exception
@@ -26,13 +25,13 @@ namespace KinesisEdit.Core.Lighting
         public static LightingSectionContext TkoKeyBacklight { get; } = new(
             isEdge: false,
             appliesFnTranslation: false,
-            BuildKeyCodes(GeometryCatalog.Tko.Layers[0].Keys));
+            LightingKeyCodeResolver.Resolve(GeometryCatalog.Tko.Layers[0].Keys));
 
         /// <summary>Edge-lighting context of the TKO (33 edge LEDs, §2.3).</summary>
         public static LightingSectionContext TkoEdge { get; } = new(
             isEdge: true,
             appliesFnTranslation: false,
-            BuildKeyCodes(GeometryCatalog.Tko.Layers[0].EdgeZones));
+            LightingKeyCodeResolver.Resolve(GeometryCatalog.Tko.Layers[0].EdgeZones));
 
         /// <summary>Whether this is the edge context (<c>_edge</c> mode tokens).</summary>
         public bool IsEdge { get; }
@@ -95,29 +94,6 @@ namespace KinesisEdit.Core.Lighting
         public int GetSerializationOrdinal(int fileKeyCode)
         {
             return _ordinalByKeyCode.GetValueOrDefault(fileKeyCode, int.MaxValue);
-        }
-
-        private static IReadOnlyList<int> BuildKeyCodes(IReadOnlyList<KeyPosition> positions)
-        {
-            var codes = new List<int>(positions.Count);
-            var seenCodes = new HashSet<int>(positions.Count);
-
-            foreach (var position in positions)
-            {
-                if (position.DefaultToken.Length == 0)
-                {
-                    continue;
-                }
-
-                var entry = KeyRegistry.FindByToken(position.DefaultToken, TokenDialect.Gen1);
-
-                if (entry is not null && seenCodes.Add(entry.Code))
-                {
-                    codes.Add(entry.Code);
-                }
-            }
-
-            return codes;
         }
     }
 }

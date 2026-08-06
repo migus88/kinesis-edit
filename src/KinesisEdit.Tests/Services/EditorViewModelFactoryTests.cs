@@ -13,6 +13,7 @@ namespace KinesisEdit.Tests.Services
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeVDriveFileService _fileService = new();
+        private readonly FakeSettingsService _settings = new();
         private readonly FakeFolderPickerService _folderPicker = new();
         private readonly FakeFilePickerService _filePicker = new();
         private readonly FakeUrlLauncher _urlLauncher = new();
@@ -108,27 +109,30 @@ namespace KinesisEdit.Tests.Services
         public void Constructor_WithoutACollaborator_Throws()
         {
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                null!, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+                null!, _settings, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, null!, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+                _profiles, null!, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, null!, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
+                _profiles, _settings, null!, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, _notifications, null!, _folderPicker, _filePicker, _fileService, _urlLauncher));
+                _profiles, _settings, () => _capture, null!, _pedalFiles, _folderPicker, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, _notifications, _pedalFiles, null!, _filePicker, _fileService, _urlLauncher));
+                _profiles, _settings, () => _capture, _notifications, null!, _folderPicker, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, null!, _fileService, _urlLauncher));
+                _profiles, _settings, () => _capture, _notifications, _pedalFiles, null!, _filePicker, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, null!, _urlLauncher));
+                _profiles, _settings, () => _capture, _notifications, _pedalFiles, _folderPicker, null!, _fileService, _urlLauncher));
             Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
-                _profiles, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, null!));
+                _profiles, _settings, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, null!, _urlLauncher));
+            Assert.Throws<ArgumentNullException>(() => new EditorViewModelFactory(
+                _profiles, _settings, () => _capture, _notifications, _pedalFiles, _folderPicker, _filePicker, _fileService, null!));
         }
 
         private EditorViewModelFactory CreateFactory(Func<IKeystrokeCaptureService> captureResolver)
         {
             return new EditorViewModelFactory(
                 _profiles,
+                _settings,
                 captureResolver,
                 _notifications,
                 _pedalFiles,

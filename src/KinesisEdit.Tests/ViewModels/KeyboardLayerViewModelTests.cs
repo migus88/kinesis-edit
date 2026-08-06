@@ -9,6 +9,8 @@ namespace KinesisEdit.Tests.ViewModels
 {
     public class KeyboardLayerViewModelTests
     {
+        private static DeviceDefinition RgbDevice => DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb);
+
         [Fact]
         public void BuildAll_ForTheFreestyleEdgeRgb_JoinsEveryKeyToItsPlacement()
         {
@@ -138,6 +140,79 @@ namespace KinesisEdit.Tests.ViewModels
             var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
 
             Assert.Empty(KeyColorOverlay.Build(layout.Device, lighting, layout.Layers[0]));
+        }
+
+        [Fact]
+        public void ApplyColorOverlays_AfterALightingEdit_RepaintsEveryCap()
+        {
+            // The colour lives in the lighting model, which no layout parser writes into the key,
+            // so RefreshFromModel cannot reach it: the Lighting tab pushes a fresh map in.
+            var lighting = new LightingModel();
+            var layer = BuildRgbLayers(lighting)[0];
+            var key = layer.Keys[TestLayouts.RgbDigitOneKeyIndex];
+            var changed = new List<string>();
+
+            key.PropertyChanged += (_, arguments) => changed.Add(arguments.PropertyName!);
+
+            lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(0, 128, 255));
+            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+
+            Assert.Equal("#0080FF", key.ColorOverlayHex);
+            Assert.True(key.HasColorOverlay);
+            Assert.Contains(nameof(KeyboardKeyViewModel.ColorOverlayHex), changed);
+            Assert.Contains(nameof(KeyboardKeyViewModel.HasColorOverlay), changed);
+        }
+
+        [Fact]
+        public void ApplyColorOverlays_WithAKeyTheMapNoLongerMentions_ClearsItsStrip()
+        {
+            var lighting = new LightingModel();
+
+            lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(255, 0, 0));
+
+            var layer = BuildRgbLayers(lighting)[0];
+
+            Assert.True(layer.Keys[TestLayouts.RgbDigitOneKeyIndex].HasColorOverlay);
+
+            // Black is "no colour" (specs/07-lighting.md §2.1): assigning it removes the entry.
+            lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, LedColor.Black);
+            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+
+            Assert.All(layer.Keys, key => Assert.False(key.HasColorOverlay));
+        }
+
+        [Fact]
+        public void ApplyColorOverlays_WithoutAMap_ClearsEveryStrip()
+        {
+            var lighting = new LightingModel();
+
+            lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(255, 0, 0));
+
+            var layer = BuildRgbLayers(lighting)[0];
+
+            layer.ApplyColorOverlays(null);
+
+            Assert.All(layer.Keys, key => Assert.Null(key.ColorOverlayHex));
+        }
+
+        [Theory]
+        [InlineData("#0080FF", 0, 128, 255)]
+        [InlineData("0080ff", 0, 128, 255)]
+        public void TryParseHex_ForAColourString_ReadsItBack(string hex, byte red, byte green, byte blue)
+        {
+            Assert.True(KeyColorOverlay.TryParseHex(hex, out var color));
+            Assert.Equal(new LedColor(red, green, blue), color);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("#FFF")]
+        [InlineData("#GGGGGG")]
+        [InlineData("rebound")]
+        public void TryParseHex_ForAnythingElse_IsFalse(string? hex)
+        {
+            Assert.False(KeyColorOverlay.TryParseHex(hex, out _));
         }
 
         [Fact]
