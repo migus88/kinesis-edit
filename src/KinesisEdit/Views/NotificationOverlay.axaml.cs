@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using KinesisEdit.Services;
@@ -15,6 +16,19 @@ namespace KinesisEdit.Views
     /// </summary>
     public partial class NotificationOverlay : UserControl
     {
+        /// <summary>
+        /// Resource key of the toast's in/out duration, defined by the motion budget in
+        /// Themes/Motion.axaml. It is read rather than duplicated so the budget has one home.
+        /// </summary>
+        private const string ToastDurationResourceKey = "DurationToast";
+
+        /// <summary>
+        /// Used when <see cref="ToastDurationResourceKey"/> cannot be resolved — in a test host
+        /// with no application resources, for instance. It only decides how long a dismissed toast
+        /// lingers while it fades, so an approximation is harmless.
+        /// </summary>
+        private static readonly TimeSpan _fallbackToastDuration = TimeSpan.FromMilliseconds(180);
+
         /// <summary>Toasts placed over the center of the content.</summary>
         public ObservableCollection<ToastViewModel> CenteredToasts { get; } = [];
 
@@ -76,7 +90,35 @@ namespace KinesisEdit.Views
 
             toasts.Add(toast);
 
-            DispatcherTimer.RunOnce(() => toasts.Remove(toast), request.Timeout);
+            // Raised on the next pass rather than here: the view does not exist yet, so setting it
+            // now would put the toast on screen already shown and there would be nothing for the
+            // fade to run on.
+            Dispatcher.UIThread.Post(() => toast.IsShown = true, DispatcherPriority.Background);
+
+            // The spec's dwell is the request's own timeout; the toast then fades for as long as
+            // the budget says before it is actually dropped, so it is never removed mid-animation.
+            DispatcherTimer.RunOnce(
+                () =>
+                {
+                    toast.IsShown = false;
+
+                    DispatcherTimer.RunOnce(() => toasts.Remove(toast), ResolveToastDuration());
+                },
+                request.Timeout);
+        }
+
+        private static TimeSpan ResolveToastDuration()
+        {
+            var application = Application.Current;
+
+            if (application is not null
+                && application.TryFindResource(ToastDurationResourceKey, out var value)
+                && value is TimeSpan duration)
+            {
+                return duration;
+            }
+
+            return _fallbackToastDuration;
         }
 
         private void OnLoadingChanged(string? caption)

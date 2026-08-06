@@ -11,19 +11,20 @@
        custom field with its Up/Down arrows. Neither control is preselected — an untouched panel
        has to be able to fail validation — and typing in the custom field un-checks the radio,
        which the view model does on assignment. -->
-  <Border Classes="overlayCard" Width="440">
+  <Border Classes="overlayCard modalCard" Width="440">
     <StackPanel Spacing="12">
-      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+      <TextBlock Text="{Binding Title}" Classes="modalTitle" />
 
       <RadioButton Content="{x:Static vm:MacroDelayOverlayViewModel.RandomDelayCaption}"
                    IsChecked="{Binding IsRandomDelay, Mode=TwoWay}" />
 
       <StackPanel Spacing="3">
-        <TextBlock Text="{x:Static vm:MacroDelayOverlayViewModel.CustomDelayCaption}" Classes="fieldLabel" />
+        <TextBlock Text="{x:Static vm:MacroDelayOverlayViewModel.CustomDelayCaption}" Classes="sectionLabel" />
         <Grid ColumnDefinitions="*,Auto">
           <!-- A real TextBox: the capture service stands down while focus sits in one, so the
-               digits reach the field instead of the macro. -->
-          <TextBox Grid.Column="0" Text="{Binding CustomDelayMilliseconds, Mode=TwoWay}" />
+               digits reach the field instead of the macro. Mono, because a millisecond count is
+               written into the macro verbatim. -->
+          <TextBox Grid.Column="0" Classes="monoValue" Text="{Binding CustomDelayMilliseconds, Mode=TwoWay}" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
             <Button Content="▲" Width="38" Command="{Binding IncreaseDelayCommand}" />
             <Button Content="▼" Width="38" Command="{Binding DecreaseDelayCommand}" />
@@ -32,7 +33,7 @@
       </StackPanel>
 
       <TextBlock Text="{Binding ErrorMessage}"
-                 Classes="statusError"
+                 Classes="body statusError"
                  TextWrapping="Wrap"
                  IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
 

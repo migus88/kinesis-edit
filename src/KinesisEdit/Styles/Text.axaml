@@ -1,0 +1,100 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Text roles.
+
+    Themes/Typography.axaml owns the *scale* — which family, which size, which weight. This file
+    owns the *roles* layered on top of it: what a piece of text means, expressed as a colour or an
+    emphasis. The two are additive, so a call site writes `Classes="meta muted"` and gets the
+    11/400 sans step in the muted foreground.
+
+    Every selector is `:is(TextBlock)` rather than `TextBlock`: an Avalonia type selector matches
+    the exact type only, and the app renders several of these roles on `SelectableTextBlock`
+    (unparsed file lines, the pedal entry box). A bare `TextBlock` selector silently skips those.
+  -->
+
+  <!-- Secondary prose: descriptions under a control, hints, anything the eye should reach second. -->
+  <Style Selector=":is(TextBlock).muted">
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+  </Style>
+
+  <!-- The colour half of the section label; Typography supplies the 10/600 tracked mono. Split
+       this way because the design defines the label as a type step and the palette decides
+       separately how loud it is. -->
+  <Style Selector=":is(TextBlock).sectionLabel">
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+  </Style>
+
+  <!-- "Modified" / "EDITING: <input>": a short accent tag next to the thing it qualifies. The
+       accent means "you changed this", which is exactly one of its two sanctioned meanings. -->
+  <Style Selector=":is(TextBlock).badge">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- The name of a settings or pedal row. It reads as a control label rather than a title, so it
+       takes the 12/500 control step and wraps: a long caption must not push its control out of
+       the row. -->
+  <Style Selector=":is(TextBlock).rowCaption">
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <!-- The mono law reaches editable fields too: a delay in milliseconds is written into the file
+       exactly as it is typed. TextBox is not a TextBlock, so the scale class cannot reach it and
+       the two setters are repeated against the same resources. -->
+  <Style Selector="TextBox.monoValue">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValue}" />
+  </Style>
+
+  <!-- ===== Severity ==========================================================================
+       Four roles, and only four, each meaning one thing: green is connected and writable, red is
+       gone or unwritable, purple is demo mode — nothing is written — and amber is an advisory.
+       Amber is the only warning colour in the app; an advisory is never red, and demo mode is not
+       an advisory. The classes carry colour alone; the size and weight come from whichever scale
+       step the call site chose.
+
+       Three of them read on their tint from a dedicated `...Text` role, which is a step further
+       from the tint than the fill colour is. Demo has no such role in the palette, so it uses the
+       fill colour rather than inventing a token to sit beside the three that exist: `StatusDemo`
+       on `StatusDemoTint` measures ~5.1-6.1:1 on dark and ~4.2-4.6:1 on light, depending on the
+       surface behind the chip. The light end sits on the AA boundary rather than clear of it —
+       the three roles that do have a `...Text` token reach 4.7-5.9:1 there — so a `StatusDemoText`
+       is the fix if demo mode ever moves onto a lighter surface (docs/app/design-system.md). -->
+  <Style Selector=":is(TextBlock).statusOk">
+    <Setter Property="Foreground" Value="{DynamicResource StatusOkTextBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).statusWarning">
+    <Setter Property="Foreground" Value="{DynamicResource StatusAdvisoryTextBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).statusError">
+    <Setter Property="Foreground" Value="{DynamicResource StatusErrorTextBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).statusDemo">
+    <Setter Property="Foreground" Value="{DynamicResource StatusDemoBrush}" />
+  </Style>
+
+  <!-- ===== Message-box glyph =================================================================
+       The dialog-type icon of specs/11-feature-dialogs.md §11.9, drawn as a single Latin-1
+       character so it renders in the bundled fonts on every platform. It is a stand-in for the
+       design's stroked 16px icon geometry, which no view draws yet, so it is sized from its own
+       named step rather than from the text scale or the icon scale. -->
+  <Style Selector=":is(TextBlock).messageIcon">
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMessageGlyph}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="MinWidth" Value="{DynamicResource FontSizeMessageGlyph}" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <Style Selector=":is(TextBlock).messageIconAccent">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).messageIconWarning">
+    <Setter Property="Foreground" Value="{DynamicResource StatusAdvisoryBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).messageIconError">
+    <Setter Property="Foreground" Value="{DynamicResource StatusErrorBrush}" />
+  </Style>
+</Styles>

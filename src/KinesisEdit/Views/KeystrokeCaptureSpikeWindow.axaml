@@ -31,7 +31,11 @@
                Watermark="Type here to test pass-through, or untick auto-suspend to test swallowing" />
     </StackPanel>
 
-    <Border BorderBrush="#40808080" BorderThickness="1" CornerRadius="4">
+    <!-- Tokens, not a literal grey: this harness follows the OS theme like every other window,
+         and "never hardcode a hex in a view" (docs/design/) has no development-only exemption. -->
+    <Border BorderBrush="{DynamicResource SurfaceLineBrush}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource RadiusControl}">
       <DockPanel>
         <Grid DockPanel.Dock="Top" ColumnDefinitions="150,70,120,120,120,*" Margin="10,8,10,4">
           <TextBlock Grid.Column="0" Text="Key" FontWeight="Bold" />

@@ -6,16 +6,23 @@
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="200"
              x:Class="KinesisEdit.Views.DeviceCardView"
              x:DataType="vm:DeviceCardViewModel">
-  <Border Classes="card" Width="320">
+  <Border Classes="card deviceCard" Width="320">
     <StackPanel Spacing="12">
-      <TextBlock Text="{Binding DisplayName}" Classes="heading" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding DisplayName}" Classes="cardTitle" TextWrapping="Wrap" />
 
-      <!-- 'Connected' (green) / 'Not Detected' / 'Cannot Access' (red), specs/10-apps-and-ui.md. -->
-      <TextBlock Text="{Binding StatusText}"
-                 FontWeight="SemiBold"
-                 Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
-                 Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
-                 Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+      <!-- 'Connected' / 'Not Detected' / 'Cannot Access' (specs/10-apps-and-ui.md), as a chip whose
+           fill cross-fades when the detection loop changes its mind. -->
+      <Border Classes="statusChip"
+              HorizontalAlignment="Left"
+              Classes.ok="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+              Classes.warning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+              Classes.error="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}">
+        <TextBlock Text="{Binding StatusText}"
+                   Classes="pill"
+                   Classes.statusOk="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Ok}"
+                   Classes.statusWarning="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}"
+                   Classes.statusError="{Binding StatusSeverity, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+      </Border>
 
       <Button Content="{Binding PrimaryActionCaption}"
               Command="{Binding ConfigureCommand}"

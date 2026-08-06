@@ -7,14 +7,17 @@
              x:Class="KinesisEdit.Views.ToastView"
              x:DataType="vm:ToastViewModel">
   <!-- The "Info dialog" of specs/11-feature-dialogs.md §11.9: non-modal, self-dismissing.
-       The host owns the timer; this view is the notice itself. -->
-  <Border Classes="overlayCard" MaxWidth="360">
+       The host owns the timer; this view is the notice itself. `IsShown` is what the host raises
+       and lowers around the dwell, and it is what drives the 180 ms in and out. -->
+  <Border Classes="overlayCard toast"
+          Classes.shown="{Binding IsShown}"
+          MaxWidth="360">
     <StackPanel Spacing="4">
       <TextBlock Text="{Binding Title}"
-                 FontWeight="SemiBold"
+                 Classes="control"
                  TextWrapping="Wrap"
                  IsVisible="{Binding HasTitle}" />
-      <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Message}" Classes="body" TextWrapping="Wrap" />
     </StackPanel>
   </Border>
 </UserControl>

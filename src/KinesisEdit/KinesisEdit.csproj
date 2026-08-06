@@ -19,7 +19,6 @@
         package; its Fluent control theme is included by hand in App.axaml.-->
     <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.12" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
@@ -29,6 +28,14 @@
     <!--Pins the transitive dependency of Avalonia.Desktop above the vulnerable 0.21.2 (GHSA-xrw6-gwf8-vvr9).
         Remove once Avalonia references a patched version itself.-->
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--IBM Plex Sans and IBM Plex Mono, the two families of docs/design/, embedded as Avalonia
+        resources so the app never depends on what the machine happens to have installed. They
+        are addressed as avares://KinesisEdit/Assets/Fonts#<family> in Themes/Typography.axaml;
+        LICENSE.txt is the SIL Open Font License they ship under and travels with them.-->
+    <AvaloniaResource Include="Assets/Fonts/**" />
   </ItemGroup>
 
   <ItemGroup>

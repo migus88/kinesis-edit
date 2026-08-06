@@ -11,20 +11,12 @@
   <!-- The Search Keys picker of specs/11-feature-dialogs.md §11.6: a type-to-filter list over
        every assignable action. The catalog, the filter and the item text are Core's; the double
        click that accepts immediately is a gesture, so it stays here. -->
-  <UserControl.Styles>
-    <!-- The catalog is long: a compact row shows roughly twice as much of it at a time. -->
-    <Style Selector="ListBoxItem">
-      <Setter Property="Padding" Value="8,3" />
-      <Setter Property="MinHeight" Value="0" />
-    </Style>
-  </UserControl.Styles>
-
-  <Border Classes="overlayCard" Width="480">
+  <Border Classes="overlayCard modalCard" Width="480">
     <StackPanel Spacing="10">
-      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+      <TextBlock Text="{Binding Title}" Classes="modalTitle" />
 
       <StackPanel Spacing="3">
-        <TextBlock Text="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" Classes="fieldLabel" />
+        <TextBlock Text="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" Classes="sectionLabel" />
         <!-- A real TextBox: capture stands down while focus sits in one, so the query is typed
              into the box instead of being swallowed as a keystroke. -->
         <TextBox Text="{Binding Query, Mode=TwoWay}" Watermark="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" />
@@ -35,7 +27,10 @@
                MaxHeight="320">
         <ListBox.ItemTemplate>
           <DataTemplate DataType="keys:KeySearchEntry">
+            <!-- Every row is a key token as the config file spells it, so the whole catalog is
+                 mono. -->
             <TextBlock Text="{Binding DisplayText}"
+                       Classes="monoValue"
                        DoubleTapped="OnRowDoubleTapped"
                        TextWrapping="NoWrap" />
           </DataTemplate>
@@ -43,7 +38,7 @@
       </ListBox>
 
       <TextBlock Text="{Binding ErrorMessage}"
-                 Classes="statusError"
+                 Classes="body statusError"
                  TextWrapping="Wrap"
                  IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
 

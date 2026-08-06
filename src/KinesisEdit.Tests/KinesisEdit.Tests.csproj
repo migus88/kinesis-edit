@@ -8,6 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--The headless UI harness (Headless/TestAppBuilder.cs). Avalonia.Headless.XUnit adds the
+        [AvaloniaTest] attribute, which runs a test on a real Avalonia UI thread with no display
+        attached; Avalonia.Skia supplies the rasteriser the harness switches on in place of the
+        no-op headless drawing, so a test can render a real frame. Both pinned to the app's
+        Avalonia version — a headless platform newer or older than the framework it boots does
+        not load.-->
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Skia" Version="11.3.12" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -20,6 +28,17 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KinesisEdit\KinesisEdit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--The app's XAML sources, embedded here as text so Design/AuthoredXaml.cs can read them.
+        The app compiles its XAML, which leaves no readable copy in its own assembly, and the
+        design-system guard has to look at the markup itself: it is what names the resource keys
+        a view expects to resolve. Embedded rather than read off disk so the guard sees exactly
+        the markup this build compiled, and needs no path back to the source tree.-->
+    <EmbeddedResource Include="..\KinesisEdit\**\*.axaml"
+                      Exclude="..\KinesisEdit\bin\**\*.axaml;..\KinesisEdit\obj\**\*.axaml"
+                      LinkBase="Xaml" />
   </ItemGroup>
 
 </Project>

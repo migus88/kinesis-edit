@@ -11,9 +11,9 @@
        checkboxes, then a native directory picker. Ok is ExportCommand and not the base
        AcceptCommand — §11.5's accept is asynchronous, and the base command stays inert until the
        files have actually been written. -->
-  <Border Classes="overlayCard" Width="420">
+  <Border Classes="overlayCard modalCard" Width="420">
     <StackPanel Spacing="12">
-      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+      <TextBlock Text="{Binding Title}" Classes="modalTitle" />
 
       <StackPanel Spacing="6">
         <CheckBox Content="{x:Static vm:ExportOverlayViewModel.LayoutAndLightingCaption}"
@@ -25,7 +25,7 @@
       </StackPanel>
 
       <TextBlock Text="{Binding ErrorMessage}"
-                 Classes="statusError"
+                 Classes="body statusError"
                  TextWrapping="Wrap"
                  IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
 

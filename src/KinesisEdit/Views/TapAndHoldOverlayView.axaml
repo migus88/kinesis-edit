@@ -11,20 +11,20 @@
        hint and message is a const on the view model, so the spec wording has one home.
        The two action fields are deliberately *not* text boxes: they are filled by a real
        keystroke, and focus inside a TextBox auto-suspends the capture service. -->
-  <Border Classes="overlayCard" Width="520">
+  <Border Classes="overlayCard modalCard" Width="520">
     <StackPanel Spacing="12">
-      <TextBlock Text="{Binding Title}" Classes="overlayTitle" />
+      <TextBlock Text="{Binding Title}" Classes="modalTitle" />
 
       <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
         <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                    Text="{x:Static vm:TapAndHoldOverlayViewModel.TapActionLabel}"
-                   Classes="fieldLabel"
+                   Classes="sectionLabel"
                    Margin="0,0,0,3" />
         <Border Grid.Row="1" Grid.Column="0"
                 Classes="actionField"
                 ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.TapActionHint}"
                 Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}">
-          <TextBlock Text="{Binding TapActionText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding TapActionText}" Classes="monoValue" VerticalAlignment="Center" TextWrapping="Wrap" />
         </Border>
         <Button Grid.Row="1" Grid.Column="1"
                 Content="Press Key"
@@ -38,13 +38,13 @@
 
         <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                    Text="{x:Static vm:TapAndHoldOverlayViewModel.HoldActionLabel}"
-                   Classes="fieldLabel"
+                   Classes="sectionLabel"
                    Margin="0,12,0,3" />
         <Border Grid.Row="3" Grid.Column="0"
                 Classes="actionField"
                 ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.HoldActionHint}"
                 Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}">
-          <TextBlock Text="{Binding HoldActionText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding HoldActionText}" Classes="monoValue" VerticalAlignment="Center" TextWrapping="Wrap" />
         </Border>
         <Button Grid.Row="3" Grid.Column="1"
                 Content="Press Key"
@@ -58,12 +58,13 @@
 
         <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
                    Text="{x:Static vm:TapAndHoldOverlayViewModel.DelayLabel}"
-                   Classes="fieldLabel"
+                   Classes="sectionLabel"
                    Margin="0,12,0,3" />
         <!-- A real TextBox: typing the delay must not be swallowed by capture, and focus in one
              is what tells the capture service to stand down. The arrows are §11.1's clamped
              Up/Down steps. -->
         <TextBox Grid.Row="5" Grid.Column="0"
+                 Classes="monoValue"
                  Text="{Binding DelayMilliseconds, Mode=TwoWay}"
                  ToolTip.Tip="{x:Static vm:TapAndHoldOverlayViewModel.DelayHint}" />
         <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
@@ -76,11 +77,11 @@
       </Grid>
 
       <TextBlock Text="{x:Static vm:TapAndHoldOverlayViewModel.NoteText}"
-                 Classes="muted"
+                 Classes="body muted"
                  TextWrapping="Wrap" />
 
       <TextBlock Text="{Binding ErrorMessage}"
-                 Classes="statusError"
+                 Classes="body statusError"
                  TextWrapping="Wrap"
                  IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
 

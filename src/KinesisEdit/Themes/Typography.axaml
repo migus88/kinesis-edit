@@ -1,0 +1,180 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The type half of the design system (docs/design/handoff.md §"Typography").
+
+    Two families and one scale. The law that matters: mono is reserved for values that exist
+    verbatim in a config file - key tokens, delays, drive paths, hex colours, counters,
+    timestamps - and sans carries everything the app says in its own voice.
+
+    This file is a `Styles` rather than a `ResourceDictionary` because a `ResourceDictionary`
+    cannot host `<Style>` elements; it is included into `Application.Styles`, and the resources
+    below still resolve app-wide from there. The other three token files are plain resource
+    dictionaries merged into `Application.Resources`.
+
+    The scale is expressed twice: as a named `TextBlock` class for the common case, and as a raw
+    `x:Double` so a control that is not a TextBlock (a Button, a TextBox, a ComboBox) can set
+    `FontSize` from the same number instead of inventing one.
+  -->
+  <Styles.Resources>
+
+    <!-- The embedded families. Both are shipped under SIL OFL in Assets/Fonts and grouped by
+         their typographic family name, so a single family key carries every weight: Avalonia's
+         embedded font collection reads name ID 16, which is why IBM Plex's legacy
+         "IBM Plex Sans Medm" / "SmBld" family names do not fragment the family here. The
+         trailing names are the fallbacks, used only if the embedded asset ever fails to load. -->
+    <FontFamily x:Key="FontSans">avares://KinesisEdit/Assets/Fonts#IBM Plex Sans, Helvetica Neue, Segoe UI, Ubuntu, $Default</FontFamily>
+    <FontFamily x:Key="FontMono">avares://KinesisEdit/Assets/Fonts#IBM Plex Mono, SF Mono, Menlo, Consolas, DejaVu Sans Mono, $Default</FontFamily>
+
+    <!-- The scale, in the order the handoff lists it. -->
+    <x:Double x:Key="FontSizeDeviceHeadline">24</x:Double>
+    <x:Double x:Key="FontSizePageTitle">18</x:Double>
+    <x:Double x:Key="FontSizeCardTitle">15</x:Double>
+    <x:Double x:Key="FontSizeModalTitle">14</x:Double>
+    <x:Double x:Key="FontSizeToolbarDevice">13</x:Double>
+    <x:Double x:Key="FontSizeControl">12</x:Double>
+    <x:Double x:Key="FontSizeModalBody">12</x:Double>
+    <x:Double x:Key="FontSizeBody">11</x:Double>
+    <x:Double x:Key="FontSizeMeta">11</x:Double>
+    <x:Double x:Key="FontSizeMonoValue">11</x:Double>
+    <x:Double x:Key="FontSizeMonoValueSmall">10</x:Double>
+    <x:Double x:Key="FontSizeSectionLabel">10</x:Double>
+    <x:Double x:Key="FontSizeKeycapLabel">9</x:Double>
+
+    <!-- Not a step of the text scale: the message box draws its dialog-type icon as a single
+         Latin-1 character (specs/11-feature-dialogs.md §11.9) because no view yet draws the
+         design's stroked 16px icon geometry. It is sized here so the placeholder has one home and
+         disappears with the glyph when real icons land. -->
+    <x:Double x:Key="FontSizeMessageGlyph">24</x:Double>
+
+    <!-- Prose line height, as an absolute pixel value: Avalonia's LineHeight is not a multiplier.
+         1.5x of the two prose steps. Single-line UI text sets no LineHeight at all - see the
+         comment on the styles below. -->
+    <x:Double x:Key="LineHeightBody">16.5</x:Double>
+    <x:Double x:Key="LineHeightModalBody">18</x:Double>
+
+    <!-- 0.12em of tracking on the 10px uppercase section labels, the only place in the app that
+         specifies any. Avalonia's LetterSpacing is in pixels, so 0.12 x 10. -->
+    <x:Double x:Key="LetterSpacingSectionLabel">1.2</x:Double>
+  </Styles.Resources>
+
+  <!-- Everything inherits Plex Sans from the window down; a style that needs mono opts in. -->
+  <Style Selector=":is(Window)">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+  </Style>
+
+  <!--
+    The scale as classes.
+
+    None of the single-line styles set LineHeight. The design calls for line-height 1, which in
+    CSS simply means "add no leading" and lets glyphs overflow the box; Avalonia clips to the
+    line box instead, so a literal LineHeight == FontSize would cut the descenders off every
+    label in the app. Avalonia's default is the font's own metrics - for IBM Plex, 1.3 with no
+    line gap - which is the closest honest equivalent of "no added leading". The two prose
+    styles do set it, because there leading is the point.
+  -->
+
+  <!-- 24/600 sans. The device name on the editor's own header. -->
+  <Style Selector=":is(TextBlock).deviceHeadline">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeDeviceHeadline}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- 18/600 sans. One per screen. -->
+  <Style Selector=":is(TextBlock).pageTitle">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizePageTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- 15/500 sans. Card titles and inspector section titles. -->
+  <Style Selector=":is(TextBlock).cardTitle">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeCardTitle}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <!-- 14/500 sans. -->
+  <Style Selector=":is(TextBlock).modalTitle">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeModalTitle}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <!-- 13/600 sans. The device name in the toolbar. -->
+  <Style Selector=":is(TextBlock).toolbarDevice">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeToolbarDevice}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- 12/500 sans. Buttons, tabs, nav. -->
+  <Style Selector=":is(TextBlock).control">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <!-- 12/400 sans, prose leading. -->
+  <Style Selector=":is(TextBlock).modalBody">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeModalBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="LineHeight" Value="{DynamicResource LineHeightModalBody}" />
+  </Style>
+
+  <!-- 11/400 sans, prose leading. -->
+  <Style Selector=":is(TextBlock).body">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="LineHeight" Value="{DynamicResource LineHeightBody}" />
+  </Style>
+
+  <!-- 11/400 sans, single line. Captions and secondary lines under a title. -->
+  <Style Selector=":is(TextBlock).meta">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMeta}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- 11/500 sans. The label inside a status pill. -->
+  <Style Selector=":is(TextBlock).pill">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMeta}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
+  <!-- 11/400 mono. A value that exists verbatim in a config file. -->
+  <Style Selector=":is(TextBlock).monoValue">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValue}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- 10/400 mono, for the same thing in a tighter place. -->
+  <Style Selector=":is(TextBlock).monoValueSmall">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValueSmall}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- 10/600 mono, uppercase, 0.12em tracking. The caption over a group of controls.
+       Avalonia has no text-transform, so the text must be authored uppercase at the call site;
+       this style supplies the size, weight, family and tracking only. -->
+  <Style Selector=":is(TextBlock).sectionLabel">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeSectionLabel}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="{DynamicResource LetterSpacingSectionLabel}" />
+  </Style>
+
+  <!-- 9/400 sans. The legend on a keycap, at the scale the board is drawn at in the mockups;
+       the board itself scales uniformly with the space it is given. -->
+  <Style Selector=":is(TextBlock).keycapLabel">
+    <Setter Property="FontFamily" Value="{DynamicResource FontSans}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeKeycapLabel}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+</Styles>

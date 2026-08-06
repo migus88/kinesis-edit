@@ -46,7 +46,7 @@ Core's model raises no change notification (plain mutable POCOs), so `KeyboardKe
 - `BoardWidth`/`BoardHeight` are styled properties (`AffectsMeasure`); the four attached ones are `AffectsParentArrange`.
 - `MeasureOverride` reports the board at the scale the offered space allows; `ArrangeOverride` scales **uniformly** (`min` of the two ratios), **centres** the result, and shrinks every cap by `KeyGapUnits` (**0.06** U) so neighbours never touch. A dimension that is infinite/NaN/non-positive contributes nothing, and a board that nothing constrains falls back to `NaturalUnitSize` (**44** px per unit). A board with no size still arranges every child to `default` — an unarranged child keeps stale bounds and would be painted over the empty picture.
 
-`KeyCapView` sets the state classes `selected` / `listening` / `modified` / `locked` (`locked` = `!CanEdit`) plus a colour strip visible when `HasColorOverlay`. All chrome lives in `App.axaml`'s `keyCap*` / `layerTab` / `editorTab` / `keyboardBoard` styles, in both theme variants, applied to the button's `PART_ContentPresenter` (the Fluent theme's own `:pointerover`/`:disabled` setters target that presenter and would otherwise win). The cap states are declared in increasing precedence, so a listening key always reads as listening.
+`KeyCapView` sets the state classes `selected` / `listening` / `modified` / `locked` (`locked` = `!CanEdit`) plus a colour strip visible when `HasColorOverlay`. All chrome lives in the design system ([design-system.md](design-system.md)) — `Styles/Keyboard.axaml` carries `keyboardBoard` / `keyCap*` / `keyCapText*` / `layerTab`, `Styles/Editor.axaml` carries `editorTab` — painted from tokens in both theme variants and applied to the button's `PART_ContentPresenter` (the Fluent theme's own `:pointerover`/`:disabled` setters target that presenter and would otherwise win). The cap states are declared in increasing precedence, so a listening key always reads as listening. The layer pill and the tab both set `Transitions="{x:Null}"`: layer switching is deliberately unanimated, and Fluent's `Button` theme ships a 75 ms press animation that must be cleared explicitly.
 
 ## `KeyboardEditorViewModel`
 
@@ -294,7 +294,9 @@ Fakes (`KinesisEdit.Tests/Services`): `FakeProfileSessionFactory` (records every
 
 `HexColorToBrushConverter` is tested directly — it touches `Avalonia.Media` but needs no app instance.
 
-Uncovered by tests, on purpose: `KeyboardPanel`'s measure/arrange arithmetic, the style classes, the overlay scrim, the macro panel's XAML and the `KeyboardEditorView` Escape handler all need a UI runtime — they are hand-verified (`dotnet run --project src/KinesisEdit`).
+The UI itself is covered by the headless suites ([design-system.md](design-system.md) § "Testing UI work in this repo"), which need no display: `KinesisEdit.Tests/Controls/KeyboardPanelTests` pins the measure/arrange arithmetic (uniform scale, centring, the gap shrink, the `NaturalUnitSize` fallback, the unusable-dimension cases) with layout rounding **off**, and the `Design/` suites render `KeyboardEditorView`, `LightingTabView`, `KeyboardSettingsView` and `KeyCapView` — plus each editor tab in turn — under both theme variants, checking that every resource key they name resolves and that no view holds a hex.
+
+Still hand-verified (`dotnet run --project src/KinesisEdit`): the `KeyboardEditorView` Escape handler, and anything that depends on real keyboard hardware.
 
 ## Deliberately not here
 

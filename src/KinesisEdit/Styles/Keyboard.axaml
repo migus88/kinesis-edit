@@ -1,0 +1,134 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The keyboard picture: the board it is drawn on, one key cap and its four states, and the layer
+    switch above it.
+
+    A cap's chrome is set on the Button's template presenter rather than on the Button, because the
+    Fluent theme's own `:pointerover` / `:pressed` / `:disabled` setters target that presenter and
+    would otherwise win over a Background set here. The cap states are declared in increasing
+    precedence — later styles override earlier ones — so a listening key always reads as listening,
+    whatever else it also is.
+  -->
+
+  <!-- The board the picture sits on: an inset surface, so the caps read as raised out of it. -->
+  <Style Selector="Border.keyboardBoard">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingInspectorSection}" />
+  </Style>
+
+  <!--
+    One key cap.
+
+    The legend is deliberately NOT on the design's 9/400 keycap step. That step is quoted "at mock
+    scale", where a 1U cap is 30x26; KeyboardPanel draws a cap at up to 44px and the legend does
+    not yet scale with the board, so 9px would be a regression against the drawn art rather than a
+    match for it. It takes the 11/400 body step until the cap renderer scales its own type.
+  -->
+  <Style Selector="Button.keyCap">
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Button.keyCap /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusKeycap}" />
+  </Style>
+  <Style Selector="Button.keyCap.modified /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+  <Style Selector="Button.keyCap.locked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+  </Style>
+  <Style Selector="Button.keyCap:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+  </Style>
+  <!-- Selection is a filled face, a 1px accent border and a 2px halo — a spread-only shadow, never
+       an offset outline. -->
+  <Style Selector="Button.keyCap.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
+  </Style>
+  <Style Selector="Button.keyCap.listening /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector=":is(TextBlock).keyCapText">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).keyCapText.modified">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector=":is(TextBlock).keyCapText.locked">
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+  </Style>
+
+  <!--
+    The recording pulse: the app's only looping motion, and the only one that is not a transition.
+
+    It marks the two surfaces that are waiting for a physical keystroke — the cap that is listening
+    for a remap, and the banner over a macro that is recording. One style with a union selector,
+    because both pulse the same way and the budget allows exactly one pulse.
+
+    The duration is written out rather than bound: `Themes/Motion.axaml` records it as
+    `DurationRecordingPulse`, but an `Animation` is not part of the logical tree, so a
+    `DynamicResource` on it would resolve to nothing and silently give a zero-length loop. It also
+    needs no reduce-motion variant — a slow opacity cycle is a fade, which reduce-motion keeps.
+  -->
+  <Style Selector="Button.keyCap.listening, :is(TextBlock).recording">
+    <Style.Animations>
+      <Animation Duration="0:0:1.4" IterationCount="Infinite" Easing="SineEaseInOut">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1.0" />
+        </KeyFrame>
+        <KeyFrame Cue="50%">
+          <Setter Property="Opacity" Value="0.55" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1.0" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- The layer switch: one pill per layer, scaling from the two of a Freestyle Edge RGB to the
+       five of an Advantage 360 without any change here. Layer switching is deliberately
+       unanimated — see Themes/Motion.axaml.
+       Declaring no transition is not enough to have none: Fluent's Button control theme ships a
+       75 ms RenderTransform press animation, which every Button in the app inherits. The pill has
+       to clear it, or the layer switch animates after all — and it is a movement, so it would run
+       under reduce-motion too. -->
+  <Style Selector="Button.layerTab">
+    <Setter Property="Transitions" Value="{x:Null}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+    <Setter Property="MinWidth" Value="64" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.layerTab /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+  </Style>
+  <Style Selector="Button.layerTab.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.layerTab.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+</Styles>

@@ -1,0 +1,97 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Buttons and the other things a pointer clicks that are not part of the keyboard picture or the
+    editor's own chrome.
+
+    Where a style paints a button's own surface it targets the template's
+    `ContentPresenter#PART_ContentPresenter` rather than the Button: the Fluent theme's
+    `:pointerover` / `:pressed` / `:disabled` setters target that presenter, and a Background set
+    on the Button itself would lose to them.
+  -->
+
+  <!-- The one button of a surface that commits something: the editor's Save, a panel's Ok, Assign.
+       Accent, because accent means "you changed this" and this is the button that keeps it.
+
+       An accent *fill* with AccentText on it, not accent-coloured text: the accent as a foreground
+       on a neutral face measures 2.4-2.8:1 in the light theme, which is not a legible label.
+       AccentText is exactly the on-accent colour the design defines for this treatment.
+
+       The four states come from the AccentButton* keys, which Themes/Controls.axaml maps onto the
+       accent roles per variant — the fill has to move away from the label colour, and the label
+       colour flips between the variants. Disabled leaves the accent family entirely: a Save that
+       has nothing to save must not look like a Save that does. -->
+  <Style Selector="Button.primaryAction">
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.primaryAction /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+  </Style>
+  <Style Selector="Button.primaryAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPointerOver}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+  </Style>
+  <Style Selector="Button.primaryAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPressed}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+  </Style>
+  <Style Selector="Button.primaryAction:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundDisabled}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushDisabled}" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundDisabled}" />
+  </Style>
+
+  <!-- A full-width flat button that reads as a list entry: a macro in the profile's list, a
+       recorded step. Declared in increasing precedence — selected wins over hover. -->
+  <Style Selector="Button.rowButton">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.rowButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+  </Style>
+  <Style Selector="Button.rowButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+  </Style>
+  <Style Selector="Button.rowButton.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <!-- One lighting zone (specs/07-lighting.md §4): a small chip in a wrapping row. -->
+  <Style Selector="Button.zoneButton">
+    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
+    <Setter Property="Margin" Value="0,0,8,8" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <!-- The rows of a long catalog (the Search Keys picker). Compact, because roughly twice as much
+       of the catalog is worth more here than the default row rhythm.
+
+       The colours come from the SystemControlHighlightList* keys Themes/Controls.axaml maps —
+       Fluent exposes no ListBoxItem-specific key, so those shared ones are what a row paints its
+       hover and its selection with. -->
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+
+  <!-- The app's one indeterminate bar (LoadingView). Fluent gives it no key of its own, so the two
+       colours are set here: the accent for the moving bar, the inset for the trough it runs in. -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+  </Style>
+</Styles>

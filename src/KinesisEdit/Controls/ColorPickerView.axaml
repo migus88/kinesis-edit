@@ -25,7 +25,7 @@
     <!-- The ten premixed swatches of §4, in the spec's order. Black is the "no colour" value, so
          it doubles as the eraser for per-key colouring. -->
     <StackPanel Spacing="4">
-      <TextBlock Text="Premixed" Classes="muted" />
+      <TextBlock Text="PREMIXED" Classes="sectionLabel" />
       <ItemsControl ItemsSource="{x:Static vm:ColorPickerViewModel.PremixedColors}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -49,7 +49,7 @@
     <!-- The twelve custom slots. An empty slot is drawn as a hollow square: an unset slot is "no
          swatch stored", not black (08 §3). -->
     <StackPanel Spacing="4">
-      <TextBlock Text="Custom" Classes="muted" />
+      <TextBlock Text="CUSTOM" Classes="sectionLabel" />
       <ItemsControl ItemsSource="{Binding CustomColors}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
