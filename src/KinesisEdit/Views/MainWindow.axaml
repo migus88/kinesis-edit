@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="680"
         x:Class="KinesisEdit.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="Kinesis Edit"
+        Title="{Binding WindowTitle}"
         Width="1000"
         Height="680"
         MinWidth="720"
@@ -42,17 +42,53 @@
             <TextBlock Classes="toolbarDevice" Text="KinesisEdit" VerticalAlignment="Center" />
           </StackPanel>
 
-          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <Button Content="Home" Command="{Binding HomeCommand}" />
-            <Button Content="Settings" Command="{Binding SettingsCommand}" />
-            <Button Content="Help" Command="{Binding HelpCommand}" />
+          <!-- A hairline between the wordmark and the nav, as the mock draws it: the mark names the
+               app, the pills say where in it you are, and they are not the same thing. -->
+          <Border Width="1"
+                  Height="18"
+                  VerticalAlignment="Center"
+                  Background="{DynamicResource SurfaceLineBrush}" />
+
+          <!-- Home / Settings / Help. Nav pills, whose active face is the raised neutral surface
+               rather than the accent: "where you already are" is not one of the accent's two
+               meanings. Only Home has a selected state to bind - Settings and Help are their own
+               issue (#96) and stay unavailable, so they read as inactive nav rather than as
+               something that broke.
+
+               Home is bound to a command that stays runnable on the dashboard, where it does
+               nothing. That is not slack: NavPill writes every selected setter as
+               `.selected:not(:disabled)`, and a Button takes its enablement from its Command, so a
+               Home gated on "there is an editor to leave" would be disabled in exactly the state
+               `IsHomeSelected` is true and the active face would be unreachable. -->
+
+          <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+            <Button Classes="navPill"
+                    Content="Home"
+                    Command="{Binding HomeCommand}"
+                    Classes.selected="{Binding IsHomeSelected}" />
+            <Button Classes="navPill" Content="Settings" Command="{Binding SettingsCommand}" />
+            <Button Classes="navPill" Content="Help" Command="{Binding HelpCommand}" />
           </StackPanel>
         </StackPanel>
 
-        <!-- The status chip is its own view: the editor's toolbar draws the same one, and a copy
-             would drift. It binds to an IShellChrome, which this view model is, so the inherited
-             DataContext is already the right one. -->
-        <views:StatusChipView Grid.Column="2" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <!-- "refreshed 0.4s ago" (docs/design/mockups.md §1b). Mono, and this is the one place
+               the mono law bends: the string is the app speaking, not a value out of a config file.
+               The design sets it in mono anyway, and for a reason that survives the translation -
+               a proportional face reflows the whole right-hand end of the bar every time the
+               tenths digit changes, five times a second. Hidden outright until a pass has
+               completed: there is nothing to age yet, and a zero would claim a scan that never
+               happened. -->
+          <TextBlock Classes="monoValueSmall muted"
+                     Text="{Binding LastRefreshedText}"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding HasLastRefreshed}" />
+
+          <!-- The status chip is its own view: the editor's toolbar draws the same one, and a
+               copy would drift. It binds to an IShellChrome, which this view model is, so the
+               inherited DataContext is already the right one. -->
+          <views:StatusChipView VerticalAlignment="Center" />
+        </StackPanel>
       </Grid>
     </Border>
 

@@ -141,9 +141,7 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(window, variant);
 
-            var chip = window.GetVisualDescendants()
-                .OfType<Border>()
-                .Single(border => border.Classes.Contains("statusChip"));
+            var chip = AppBarStatusChipOf(window);
 
             Assert.Contains("demo", chip.Classes);
             Assert.DoesNotContain("warning", chip.Classes);
@@ -176,9 +174,7 @@ namespace KinesisEdit.Tests.Design
             using var host = ThemedHost.Show(window, variant);
 
             var frame = host.Capture();
-            var chip = window.GetVisualDescendants()
-                .OfType<Border>()
-                .Single(border => border.Classes.Contains("statusChip"));
+            var chip = AppBarStatusChipOf(window);
 
             // Inside the chip's 12px left padding: on its fill, clear of the caption's glyphs.
             var probe = chip.TranslatePoint(new Point(4, chip.Bounds.Height / 2), window)
@@ -197,6 +193,75 @@ namespace KinesisEdit.Tests.Design
                 DesignTokens.ResolveBrushColor("SurfaceBarBrush", variant));
 
             Assert.True(Distance(advisory, painted) > 8, $"The chip painted {painted}, which is the advisory tint.");
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheHomeNavPill_OnTheDashboard_WearsTheActiveNavFace(string variantName)
+        {
+            // The app bar's three pills, on the screen the app opens on. `NavPill` writes every
+            // selected setter as `.selected:not(:disabled)` — a deliberate qualifier, because
+            // Avalonia walks BasedOn first and BaseButton's disabled face would otherwise be
+            // overridden by a dead pill's live one. That makes "selected" and "disabled" mutually
+            // exclusive at the glass, so a Home whose command could only run *while an editor was
+            // open* was disabled in exactly the state IsHomeSelected is true: the dashboard drew
+            // three identical grey pills and none of them read as where you are.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var window = new MainWindow(scenes.CreateShell(), new Services.FakeNotificationService());
+
+            using var host = ThemedHost.Show(window, variant);
+
+            var pills = NavPillsOf(window);
+            var home = pills.Single(pill => Equals(pill.Content, "Home"));
+
+            // IsEffectivelyEnabled, not IsEnabled: a Button takes its enablement from its Command
+            // through IsEnabledCore, which leaves the styled property untouched. The pseudo-class
+            // follows the effective one, and the pseudo-class is what the theme selects on.
+            Assert.True(home.IsEffectivelyEnabled, "The Home pill was disabled on the dashboard, where it is the current location.");
+            Assert.DoesNotContain(":disabled", home.Classes);
+            Assert.Contains("selected", home.Classes);
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", variant), home.Background);
+
+            // ...and at the glass, because the face is what the reader actually sees. Left of the
+            // caption, inside the pill's own padding.
+            AssertClose(
+                DesignTokens.ResolveBrushColor("SurfaceRaisedBrush", variant),
+                PixelInside(host, window, home));
+
+            // Settings and Help stay unavailable (#96) and must read as *unavailable nav* rather
+            // than as the same thing Home is: a different face, not merely a different label.
+            foreach (var pill in pills.Where(pill => !Equals(pill.Content, "Home")))
+            {
+                Assert.False(pill.IsEffectivelyEnabled, $"{pill.Content} is not implemented yet and must not read as live nav.");
+                Assert.DoesNotContain("selected", pill.Classes);
+                Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), pill.Background);
+            }
+        }
+
+        [AvaloniaFact]
+        public void TheHomeNavPill_WhileAnEditorIsOpen_StopsReadingAsTheCurrentLocation()
+        {
+            // The other half: the selected face has to be the dashboard's alone, or it says nothing.
+            using var scenes = new ViewSceneFactory();
+
+            var shell = scenes.CreateShell();
+            var window = new MainWindow(shell, new Services.FakeNotificationService());
+
+            using var host = ThemedHost.Show(window, ThemeVariant.Dark);
+
+            shell.OpenDevice(shell.Dashboard.DeviceCards[0].Snapshot);
+
+            host.Capture();
+
+            var home = NavPillsOf(window).Single(pill => Equals(pill.Content, "Home"));
+
+            Assert.True(home.IsEffectivelyEnabled);
+            Assert.DoesNotContain("selected", home.Classes);
+            Assert.NotEqual(DesignTokens.Resolve("SurfaceRaisedBrush", ThemeVariant.Dark), home.Background);
         }
 
         /// <summary>Every view that renders a DEMO MODE pill of its own.</summary>
@@ -251,6 +316,39 @@ namespace KinesisEdit.Tests.Design
         private static ThemeVariant ToVariant(string variantName)
         {
             return variantName == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+
+        /// <summary>
+        /// The shell's own status chip, picked out by the view model behind it rather than by being
+        /// the only one in the window. A bare <c>Single</c> over the tree survived only while the
+        /// scene had no cards: any card kind that ever carries a chip of its own — a future
+        /// advisory, say — would have turned this into a crash rather than a failure, in a test that
+        /// is not about cards at all.
+        /// </summary>
+        /// <summary>The app bar's Home / Settings / Help, in the order the strip draws them.</summary>
+        private static IReadOnlyList<Button> NavPillsOf(MainWindow window)
+        {
+            return window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.Classes.Contains("navPill"))
+                .ToArray();
+        }
+
+        /// <summary>The colour four pixels inside a control's left edge: on its face, clear of any glyph.</summary>
+        private static Avalonia.Media.Color PixelInside(ThemedHost host, Visual root, Visual control)
+        {
+            var frame = host.Capture();
+            var probe = control.TranslatePoint(new Point(4, control.Bounds.Height / 2), root)
+                ?? throw new InvalidOperationException("The control is not in the window's visual tree.");
+
+            return FramePixels.At(frame, (int)probe.X, (int)probe.Y);
+        }
+
+        private static Border AppBarStatusChipOf(MainWindow window)
+        {
+            return window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(border => border.Classes.Contains("statusChip") && border.DataContext is MainWindowViewModel);
         }
 
         /// <summary>Source-over composite of a translucent <paramref name="source"/> onto an opaque background.</summary>

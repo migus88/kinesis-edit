@@ -111,8 +111,12 @@
     <Setter Property="Theme" Value="{StaticResource SearchField}" />
   </Style>
 
-  <!-- The app's one indeterminate bar (LoadingView). Fluent gives it no key of its own, so the two
-       colours are set here: the accent for the moving bar, the inset for the trough it runs in. -->
+  <!-- The app's one indeterminate bar: the 3px strip across the bottom of a dashboard card while a
+       detection pass is in flight (docs/design/mockups.md §2e). Fluent gives it no palette key of
+       its own, so the three colours are set here; the card sets the *geometry* on the control
+       itself — a Height of 3, Fluent's MinHeight cleared, and no radius — because those are
+       properties on the ProgressBar rather than parts of its template, which is what keeps this a
+       paint style instead of a fourteenth ControlTheme. -->
   <Style Selector="ProgressBar">
     <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
     <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />

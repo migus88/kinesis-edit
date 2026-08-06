@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="470" d:DesignHeight="212"
+             x:Class="KinesisEdit.Views.WebToolCardView"
+             x:DataType="vm:WebToolCardViewModel">
+  <!--
+    The dashboard card for a board this app does not edit: the Advantage 360 Professional, which is
+    configured in Kinesis' ZMK web GUI (docs/design/mockups.md §1b, verbatim - "Configured in
+    Kinesis' web tool - KinesisEdit doesn't edit this board", with a single "Open web tool" action).
+
+    It shares the device card's height so the two-column grid stays even, and nothing else: no
+    status line, no rail, no eject and no scan, because the device exposes no v-Drive for any of
+    them to be about.
+
+    IT DRAWS NO DEVICE ART, deliberately. Themes/DeviceArt.axaml has no drawing for the Pro - the
+    art family covers the programmable boards - and the design's rule is that a thing the app cannot
+    show is not rendered at all rather than drawn empty. DeviceCardView hides its art *frame* on the
+    same rule; here there is no frame to hide.
+  -->
+  <Border Classes="card webToolCard">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <StackPanel Grid.Row="0" Spacing="4">
+        <TextBlock Text="{Binding DisplayName}" Classes="cardTitle" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding MetaLine}" Classes="meta muted" TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+
+      <TextBlock Grid.Row="1"
+                 Text="{Binding Description}"
+                 Classes="body muted"
+                 Margin="0,12,0,0"
+                 VerticalAlignment="Top"
+                 TextWrapping="Wrap" />
+
+      <!-- The one action, and a secondary rather than the accent primary: the accent is reserved
+           for selection and for "you changed this", and nothing on this card is either. The
+           caption carries the design's own trailing arrow. -->
+      <Button Grid.Row="2"
+              Classes="secondary"
+              HorizontalAlignment="Left"
+              Content="{Binding OpenWebToolCaption}"
+              Command="{Binding OpenWebToolCommand}" />
+    </Grid>
+  </Border>
+</UserControl>

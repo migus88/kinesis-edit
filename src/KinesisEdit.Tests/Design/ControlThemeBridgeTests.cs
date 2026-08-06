@@ -40,13 +40,26 @@ namespace KinesisEdit.Tests.Design
             foreach (var (viewTypeName, className, themeKey) in new[]
             {
                 (typeof(KeyCapView).FullName!, "keyCap", "KeyCapButton"),
-                (typeof(DeviceCardView).FullName!, "statusChip", "StatusPill"),
                 (typeof(StatusChipView).FullName!, "statusChip", "StatusPill"),
-                // The ⌥n legend on each layer segment of the editor's tab bar.
+
+                // The app bar. The nav pills were unclassed Fluent buttons until the dashboard
+                // rebuild; its status chip is now the shared StatusChipView above, which the
+                // editor's toolbar draws too.
+                (typeof(MainWindow).FullName!, "navPill", "NavPill"),
+
+                // The dashboard. Three button roles that had a bridge and no call site at all
+                // until the cards were rebuilt on them.
+                (typeof(DeviceCardView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(DeviceCardView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(DeviceCardView).FullName!, "eject", "EjectButton"),
+                (typeof(WebToolCardView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(DashboardView).FullName!, "secondary", "SecondaryButton"),
+
+                // The editor shell: the ⌥n legend on each layer segment of the tab bar, its two
+                // button roles, and the advisory strip's bordered `Review N`.
                 (typeof(KeyboardEditorView).FullName!, "kbd", "KbdChip"),
                 (typeof(KeyboardEditorView).FullName!, "primaryAction", "PrimaryActionButton"),
                 (typeof(KeyboardEditorView).FullName!, "secondary", "SecondaryButton"),
-                // The advisory strip's `Review N`, bordered as the handoff draws it.
                 (typeof(AdvisoryStripView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),

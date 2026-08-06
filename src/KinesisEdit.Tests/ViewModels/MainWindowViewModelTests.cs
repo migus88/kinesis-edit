@@ -18,6 +18,7 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
+        private readonly FakeSystemClock _clock = new();
         private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
@@ -35,6 +36,7 @@ namespace KinesisEdit.Tests.ViewModels
                 new VDriveMonitor(_scanner, _neverPolls),
                 _fileService,
                 new FakeUiDispatcher(),
+                _clock,
                 _neverPolls);
 
             // The real factory over fake collaborators: which editor a device resolves to is part
@@ -51,7 +53,7 @@ namespace KinesisEdit.Tests.ViewModels
                 new FakeUrlLauncher());
 
             _dashboard = new DashboardViewModel(_monitor, ejectNotifier, new FakeUrlLauncher());
-            _shell = new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, ejectNotifier, editors);
+            _shell = CreateShell(editors);
         }
 
         [Fact]
@@ -60,7 +62,31 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(_dashboard, _shell.CurrentView);
             Assert.Null(_shell.Editor);
             Assert.False(_shell.IsEditorOpen);
-            Assert.False(_shell.HomeCommand.CanExecute(null));
+        }
+
+        /// <summary>
+        /// Home is a navigation, not "leave the editor", and it stays runnable on the dashboard —
+        /// where it does nothing at all. That is load-bearing rather than lax: the nav pill's
+        /// selected face is written `.selected:not(:disabled)`, and a Button takes its enablement
+        /// from its command, so gating Home on an open editor makes it disabled in exactly the
+        /// state <see cref="MainWindowViewModel.IsHomeSelected"/> is true and the active face
+        /// unreachable. The dashboard then draws Home identically to the two pills that are not
+        /// implemented yet.
+        /// </summary>
+        [Fact]
+        public async Task HomeCommand_OnTheDashboard_IsRunnableAndDoesNothing()
+        {
+            Assert.True(_shell.IsHomeSelected);
+            Assert.True(_shell.HomeCommand.CanExecute(null));
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.Null(_shell.Editor);
+            Assert.Null(_sessions.Active);
+            Assert.False(_shell.IsBusy);
+            Assert.Empty(_ejectService.EjectedPaths);
+            Assert.Empty(_notifications.Toasts);
         }
 
         [Fact]
@@ -383,7 +409,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(_sessions.Active);
             Assert.False(shell.IsDemoMode);
             Assert.False(shell.IsBusy);
-            Assert.False(shell.HomeCommand.CanExecute(null));
+            Assert.True(shell.IsHomeSelected);
             Assert.Null(_notifications.LoadingCaption);
             Assert.Equal(MainWindowViewModel.DemoModeIndicator, shell.StatusIndicatorText);
 
@@ -544,7 +570,7 @@ namespace KinesisEdit.Tests.ViewModels
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
 
-            _dashboard.Devices[0].ConfigureCommand.Execute(null);
+            _dashboard.DeviceCards[0].ConfigureCommand.Execute(null);
 
             Assert.NotNull(_shell.Editor);
             Assert.Equal(DeviceId.Tko, _shell.Editor!.Device.DeviceId);
@@ -587,7 +613,7 @@ namespace KinesisEdit.Tests.ViewModels
             await _shell.HomeCommand.ExecuteAsync(null);
 
             Assert.True(_monitor.IsPolling);
-            Assert.Single(_dashboard.Devices);
+            Assert.Single(_dashboard.DeviceCards);
             Assert.Equal("v-Drive OK", _shell.StatusIndicatorText);
             Assert.Equal(StatusSeverity.Ok, _shell.StatusIndicatorSeverity);
         }
@@ -611,7 +637,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
+            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
             Assert.Equal("v-Drive OK", _shell.StatusIndicatorText);
 
             _fileService.SetUnreadable(TestDevices.CreateLocation(DeviceId.Tko).VersionFilePath);
@@ -627,7 +653,7 @@ namespace KinesisEdit.Tests.ViewModels
             SetDrive(DeviceId.Tko);
             _fileService.SetUnreadable(TestDevices.CreateLocation(DeviceId.Tko).VersionFilePath);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
+            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
             Assert.Equal("v-Drive Error", _shell.StatusIndicatorText);
 
             SetDrive(DeviceId.Tko);
@@ -642,7 +668,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
+            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
 
             _scanner.SetResult();
             _monitor.Refresh();
@@ -656,7 +682,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko, isWritable: false);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
+            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
 
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
@@ -808,6 +834,96 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(new[] { "settings", "help" }, raised);
         }
 
+        [Fact]
+        public void WindowTitle_OnTheDashboard_IsJustTheAppName()
+        {
+            Assert.Equal("KinesisEdit", _shell.WindowTitle);
+            Assert.True(_shell.IsHomeSelected);
+        }
+
+        [Fact]
+        public void WindowTitle_WhileEditing_NamesTheDeviceAheadOfTheApp()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.Equal("TKO — KinesisEdit", _shell.WindowTitle);
+            Assert.False(_shell.IsHomeSelected);
+        }
+
+        [Fact]
+        public void WindowTitle_InDemoMode_SaysSoBetweenTheDeviceAndTheApp()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess));
+
+            Assert.Equal("TKO (Demo) — KinesisEdit", _shell.WindowTitle);
+        }
+
+        [Fact]
+        public async Task WindowTitle_AfterGoingHome_IsTheAppNameAgain()
+        {
+            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Equal("KinesisEdit", _shell.WindowTitle);
+            Assert.True(_shell.IsHomeSelected);
+        }
+
+        [Fact]
+        public void LastRefreshedText_BeforeTheFirstCompletedPass_HasNothingToSay()
+        {
+            Assert.Null(_monitor.LastRefreshedUtc);
+            Assert.False(_shell.HasLastRefreshed);
+            Assert.Equal(string.Empty, _shell.LastRefreshedText);
+        }
+
+        [Fact]
+        public void LastRefreshedText_AfterAPass_AgesWithOneDecimal()
+        {
+            _monitor.Refresh();
+
+            Assert.True(_shell.HasLastRefreshed);
+            Assert.Equal("refreshed 0.0s ago", _shell.LastRefreshedText);
+
+            _clock.Advance(TimeSpan.FromMilliseconds(400));
+            Assert.Equal("refreshed 0.4s ago", _shell.LastRefreshedText);
+
+            _clock.Advance(TimeSpan.FromMilliseconds(800));
+            Assert.Equal("refreshed 1.2s ago", _shell.LastRefreshedText);
+        }
+
+        [Fact]
+        public void LastRefreshedText_WhenTheClockStepsBack_ReadsZeroRatherThanNegative()
+        {
+            _monitor.Refresh();
+
+            _clock.Advance(TimeSpan.FromSeconds(-5));
+
+            Assert.Equal("refreshed 0.0s ago", _shell.LastRefreshedText);
+        }
+
+        [Fact]
+        public void LastRefreshedText_WhenAPassCompletes_IsRepublishedWithoutWaitingForTheTicker()
+        {
+            var changed = new List<string?>();
+            _shell.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+
+            _monitor.Refresh();
+
+            Assert.Contains(nameof(MainWindowViewModel.LastRefreshedText), changed);
+            Assert.Contains(nameof(MainWindowViewModel.HasLastRefreshed), changed);
+        }
+
+        [Theory]
+        [InlineData(null, false, "KinesisEdit")]
+        [InlineData("", false, "KinesisEdit")]
+        [InlineData("Advantage 360", false, "Advantage 360 — KinesisEdit")]
+        [InlineData("Advantage 360", true, "Advantage 360 (Demo) — KinesisEdit")]
+        public void BuildWindowTitle_CoversTheThreeShapes(string? deviceName, bool isDemoMode, string expected)
+        {
+            Assert.Equal(expected, MainWindowViewModel.BuildWindowTitle(deviceName, isDemoMode));
+        }
+
         /// <summary>
         /// Waits for the editor's fire-and-forget load to finish. The shell never awaits it, so
         /// there is no task to hand back to the test.
@@ -848,10 +964,23 @@ namespace KinesisEdit.Tests.ViewModels
             return pedal;
         }
 
-        /// <summary>A second shell over the same collaborators, with an editor factory of its own.</summary>
+        /// <summary>
+        /// A shell over the shared collaborators, with an editor factory of its own. The readout
+        /// ticker is parked: every test that cares about "refreshed Ns ago" moves the fake clock
+        /// and reads the property, so a background timer would only add a race.
+        /// </summary>
         private MainWindowViewModel CreateShell(IEditorViewModelFactory editors)
         {
-            return new MainWindowViewModel(_dashboard, _monitor, _sessions, _notifications, _ejectNotifier, editors);
+            return new MainWindowViewModel(
+                _dashboard,
+                _monitor,
+                _sessions,
+                _notifications,
+                _ejectNotifier,
+                editors,
+                _clock,
+                new FakeUiDispatcher(),
+                _neverPolls);
         }
 
         private void SetPedalFile(DeviceSnapshot snapshot, params string[] lines)

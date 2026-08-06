@@ -60,13 +60,15 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains("MainWindow", names);
             Assert.Contains("DashboardView", names);
+            Assert.Contains("DeviceCardView", names);
+            Assert.Contains("WebToolCardView", names);
             Assert.Contains("NoDeviceView", names);
             Assert.Contains("KeyboardEditorView", names);
             Assert.Contains("LightingTabView", names);
             Assert.Contains("KeyboardSettingsView", names);
             Assert.Contains("SavantElitePedalView", names);
             Assert.Contains("KeyCapView", names);
-            Assert.True(names.Count >= 18, $"Only {names.Count} views were discovered.");
+            Assert.True(names.Count >= 19, $"Only {names.Count} views were discovered.");
         }
 
         [AvaloniaFact]

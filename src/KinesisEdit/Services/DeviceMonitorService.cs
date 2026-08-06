@@ -13,8 +13,11 @@ namespace KinesisEdit.Services
     /// version file, producing an immutable <see cref="DeviceSnapshot"/> list plus the status
     /// transitions of that poll. The version file is re-read on every tick on purpose — it is
     /// both the "v-Drive OK / v-Drive Error" probe and the Freestyle Edge/Pro model resolution.
-    /// The <see cref="Updated"/> event is marshaled through an <see cref="IUiDispatcher"/>
-    /// because the monitor polls on a thread-pool timer.
+    /// Both events — <see cref="Updated"/> and <see cref="RefreshActivityChanged"/> — are marshaled
+    /// through an <see cref="IUiDispatcher"/> because the monitor polls on a thread-pool timer.
+    /// Serializing the refreshes, and the refresh state the dashboard renders
+    /// (<see cref="IsRefreshing"/>, <see cref="LastRefreshedUtc"/>), live in
+    /// <see cref="RefreshActivity"/>.
     /// </summary>
     public sealed class DeviceMonitorService : IDisposable
     {
@@ -39,38 +42,66 @@ namespace KinesisEdit.Services
             }
         }
 
+        /// <summary>
+        /// Whether a refresh is in flight right now — what the dashboard renders as its "Scanning"
+        /// card state. Visual only: nothing cancels, waits on, or refuses a running refresh.
+        /// </summary>
+        public bool IsRefreshing => _activity.IsRefreshing;
+
+        /// <summary>
+        /// When the most recent refresh that ran to completion finished, read from
+        /// <see cref="ISystemClock"/>; null until the first one does. This is what the dashboard's
+        /// "refreshed 0.4s ago" readout ages against. A pass that found no drives, or that read
+        /// nothing but unreadable version files, still counts — it looked, and that is what the
+        /// readout claims. A pass that threw does not, so the readout keeps ageing while the loop
+        /// is failing instead of reporting a scan that never happened.
+        /// </summary>
+        public DateTimeOffset? LastRefreshedUtc => _activity.LastRefreshedUtc;
+
         /// <summary>Raised once per refresh, on the UI thread, with that refresh's snapshots and changes.</summary>
         public event Action<DeviceMonitorUpdate>? Updated;
+
+        /// <summary>
+        /// Raised on the UI thread whenever <see cref="IsRefreshing"/> or
+        /// <see cref="LastRefreshedUtc"/> changes. Separate from <see cref="Updated"/> because a
+        /// refresh <em>starting</em> publishes no snapshots and yet must light the Scanning state,
+        /// and because a coalesced repeat changes neither. Marshaled through the same
+        /// <see cref="IUiDispatcher"/>, so a handler may touch view-model state directly.
+        /// </summary>
+        public event Action? RefreshActivityChanged;
 
         private readonly VDriveMonitor _monitor;
         private readonly IVDriveFileService _fileService;
         private readonly IUiDispatcher _dispatcher;
+        private readonly ISystemClock _clock;
         private readonly TimeSpan _refreshInterval;
         private readonly object _syncRoot = new();
-        private readonly object _refreshGate = new();
+        private readonly RefreshActivity _activity = new();
         private readonly List<VDriveStatusChange> _pendingChanges = [];
         private Timer? _timer;
-        private bool _isRefreshing;
-        private bool _isRefreshPending;
         private bool _isDisposed;
 
         /// <summary>
         /// Creates the service over an existing <paramref name="monitor"/> (owned and disposed by
-        /// this service), the file service used to re-read version files, and the dispatcher that
-        /// marshals <see cref="Updated"/> onto the UI thread.
+        /// this service), the file service used to re-read version files, the dispatcher that
+        /// marshals <see cref="Updated"/> and <see cref="RefreshActivityChanged"/> onto the UI
+        /// thread, and the clock that stamps <see cref="LastRefreshedUtc"/>.
         /// </summary>
         public DeviceMonitorService(
             VDriveMonitor monitor,
             IVDriveFileService fileService,
             IUiDispatcher dispatcher,
+            ISystemClock clock,
             TimeSpan? refreshInterval = null)
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _refreshInterval = refreshInterval ?? _defaultRefreshInterval;
 
             _monitor.StatusChanged += OnStatusChanged;
+            _activity.Changed += OnActivityChanged;
         }
 
         /// <summary>
@@ -89,7 +120,7 @@ namespace KinesisEdit.Services
         /// </summary>
         public void Refresh()
         {
-            if (_isDisposed || !TryBeginRefresh())
+            if (_isDisposed || !_activity.TryBegin())
             {
                 return;
             }
@@ -102,14 +133,14 @@ namespace KinesisEdit.Services
                 {
                     RunRefresh();
 
-                    isRefreshing = TryRepeatRefresh();
+                    isRefreshing = _activity.TryRepeat(!_isDisposed);
                 }
             }
             finally
             {
                 if (isRefreshing)
                 {
-                    EndRefresh();
+                    _activity.End();
                 }
             }
         }
@@ -167,6 +198,11 @@ namespace KinesisEdit.Services
 
             Snapshots = snapshots;
 
+            // Stamped only once the pass has produced its snapshots, and before they are
+            // published: an Updated handler reading LastRefreshedUtc must never see the previous
+            // pass's time, and a pass that threw on the way here must not claim to have happened.
+            _activity.Stamp(_clock.UtcNow);
+
             var update = new DeviceMonitorUpdate
             {
                 Snapshots = snapshots,
@@ -180,53 +216,6 @@ namespace KinesisEdit.Services
             lock (_syncRoot)
             {
                 _pendingChanges.RemoveRange(0, changes.Count);
-            }
-        }
-
-        private bool TryBeginRefresh()
-        {
-            lock (_refreshGate)
-            {
-                if (_isRefreshing)
-                {
-                    _isRefreshPending = true;
-
-                    return false;
-                }
-
-                _isRefreshing = true;
-                _isRefreshPending = false;
-
-                return true;
-            }
-        }
-
-        private bool TryRepeatRefresh()
-        {
-            lock (_refreshGate)
-            {
-                // Taking the request and releasing the running flag happen under the same lock,
-                // so a request arriving now either wins this pass or starts a fresh refresh.
-                if (_isRefreshPending && !_isDisposed)
-                {
-                    _isRefreshPending = false;
-
-                    return true;
-                }
-
-                _isRefreshing = false;
-                _isRefreshPending = false;
-
-                return false;
-            }
-        }
-
-        private void EndRefresh()
-        {
-            lock (_refreshGate)
-            {
-                _isRefreshing = false;
-                _isRefreshPending = false;
             }
         }
 
@@ -315,6 +304,13 @@ namespace KinesisEdit.Services
             }
         }
 
+        private void OnActivityChanged()
+        {
+            // The transition happens on the polling thread; invariant 7 of docs/app/app-shell.md
+            // makes marshaling this the service's job, exactly as it is for Updated.
+            _dispatcher.Post(() => RefreshActivityChanged?.Invoke());
+        }
+
         private void OnTimerTick(object? state)
         {
             try
@@ -340,6 +336,7 @@ namespace KinesisEdit.Services
 
             Stop();
 
+            _activity.Changed -= OnActivityChanged;
             _monitor.StatusChanged -= OnStatusChanged;
             _monitor.Dispose();
         }

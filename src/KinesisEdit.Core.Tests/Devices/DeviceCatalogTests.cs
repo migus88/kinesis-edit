@@ -220,6 +220,53 @@ namespace KinesisEdit.Core.Tests.Devices
         }
 
         [Theory]
+        [InlineData(DeviceId.SavantElite2, DeviceFormFactor.ThreeButtonFootPedal)]
+        [InlineData(DeviceId.Advantage2, DeviceFormFactor.SplitContoured)]
+        [InlineData(DeviceId.FreestyleEdge, DeviceFormFactor.SplitFlat)]
+        [InlineData(DeviceId.FreestylePro, DeviceFormFactor.SplitFlat)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, DeviceFormFactor.SplitFlat)]
+        [InlineData(DeviceId.CrossfireKeypad, DeviceFormFactor.None)]
+        [InlineData(DeviceId.Tko, DeviceFormFactor.SixtyPercentGaming)]
+        [InlineData(DeviceId.Advantage360, DeviceFormFactor.SplitContoured)]
+        [InlineData(DeviceId.Advantage360Professional, DeviceFormFactor.SplitContoured)]
+        public void GetById_WithDevice_HasFormFactorPerDesignVocabulary(
+            DeviceId deviceId,
+            DeviceFormFactor expectedFormFactor)
+        {
+            var device = DeviceCatalog.GetById(deviceId);
+
+            Assert.Equal(expectedFormFactor, device.FormFactor);
+        }
+
+        [Fact]
+        public void FormFactor_ForEveryDeviceWithACard_IsClassified()
+        {
+            var cardedDevices = DeviceCatalog.All.Where(device => !device.IsFutureDevice);
+
+            foreach (var device in cardedDevices)
+            {
+                Assert.NotEqual(DeviceFormFactor.None, device.FormFactor);
+            }
+        }
+
+        [Fact]
+        public void AccessoryNote_ForSavantElite2Only_NamesTheJack()
+        {
+            foreach (var device in DeviceCatalog.All)
+            {
+                var expected = device.Id == DeviceId.SavantElite2 ? "accessory jack" : null;
+
+                Assert.Equal(expected, device.AccessoryNote);
+            }
+        }
+
+        [Fact]
+        public void All_Always_ContainsSevenProgrammableDevices()
+        {
+            Assert.Equal(7, DeviceCatalog.All.Count(device => device.IsProgrammable));
+        }
+
+        [Theory]
         [InlineData(DeviceId.SavantElite2, true, false)]
         [InlineData(DeviceId.Advantage2, true, false)]
         [InlineData(DeviceId.FreestyleEdge, true, false)]

@@ -37,9 +37,102 @@
 
   <!-- A dashboard card. Cards are keyed by drive identity and never reordered by a refresh; a
        newly detected device animates in at the end of the list, height only, 160 ms ease-out.
-       The transition lives here so the dashboard has exactly one place that decides it. -->
+       The transition lives here so the dashboard has exactly one place that decides it.
+
+       Three things it adds to `card`:
+
+       - A FIXED HEIGHT. Every state renders at `HeightDeviceCard`, so a refresh that flips a card
+         to Scanning - or back - cannot move the button the pointer is already on (mockup 2e).
+       - PADDING 0. The 2px status rail is flush against the card's left edge, which means inside
+         the border but *outside* the padding, so the padding moves inward onto the content and off
+         the Border that draws the frame.
+       - ClipToBounds. The rail and the scan bar run to the card's own edges; the 8px radius has to
+         cut their corners rather than let them square off the card.
+
+       The height is also what the insert animation runs on. A transition never fires on an initial
+       value, so a card that is simply born at its natural height appears rather than animates: the
+       view authors `collapsed` in markup and drops it after attach, and the class - never
+       `IsVisible` - is what re-evaluates the setter and lets the 160 ms play.
+
+       TOP-ALIGNED, and that is the insert animation's business rather than a layout preference.
+       A Layoutable with an explicit Height and the default Stretch is *centred* in its slot, and a
+       card inserted into a UniformGrid row that already holds a full-height sibling is arranged in
+       a 212-tall slot from the first frame: at 0 height it would sit 106 down the row and grow
+       outward from its middle, which is not "animates in at the end of the list". -->
   <Style Selector="Border.deviceCard">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Height" Value="{StaticResource HeightDeviceCard}" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="Transitions" Value="{DynamicResource ListInsertTransitions}" />
+  </Style>
+  <Style Selector="Border.deviceCard.collapsed">
+    <Setter Property="Height" Value="0" />
+  </Style>
+
+  <!-- The status rail: 2px, flush on the card's left edge, painted with the status *fill* role
+       rather than its text role - it is a band of colour, not a label on a tint.
+
+       It is card composition rather than a control shape, so it is a style here and not a
+       ControlTheme: nothing clicks it, it has no states of its own, and the only thing it varies
+       is which of two roles fills it. Resting and Scanning have no rail at all - the resting card
+       is "idle and quiet, no red, no spinner" (mockup 2e) and a scan in flight is transient.
+
+       THE ABSENCE IS A TRANSPARENT FILL, NOT A HIDDEN CONTROL. "Status changes cross-fade the
+       status pill and the card status fill over 220ms; text swaps are instant" (mockup 2b) is a
+       claim about the rail appearing and disappearing as much as about it changing colour, and
+       `IsVisible` collapses a control instantly - it gives the transition nothing to run on, the
+       same trap the overlay surfaces above avoid with an `.open` class. So the rail is always
+       present and always laid out, and every state change is a Background change the 220ms
+       BrushTransition below can fade. The caption beside it still swaps instantly, as the design
+       asks.
+
+       The bare alias, never StatusFillTransitionsFull: MotionResourceBinder points it at the full
+       or the reduced set once at startup. Both sets keep the cross-fade - reduce-motion drops
+       movement, not fades. -->
+  <Style Selector="Border.cardStatusRail">
+    <Setter Property="Width" Value="{StaticResource WidthCardStatusRail}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Transitions" Value="{DynamicResource StatusFillTransitions}" />
+  </Style>
+  <Style Selector="Border.cardStatusRail.ok">
+    <Setter Property="Background" Value="{DynamicResource StatusOkBrush}" />
+  </Style>
+  <Style Selector="Border.cardStatusRail.error">
+    <Setter Property="Background" Value="{DynamicResource StatusErrorBrush}" />
+  </Style>
+
+  <!-- The per-state sentence under a card's status line. Quiet by default: the resting copy is a
+       statement of fact about a device nobody has plugged in, and giving it a face would make the
+       calmest state the loudest thing on the dashboard.
+
+       `.error` is the one that is drawn as a box, because there the sentence is the remedy: an
+       error tint inside a stronger error border, the same two-strength reading of a status hue the
+       status pill uses. -->
+  <Style Selector="Border.cardExplanation">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="10,9" />
+  </Style>
+  <Style Selector="Border.cardExplanation.error">
+    <Setter Property="Background" Value="{DynamicResource StatusErrorTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorTintBorderBrush}" />
+  </Style>
+
+  <!-- The card for a board this app does not edit: the Advantage 360 Professional, configured in
+       Kinesis' web tool. It sits in the same grid at the same height so the two columns stay even,
+       and recedes onto the inset surface - it is the one card with nothing to configure here.
+
+       The mock draws its border dashed. A Border cannot dash in Avalonia 11 (only a Shape can), and
+       the card is a Border because it is a panel rather than a drawing, so the quieter *face* is
+       what carries "this one is different" instead. -->
+  <Style Selector="Border.webToolCard">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="Height" Value="{StaticResource HeightDeviceCard}" />
   </Style>
 
   <!-- The well a card's device silhouette is drawn in (docs/design/handoff.md:117, "92x56 device

@@ -253,13 +253,19 @@ namespace KinesisEdit.Tests.Design
                 _files,
                 _urlLauncher);
 
+            // The readout ticker is parked and the clock stands still: a scene renders one frame,
+            // and a ticker firing behind it would be a property change from a thread-pool thread
+            // for a string that cannot have changed.
             var shell = new MainWindowViewModel(
                 dashboard,
                 monitor,
                 new DeviceSessionManager(settings),
                 _notifications,
                 CreateEjectNotifier(),
-                editors);
+                editors,
+                new FakeSystemClock(),
+                new FakeUiDispatcher(),
+                _neverPolls);
 
             _disposables.Add(shell);
 
@@ -290,11 +296,49 @@ namespace KinesisEdit.Tests.Design
         /// <summary>A card for one connected Freestyle Edge RGB.</summary>
         public DeviceCardViewModel CreateDeviceCard()
         {
+            return CreateDeviceCard(DeviceCardState.Connected);
+        }
+
+        /// <summary>
+        /// A Freestyle Edge RGB card wearing <paramref name="state"/>. Every one of the four faces
+        /// is buildable, because the design's claim about them is a claim about the set — they are
+        /// one fixed height and differ only in their rail, their status line and their buttons — and
+        /// a state no scene can build is a state nobody ever looks at.
+        /// <para>
+        /// <see cref="DeviceCardState.Scanning"/> is not a drive fact but the card's own
+        /// <c>IsScanning</c> laid over one, which is exactly how the dashboard drives it.
+        /// </para>
+        /// </summary>
+        public DeviceCardViewModel CreateDeviceCard(DeviceCardState state)
+        {
+            var status = state switch
+            {
+                DeviceCardState.Resting => VDriveConnectionStatus.NotDetected,
+                DeviceCardState.CannotAccess => VDriveConnectionStatus.CannotAccess,
+                _ => VDriveConnectionStatus.Connected
+            };
+
             return new DeviceCardViewModel(
-                TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
+                TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, status),
                 CreateEjectNotifier(),
                 _ => { },
-                () => Task.CompletedTask);
+                () => Task.CompletedTask)
+            {
+                IsScanning = state == DeviceCardState.Scanning
+            };
+        }
+
+        /// <summary>
+        /// The card for the one board the app does not edit — the Advantage 360 Professional, which
+        /// is configured in Kinesis' web tool. Taken from the catalog rather than named, on the same
+        /// rule the view model itself follows.
+        /// </summary>
+        public WebToolCardViewModel CreateWebToolCard()
+        {
+            var device = WebToolCardViewModel.WebToolDevices().FirstOrDefault()
+                ?? throw new InvalidOperationException("The catalog holds no web-configured device.");
+
+            return new WebToolCardViewModel(device, _urlLauncher);
         }
 
         /// <summary>
@@ -433,6 +477,11 @@ namespace KinesisEdit.Tests.Design
                 return CreateShell();
             }
 
+            if (viewType == typeof(WebToolCardView))
+            {
+                return CreateWebToolCard();
+            }
+
             if (viewType == typeof(NoDeviceView))
             {
                 return CreateNoDevice();
@@ -554,6 +603,7 @@ namespace KinesisEdit.Tests.Design
                 new VDriveMonitor(_scanner, _neverPolls),
                 _files,
                 new FakeUiDispatcher(),
+                new FakeSystemClock(),
                 _neverPolls);
 
             _disposables.Add(monitor);
