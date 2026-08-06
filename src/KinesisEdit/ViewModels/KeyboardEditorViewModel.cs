@@ -592,8 +592,9 @@ namespace KinesisEdit.ViewModels
 
             // The lighting panel edits the very model the session hands out, so mutating it is
             // all a lighting save takes (ProfileSession.Save writes led<n>.txt whenever Lighting
-            // is non-null). It shares these layer view models, which is how a recoloured key
-            // repaints on the Keys tab too.
+            // is non-null). It shares these layer view models, so a recoloured key repaints
+            // without the picture being rebuilt — on the lighting board, which is the only
+            // picture that draws an LED strip (KeyboardView.ShowsLedStrips).
             Lighting.Attach(outcome.Session?.Lighting, Layers);
         }
 

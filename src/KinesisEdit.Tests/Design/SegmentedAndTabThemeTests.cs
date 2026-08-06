@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -42,6 +43,9 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>The captions the segmented and tab fixtures are built from.</summary>
         private static readonly string[] _items = ["Top", "Fn", "Edge"];
+
+        /// <summary>One `:not(...)` group of a selector, so a state can be told from its negation.</summary>
+        private static readonly Regex _negation = new(@":not\([^)]*\)", RegexOptions.Compiled);
 
         /// <summary>Every control theme these two files declare, and the target it templates.</summary>
         public static TheoryData<string, string, string> ControlThemesAndVariants()
@@ -126,6 +130,13 @@ namespace KinesisEdit.Tests.Design
 
                 { "TabStripItem", "rest", null },
                 { "TabStripItem", "hover", "SurfaceKeySelectedBrush" },
+
+                // A tab has no press face of its own: it keeps the hover fill all the way down, and
+                // answers the click with the underline that arrives a moment later. Unlike the key
+                // cap, whose theme says so outright, Tabs.axaml is silent about it — so this row is
+                // where the absence is written down.
+                { "TabStripItem", "pressed", "SurfaceKeySelectedBrush" },
+
                 { "TabStripItem", "selected", null },
                 { "TabStripItem", "disabled", null }
             };
@@ -361,6 +372,256 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public void APointerPressOnATab_DoesNotPaintTheHalo(string variantName)
+        {
+            // The strip's half of the suppression rule. It is worth asserting separately from the
+            // segment's: a tab's ring competes with the active mark for the same edge, so a ring
+            // that appeared on a click would be the exact regression the underline part exists to
+            // prevent, only triggered by the pointer instead of by the keyboard.
+            var variant = ToVariant(variantName);
+            var strip = Tabs(variant);
+
+            using var host = ThemedHost.Show(strip, variant, HostWidth, HostHeight);
+
+            var container = ContainerAt(strip, 1);
+
+            Assert.True(container.Focus(NavigationMethod.Pointer), "The tab refused pointer focus.");
+
+            Assert.Contains(":focus", container.Classes);
+            Assert.DoesNotContain(":focus-visible", container.Classes);
+            Assert.Equal(0, RootOf(container).BoxShadow.Count);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)UnderlineOf(container).Background!).Color);
+
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant), PixelBeside(host, container));
+        }
+
+        /// <summary>The two button-shaped themes in these files, in both variants.</summary>
+        public static TheoryData<string, string> ButtonThemesAndVariants()
+        {
+            var cases = new TheoryData<string, string>();
+
+            foreach (var key in new[] { "ToggleSegment", "ModeOption" })
+            {
+                cases.Add(key, "Dark");
+                cases.Add(key, "Light");
+            }
+
+            return cases;
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(ButtonThemesAndVariants))]
+        public void KeyboardFocus_PaintsTheHaloOnAToggleAndOnARailRow(string key, string variantName)
+        {
+            // Both derive from BaseButton and neither restates the ring, so what this proves is that
+            // deriving was enough: each declares a `.selected` BorderBrush of its own, and either
+            // one could have taken the border back off the ring by dropping its qualifier.
+            var variant = ToVariant(variantName);
+            var button = SizedButton(key, variant);
+
+            using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
+
+            Assert.True(button.Focus(NavigationMethod.Tab), $"'{key}' refused keyboard focus.");
+
+            Assert.Contains(":focus-visible", button.Classes);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.BorderBrush);
+
+            var shadows = RootOf(button).BoxShadow;
+
+            Assert.Equal(1, shadows.Count);
+            Assert.Equal(DesignTokens.ResolveColor("AccentFocusHaloColor", variant), shadows[0].Color);
+            Assert.Equal(3, shadows[0].Spread);
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("AccentFocusHaloBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                PixelBeside(host, button));
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(ButtonThemesAndVariants))]
+        public void APointerPressOnAToggleOrARailRow_DoesNotPaintTheHalo(string key, string variantName)
+        {
+            var variant = ToVariant(variantName);
+            var button = SizedButton(key, variant);
+
+            using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
+
+            Assert.True(button.Focus(NavigationMethod.Pointer), $"'{key}' refused pointer focus.");
+
+            Assert.Contains(":focus", button.Classes);
+            Assert.DoesNotContain(":focus-visible", button.Classes);
+            Assert.Equal(0, RootOf(button).BoxShadow.Count);
+
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant), PixelBeside(host, button));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ADisabledToggleThatIsStillOn_TakesTheDisabledFace(string variantName)
+        {
+            // Contract 5, and the trap Pills.axaml's header spells out: Avalonia walks BasedOn
+            // first, so BaseButton's `:disabled` face is applied BEFORE anything ToggleSegment
+            // declares, and an unqualified `.selected` wins over it. A co-trigger the firmware has
+            // gated off, or the pedal's Single Action / Macro latch on a board in demo mode, then
+            // kept the full accent fill and the on-accent label and carried no disabled signal at
+            // all — both are states the app really reaches. NavPill and FilterChip are guarded the
+            // same way in PillThemeTests.
+            //
+            // ModeOption is not in this theory. It reaches the same face by a different route —
+            // its own `:disabled` is declared after `.selected` and overrides it — which the
+            // ButtonStates matrix already covers.
+            var variant = ToVariant(variantName);
+            var toggle = SizedButton("ToggleSegment", variant);
+
+            toggle.Classes.Add("selected");
+            toggle.IsEnabled = false;
+
+            using var host = ThemedHost.Show(toggle, variant, HostWidth, HostHeight);
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), toggle.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), toggle.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), toggle.Foreground);
+
+            var frame = host.Capture();
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                FramePixels.At(frame, frame.PixelSize.Width / 2, frame.PixelSize.Height / 2));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ADisabledActiveTab_LosesItsUnderlineWithTheRestOfTheState(string variantName)
+        {
+            // The same hole in the other file, and the one the dim face cannot plug on its own: the
+            // `:disabled` style below `:selected` takes the label back, but the mark lives on a
+            // template part that nothing there touches — so a gated active tab wore a full accent
+            // underline over a TextDisabled label. Latent today, because no device disables the
+            // section it is showing; wrong all the same, and a tab is exactly the control an
+            // editor would later gate.
+            var variant = ToVariant(variantName);
+            var strip = Tabs(variant);
+
+            using var host = ThemedHost.Show(strip, variant, HostWidth, HostHeight);
+
+            var active = ContainerAt(strip, 0);
+
+            Assert.True(IsSelected(active), "The fixture's first tab is not the active one.");
+
+            active.IsEnabled = false;
+
+            Assert.True(IsSelected(active), "Disabling the tab cleared the selection; the fixture proves nothing.");
+
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), active.Foreground);
+            Assert.Equal(FontWeight.Normal, active.FontWeight);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)UnderlineOf(active).Background!).Color);
+
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant), UnderlinePixel(host, active));
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(ButtonThemesAndVariants))]
+        public void SelectionAndFocusOnAToggleOrARailRow_CoexistAndStayDistinguishable(string key, string variantName)
+        {
+            // Contract 4 on the two themes that carry `.selected` as a class rather than as a
+            // pseudo-class: the accent fill is selection's, the border and the halo are focus's, and
+            // the selected border yields only because it is written `:not(:focus-visible)`.
+            var variant = ToVariant(variantName);
+            var button = SizedButton(key, variant);
+
+            button.Classes.Add("selected");
+
+            using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
+
+            Assert.Equal(DesignTokens.Resolve("AccentSelectedRingBrush", variant), button.BorderBrush);
+            Assert.Equal(0, RootOf(button).BoxShadow.Count);
+
+            Assert.True(button.Focus(NavigationMethod.Tab), $"'{key}' refused keyboard focus.");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.Background);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.BorderBrush);
+            Assert.Equal(1, RootOf(button).BoxShadow.Count);
+
+            var frame = host.Capture();
+
+            AssertClose(
+                DesignTokens.ResolveBrushColor("AccentBrush", variant),
+                FramePixels.At(frame, frame.PixelSize.Width / 2, frame.PixelSize.Height / 2));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void APressedSegment_SinksPastItsHoverFace(string variantName)
+        {
+            // Avalonia raises `:pointerover` AND `:pressed` while the pointer is down, so both
+            // fills match a segment under the finger and only the hover style's `:not(:pressed)`
+            // decides between them. This is the outcome; the selector that guarantees it rather
+            // than a file order that happens to produce it is
+            // EveryHoverFaceInTheSegmentedFile_YieldsToThePressInItsSelector.
+            var variant = ToVariant(variantName);
+            var segmented = Segmented(variant);
+
+            using var host = ThemedHost.Show(segmented, variant, HostWidth, HostHeight);
+
+            var container = ContainerAt(segmented, 1);
+
+            SetPseudoClasses(container, ":pointerover");
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("SurfaceKeySelectedBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant)),
+                FaceOf(host, container));
+
+            SetPseudoClasses(container, ":pressed");
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("SurfaceRaisedBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant)),
+                FaceOf(host, container));
+        }
+
+        [AvaloniaFact]
+        public void EveryHoverFaceInTheSegmentedFile_YieldsToThePressInItsSelector()
+        {
+            // Contract 5, and the one claim in this file no rendered pixel can reach. A hover fill
+            // and a press fill both match while the pointer is down, so the winner is whichever
+            // Avalonia applied last — the file's order — unless the hover selector says otherwise.
+            // APressedSegment_SinksPastItsHoverFace pins today's outcome and would go on passing
+            // after a reorder made that outcome accidental, which is what this reads the source for.
+            //
+            // Scoped to Segmented.axaml, because both themes in it declare a press face to compete
+            // with. Tabs.axaml deliberately does not: a tab keeps its hover fill all the way down
+            // (see the ContainerStates row that says so), and the qualifier there would strip the
+            // face off a tab under the finger.
+            var markup = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Themes/ControlThemes/Segmented.axaml"]);
+            var guarded = 0;
+
+            foreach (var selector in FaceSelectorsIn(markup).Where(IsHover))
+            {
+                Assert.True(
+                    selector.Contains(":not(:pressed)", StringComparison.Ordinal),
+                    $"The hover face '{selector}' beats the press face only by file order.");
+
+                guarded++;
+            }
+
+            // A guard that matched nothing would pass for the wrong reason. Two: the segment inside
+            // the trough, and the standalone toggle.
+            Assert.Equal(2, guarded);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public void ASelectedSegment_KeepsItsOwnRing(string variantName)
         {
             // Selection has its own border role, so a chosen segment is legible with no focus
@@ -493,6 +754,34 @@ namespace KinesisEdit.Tests.Design
                 .Where(fragment => fragment.Contains("/template/", StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// The selector of every style in <paramref name="markup"/> that paints a face. A style
+        /// that sets no Background cannot disagree with another one about which face is showing.
+        /// </summary>
+        private static IEnumerable<string> FaceSelectorsIn(string markup)
+        {
+            foreach (var style in markup.Split("<Style Selector=\"", StringSplitOptions.None).Skip(1))
+            {
+                var selector = style[..style.IndexOf('"')];
+                var end = style.IndexOf("</Style>", StringComparison.Ordinal);
+                var body = end < 0 ? style : style[..end];
+
+                if (body.Contains("Property=\"Background\"", StringComparison.Ordinal))
+                {
+                    yield return selector;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether <paramref name="selector"/> REQUIRES <c>:pointerover</c> rather than merely
+        /// excluding it: `:not(:pointerover)` names the state and makes the opposite claim.
+        /// </summary>
+        private static bool IsHover(string selector)
+        {
+            return _negation.Replace(selector, string.Empty).Contains(":pointerover", StringComparison.Ordinal);
+        }
+
         private static void AssertContainerFacePaints(string key, string state, string? expectedKey, ThemeVariant variant)
         {
             var isTab = key == "TabStripItem";
@@ -537,9 +826,10 @@ namespace KinesisEdit.Tests.Design
             AssertClose(expected, FaceOf(themed, container));
         }
 
-        private static void AssertButtonFacePaints(string key, string state, string? expectedKey, ThemeVariant variant)
+        /// <summary>A bare button on <paramref name="key"/>, sized so a probe has room beside it.</summary>
+        private static Button SizedButton(string key, ThemeVariant variant)
         {
-            var button = new Button
+            return new Button
             {
                 Theme = Theme(key, variant),
                 Width = ButtonWidth,
@@ -547,6 +837,11 @@ namespace KinesisEdit.Tests.Design
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
+        }
+
+        private static void AssertButtonFacePaints(string key, string state, string? expectedKey, ThemeVariant variant)
+        {
+            var button = SizedButton(key, variant);
 
             using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
 

@@ -143,9 +143,11 @@ namespace KinesisEdit.Tests.Design
                 { "TokenField", "rest", "SurfaceLineBrush" },
                 { "TokenField", "hover", "SurfaceLineHighBrush" },
                 { "TokenField", "armed", "StatusAdvisoryBrush" },
+                { "TokenField", "disabled", "SurfaceLineBrush" },
 
                 { "ComboBox", "rest", "SurfaceLineBrush" },
                 { "ComboBox", "hover", "SurfaceLineHighBrush" },
+                { "ComboBox", "pressed", "SurfaceLineHighBrush" },
                 { "ComboBox", "disabled", "SurfaceLineBrush" },
 
                 { "Slider", "hover", "SurfaceLineBrush" }
@@ -230,6 +232,56 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaTheory]
+        [InlineData("SearchField", "Dark")]
+        [InlineData("SearchField", "Light")]
+        [InlineData("MonoValueField", "Dark")]
+        [InlineData("MonoValueField", "Light")]
+        [InlineData("ComboBox", "Dark")]
+        [InlineData("ComboBox", "Light")]
+        [InlineData("Slider", "Dark")]
+        [InlineData("Slider", "Light")]
+        public void TheFluentDerivedFields_RingWithoutAHalo(string key, string variantName)
+        {
+            // THE DEVIATION, PINNED. Fields.axaml's header carries a table saying these four take
+            // the accent border and no halo, because the halo is a BoxShadow, a BoxShadow can only
+            // be set on a Border, and reaching Fluent's own `Border#PART_BorderElement` would be the
+            // very `/template/` selector this issue exists to delete. It is documented in
+            // docs/app/design-system.md as a deliberate deviation.
+            //
+            // A deviation nobody asserts is just an untested hole: this is what would notice if a
+            // later commit either quietly grew the halo (making the table a lie) or lost the accent
+            // border too (making the ring invisible, which the criterion does not allow). Both
+            // halves are therefore asserted — the border IS there, the shadow is NOT, anywhere in
+            // the control's tree rather than only on a part we could name.
+            var variant = ToVariant(variantName);
+            var control = Sized(Create(ThemeTargets[key].FullName!));
+
+            control.Theme = (ControlTheme)DesignTokens.Resolve(key, variant);
+
+            using var host = ThemedHost.Show(control, variant, HostWidth, HostHeight);
+
+            Assert.True(control.Focus(NavigationMethod.Tab), $"'{key}' refused keyboard focus.");
+
+            AssertClose(
+                DesignTokens.ResolveBrushColor("AccentBrush", variant),
+                BorderPixel(host, RingOf(control)));
+
+            var shadowed = control.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(border => border.BoxShadow.Count > 0)
+                .Select(border => border.Name ?? border.GetType().Name)
+                .ToArray();
+
+            Assert.True(shadowed.Length == 0, $"'{key}' grew a halo on: {string.Join(", ", shadowed)}.");
+
+            // ...and the pixel just outside it is the canvas, not a ring: the border is where the
+            // ring stops, which is the whole of what the table claims.
+            AssertClose(
+                DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant),
+                PixelBeside(host, RingOf(control)));
+        }
+
+        [AvaloniaTheory]
         [InlineData("CheckBox", "Dark")]
         [InlineData("CheckBox", "Light")]
         [InlineData("SelectableListRow", "Dark")]
@@ -295,6 +347,75 @@ namespace KinesisEdit.Tests.Design
             AssertClose(
                 DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant),
                 PixelBeside(host, root));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void AnArmedTokenField_DoublesItsBorder(string variantName)
+        {
+            // Fields.axaml: "The 2px thickness is what carries it at a glance across a panel of
+            // three such fields." The theme promised it in a comment and the setter block delivered
+            // 1px, because the state matrix pinned only the fill and the brush — a token field
+            // waiting for a keystroke was therefore the same weight as one merely sitting there,
+            // and the whole of "at a glance" was gone. The thickness is the assertion, so the
+            // comment and the setters cannot drift apart again.
+            var variant = ToVariant(variantName);
+            var field = Sized(new Border());
+
+            field.Theme = (ControlTheme)DesignTokens.Resolve("TokenField", variant);
+
+            using var host = ThemedHost.Show(field, variant, HostWidth, HostHeight);
+
+            Assert.Equal(new Thickness(1), field.BorderThickness);
+
+            ApplyState(field, "armed");
+
+            Assert.Equal(new Thickness(2), field.BorderThickness);
+
+            // And at the glass: two full columns of the advisory hue, where a 1px border leaves the
+            // second column showing the tint face behind it.
+            var frame = host.Capture();
+            var origin = field.TranslatePoint(new Point(0, field.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The field is not in the window's visual tree.");
+            var advisory = DesignTokens.ResolveBrushColor("StatusAdvisoryBrush", variant);
+
+            AssertClose(advisory, FramePixels.At(frame, (int)origin.X, (int)origin.Y));
+            AssertClose(advisory, FramePixels.At(frame, (int)origin.X + 1, (int)origin.Y));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ASlidersFrame_IsThereToBeRingedAndNothingElse(string variantName)
+        {
+            // Fields.axaml gives the slider a border that is present-but-transparent at rest so that
+            // acquiring one on hover or focus costs no reflow, and drops it entirely when disabled
+            // rather than dimming it ("the track and thumb already state the disabled case ... a
+            // second grey outline around them only adds noise"). Neither end of that is a colour a
+            // pixel probe can read — transparent is whatever is behind it — so both are asserted on
+            // the property the frame is drawn from, with the thickness that makes the claim mean
+            // anything.
+            var variant = ToVariant(variantName);
+            var slider = Sized(new Slider());
+
+            slider.Theme = (ControlTheme)DesignTokens.Resolve("Slider", variant);
+
+            using var host = ThemedHost.Show(slider, variant, HostWidth, HostHeight);
+
+            Assert.Equal(new Thickness(1), slider.BorderThickness);
+            Assert.Equal(Colors.Transparent, ((ISolidColorBrush)slider.BorderBrush!).Color);
+
+            ApplyState(slider, "hover");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), slider.BorderBrush);
+
+            slider.IsEnabled = false;
+
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(new Thickness(1), slider.BorderThickness);
+            Assert.Equal(Colors.Transparent, ((ISolidColorBrush)slider.BorderBrush!).Color);
         }
 
         [AvaloniaTheory]
@@ -502,6 +623,10 @@ namespace KinesisEdit.Tests.Design
             // strongest: an inset selection ring and a focus halo both read naturally as literals.
             // Themes/Tokens.axaml is the only file in the app that may hold one. (A bare `#` is not
             // enough to look for — `/template/ Border#Root` is the correct way to name a part.)
+            //
+            // Scoped to this file because these are the seven themes it owns;
+            // ControlThemeBridgeTests runs the same scan over the whole directory, so a file added
+            // to the layer later is covered without anybody remembering to extend a list.
             var fields = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Themes/ControlThemes/Fields.axaml"]);
             var literals = System.Text.RegularExpressions.Regex
                 .Matches(fields, "=\"#[0-9A-Fa-f]{3,8}\"")

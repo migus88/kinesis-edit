@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -23,7 +24,7 @@ namespace KinesisEdit.Tests.Design
     /// little wrong — which is exactly what no rendering test can see.
     /// </para>
     /// </summary>
-    public class ControlThemeBridgeTests
+    public partial class ControlThemeBridgeTests
     {
         /// <summary>
         /// Directories whose XAML is allowed to name a template part. Only the layer that declares
@@ -351,11 +352,15 @@ namespace KinesisEdit.Tests.Design
             // ControlTheme that declares the part, and `PART_` is Fluent's naming — reaching for one
             // means reaching into a template we do not own, which breaks the moment Fluent moves it.
             // Comments count: the convention has to stop being described as current, too.
+            //
+            // The scan is over every embedded .axaml, and the project embeds them by glob
+            // (KinesisEdit.Tests.csproj), so a view added to a folder that does not exist yet is
+            // covered the day it is written — there is no list here to forget to extend.
             var offenders = new List<string>();
 
             foreach (var (path, xaml) in AuthoredXaml.Files())
             {
-                if (path.StartsWith(ControlThemeDirectory, StringComparison.Ordinal))
+                if (IsControlThemeLayer(path))
                 {
                     continue;
                 }
@@ -372,6 +377,83 @@ namespace KinesisEdit.Tests.Design
             }
 
             Assert.True(offenders.Count == 0, string.Join(Environment.NewLine, offenders));
+
+            AssertTheLayerWasScanned();
+        }
+
+        [AvaloniaFact]
+        public void NoAuthoredMarkupAnywhere_NamesAPartWithFluentsPrefix()
+        {
+            // The half the exemption above cannot carry. `/template/` is allowed inside
+            // Themes/ControlThemes/ — targeting a part your own ControlTheme declares is idiomatic
+            // — but `PART_` is banned there too: contract 2 says "name parts `Root`, `Halo`,
+            // `Underline`, ... never with a `PART_` prefix", because that prefix is what re-registers
+            // a presenter with its ContentControl and puts the template back on the hook Styles/
+            // used to reach into. Skipping those files wholesale left the ban unenforced in the one
+            // directory that writes templates.
+            //
+            // Comments are stripped for this scan and only for this scan: Shared.axaml's contract
+            // and Fields.axaml's BasedOn table both quote the very name they forbid, and a raw
+            // search finds the explanation as readily as an offence.
+            var offenders = AuthoredXaml.Files()
+                .Where(file => AuthoredXaml.WithoutComments(file.Value).Contains("PART_", StringComparison.Ordinal))
+                .Select(file => file.Key)
+                .ToArray();
+
+            Assert.True(offenders.Length == 0, $"These name a PART_: {string.Join(", ", offenders)}.");
+
+            AssertTheLayerWasScanned();
+        }
+
+        [AvaloniaFact]
+        public void NoControlThemeInTheLayer_HardcodesAColour()
+        {
+            // Contract 7: "A hex literal outside Themes/Tokens.axaml is a bug and fails a test."
+            // ResourceReferenceTests.NoView_HardcodesAHexColour skips everything under `Themes/`,
+            // because that is where the token definitions live — which leaves this whole directory
+            // outside it, and a control theme is where the temptation is strongest: an inset
+            // selection ring and a focus halo both read naturally as literals.
+            //
+            // Over the directory rather than over a list of the seven files it currently holds, so
+            // the eighth is covered the day it is written.
+            var offenders = new List<string>();
+
+            foreach (var (path, xaml) in AuthoredXaml.Files().Where(file => IsControlThemeLayer(file.Key)))
+            {
+                foreach (Match literal in HexLiteralPattern().Matches(AuthoredXaml.WithoutComments(xaml)))
+                {
+                    offenders.Add($"{path}: {literal.Value}");
+                }
+            }
+
+            Assert.True(offenders.Count == 0, string.Join(Environment.NewLine, offenders));
+
+            AssertTheLayerWasScanned();
+        }
+
+        /// <summary>A colour literal in an attribute value: <c>Foo="#RRGGBB"</c>.</summary>
+        [GeneratedRegex("=\"#[0-9A-Fa-f]{3,8}\"")]
+        private static partial Regex HexLiteralPattern();
+
+        /// <summary>
+        /// The scans above are only worth anything if the layer's own files reached the test
+        /// assembly: an exemption keyed on a directory that no longer exists, or a glob that stopped
+        /// matching, would leave either guard passing over nothing.
+        /// </summary>
+        private static void AssertTheLayerWasScanned()
+        {
+            var scanned = AuthoredXaml.Files()
+                .Keys
+                .Where(IsControlThemeLayer)
+                .ToArray();
+
+            Assert.Contains($"{ControlThemeDirectory}Shared.axaml", scanned);
+            Assert.True(scanned.Length >= 7, $"Only {scanned.Length} control-theme files were scanned.");
+        }
+
+        private static bool IsControlThemeLayer(string path)
+        {
+            return path.StartsWith(ControlThemeDirectory, StringComparison.Ordinal);
         }
 
         [AvaloniaFact]

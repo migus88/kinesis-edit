@@ -25,8 +25,14 @@
 
   <!--
     ONE TAB. 12px type stepping 400 -> 500 and TextMuted -> TextPrimary as it becomes active, which
-    is the whole of the inactive/active distinction besides the underline (mockups 1e, 2a: inactive
-    `font: 400 12px/1; color: #6C757C`, active `font: 500 12px/1; color: #E8EBED`).
+    is the whole of the inactive/active distinction besides the underline (mockups 1e, 2a draw the
+    two at `font: 400 12px/1` and `font: 500 12px/1`).
+
+    Active is the mock's own colour, TextPrimary. Inactive is one step brighter than the mock's: 1e
+    sets it at what the dark variant calls TextFaint, and this takes TextMuted, because that is the
+    role every other unselected control label in the app rests at — a segment (Segmented.axaml), a
+    filter chip (Pills.axaml) — and a tab is a control label rather than incidental text. TextFaint
+    is the placeholder step (Themes/Controls.axaml).
   -->
   <ControlTheme x:Key="TabStripItem" TargetType="TabStripItem">
     <Setter Property="Background" Value="Transparent" />
@@ -102,12 +108,19 @@
     <!-- Active: the weight, the colour and the mark. The mark is a template part rather than the
          Root's bottom border - see the header - and it is the one thing here a state cannot set on
          the control, because a tab has no property for it. Contract 2: reaching into a template
-         this ControlTheme itself declares is the idiomatic form of exactly that. -->
-    <Style Selector="^:selected">
+         this ControlTheme itself declares is the idiomatic form of exactly that.
+
+         Contract 5, and the qualifier Pills.axaml's header calls easy to miss: `:not(:disabled)`.
+         The dim face below would win the label back on its own — it is written after this - but
+         nothing there touches the mark, which lives on a part rather than on the control, so an
+         unqualified `:selected` would leave a gated tab wearing a full accent underline over a
+         TextDisabled label. Said in the selector instead, so the underline goes out with the rest
+         of the state rather than needing a reset of its own. -->
+    <Style Selector="^:selected:not(:disabled)">
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="FontWeight" Value="Medium" />
     </Style>
-    <Style Selector="^:selected /template/ Border#Underline">
+    <Style Selector="^:selected:not(:disabled) /template/ Border#Underline">
       <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     </Style>
 

@@ -212,7 +212,9 @@
       </Grid>
 
       <!-- Per-key colouring (§4): the same generic picture the Keys tab uses, with the click
-           wired to the colour-assign command instead of the remap one. -->
+           wired to the colour-assign command instead of the remap one — and with the LED strip
+           asked for, which is what makes this picture a lighting surface and the Keys tab's not
+           (an unlit key hatches here and shows nothing at all there). -->
       <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsPerKeyColors}">
         <TextBlock Text="Click a key to paint it with the selected colour; black erases it."
                    Classes="body muted" />
@@ -220,6 +222,7 @@
         <Border Classes="keyboardBoard"
                 IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
           <controls:KeyboardView DataContext="{Binding Board}"
+                                 ShowsLedStrips="True"
                                  KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).AssignKeyColorCommand}" />
         </Border>
       </StackPanel>

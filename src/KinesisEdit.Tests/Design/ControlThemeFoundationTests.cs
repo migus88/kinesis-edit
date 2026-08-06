@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using KinesisEdit.Tests.Headless;
 
@@ -145,8 +147,12 @@ namespace KinesisEdit.Tests.Design
                 { "ghost", "pressed", "SurfaceLineBrush" },
                 { "ghost", "disabled", null },
 
+                // A link is text, so every one of its states is a foreground move and the face
+                // stays the canvas throughout; the ramp itself is pinned by
+                // ALinksStates_MoveItsLabelBecauseItHasNoFaceToMove below.
                 { "link", "rest", null },
                 { "link", "hover", null },
+                { "link", "pressed", null },
                 { "link", "disabled", null },
 
                 { "rowButton", "rest", null },
@@ -172,17 +178,22 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaTheory]
-        [InlineData("Dark")]
-        [InlineData("Light")]
-        public void KeyboardFocus_PaintsTheHalo(string variantName)
+        [MemberData(nameof(BridgedClasses))]
+        public void KeyboardFocus_PaintsTheHalo(string className, string key, string variantName)
         {
             // "Ring is 1px accent border + 3px 28% halo, never an outline offset" (2b). Tab and the
             // arrow keys summon it, which is exactly Avalonia's :focus-visible.
+            //
+            // Every one of the seven, not a representative: the ring is BaseButton's and each theme
+            // is free to declare a BorderBrush of its own, so "deriving was enough" is a claim about
+            // each ramp separately. The cases are shared with the bridge theory above, so the two
+            // can never disagree about what the app's button roles are.
             var variant = ToVariant(variantName);
-            var button = Sized(new Button { Classes = { "secondary" }, Content = "Home" });
+            var button = Sized(new Button { Classes = { className }, Content = "Home" });
 
             using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
 
+            Assert.Same(DesignTokens.Resolve(key, variant), button.Theme);
             Assert.True(button.Focus(NavigationMethod.Tab), "The button refused keyboard focus.");
 
             Assert.Contains(":focus-visible", button.Classes);
@@ -210,17 +221,17 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaTheory]
-        [InlineData("Dark")]
-        [InlineData("Light")]
-        public void APointerPress_DoesNotPaintTheHalo(string variantName)
+        [MemberData(nameof(BridgedClasses))]
+        public void APointerPress_DoesNotPaintTheHalo(string className, string key, string variantName)
         {
             // The other half of the rule: "mouse clicks suppress it". Nothing tracks the input
             // source by hand — NavigationMethod.Pointer simply does not raise :focus-visible.
             var variant = ToVariant(variantName);
-            var button = Sized(new Button { Classes = { "secondary" }, Content = "Home" });
+            var button = Sized(new Button { Classes = { className }, Content = "Home" });
 
             using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
 
+            Assert.Same(DesignTokens.Resolve(key, variant), button.Theme);
             Assert.True(button.Focus(NavigationMethod.Pointer), "The button refused pointer focus.");
 
             Assert.Contains(":focus", button.Classes);
@@ -230,6 +241,73 @@ namespace KinesisEdit.Tests.Design
             AssertClose(
                 DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant),
                 PixelBesideTheButton(host, button));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ARealPointerPress_LeavesTheRingOffWhereARealTabKeyTurnsItOn(string variantName)
+        {
+            // The suppression rule driven through Avalonia's own input pipeline rather than through
+            // a NavigationMethod hint. The theory above asserts the *consequence* of a press — focus
+            // acquired with NavigationMethod.Pointer paints no halo — and takes on trust that a
+            // press is what produces that navigation method. This asserts the whole chain: a real
+            // button-down at the button's own coordinates, and a real Tab key, on one window.
+            //
+            // It is the acceptance criterion's exact wording ("suppressed on pointer press"), and it
+            // is the half no amount of pseudo-class poking can reach.
+            var variant = ToVariant(variantName);
+            var clicked = Sized(new Button { Classes = { "secondary" }, Content = "Home" });
+            var tabbed = Sized(new Button { Classes = { "secondary" }, Content = "Scan" });
+            var stack = new StackPanel { Children = { clicked, tabbed } };
+
+            using var host = ThemedHost.Show(stack, variant, HostWidth, HostHeight * 2);
+
+            var centre = clicked.TranslatePoint(new Point(clicked.Bounds.Width / 2, clicked.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The button is not in the window's visual tree.");
+
+            host.Window.MouseMove(centre);
+            host.Window.MouseDown(centre, MouseButton.Left);
+            host.Window.MouseUp(centre, MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(clicked.IsFocused, "The press did not focus the button it landed on.");
+            Assert.Contains(":focus", clicked.Classes);
+            Assert.DoesNotContain(":focus-visible", clicked.Classes);
+            Assert.Equal(0, RootOf(clicked).BoxShadow.Count);
+
+            // ...and the very next Tab, from the same window, brings the ring back on the button it
+            // moves to. Same session, so this cannot pass by the focus system never having worked.
+            host.Window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(tabbed.IsFocused, "Tab did not move focus to the next button.");
+            Assert.Contains(":focus-visible", tabbed.Classes);
+            Assert.Equal(1, RootOf(tabbed).BoxShadow.Count);
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("AccentFocusHaloBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                PixelBesideTheButton(host, tabbed));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ALinksStates_MoveItsLabelBecauseItHasNoFaceToMove(string variantName)
+        {
+            // The one ramp the face matrix cannot describe: a link is text on the canvas in every
+            // state, so all four of its rows in ButtonStates() expect the same nothing. The accent
+            // walk is the whole of what the theme does, and this is the only place it is pinned.
+            var variant = ToVariant(variantName);
+
+            AssertLabelPaints("rest", "AccentBrush", variant);
+            AssertLabelPaints("hover", "AccentLinkHoverBrush", variant);
+            AssertLabelPaints("pressed", "AccentSelectedRingBrush", variant);
+            AssertLabelPaints("disabled", "TextDisabledBrush", variant);
         }
 
         [AvaloniaTheory]
@@ -396,14 +474,45 @@ namespace KinesisEdit.Tests.Design
             Assert.DoesNotContain("PART_", bridge, StringComparison.Ordinal);
         }
 
+        /// <summary>The label colour a <c>link</c> ends up with in <paramref name="state"/>.</summary>
+        private static void AssertLabelPaints(string state, string expectedKey, ThemeVariant variant)
+        {
+            var button = Sized(new Button { Classes = { "link" }, Content = "Which board do I have?" });
+
+            using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
+
+            RaiseState(button, state);
+
+            Assert.Equal(DesignTokens.Resolve(expectedKey, variant), button.Foreground);
+        }
+
         private static void AssertFacePaints(string className, string state, string? expectedKey, ThemeVariant variant)
         {
             var button = Sized(new Button { Classes = { className } });
 
             using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
 
-            // After Show, not before: Button re-syncs `:pressed` from IsPressed when its template is
-            // applied, so a pressed state raised beforehand is wiped by the first layout pass.
+            RaiseState(button, state);
+
+            var canvas = DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant);
+            var expected = expectedKey is null
+                ? canvas
+                : Composite(DesignTokens.ResolveBrushColor(expectedKey, variant), canvas);
+
+            var frame = host.Capture();
+            var painted = FramePixels.At(frame, frame.PixelSize.Width / 2, frame.PixelSize.Height / 2);
+
+            AssertClose(expected, painted);
+        }
+
+        /// <summary>
+        /// Puts <paramref name="button"/> into <paramref name="state"/>. Called after
+        /// <see cref="ThemedHost.Show"/>, never before: Button re-syncs <c>:pressed</c> from
+        /// IsPressed when its template is applied, so a pressed state raised beforehand is wiped by
+        /// the first layout pass.
+        /// </summary>
+        private static void RaiseState(Button button, string state)
+        {
             switch (state)
             {
                 case "rest":
@@ -423,16 +532,6 @@ namespace KinesisEdit.Tests.Design
                 default:
                     throw new ArgumentOutOfRangeException(nameof(state), state, "Unknown button state.");
             }
-
-            var canvas = DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant);
-            var expected = expectedKey is null
-                ? canvas
-                : Composite(DesignTokens.ResolveBrushColor(expectedKey, variant), canvas);
-
-            var frame = host.Capture();
-            var painted = FramePixels.At(frame, frame.PixelSize.Width / 2, frame.PixelSize.Height / 2);
-
-            AssertClose(expected, painted);
         }
 
         /// <summary>The <c>Border#Root</c> of a themed button's own template.</summary>

@@ -77,6 +77,9 @@
     is where the caret now is, and the user is about to type — so the accent border of the two
     TextBox themes rides `:focus` (any focus) while `:focus-visible` is what the halo would ride if
     it were reachable. That is the one place the ring is deliberately louder than on a button.
+
+    ComboBox rides `:focus` too, for a related but not identical reason — an open popup has to be
+    anchored to something that looks focused; see its own comment.
   -->
 
   <!--
@@ -86,8 +89,10 @@
     from anywhere in the editor.
     ================================================================================================
 
-    Nothing consumes this yet: the Search Keys panel is rebuilt on it in a later issue, and the
-    theme landing first is deliberate so the panel has something to name.
+    Views/SearchKeysOverlayView.axaml wears it, through the `TextBox.searchField` bridge in
+    Styles/Buttons.axaml. That panel is otherwise still in its pre-redesign layout and is rebuilt on
+    this theme in a later issue; the query box came across early because the glyph, the geometry and
+    the ring are the theme's to own either way.
 
     THE LEADING GLYPH is a Path, not the mockup's `⌕` character, and that is a considered deviation
     from docs/design/mockups.md's transcription:
@@ -234,6 +239,7 @@
     <Style Selector="^.armed">
       <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
     </Style>
 
     <Style Selector="^:disabled">

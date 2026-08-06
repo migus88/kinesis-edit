@@ -20,6 +20,11 @@
          face, which is why every state's BorderBrush setter carries `:not(:focus-visible)` and no
          state's Background setter does.
 
+         `:disabled` sits outside it from the other side and beats the whole ladder: the board is
+         dimmed as a unit while a profile loads, so `.modified`, `.selected` and `.listening` all
+         carry `:not(:disabled)` and BaseButton's inset face is what a dead cap wears. `.locked` is
+         the exception and needs no qualifier — its face IS the inset surface, so the two agree.
+
       2. SELECTION AND FOCUS AT THE SAME TIME (contract 4, and the acceptance criterion of the
          issue). Both are drawn as spread-only shadows in the same accent at almost the same alpha —
          2px at 30% for selection, 3px at 28% for focus — so laying them on the same element would
@@ -125,6 +130,9 @@
               it, so a 2px spread from there paints exactly the cap's outer 2px — the inward half of
               the concentric pair described at the top of this file. Transparent rather than absent
               because a Border with no brush at all draws nothing, shadow included.
+
+              That -1 is measured against a 1px border, so LISTENING — the one state that doubles
+              the thickness — restates it; see the note beside that state.
             -->
             <Border x:Name="Ring"
                     Margin="-1"
@@ -145,11 +153,17 @@
       Bottom of the ladder, so it names every state above it. Hover is in that list for the face and
       not for the border, which is what the old matrix did as well: passing the pointer over a
       remapped key lightens it without taking away the accent edge that says it was remapped.
+
+      `:not(:disabled)` is on this state and on the two below for the reason Pills.axaml's header
+      gives: Avalonia walks BasedOn first, so BaseButton's `:disabled` face is applied BEFORE
+      anything declared here and an unqualified class would win over it. The board is disabled as a
+      whole while a profile loads, and a remapped cap that kept its accent fill and accent edge
+      there would leave the picture looking live while nothing on it answered.
     -->
-    <Style Selector="^.modified:not(.locked):not(:pointerover):not(.selected):not(.listening)">
+    <Style Selector="^.modified:not(:disabled):not(.locked):not(:pointerover):not(.selected):not(.listening)">
       <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
     </Style>
-    <Style Selector="^.modified:not(.locked):not(.selected):not(.listening):not(:focus-visible)">
+    <Style Selector="^.modified:not(:disabled):not(.locked):not(.selected):not(.listening):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
 
@@ -192,15 +206,17 @@
 
       The ring is not qualified against `.listening`: the key that is listening is the key that is
       selected, and losing the ring at the moment the cap starts waiting for a keystroke would make
-      it look like the selection had moved. The face and the border do yield to listening.
+      it look like the selection had moved. The face and the border do yield to listening. It IS
+      qualified against `:disabled`, like the face and the border: the ring is drawn in the accent,
+      and a dead cap wears no accent.
     -->
-    <Style Selector="^.selected:not(.listening)">
+    <Style Selector="^.selected:not(:disabled):not(.listening)">
       <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
     </Style>
-    <Style Selector="^.selected:not(.listening):not(:focus-visible)">
+    <Style Selector="^.selected:not(:disabled):not(.listening):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
-    <Style Selector="^.selected /template/ Border#Ring">
+    <Style Selector="^.selected:not(:disabled) /template/ Border#Ring">
       <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
     </Style>
 
@@ -214,12 +230,26 @@
       Styles/Keyboard.axaml and animates the Button's own Opacity, not a template part, so replacing
       the template here leaves it untouched.
     -->
-    <Style Selector="^.listening">
+    <Style Selector="^.listening:not(:disabled)">
       <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
-    <Style Selector="^.listening:not(:focus-visible)">
+    <Style Selector="^.listening:not(:disabled):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    </Style>
+
+    <!--
+      ...and the ring moves with that thickness. `Border#Ring`'s `Margin="-1"` is measured against a
+      1px border: the panel sits 3px inside the cap (1px border + 2px padding) and -1 walks the ring
+      back out to 2, where its 2px spread paints exactly the cap's outer 2px. Doubling the border
+      puts the panel 4px in, so the same -1 would leave the band floating a pixel inside the cap's
+      edge instead of flush with it — visible on the one cap the eye is on, since a listening cap is
+      by construction the selected cap and wears both.
+
+      Qualified exactly as the thickness above is, so the two can never drift apart.
+    -->
+    <Style Selector="^.listening:not(:disabled) /template/ Border#Ring">
+      <Setter Property="Margin" Value="-2" />
     </Style>
 
     <!-- The focus ring itself comes from BaseButton and is not restated: accent on the border,

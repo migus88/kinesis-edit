@@ -39,25 +39,32 @@
                  VerticalAlignment="Center" />
 
       <!-- The key's LED colour (ledN.txt), shown as a strip rather than as the cap background so
-           the cap's own state stays readable next to it.
+           the cap's own state stays readable next to it. Three states, and they need two answers
+           from two different places:
 
-           The strip is always drawn, and it is hatched underneath: "off is hatched, never black"
-           (docs/design/handoff.md, "Focus, selection, key badges"; and again in the lighting screen
-           as "off keys are hatched, not black"), because black is a colour a key can legitimately
-           be lit. So the hatch is the strip's own background and the colour, when there is one,
-           covers it — an unlit key shows the hatch rather than vanishing or going dark, and the cap
-           does not change height when the lighting model arrives.
+             1. LIGHTING IS NOT ON SCREEN — no strip at all. The Keys tab edits assignments; a row
+                of LED bars under every cap on it is a readout of something nobody asked about, and
+                the mockups draw no such row (docs/design/mockups.md, 1e and 2a).
+             2. LIGHTING IS ON SCREEN AND THIS LED IS OFF — the hatch. "Off is hatched, never black"
+                (docs/design/handoff.md:105 and :151, and again at mockups.md:176 and :333), because
+                black is a colour a key can legitimately be lit.
+             3. LIGHTING IS ON SCREEN AND THIS LED IS LIT — the colour, covering the hatch.
 
-           The view model cannot yet tell "this key's LED is off" from "no lighting data reached
-           this board": KeyColorOverlay.Build drops black entries and yields nothing at all for a
-           device without per-key RGB, and both arrive here as HasColorOverlay == false. Every board
-           the app can currently draw has per-key RGB, so the two coincide; a device whose LEDs are
-           not per-key needs the distinction made in the view model rather than guessed at here. -->
+           HasColorOverlay is the second answer and means exactly "this key is lit". The first is
+           ShowsLedStrip, and it is a property of the PICTURE rather than of the key: the Keys tab
+           and the Lighting tab render the same KeyboardKeyViewModel instances (see
+           KeyboardLayerViewModel.ApplyColorOverlays), so no state on the cap's DataContext could
+           ever separate them. KeyboardView owns it and hands it to each cap it builds.
+
+           The cap does not change size either way — KeyboardPanel lays every cap out from its unit
+           rectangle — but the caption's box inside it is 5px shorter on a lighting board, which is
+           the row this strip occupies. -->
       <Border Grid.Row="1"
               Height="3"
               CornerRadius="{DynamicResource RadiusChip}"
               Margin="1,2,1,0"
               ClipToBounds="True"
+              IsVisible="{Binding $parent[controls:KeyCapView].ShowsLedStrip}"
               Background="{DynamicResource HatchBrush}">
         <Border CornerRadius="{DynamicResource RadiusChip}"
                 IsVisible="{Binding HasColorOverlay}"

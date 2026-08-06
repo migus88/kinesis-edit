@@ -604,8 +604,12 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Re-paints the colour strips of the shown picture. Core's model announces nothing
-        /// (docs/app/keyboard-editor.md, invariant 3), and the Keys tab shares these very cap view
-        /// models, so one refresh updates both tabs.
+        /// (docs/app/keyboard-editor.md, invariant 3), so the map has to be pushed in by hand.
+        /// <para>
+        /// The Keys tab shares these very cap view models, so the colours land on its caps too —
+        /// but its picture asks for no LED strip (<c>KeyboardView.ShowsLedStrips</c>), so nothing
+        /// of this is drawn there.
+        /// </para>
         /// </summary>
         private void RefreshOverlays()
         {

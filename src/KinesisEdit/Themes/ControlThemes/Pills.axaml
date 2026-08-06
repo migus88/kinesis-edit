@@ -60,8 +60,10 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
 
-    <!-- 12 horizontal by 4 vertical: the pill rhythm of the toolbar chip, off the 4px grid.
-         Geometry.axaml names no pill padding because this is the only shape that uses it. -->
+    <!-- 12 horizontal by 4 vertical: the pill rhythm of the toolbar chip, from the mockup. Not one
+         of the six spacing steps — this is a control's internal rhythm rather than a gap between
+         controls — and Geometry.axaml names no pill padding, because this is the only shape that
+         uses it. -->
     <Setter Property="Padding" Value="12,4" />
 
     <!-- "Status changes cross-fade the chip's fill over 220 ms; text swaps are instant" (2b). The

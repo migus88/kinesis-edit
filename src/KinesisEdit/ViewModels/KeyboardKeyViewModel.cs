@@ -96,7 +96,12 @@ namespace KinesisEdit.ViewModels
             }
         }
 
-        /// <summary>Whether the key carries a colour overlay.</summary>
+        /// <summary>
+        /// Whether this key's LED is <b>lit</b>. It is not "should the cap draw an LED strip" — the
+        /// Keys tab and the Lighting tab render the same cap view models, so that question is the
+        /// picture's (<c>KeyboardView.ShowsLedStrips</c>) and an unlit key on a lighting board is
+        /// hatched rather than absent.
+        /// </summary>
         public bool HasColorOverlay => ColorOverlayHex is not null;
 
         private readonly KeyVisual _visual;

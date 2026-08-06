@@ -156,6 +156,43 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public void TheStatusPill_HasNoStateButTheOneItIsReporting(string variantName)
+        {
+            // Pills.axaml: "There is no hover, no press and no focus state, and that is the point
+            // rather than an omission: a readout has no states but the one it is reporting."
+            //
+            // An absence nothing asserts is indistinguishable from an absence somebody forgot, and
+            // this one is load bearing: giving the pill a hit target and a tab stop would be a lie
+            // about what it is, and would put a focus ring on a thing that cannot be actioned. So
+            // the pointer states are raised and the face is required not to move, and the pill is
+            // required to refuse focus outright.
+            var variant = ToVariant(variantName);
+            var pill = SizedBorder(StatusPill(variant, "ok"));
+
+            using var host = ThemedHost.Show(pill, variant, HostWidth, HostHeight);
+
+            SetPseudoClasses(pill, ":pointerover", ":pressed");
+
+            Assert.Equal(DesignTokens.Resolve("StatusOkTintBrush", variant), pill.Background);
+            Assert.Equal(DesignTokens.Resolve("StatusOkTintBorderBrush", variant), pill.BorderBrush);
+
+            // ...and at the glass, still the ok tint over the canvas and nothing a pointer added.
+            var frame = host.Capture();
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("StatusOkTintBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                FramePixels.At(frame, frame.PixelSize.Width / 2, frame.PixelSize.Height / 2));
+
+            Assert.False(pill.Focusable, "The readout took a tab stop.");
+            Assert.False(pill.Focus(NavigationMethod.Tab), "The readout accepted keyboard focus.");
+            Assert.DoesNotContain(":focus-visible", pill.Classes);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public void TheStatusPill_KeepsTheCrossFadeTheBudgetNames(string variantName)
         {
             // "Status changes cross-fade the chip's fill over 220 ms" (2b), and the reason the pill
@@ -448,6 +485,31 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(DesignTokens.Resolve("SurfaceBarBrush", variant), chip.Background);
         }
 
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheKbdChip_HasNoStateButTheDisabledOne(string variantName)
+        {
+            // Pills.axaml: "No hover, no press and no focus, for the same reason as StatusPill; only
+            // `:disabled`". A legend prints a key the user is meant to press somewhere else — it is
+            // never itself a target — so the same absence is pinned here as on the readout above,
+            // and the one state it does have is covered by ADisabledKbdChip_GoesQuietWithoutLosingItsFace.
+            var variant = ToVariant(variantName);
+            var chip = ThemedChip(variant, new TextBlock { Text = "Esc" });
+
+            using var host = ThemedHost.Show(chip, variant, HostWidth, HostHeight);
+
+            SetPseudoClasses(chip, ":pointerover", ":pressed");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceBarBrush", variant), chip.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineHighBrush", variant), chip.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("TextSecondaryBrush", variant), chip.Foreground);
+
+            Assert.False(chip.Focusable, "The legend took a tab stop.");
+            Assert.False(chip.Focus(NavigationMethod.Tab), "The legend accepted keyboard focus.");
+            Assert.DoesNotContain(":focus-visible", chip.Classes);
+        }
+
         [AvaloniaFact]
         public void TheKbdChipTemplate_NamesItsRootTheWayTheContractSays()
         {
@@ -620,7 +682,7 @@ namespace KinesisEdit.Tests.Design
         /// Raises pseudo-classes by hand. The headless session has no pointer, so <c>:pointerover</c>
         /// and <c>:pressed</c> are set through the same interface Avalonia's own input code uses.
         /// </summary>
-        private static void SetPseudoClasses(Button pill, params string[] pseudoClasses)
+        private static void SetPseudoClasses(Control pill, params string[] pseudoClasses)
         {
             var classes = (IPseudoClasses)pill.Classes;
 

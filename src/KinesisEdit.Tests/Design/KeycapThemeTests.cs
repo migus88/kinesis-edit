@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using KinesisEdit.Controls;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.Tests.ViewModels;
+using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Tests.Design
 {
@@ -351,6 +352,23 @@ namespace KinesisEdit.Tests.Design
             // means here: neither state has swallowed the other's ring.
             AssertClose(focused.Outside, both.Outside);
             AssertClose(selected.Inside, both.Inside);
+
+            // ...and one control the comparisons above cannot supply on their own. The focused-only
+            // cap rests on SurfaceRaised while a selected one rests on SurfaceKeySelected, so the
+            // inside probe of `focused` differs from `both` in the FACE as well as in the ring, and
+            // "selection adds something inside" would hold even if the ring were never drawn. A
+            // hovered cap wears the selected face with no selection ring at all, which isolates the
+            // ring as the single variable.
+            var faceOnly = Sample(variant, [], focused: true, hovered: true);
+
+            Assert.True(
+                Distance(both.Inside, faceOnly.Inside) > 8,
+                "The selection ring paints nothing over a cap that already wears the selected face: "
+                + $"both painted {both.Inside}.");
+
+            // The other half of the isolation: with the ring the only difference, the two are still
+            // the same OUTSIDE, so the inward ring provably stays out of the neighbour's 4px gap.
+            AssertClose(faceOnly.Outside, both.Outside);
         }
 
         [AvaloniaTheory]
@@ -370,8 +388,170 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(DesignTokens.Resolve("SurfaceKeySelectedBrush", variant), cap.Background);
             Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), cap.BorderBrush);
-            Assert.Equal(3, RootOf(cap).BoxShadow[0].Spread);
-            Assert.Equal(2, RingOf(cap).BoxShadow[0].Spread);
+
+            var halo = RootOf(cap).BoxShadow;
+            var ring = RingOf(cap).BoxShadow;
+
+            // Exactly one each: the failure this guards is the two collapsing onto one element,
+            // where they would sum into a single denser band instead of a concentric pair.
+            Assert.Equal(1, halo.Count);
+            Assert.Equal(1, ring.Count);
+
+            // The design draws them 3px at 28% outward and 2px at 30% inward, which is what keeps
+            // them legible as two marks rather than as one thick one.
+            Assert.Equal(3, halo[0].Spread);
+            Assert.Equal(2, ring[0].Spread);
+            Assert.Equal(DesignTokens.ResolveColor("AccentFocusHaloColor", variant), halo[0].Color);
+            Assert.Equal(DesignTokens.ResolveColor("AccentKeyHaloColor", variant), ring[0].Color);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ACapHasNoPressFace_BecauseTheSelectionThatFollowsIsTheAnswer(string variantName)
+        {
+            // Keycap.axaml: "`:pressed` is deliberately absent. A cap's press is answered by the
+            // selection that follows it immediately, and Fluent's 75ms scale-down is gone with
+            // Fluent's template, so there is nothing to suppress and nothing to add."
+            //
+            // The cap is the one theme in the app that states an absence outright, so it is the one
+            // that most needs it pinned: nothing else distinguishes "we decided against a press
+            // face" from "we forgot to write one", and the cap's matrix is dense enough that a
+            // later hand would add one without noticing the decision.
+            var variant = ToVariant(variantName);
+            var cap = Cap(variant);
+
+            using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
+
+            SetPseudoClasses(cap, ":pointerover");
+
+            var hovered = FramePixels.At(host.Capture(), (int)OriginOf(host, cap).X + 6, MidRow(host, cap));
+
+            SetPseudoClasses(cap, ":pressed");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceKeySelectedBrush", variant), cap.Background);
+            AssertClose(hovered, FramePixels.At(host.Capture(), (int)OriginOf(host, cap).X + 6, MidRow(host, cap)));
+
+            // Nothing moved anywhere else either: the press is not a border or a thickness in
+            // disguise, which is what a 26px cap 4px from its neighbour could not afford.
+            Assert.Equal(DesignTokens.Resolve("SurfaceBorderRaisedBrush", variant), cap.BorderBrush);
+            Assert.Equal(new Thickness(1), cap.BorderThickness);
+            Assert.Equal(0, RootOf(cap).BoxShadow.Count);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ADisabledCap_LeavesTheBoardsRaisedFaceEntirely(string variantName)
+        {
+            // The cap does not override BaseButton's disabled treatment, which the theme states in
+            // a comment and nothing checked. It matters because the whole board is disabled at once
+            // — the editor dims it while a profile is loading — and a cap that kept its raised face
+            // would leave the picture looking live while nothing on it answered.
+            //
+            // A PLAIN cap. The three live states take the same face, for a reason that is not the
+            // same one at all — see ADisabledCapInAnyLiveState_TakesTheSameDeadFace.
+            var variant = ToVariant(variantName);
+            var cap = Cap(variant);
+
+            using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
+
+            cap.IsEnabled = false;
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), cap.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), cap.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), cap.Foreground);
+
+            AssertClose(
+                Composite(
+                    DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant),
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                FramePixels.At(host.Capture(), (int)OriginOf(host, cap).X + 6, MidRow(host, cap)));
+        }
+
+        /// <summary>The three states that paint a cap with a hue of its own, and can outlive it.</summary>
+        public static TheoryData<string> LiveCapStates()
+        {
+            return new TheoryData<string> { "modified", "selected", "listening" };
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(LiveCapStates))]
+        public void ADisabledCapInAnyLiveState_TakesTheSameDeadFace(string state)
+        {
+            // Contract 5 from the other side, and the trap Pills.axaml's header calls easy to miss:
+            // Avalonia walks BasedOn first, so BaseButton's `:disabled` face is applied BEFORE
+            // anything this theme declares, and a class written without `:not(:disabled)` wins over
+            // it. A disabled `.modified` cap kept the full accent fill and accent edge, a disabled
+            // `.selected` one kept its accent ring, and a disabled `.listening` one went on wearing
+            // the amber "press a key now" — each of them taking the dead label colour and nothing
+            // else, on a board the editor has dimmed precisely because nothing on it will answer.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                var cap = Cap(variant, state);
+
+                using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
+
+                cap.IsEnabled = false;
+
+                Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), cap.Background);
+                Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), cap.BorderBrush);
+                Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), cap.Foreground);
+
+                // Listening's 2px edge goes with it — the thickness is part of the shout — and so
+                // does selection's ring, which is drawn in the accent and has no business on a cap
+                // that cannot be selected any further.
+                Assert.Equal(new Thickness(1), cap.BorderThickness);
+                Assert.Equal(0, RingOf(cap).BoxShadow.Count);
+
+                AssertClose(
+                    Composite(
+                        DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant),
+                        DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                    FramePixels.At(host.Capture(), (int)OriginOf(host, cap).X + 6, MidRow(host, cap)));
+            }
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ACapThatIsListeningAndSelected_KeepsItsRingFlushWithTheEdge(string variantName)
+        {
+            // The ring is deliberately NOT qualified against `.listening` — the key that is
+            // listening is the key that is selected, and dropping the ring as the cap starts
+            // waiting for a keystroke would read as the selection having moved. But `Border#Ring`
+            // sits inside Root's padding, and its `Margin="-1"` is measured against a 1px border:
+            // listening doubles that, which walks the panel and the ring one pixel further in and
+            // leaves the band floating inside the cap's edge instead of hugging it.
+            //
+            // Read as geometry first, because that is the claim exactly, and then at the glass —
+            // where a listening cap that is also selected must differ from one that is not, in the
+            // OUTERMOST pixel of its own edge. That pixel is the whole defect: the broken margin
+            // still paints a band, one step in.
+            var variant = ToVariant(variantName);
+            var cap = Cap(variant, "selected", "listening");
+
+            using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
+
+            var ring = RingOf(cap);
+            var inset = ring.TranslatePoint(new Point(0, 0), cap)
+                ?? throw new InvalidOperationException("The ring is not in the cap's visual tree.");
+
+            // Two pixels in, exactly as on a cap with a 1px border, so the 2px spread lands on the
+            // cap's outer 2px in both cases.
+            Assert.Equal(2, inset.X);
+            Assert.Equal(2, inset.Y);
+            Assert.Equal(cap.Bounds.Width - 4, ring.Bounds.Width);
+            Assert.Equal(1, ring.BoxShadow.Count);
+
+            var edge = EdgePixel(host, cap);
+            var unselected = Cap(variant, "listening");
+
+            using var bare = ThemedHost.Show(unselected, variant, HostWidth, HostHeight);
+
+            Assert.True(
+                Distance(edge, EdgePixel(bare, unselected)) > 8,
+                $"The selection ring reaches no further than a listening cap's border: both painted {edge}.");
         }
 
         [AvaloniaTheory]
@@ -400,13 +580,14 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public void AnUnlitKey_ShowsTheHatchRatherThanGoingDarkOrVanishing(string variantName)
+        public void AnUnlitKey_OnALightingBoard_ShowsTheHatchRatherThanGoingDarkOrVanishing(string variantName)
         {
             // "Off is hatched, never black", because black is a colour a key can legitimately be
-            // lit. The strip is therefore always drawn and the hatch is its own background; the
+            // lit — but the rule is scoped to a board that is SHOWING lighting, which is what
+            // ShowsLedStrip says. Given that, the hatch is the strip's own background and the
             // colour, when there is one, covers it.
             var variant = ToVariant(variantName);
-            var view = KeyCap(overlay: null);
+            var view = KeyCap(overlay: null, showsLedStrip: true);
 
             using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
 
@@ -419,12 +600,7 @@ namespace KinesisEdit.Tests.Design
             var frame = host.Capture();
             var origin = OriginOf(host, strip);
             var stripe = DesignTokens.ResolveBrushColor("SurfaceLineHighBrush", variant);
-            var painted = new List<Color>();
-
-            for (var offset = 2; offset < 16; offset++)
-            {
-                painted.Add(FramePixels.At(frame, (int)origin.X + offset, (int)origin.Y + 1));
-            }
+            var painted = RowSamples(frame, origin);
 
             Assert.Contains(painted, sample => Distance(sample, stripe) <= 24);
             Assert.DoesNotContain(painted, sample => Distance(sample, Colors.Black) <= 24);
@@ -433,12 +609,55 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public void ALitKey_CoversTheHatchWithItsColour(string variantName)
+        public void ACapOnABoardThatIsNotShowingLighting_DrawsNoStripAtAll(string variantName)
+        {
+            // The third state, and the regression that made it necessary: the hatch answers "this
+            // LED is off", never "lighting is not on screen". On the Keys tab — where nobody asked
+            // about lighting — roughly a hundred caps were each carrying a hatched bar.
+            //
+            // Read at the glass as well as in the graph, because a strip that is present and
+            // painted with the cap's own face would satisfy the property and still be a row of
+            // bars: the pixel where the strip WOULD be must be the cap's resting face exactly.
+            var variant = ToVariant(variantName);
+            var lit = KeyCap(overlay: null, showsLedStrip: true);
+
+            using var litHost = ThemedHost.Show(lit, variant, HostWidth, HostHeight);
+
+            var litFrame = litHost.Capture();
+            var stripRow = OriginOf(litHost, StripOf(lit));
+            var hatched = RowSamples(litFrame, stripRow);
+
+            // The control: on a lighting board that row is a hatch, so it is not one colour.
+            Assert.True(hatched.Distinct().Count() > 1, $"The hatch painted one flat {hatched[0]}.");
+
+            var plain = KeyCap(overlay: null, showsLedStrip: false);
+
+            using var plainHost = ThemedHost.Show(plain, variant, HostWidth, HostHeight);
+
+            var plainFrame = plainHost.Capture();
+
+            Assert.False(StripOf(plain).IsVisible, "The Keys tab drew an LED strip.");
+
+            // The two caps are the same size in the same place, so the strip's row is the same row —
+            // and on the Keys tab it is bare cap face from end to end, one colour, nothing over it.
+            var bare = RowSamples(plainFrame, stripRow);
+            var face = Assert.IsAssignableFrom<ISolidColorBrush>(ButtonOf(plain).Background);
+
+            Assert.Single(bare.Distinct());
+            AssertClose(
+                Composite(face.Color, DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant)),
+                bare[0]);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ALitKey_OnALightingBoard_CoversTheHatchWithItsColour(string variantName)
         {
             // The other half: the hatch means "off", so a key that has a colour must not show any
             // of it through.
             var variant = ToVariant(variantName);
-            var view = KeyCap(overlay: "#FF0000");
+            var view = KeyCap(overlay: "#FF0000", showsLedStrip: true);
 
             using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
 
@@ -449,6 +668,25 @@ namespace KinesisEdit.Tests.Design
             var brush = Assert.IsAssignableFrom<ISolidColorBrush>(patch.Background);
 
             Assert.Equal(Color.FromRgb(0xFF, 0x00, 0x00), brush.Color);
+        }
+
+        [AvaloniaFact]
+        public void ALitKey_OnABoardThatIsNotShowingLighting_StillDrawsNothing()
+        {
+            // The two answers are independent, and this is the pair that proves it: a key can be
+            // lit on a picture that shows no LED row at all. `HasColorOverlay` means "this key is
+            // lit" and nothing more — the Keys tab keeps computing it, because it shares the cap
+            // view models with the lighting board, and simply draws none of it.
+            var view = KeyCap(overlay: "#FF0000", showsLedStrip: false);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark, HostWidth, HostHeight);
+
+            var strip = StripOf(view);
+
+            Assert.False(strip.IsVisible, "A lit key put an LED strip on a board that shows none.");
+            Assert.True(
+                ((KeyboardKeyViewModel)view.DataContext!).HasColorOverlay,
+                "The scene did not actually light the key.");
         }
 
         [AvaloniaFact]
@@ -481,7 +719,7 @@ namespace KinesisEdit.Tests.Design
         /// <summary>One pixel of each concentric band, for one combination of states.</summary>
         private readonly record struct RingSample(Color Inside, Color Outside);
 
-        private static RingSample Sample(ThemeVariant variant, string[] classes, bool focused)
+        private static RingSample Sample(ThemeVariant variant, string[] classes, bool focused, bool hovered = false)
         {
             var cap = Cap(variant, classes);
 
@@ -490,6 +728,13 @@ namespace KinesisEdit.Tests.Design
             if (focused)
             {
                 Assert.True(cap.Focus(NavigationMethod.Tab), "The cap refused keyboard focus.");
+            }
+
+            // Hover paints the selected face and no ring, which is the only way to hold the face
+            // constant while the selection ring is the variable under test.
+            if (hovered)
+            {
+                SetPseudoClasses(cap, ":pointerover");
             }
 
             var frame = host.Capture();
@@ -543,8 +788,13 @@ namespace KinesisEdit.Tests.Design
             return cap;
         }
 
-        /// <summary>A real <see cref="KeyCapView"/> over a cap view model carrying <paramref name="overlay"/>.</summary>
-        private static KeyCapView KeyCap(string? overlay)
+        /// <summary>
+        /// A real <see cref="KeyCapView"/> over a cap view model carrying <paramref name="overlay"/>,
+        /// on a picture that is or is not showing lighting. The second argument is the surface's
+        /// answer, not the key's: <see cref="KeyboardView"/> hands it down, and a cap hosted alone
+        /// takes the property's own default of false.
+        /// </summary>
+        private static KeyCapView KeyCap(string? overlay, bool showsLedStrip)
         {
             var key = TestLayouts.CreateLayout("esc").Layers[0].Keys[0];
             var model = TestLayouts.CreateKeyViewModel(key);
@@ -554,6 +804,7 @@ namespace KinesisEdit.Tests.Design
             return new KeyCapView
             {
                 DataContext = model,
+                ShowsLedStrip = showsLedStrip,
                 Width = CapWidth,
                 Height = CapHeight,
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -581,6 +832,24 @@ namespace KinesisEdit.Tests.Design
             return cap.GetVisualDescendants().OfType<T>().Single(part => part.Name == name);
         }
 
+        /// <summary>A run of pixels along the LED strip's own row, left to right.</summary>
+        private static IReadOnlyList<Color> RowSamples(WriteableBitmap frame, Point stripOrigin)
+        {
+            var samples = new List<Color>();
+
+            for (var offset = 2; offset < 16; offset++)
+            {
+                samples.Add(FramePixels.At(frame, (int)stripOrigin.X + offset, (int)stripOrigin.Y + 1));
+            }
+
+            return samples;
+        }
+
+        private static Button ButtonOf(KeyCapView view)
+        {
+            return view.GetVisualDescendants().OfType<Button>().Single();
+        }
+
         /// <summary>The cap's LED strip: the 3px band under the caption.</summary>
         private static Border StripOf(KeyCapView view)
         {
@@ -593,6 +862,15 @@ namespace KinesisEdit.Tests.Design
         private static Border ColorPatchOf(Border strip)
         {
             return Assert.IsType<Border>(strip.Child);
+        }
+
+        /// <summary>
+        /// The colour of the cap's outermost pixel column, at mid-height: on its own border, and
+        /// the one column an inward ring either reaches or does not.
+        /// </summary>
+        private static Color EdgePixel(ThemedHost host, Button cap)
+        {
+            return FramePixels.At(host.Capture(), (int)OriginOf(host, cap).X, MidRow(host, cap));
         }
 
         private static Point OriginOf(ThemedHost host, Visual control)

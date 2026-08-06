@@ -88,10 +88,15 @@
       </ControlTemplate>
     </Setter>
 
-    <!-- Contract 5. Selection outranks hover: a chosen segment the pointer happens to be over is
-         still the chosen segment, and `:not(:selected)` says so rather than leaving it to the order
-         these styles happen to appear in. -->
-    <Style Selector="^:pointerover:not(:selected)">
+    <!-- Contract 5, twice over. Selection outranks hover: a chosen segment the pointer happens to
+         be over is still the chosen segment. And Avalonia raises `:pointerover` AND `:pressed`
+         while the pointer is down, so the hover FILL hands the face to the press style below by
+         saying `:not(:pressed)` rather than by sitting above it in the file.
+
+         The hover BORDER carries no such qualifier, deliberately: the press declares no border of
+         its own, so the hairline hover acquired is what a pressed segment goes on wearing, and the
+         two setters never disagree. -->
+    <Style Selector="^:pointerover:not(:pressed):not(:selected)">
       <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
@@ -99,8 +104,6 @@
       <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
     </Style>
 
-    <!-- Written after :pointerover and never overlapping it: Avalonia raises both while the pointer
-         is down, so the two fills are split by the qualifier rather than by file order. -->
     <Style Selector="^:pressed:not(:selected)">
       <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -229,13 +232,20 @@
     </Style>
 
     <!-- On. Declared after the pointer states and qualified into them, so pressing a toggle that is
-         already on does not flicker it back to the neutral face on the way to switching it off. -->
-    <Style Selector="^.selected">
+         already on does not flicker it back to the neutral face on the way to switching it off.
+
+         `:not(:disabled)` is the qualifier Pills.axaml's header calls easy to miss, and this theme
+         needs it for the same reason NavPill does: Avalonia walks BasedOn first, so BaseButton's
+         `:disabled` face is applied BEFORE anything declared here and an unqualified `.selected`
+         would win over it. A co-trigger the firmware has gated off, or the pedal's latch on a
+         board in demo mode, would keep the full accent fill and the on-accent label and carry no
+         disabled signal at all. -->
+    <Style Selector="^.selected:not(:disabled)">
       <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
-    <Style Selector="^.selected:not(:focus-visible)">
+    <Style Selector="^.selected:not(:disabled):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
     </Style>
 
