@@ -1,0 +1,228 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    THE KEY CAP. Read Shared.axaml's header first — it carries the authoring contract, and
+    BaseButton carries the template shape, the type step, the focus ring and the disabled face.
+
+    This is the densest state matrix in the app: six states compete for one 26px square, four of
+    them can be true at the same time, and the cap has neighbours 4px away that a ring must not eat.
+    Three things are therefore settled here rather than left to the file's order:
+
+      1. WHAT BEATS WHAT. Styles/Keyboard.axaml used to get its precedence from where a style sat in
+         the file — `listening` won because it was written last. Every state below instead names the
+         states it loses to, so the matrix survives a reorder. The order pinned is the one the app
+         already behaved with, plus one deliberate change (see LOCKED):
+
+             listening  >  selected  >  :pointerover  >  locked  >  modified  >  rest
+
+         read as "listening's face wins over selected's, which wins over hover's, ...". Focus sits
+         outside that ladder entirely: it owns the BORDER whenever it is visible and touches no
+         face, which is why every state's BorderBrush setter carries `:not(:focus-visible)` and no
+         state's Background setter does.
+
+      2. SELECTION AND FOCUS AT THE SAME TIME (contract 4, and the acceptance criterion of the
+         issue). Both are drawn as spread-only shadows in the same accent at almost the same alpha —
+         2px at 30% for selection, 3px at 28% for focus — so laying them on the same element would
+         produce one slightly denser ring and nothing legible. They are made CONCENTRIC instead:
+
+             selection paints the outer 2px of the cap, INWARD from its edge;
+             focus paints 3px OUTWARD from that same edge.
+
+         A cap that is both wears a continuous 5px band with its 1px accent border at the seam, and
+         each half is still readable on its own. Nothing of the selection ring lands on a
+         neighbouring cap, which is the constraint the design states outright ("it has to read on a
+         26px key without eating its neighbour").
+
+         Mechanically that needs a second element: a Border has exactly one BoxShadow, BaseButton
+         has already spoken for Root's with the focus halo, and two `{DynamicResource}` entries
+         cannot be composed into one BoxShadows value in XAML. `Border#Ring` below is that element —
+         inset so that its own 2px spread lands inside the cap rather than outside it.
+
+      3. LOCKED IS A FACT, NOT A MOOD. "Hatching = not yours to edit" (docs/design/handoff.md,
+         "Focus, selection, key badges"), so it is drawn as an overlay whose visibility depends on
+         nothing but the class: a locked cap under the pointer, or selected, still reads as locked.
+         The old matrix had hover repaint the locked face and lose the signal. Its face keeps
+         following the ladder above; only the hatch and the dashed outline are unconditional.
+  -->
+
+  <ControlTheme x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusKeycap}" />
+
+    <!-- The cap is drawn at whatever size the board's scale gives it (KeyboardPanel), so it must
+         impose no minimum of its own, and its content — a caption over a colour strip — stretches
+         into the whole face rather than centring as a button label would. -->
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+
+    <!-- The legend is deliberately not the design's 9/400 keycap step. That step is quoted "at mock
+         scale", where a 1U cap is 30x26; KeyboardPanel draws one at up to 44px and the legend does
+         not yet scale with the board, so 9px would be a regression against the drawn art rather
+         than a match for it. It takes the 11/400 body step until the cap renderer scales its type. -->
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <!-- Contract 6, and it matters more here than anywhere else: the focus halo spreads 3px
+             past Root into a grid whose caps are 4px apart, so a clip anywhere between the halo and
+             the window erases it. False on the Button (BaseButton), on Root, on the stack and on
+             Ring; KeyCapView sets it on itself for the same reason. -->
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <Panel ClipToBounds="False">
+            <!--
+              LOCKED: the 45 degree hatch and the dashed outline, in one shape because they are one
+              statement. A Border cannot dash (Avalonia 11 gives it no dash array), and a Rectangle
+              can both fill and stroke, so the two halves of "hatched fill + dashed border" cost a
+              single part.
+
+              `Margin="-2"` cancels Root's own 2px padding so the hatch reaches the inside of the
+              border instead of stopping at the caption's box; the two numbers are a pair and move
+              together. RadiusX/Y are the chip radius (Themes/Geometry.axaml, RadiusChip = 3), one
+              step inside the cap's own 4 — a CornerRadius resource cannot be handed to a Shape's
+              double, so it is spelled out.
+
+              The dash takes the hatch's own colour rather than the border role: locked is one
+              material, and a second neutral at the edge would read as a border that happens to be
+              broken. The locked state paints Root's border transparent to make room for it.
+            -->
+            <Rectangle x:Name="Locked"
+                       Margin="-2"
+                       IsVisible="False"
+                       IsHitTestVisible="False"
+                       RadiusX="3"
+                       RadiusY="3"
+                       Fill="{DynamicResource HatchBrush}"
+                       Stroke="{DynamicResource SurfaceLineHighBrush}"
+                       StrokeThickness="1"
+                       StrokeDashArray="2,2" />
+
+            <ContentPresenter x:Name="Label"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                              RecognizesAccessKey="True" />
+
+            <!--
+              THE SELECTION RING. Empty, transparent, and present only to own a second BoxShadow.
+
+              `Margin="-1"` puts its bounds 2px inside the cap's outer edge: the panel already sits
+              3px in (Root's 1px border plus its 2px padding), so -1 walks it back out to 2. A
+              spread-only shadow is drawn OUTSIDE the element it belongs to and clipped out beneath
+              it, so a 2px spread from there paints exactly the cap's outer 2px — the inward half of
+              the concentric pair described at the top of this file. Transparent rather than absent
+              because a Border with no brush at all draws nothing, shadow included.
+            -->
+            <Border x:Name="Ring"
+                    Margin="-1"
+                    ClipToBounds="False"
+                    IsHitTestVisible="False"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadiusChip}" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!--
+      MODIFIED — "this position carries a remap", and one of the accent's two sanctioned meanings
+      ("you changed this"). The 14% accent fill, with the full accent at the border; the caption
+      lifts to the accent too, from `:is(TextBlock).keyCapText.modified` in Styles/Keyboard.axaml.
+
+      Bottom of the ladder, so it names every state above it. Hover is in that list for the face and
+      not for the border, which is what the old matrix did as well: passing the pointer over a
+      remapped key lightens it without taking away the accent edge that says it was remapped.
+    -->
+    <Style Selector="^.modified:not(.locked):not(:pointerover):not(.selected):not(.listening)">
+      <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    </Style>
+    <Style Selector="^.modified:not(.locked):not(.selected):not(.listening):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!--
+      LOCKED — a position the firmware will not let anybody remap (specs/05-key-model.md §5.3): the
+      SmartSet key, the Fn key. It sinks to the inset surface, so it reads as part of the board
+      rather than as a cap raised out of it, and its border goes transparent because the dashed
+      outline of `Rectangle#Locked` is now the edge.
+
+      The hatch itself is unconditional — see (3) at the top. A locked cap is still a live button:
+      clicking it selects it and the inspector explains the refusal, so it is never `:disabled` and
+      never needs a qualifier against that state.
+    -->
+    <Style Selector="^.locked:not(:pointerover):not(.selected):not(.listening)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    </Style>
+    <Style Selector="^.locked:not(.selected):not(.listening):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="^.locked /template/ Rectangle#Locked">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!--
+      HOVER — the face lightens by one surface step and nothing else moves. It sets no border, so a
+      modified or locked cap keeps the edge that identifies it while the pointer is over it, and it
+      loses the face to selection and to listening.
+
+      `:pressed` is deliberately absent. A cap's press is answered by the selection that follows it
+      immediately, and Fluent's 75ms scale-down is gone with Fluent's template, so there is nothing
+      to suppress and nothing to add.
+    -->
+    <Style Selector="^:pointerover:not(.selected):not(.listening)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+    </Style>
+
+    <!--
+      SELECTED — the cap the inspector is talking about. Filled face, accent border and the 2px ring
+      described at the top, drawn inward from the cap's edge.
+
+      The ring is not qualified against `.listening`: the key that is listening is the key that is
+      selected, and losing the ring at the moment the cap starts waiting for a keystroke would make
+      it look like the selection had moved. The face and the border do yield to listening.
+    -->
+    <Style Selector="^.selected:not(.listening)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+    </Style>
+    <Style Selector="^.selected:not(.listening):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^.selected /template/ Border#Ring">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
+    </Style>
+
+    <!--
+      LISTENING — the cap is swallowing the next physical keystroke (specs/10-apps-and-ui.md,
+      "Remap workflow"). Top of the ladder, because "press a key now" outranks every other thing the
+      cap could be saying. Amber, since it is an advisory state rather than a success or a failure,
+      and the border doubles to 2px so it is unmistakable at board scale.
+
+      It also pulses, once per 1.4s. That animation lives on `Button.keyCap.listening` in
+      Styles/Keyboard.axaml and animates the Button's own Opacity, not a template part, so replacing
+      the template here leaves it untouched.
+    -->
+    <Style Selector="^.listening">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="^.listening:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    </Style>
+
+    <!-- The focus ring itself comes from BaseButton and is not restated: accent on the border,
+         ShadowFocusHalo on Border#Root. Every BorderBrush setter above yields to it. -->
+  </ControlTheme>
+</ResourceDictionary>

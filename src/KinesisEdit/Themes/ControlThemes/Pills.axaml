@@ -1,0 +1,264 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The pill family: the four small labelled lozenges the app draws to say what state something is
+    in. Read Shared.axaml's header first — it carries the authoring contract, and BaseButton
+    carries the template, the geometry, the type step, the focus ring and the disabled face that
+    the two clickable pills here inherit.
+
+    Three of the four are pills proper (RadiusPill, 999); the kbd chip is the tight one (RadiusChip,
+    3). What groups them is not the radius but the role: each is a compact label that reports or
+    selects a state, never a full action.
+
+    TWO OF THEM ARE NOT BUTTONS, DELIBERATELY.
+
+      StatusPill is a Border and stays one. Nothing clicks a "v-Drive OK": it is a readout, so
+      giving it a template, a hit target, a tab stop and a focus ring would be four lies about what
+      it is. It would also cost the cross-fade. The 220 ms fill fade the design requires is
+      Themes/Motion.axaml's StatusFillTransitions, and that set names Border.BackgroundProperty and
+      Border.BorderBrushProperty — which are different AvaloniaProperty instances from
+      TemplatedControl's identically named ones. Bound to a ContentControl it would match nothing
+      and fail silently, and a silent motion regression is exactly what MotionBudgetTests cannot
+      see. A ControlTheme may target any StyledElement, so the pill moves into this layer without
+      changing what it is; the views keep their `Classes.ok="{Binding …}"` bindings and the four
+      variants keep switching on a bound class.
+
+      KbdChip is a ContentControl, because a Border cannot carry type: FontFamily, FontSize and
+      Foreground are TemplatedControl properties, and mono type is the whole of what a kbd chip is.
+      It is not a Button for the same reason StatusPill is not — it is the legend in the shortcut
+      table of mockup 2b (`⌘F`, `⌥1–5`, `Esc`), never a target.
+
+    The two that are Buttons show the contract's two recurring qualifiers, and both are load-bearing
+    rather than decorative (contract 5):
+      - every pointer-state BorderBrush setter carries `:not(:focus-visible)`, because the focus
+        ring owns the border whenever it is visible;
+      - every `.selected` setter carries `:not(:disabled)`. That one is easy to miss: Avalonia walks
+        BasedOn first, so BaseButton's `:disabled` face is applied BEFORE anything declared here and
+        an unqualified `.selected` would win over it. A disabled active pill would keep its live
+        face and take only the dead label colour.
+  -->
+
+  <!--
+    STATUS PILL — "v-Drive OK", "v-Drive Error", "Demo Mode", "Advisory": the four-state vocabulary
+    of mockup 1a, each a hue with one fixed meaning. Green is connected and writable, red is gone or
+    unwritable, purple is demo mode (nothing is written) and amber is an advisory. Amber is the only
+    warning colour in the app; demo mode is not an advisory and never borrows its ramp.
+
+    Each variant is a tint face inside a stronger tint border, which is the design's two-strength
+    reading of a status hue; the label colour is not set here, because the pill's caption is a
+    TextBlock the view authors and Styles/Text.axaml already gives it `statusOk`/`statusWarning`/
+    `statusError`/`statusDemo`. Splitting it that way is not ideal — a view has to keep two class
+    bindings in step — but a Border has no Foreground to inherit down, and inventing one as an
+    attached TextElement setter would hide the colour from the role styles that own it.
+
+    There is no hover, no press and no focus state, and that is the point rather than an omission: a
+    readout has no states but the one it is reporting.
+  -->
+  <ControlTheme x:Key="StatusPill" TargetType="Border">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+
+    <!-- 12 horizontal by 4 vertical: the pill rhythm of the toolbar chip, off the 4px grid.
+         Geometry.axaml names no pill padding because this is the only shape that uses it. -->
+    <Setter Property="Padding" Value="12,4" />
+
+    <!-- "Status changes cross-fade the chip's fill over 220 ms; text swaps are instant" (2b). The
+         bare alias, never StatusFillTransitionsFull: MotionResourceBinder points it at the full or
+         the reduced set once at startup, so the pill never chooses between them. -->
+    <Setter Property="Transitions" Value="{DynamicResource StatusFillTransitions}" />
+
+    <!-- The four are mutually exclusive by construction — the view binds each class to one
+         converter over one severity enum — so none of them needs a qualifier. -->
+    <Style Selector="^.ok">
+      <Setter Property="Background" Value="{DynamicResource StatusOkTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusOkTintBorderBrush}" />
+    </Style>
+    <Style Selector="^.warning">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+    </Style>
+    <Style Selector="^.error">
+      <Setter Property="Background" Value="{DynamicResource StatusErrorTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorTintBorderBrush}" />
+    </Style>
+    <Style Selector="^.demo">
+      <Setter Property="Background" Value="{DynamicResource StatusDemoTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusDemoTintBorderBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    NAV PILL — the app bar's Home / Settings / Help, and the macro-slot picker the layer switcher's
+    `layerTab` class splits into. One of a small set, exactly one of which is live.
+
+    The active pill is a SurfaceRaised fill, which the handoff's surface table names for precisely
+    this ("raised — key faces, active nav pill"). It is deliberately NOT the accent: the accent
+    means selection-of-a-thing-you-are-editing or "you changed this", and a nav pill that is merely
+    where you already are is neither. The old `Button.layerTab` painted its selected state accent —
+    that reading belongs to the layer switcher, which is a segmented control and is not this.
+
+    Chromeless at rest, so the strip reads as text until the pointer arrives; the 1px border is
+    present-but-transparent throughout, so acquiring one on hover, on focus or on activation costs
+    no reflow. Hover and press keep the neutral ramp below the active face, so an inactive pill
+    under the pointer never briefly reads as the active one.
+
+    Disabled is BaseButton's, unoverridden: a nav pill has a face when it is active, so leaving the
+    family entirely for the inset face is the right disabled treatment rather than the transparent
+    one the genuinely chromeless roles (ghost, link) ask for.
+  -->
+  <ControlTheme x:Key="NavPill" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- Contract 4: the face is activation's and the border is focus's, so an active pill that also
+         has the keyboard shows both and stays legible as each. -->
+    <Style Selector="^.selected:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="^.selected:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    FILTER CHIP — the token picker's "All · Letters · Nav · Media · Mouse · Hotkeys · Recent" row
+    (mockups 1e and 2h). Nothing consumes it yet; it is substrate for the key-inspector issue.
+
+    Unlike the nav pill this one has a face at rest — it is a bounded chip in a wrapping row and has
+    to read as a control before it is touched — so the ramp walks the neutral surfaces one step at a
+    time: SurfaceBar rests, SurfaceRaised is the chosen filter, and the border steps from SurfaceLine
+    to SurfaceLineHigh ("line-hi — hover/emphasized borders"). The label walks with it, TextMuted to
+    TextSecondary, which is what makes an inactive chip recede in a row of seven.
+
+    Hover moves ONLY the border and the label, never the face: the face is the selected state's
+    single signal, and a hover that filled it would make every chip the pointer crossed read as
+    chosen. Press sinks to SurfaceLine, which is a step past the selected face rather than toward
+    it, so a press is never mistaken for the result of the press.
+
+    Two deviations from docs/design/, both deliberate:
+      - the mockups draw these labels at 10 px sans. The type scale has no sans 10 step — 10 is the
+        mono section label — and the handoff's own table puts pill labels at 11/500, which is what
+        FontSizeMeta plus BaseButton's Medium weight gives. The mock's 10 is the dense-area setting
+        of a 1000px-wide picture, not a scale step.
+      - the light mockup inverts the chosen chip (a near-black fill with white text) where the dark
+        one merely raises it. Painting a chip with a TEXT role is not expressible in this token
+        system and would be the only place in the app where light is an inversion rather than the
+        same roles resolved differently, so both variants take the dark mockup's role walk.
+  -->
+  <ControlTheme x:Key="FilterChip" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}" />
+
+    <!-- 8 horizontal by 4 vertical, from the mockup and on the 4px grid. Tighter than
+         PaddingButton, because seven of these share one row with a search field. -->
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMeta}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^.selected:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="^.selected:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    KBD CHIP — a keyboard legend: the `↑↓←→`, `⌥1–5`, `⌘F`, `⌘S / ⌘W` and `Esc` of mockup 2b's
+    shortcut table, and anywhere else the app prints a key the user is meant to press. Nothing
+    consumes it yet.
+
+    It is mono at 10/500 on a SurfaceLineHigh border, which is the one place the handoff's surface
+    table names that role for a fill boundary rather than a hover ("line-hi — hover/emphasized
+    borders, kbd chips"), and it takes RadiusChip rather than RadiusPill: a legend sits inline in a
+    sentence and a lozenge there would read as a button.
+
+    Mono because the chip prints a keystroke the user types verbatim. That is a small stretch of the
+    mono law as docs/design/ states it — "values that exist verbatim in a config file" — but the
+    mockups set these in Plex Mono for the same underlying reason the law exists: it is a literal,
+    not the app talking.
+
+    It writes its own template rather than inheriting one, because it inherits from nothing: a
+    ContentControl's Fluent theme is a bare presenter with no border to bind. No hover, no press and
+    no focus, for the same reason as StatusPill; only `:disabled`, so a chip inside a panel the app
+    has disabled dims with it rather than staying the brightest thing there.
+  -->
+  <ControlTheme x:Key="KbdChip" TargetType="ContentControl">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+    <Setter Property="Padding" Value="6,3" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValueSmall}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+
+    <!-- Contract 1: the root template-binds, so a state setting a property on the control flows
+         through. Contract 2: the part is `Root`, never `PART_Root`. -->
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ContentControl">
+        <Border x:Name="Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter x:Name="Label"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- A legend is never itself disabled; it inherits IsEnabled from whatever contains it, so this
+         state exists only so the chip goes quiet with its panel. It keeps its face — the chip is
+         still a chip — and drops the border and the label a step. -->
+    <Style Selector="^:disabled">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

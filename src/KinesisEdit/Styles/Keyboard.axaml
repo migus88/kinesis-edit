@@ -1,14 +1,14 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    The keyboard picture: the board it is drawn on, one key cap and its four states, and the layer
-    switch above it.
+    The keyboard picture: the board it is drawn on, the key cap's bridge, and the legend roles the
+    cap's own content carries.
 
-    A cap's chrome is set on the Button's template presenter rather than on the Button, because the
-    Fluent theme's own `:pointerover` / `:pressed` / `:disabled` setters target that presenter and
-    would otherwise win over a Background set here. The cap states are declared in increasing
-    precedence — later styles override earlier ones — so a listening key always reads as listening,
-    whatever else it also is.
+    The cap's chrome — the face, the border, the four states and their precedence — is no longer
+    here at all: it is the `KeyCapButton` control theme in Themes/ControlThemes/Keycap.axaml, which
+    owns the template outright. This file only points the class at it. The layer switch has left
+    too: it is a ListBox on the `SegmentedControl` theme, so the view names the theme and there is
+    no pill class left to style.
   -->
 
   <!-- The board the picture sits on: an inset surface, so the caps read as raised out of it. -->
@@ -21,50 +21,15 @@
   </Style>
 
   <!--
-    One key cap.
+    One key cap. Nothing but the bridge: `KeyCapButton` carries the geometry, the 11/400 legend
+    step, the six states and the concentric selection/focus rings.
 
-    The legend is deliberately NOT on the design's 9/400 keycap step. That step is quoted "at mock
-    scale", where a 1U cap is 30x26; KeyboardPanel draws a cap at up to 44px and the legend does
-    not yet scale with the board, so 9px would be a regression against the drawn art rather than a
-    match for it. It takes the 11/400 body step until the cap renderer scales its own type.
+    A class style here would outrank every one of those, so this style deliberately sets no other
+    property — `Padding` most of all, which the theme fixes at 2 and to which the hatch overlay's
+    `Margin="-2"` and the selection ring's `Margin="-1"` are both tuned.
   -->
   <Style Selector="Button.keyCap">
-    <Setter Property="Padding" Value="2" />
-    <Setter Property="MinWidth" Value="0" />
-    <Setter Property="MinHeight" Value="0" />
-    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-    <Setter Property="VerticalContentAlignment" Value="Stretch" />
-  </Style>
-  <Style Selector="Button.keyCap /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusKeycap}" />
-  </Style>
-  <Style Selector="Button.keyCap.modified /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-  </Style>
-  <Style Selector="Button.keyCap.locked /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
-  </Style>
-  <Style Selector="Button.keyCap:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
-  </Style>
-  <!-- Selection is a filled face, a 1px accent border and a 2px halo — a spread-only shadow, never
-       an offset outline. -->
-  <Style Selector="Button.keyCap.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
-  </Style>
-  <Style Selector="Button.keyCap.listening /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Theme" Value="{StaticResource KeyCapButton}" />
   </Style>
 
   <Style Selector=":is(TextBlock).keyCapText">
@@ -106,29 +71,9 @@
     </Style.Animations>
   </Style>
 
-  <!-- The layer switch: one pill per layer, scaling from the two of a Freestyle Edge RGB to the
-       five of an Advantage 360 without any change here. Layer switching is deliberately
-       unanimated — see Themes/Motion.axaml.
-       Declaring no transition is not enough to have none: Fluent's Button control theme ships a
-       75 ms RenderTransform press animation, which every Button in the app inherits. The pill has
-       to clear it, or the layer switch animates after all — and it is a movement, so it would run
-       under reduce-motion too. -->
-  <Style Selector="Button.layerTab">
-    <Setter Property="Transitions" Value="{x:Null}" />
-    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
-    <Setter Property="MinWidth" Value="64" />
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Button.layerTab /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
-  </Style>
-  <Style Selector="Button.layerTab.selected">
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.layerTab.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
-  </Style>
+  <!-- The layer switch has no style of its own any more. It is a ListBox on the `SegmentedControl`
+       theme (Themes/ControlThemes/Segmented.axaml), which carries the trough, the segments and the
+       cleared `Transitions` the switch needs — layer switching is deliberately unanimated, see
+       Themes/Motion.axaml. The view names that theme directly, because a ListBox already has a
+       theme-shaped API and a class would only add a level of indirection with nothing in it. -->
 </Styles>

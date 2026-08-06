@@ -122,31 +122,17 @@
 
   <!-- ===== Status chip =======================================================================
        A pill whose fill states what the app found: connected, an advisory, a failure, or demo
-       mode. The fill and its border cross-fade over 220 ms when the state changes; the text
-       inside swaps instantly, which is what the design asks for. -->
+       mode. It stays a Border — a readout is not a button, and the 220 ms cross-fade the design
+       asks for is a Transitions set naming Border.Background / Border.BorderBrush, which are
+       different AvaloniaProperty instances from a TemplatedControl's identically named ones.
+
+       A ControlTheme may target any StyledElement, so `StatusPill` carries the geometry, the
+       cross-fade and all four severity faces; this bridge declares nothing else, because a Style
+       setter outranks a ControlTheme setter and would take the variants straight back off it.
+       The caption inside is still the view's own TextBlock on `statusOk`/`statusWarning`/... — a
+       Border has no Foreground to inherit down. -->
   <Style Selector="Border.statusChip">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
-    <Setter Property="Padding" Value="12,4" />
-    <Setter Property="Transitions" Value="{DynamicResource StatusFillTransitions}" />
-  </Style>
-  <Style Selector="Border.statusChip.ok">
-    <Setter Property="Background" Value="{DynamicResource StatusOkTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusOkTintBorderBrush}" />
-  </Style>
-  <Style Selector="Border.statusChip.warning">
-    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
-  </Style>
-  <Style Selector="Border.statusChip.error">
-    <Setter Property="Background" Value="{DynamicResource StatusErrorTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorTintBorderBrush}" />
-  </Style>
-  <Style Selector="Border.statusChip.demo">
-    <Setter Property="Background" Value="{DynamicResource StatusDemoTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusDemoTintBorderBrush}" />
+    <Setter Property="Theme" Value="{StaticResource StatusPill}" />
   </Style>
 
   <!-- ===== Framed lists and hairline rows ==================================================== -->
@@ -191,13 +177,15 @@
 
   <!-- The entry box itself: a read-only, selectable display of what has been recorded so far.
        Deliberately not a TextBox — focus in one auto-suspends the capture service, so typing into
-       the pedal would record nothing. It is armed while it is open, hence the advisory border. -->
+       the pedal would record nothing — which is the same shape, and the same reason, as the Tap and
+       Hold action fields. It is therefore a `TokenField`, and it is open only while it is armed, so
+       the view carries the `armed` class outright rather than binding it.
+
+       The one thing it does not take from the theme is its height: a pedal macro wraps over several
+       lines, and 44 is the room that leaves. Padding is the theme's 13x8 rather than the 12x8 this
+       box used to set for itself — one pixel, and one fewer place that decides a field's rhythm. -->
   <Style Selector="Border.entryBox">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
-    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Theme" Value="{StaticResource TokenField}" />
     <Setter Property="MinHeight" Value="44" />
   </Style>
 </Styles>

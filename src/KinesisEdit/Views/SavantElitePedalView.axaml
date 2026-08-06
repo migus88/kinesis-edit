@@ -190,18 +190,21 @@
                                     <!-- 12 §5 step 2. Buttons rather than toggles: the latch is the
                                          session's mode, and a switch clears the entry, so the view
                                          must never hold a state of its own here. -->
-                                    <Button Classes="layerTab"
+                                    <Button Classes="toggleSegment"
                                             Classes.selected="{Binding IsSingleMode}"
                                             Content="Single Action"
                                             Command="{Binding SetSingleModeCommand}" />
-                                    <Button Classes="layerTab"
+                                    <Button Classes="toggleSegment"
                                             Classes.selected="{Binding IsMacroMode}"
                                             Content="Macro"
                                             Command="{Binding SetMacroModeCommand}" />
                                   </StackPanel>
                                 </Grid>
 
-                                <Border Classes="entryBox">
+                                <!-- Armed for as long as it is open: the box exists only while the
+                                     input is being programmed, so it wears the advisory border of a
+                                     token field waiting for a keystroke outright. -->
+                                <Border Classes="entryBox armed">
                                   <Panel>
                                     <SelectableTextBlock Text="{Binding EntryText}"
                                                          Classes="monoValue"

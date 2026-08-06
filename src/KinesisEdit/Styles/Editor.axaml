@@ -1,95 +1,40 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    The editor's own chrome: the section tab strip, the read-only action fields of the spec 11
-    panels, the lighting mode menu and the colour swatches.
+    The editor's own chrome: the read-only action fields of the spec 11 panels, the lighting mode
+    menu and the colour swatches.
+
+    Each style below is a *bridge*: it points one class at a ControlTheme in
+    Themes/ControlThemes/, which owns the template and the whole state matrix. Nothing here names a
+    template part any more — see Themes/ControlThemes/Shared.axaml for why that convention is gone.
   -->
 
-  <!--
-    ===== Tabs ===============================================================================
-    Only the selected tab is underlined; a tab with nothing behind it stays visibly disabled,
-    which is why the Fluent `:disabled` foreground is left alone. The strip is a fixed 38 high so
-    a long tab caption cannot push the board down.
+  <!-- ===== Tabs ===============================================================================
+       The section strip has no class of its own: it is a real TabStrip on the `TabStrip` theme
+       (Themes/ControlThemes/Tabs.axaml), which carries the fixed 38 height, the accent underline
+       drawn as its own template part, and the cleared `Transitions` the design's zero-length tab
+       swap needs. The view names that theme directly.
 
-    The tab strip is unanimated, and that is the design decision, not an omission:
-      "Layer switching is deliberately unanimated - the spec says it will be used constantly, and
-       200 ms x 200 switches is the difference between an instrument and a website."
-    A zero-duration transition is not the same thing as no transition; these containers get none.
-    Declaring none is not the same thing as having none either — Fluent's Button control theme
-    ships a 75 ms RenderTransform press animation that every Button inherits — so the tab clears
-    `Transitions` outright.
-  -->
-  <Style Selector="Button.editorTab">
-    <Setter Property="Transitions" Value="{x:Null}" />
-    <Setter Property="Padding" Value="{DynamicResource PaddingTab}" />
-    <Setter Property="Height" Value="{DynamicResource HeightTabBar}" />
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Button.editorTab /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="0,0,0,2" />
-    <Setter Property="CornerRadius" Value="0" />
-  </Style>
-  <Style Selector="Button.editorTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
-  </Style>
-  <Style Selector="Button.editorTab.selected">
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.editorTab.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-  </Style>
-
-  <!-- There is deliberately nothing here that switches a page transition off. Neither the section
-       tabs nor the layer switch is a TabControl: both are Buttons in an ItemsControl over a Panel
-       whose children toggle IsVisible, so no container in the app owns a page transition in the
-       first place. Avalonia 11's TabControl carries no PageTransition property either — Carousel
-       is the only container that does, and the app uses none. A tab strip added later must keep
-       it that way. -->
+       There is still deliberately nothing here that switches a page transition off. The strip
+       selects and a Panel below it toggles IsVisible, so no container in the app owns a page
+       transition in the first place; Avalonia 11's TabStrip and TabControl carry no PageTransition
+       property either — Carousel is the only container that does, and the app uses none. -->
 
   <!-- ===== Action fields =====================================================================
        A read-only field showing what the next captured keystroke (or the Search Keys picker) put
-       there. It must not be a TextBox — focus in one auto-suspends capture, which is exactly what
-       the Tap and Hold fields need to stay clear of. Armed, it wears the advisory border the
-       listening key wears. -->
+       there. `TokenField` targets a Border and not a TextBox, and that is the point: focus in a
+       TextBox auto-suspends capture, so a focusable token field would swallow the very keypress it
+       exists to record. The theme declares `.armed` itself — the advisory border a listening key
+       wears — so this bridge sets nothing but the theme, or it would outrank it. -->
   <Style Selector="Border.actionField">
-    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
-    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
-    <Setter Property="MinHeight" Value="32" />
-  </Style>
-  <Style Selector="Border.actionField.armed">
-    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
-    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="Theme" Value="{StaticResource TokenField}" />
   </Style>
 
   <!-- ===== Lighting mode menu ================================================================
-       One full-width row per mode, the selected one filled like a layer pill. Declared, as
-       everywhere here, in increasing precedence. -->
+       One full-width row per mode, the selected one accent-filled. `ModeOption` carries the rail's
+       own 9x7 rhythm and its `.selected` face. -->
   <Style Selector="Button.modeOption">
-    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
-    <Setter Property="Cursor" Value="Hand" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
-  </Style>
-  <Style Selector="Button.modeOption /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
-  </Style>
-  <Style Selector="Button.modeOption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
-  </Style>
-  <Style Selector="Button.modeOption.selected">
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.modeOption.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+    <Setter Property="Theme" Value="{StaticResource ModeOption}" />
   </Style>
 
   <!-- ===== Colour swatches ===================================================================
@@ -112,15 +57,15 @@
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
   </Style>
 
-  <!-- Which of the effect / base colour buttons the picker is editing reads as an accent ring. -->
+  <!-- Which of the effect / base colour buttons the picker is editing reads as an accent ring. It
+       is a neutral bordered button until then, so it rides `SecondaryButton`; the ring is set on
+       the Button itself, which the theme's own template binds through — the whole reason the
+       presenter no longer has to be named. -->
   <Style Selector="Button.colorSlot">
-    <Setter Property="Padding" Value="{DynamicResource PaddingButton}" />
-    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Theme" Value="{StaticResource SecondaryButton}" />
   </Style>
   <Style Selector="Button.colorSlot.selected">
     <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.colorSlot.selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="2" />
   </Style>

@@ -46,24 +46,25 @@
       </Grid>
 
       <!-- Layer switch and the profile-wide actions. The switch is built from the model's layers,
-           so it is two pills on a Freestyle Edge RGB and five on an Advantage 360 (issue #41). -->
+           so it is two segments on a Freestyle Edge RGB and five on an Advantage 360 (issue #41).
+
+           A ListBox rather than a row of buttons: the switch is one-of-N, which is what a
+           SelectingItemsControl is, and it buys the whole group one tab stop with arrow-key
+           movement inside it. `SelectedItem` reads the view model one way — the property is
+           read-only, and SelectLayer is the only thing allowed to move it — while the selection
+           change runs the very command the buttons used to. -->
       <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
-        <ItemsControl Grid.Column="0" ItemsSource="{Binding Layers}" VerticalAlignment="Center">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="6" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
+        <ListBox Grid.Column="0"
+                 Theme="{StaticResource SegmentedControl}"
+                 ItemsSource="{Binding Layers}"
+                 SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
+                 SelectionChanged="OnLayerSelectionChanged">
+          <ListBox.ItemTemplate>
             <DataTemplate DataType="vm:KeyboardLayerViewModel">
-              <Button Classes="layerTab"
-                      Classes.selected="{Binding IsSelected}"
-                      Content="{Binding Caption}"
-                      Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectLayerCommand}"
-                      CommandParameter="{Binding}" />
+              <TextBlock Text="{Binding Caption}" />
             </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          </ListBox.ItemTemplate>
+        </ListBox>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <TextBlock Text="{x:Static vm:KeyboardEditorViewModel.SavingCaption}"
@@ -83,23 +84,30 @@
            feature button reports its own availability through the command's CanExecute, so there is
            no visibility logic here. -->
       <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,16,0,0">
-        <ItemsControl Grid.Column="0" ItemsSource="{Binding Tabs}" VerticalAlignment="Bottom">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="2" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
+        <!-- A real TabStrip: the header row of a tab control with no content host, which is exactly
+             what this is — the strip selects, and the Panel below toggles which section is visible.
+             `SelectedValue` rides the view model's own EditorTab, mapped through each entry's Tab,
+             so the strip and the section stay one value; the click still runs SelectTabCommand. -->
+        <TabStrip Grid.Column="0"
+                  Theme="{StaticResource TabStrip}"
+                  ItemsSource="{Binding Tabs}"
+                  SelectedValueBinding="{Binding Tab, DataType=vm:EditorTabViewModel}"
+                  SelectedValue="{Binding SelectedTab, Mode=OneWay}"
+                  SelectionChanged="OnTabSelectionChanged">
+          <!-- A tab this app has not built yet is shown disabled rather than hidden, so the
+               editor's shape does not change when it arrives. Scoped to this strip, because a
+               style outranks the container theme and must not leak to any other one. -->
+          <TabStrip.Styles>
+            <Style Selector="TabStripItem" x:DataType="vm:EditorTabViewModel">
+              <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+            </Style>
+          </TabStrip.Styles>
+          <TabStrip.ItemTemplate>
             <DataTemplate DataType="vm:EditorTabViewModel">
-              <Button Classes="editorTab"
-                      Classes.selected="{Binding IsSelected}"
-                      Content="{Binding Caption}"
-                      IsEnabled="{Binding IsEnabled}"
-                      Command="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectTabCommand}"
-                      CommandParameter="{Binding}" />
+              <TextBlock Text="{Binding Caption}" />
             </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          </TabStrip.ItemTemplate>
+        </TabStrip>
 
         <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom">
           <Button Content="Tap and Hold" Command="{Binding TapAndHoldCommand}" Margin="6,0,0,4" />
@@ -200,7 +208,7 @@
                               </ItemsControl.ItemsPanel>
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="vm:MacroSlotViewModel">
-                                  <Button Classes="layerTab"
+                                  <Button Classes="navPill"
                                           Classes.selected="{Binding IsSelected}"
                                           MinWidth="44"
                                           Padding="10,6"
@@ -276,7 +284,7 @@
                               </ItemsControl.ItemsPanel>
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="vm:MacroCoTriggerViewModel">
-                                  <Button Classes="layerTab"
+                                  <Button Classes="toggleSegment"
                                           Classes.selected="{Binding IsOn}"
                                           Content="{Binding Caption}"
                                           MinWidth="0"

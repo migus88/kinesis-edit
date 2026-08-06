@@ -1,0 +1,245 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The segmented family. Read Shared.axaml's header first — it carries the authoring contract, and
+    BaseButton carries the template, the geometry, the type step, the focus ring and the disabled
+    face that ToggleSegment at the bottom of this file derives from.
+
+    Three themes, one shape language: a row of adjoining choices where exactly one — or, for the
+    toggle, each one independently — is on.
+
+      SegmentedControl / SegmentedItem  the layer switcher and the lighting speed bars: a trough
+                                        with the segments inside it, one selected.
+      ToggleSegment                     a standalone two-state segment: the macro co-triggers and
+                                        the pedal's Single Action / Macro latch.
+
+    WHY A ListBox AND NOT A RadioButton GROUP. docs/design/handoff.md offers both ("Segmented
+    controls (layer switcher, speed bars): restyled ListBox with horizontal StackPanel, or
+    RadioButton group styled as segments"). Every call site is already an ItemsControl over a
+    collection of view models, so the ListBox keeps the view a data binding — items, a selection,
+    and no per-item plumbing — where a RadioButton group would need a group name and an
+    IsChecked converter per item, and would lose the one-Tab-stop-per-group keyboard behaviour a
+    SelectingItemsControl gives for free.
+
+    DEVIATION FROM docs/design/. The mockups draw the layer switcher's SELECTED segment as a raised
+    neutral face (dark `#23272C` on the `#131619` trough with a `#3A4046` border; light `#FFFFFF` on
+    `#EEF0F1` with `#C9CFD2`), not as an accent fill. This theme fills it with the accent instead,
+    on issue #86's instruction and to keep the app's one accent law legible — "one accent, two
+    meanings: selection/focus, and you changed this" — and because the same handoff calls the other
+    consumer of this control, the lighting speed bars, "accent-filled" verbatim. The mock's geometry
+    is followed exactly (2px trough padding and gap, RadiusControl trough around RadiusChip
+    segments, 11px type stepping 400 -> 500 on selection); only the selected face's three colours
+    differ. Flipping back is those three setters under `^:selected`.
+  -->
+
+  <!--
+    ONE SEGMENT. Transparent until it is chosen, so the trough behind it is what separates the
+    choices and nothing draws a box the design does not ask for.
+
+    Set as SegmentedControl's ItemContainerTheme below, which is why no view ever names this key:
+    a consumer themes the ListBox and the containers follow.
+  -->
+  <ControlTheme x:Key="SegmentedItem" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+
+    <!-- The mock's `padding: 4px 11px`, i.e. 11 horizontal by 4 vertical. Not one of the six
+         spacing steps, because this is a control's internal rhythm rather than a gap between
+         controls — the same reason PaddingButton is 13x8. -->
+    <Setter Property="Padding" Value="11,4" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+
+    <!-- Contract 3: our ring replaces Fluent's dotted adorner rather than doubling up with it. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+
+    <!-- Contract 6: the halo is a BoxShadow with spread, drawn outside Root's own bounds. -->
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <!-- Contract 8, and the budget's one deliberate zero: "layer switching is deliberately
+         unanimated ... 200 ms x 200 switches is the difference between an instrument and a
+         website". Cleared outright rather than set to a zero duration, because a zero-duration
+         transition still costs a frame of bookkeeping per switch. -->
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter x:Name="Label"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Contract 5. Selection outranks hover: a chosen segment the pointer happens to be over is
+         still the chosen segment, and `:not(:selected)` says so rather than leaving it to the order
+         these styles happen to appear in. -->
+    <Style Selector="^:pointerover:not(:selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <!-- Written after :pointerover and never overlapping it: Avalonia raises both while the pointer
+         is down, so the two fills are split by the qualifier rather than by file order. -->
+    <Style Selector="^:pressed:not(:selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- The chosen segment: the accent fill, the on-accent label, and the one weight step the
+         mockups draw on it (400 -> 500). See the deviation note in the header for the fill. -->
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+
+    <!-- Contract 4. Selection's own ring is the deeper accent, so a selected segment reads as
+         selected with no focus anywhere; when focus does arrive it takes the border to the full
+         accent and adds the halo outside it, and the two stay told apart. -->
+    <Style Selector="^:selected:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <!-- A segment the firmware gates off — the lighting Fn layer below LED 1.0.44 — is shown and
+         dimmed rather than hidden, because the layer exists and the reason is printed beside it.
+         It keeps no face at all: a filled disabled segment would carry more presence inside the
+         trough than the enabled ones beside it. Declared last of the faces on purpose, so it
+         outranks selection too — a gated segment must not read as the chosen one. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- Contract 3, verbatim. Focus outranks every pointer state, which is why those carry
+         `:not(:focus-visible)` above. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    THE TROUGH. An inset surface with a 1px line around it and the segments sitting 2px inside, so
+    the group reads as one control with an interior rather than as a row of loose buttons
+    (docs/design/mockups.md 1e/2a: `padding: 2px; border-radius: 5px; gap: 2px`). The 2px inset is
+    also what makes the radii concentric — RadiusControl 5 outside, RadiusChip 3 inside.
+
+    ClipToBounds stays false here as well as on the segment (contract 6): the first and last
+    segments' focus haloes are painted 3px outside the trough, and a clip on the container would
+    erase exactly the halves of the ring that leave it.
+  -->
+  <ControlTheme x:Key="SegmentedControl" TargetType="ListBox">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="2" />
+
+    <!-- A segmented control is intrinsically as wide as its choices; a stretched trough would run
+         the width of whatever column it is dropped into. -->
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <!-- There is always a layer, always a speed. Clicking the chosen segment again must not empty
+         the control. -->
+    <Setter Property="SelectionMode" Value="AlwaysSelected" />
+
+    <!-- So a consumer names only the outer key and the containers follow. -->
+    <Setter Property="ItemContainerTheme" Value="{StaticResource SegmentedItem}" />
+
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="2" ClipToBounds="False" />
+      </ItemsPanelTemplate>
+    </Setter>
+
+    <!-- No ScrollViewer, unlike Fluent's ListBox: a segmented control that scrolls is a segmented
+         control with too many segments, and a ScrollViewer would clip the haloes the contract
+         insists on keeping. -->
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ListBox">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ItemsPresenter x:Name="Items" ItemsPanel="{TemplateBinding ItemsPanel}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+  <!--
+    A STANDALONE TWO-STATE SEGMENT — the macro co-triggers (each independently on or off) and the
+    pedal editor's Single Action / Macro latch. It is not in a trough and it is not part of a
+    selection: each one is its own on/off, which is why it is a Button driven by `.selected` rather
+    than a ListBoxItem driven by `:selected`.
+
+    Off is the neutral bordered face of SecondaryButton — a toggle has to look like a control before
+    it is switched on — and on is the accent fill, the same "this is chosen" the segment above uses.
+  -->
+  <ControlTheme x:Key="ToggleSegment" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- On. Declared after the pointer states and qualified into them, so pressing a toggle that is
+         already on does not flicker it back to the neutral face on the way to switching it off. -->
+    <Style Selector="^.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="^.selected:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <!-- Disabled and the focus ring both come from BaseButton: the inset face is right here, where
+         the toggle has a face of its own to lose. -->
+  </ControlTheme>
+</ResourceDictionary>

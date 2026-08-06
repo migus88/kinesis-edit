@@ -43,11 +43,12 @@
   </Style>
 
   <!-- The mono law reaches editable fields too: a delay in milliseconds is written into the file
-       exactly as it is typed. TextBox is not a TextBlock, so the scale class cannot reach it and
-       the two setters are repeated against the same resources. -->
+       exactly as it is typed. TextBox is not a TextBlock, so the scale class cannot reach it — and
+       the field it names is a whole control rather than a type step, so the class bridges to the
+       `MonoValueField` control theme, which carries the mono family and size together with the
+       quiet inset face a table of typed values wants. -->
   <Style Selector="TextBox.monoValue">
-    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
-    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValue}" />
+    <Setter Property="Theme" Value="{StaticResource MonoValueField}" />
   </Style>
 
   <!-- ===== Severity ==========================================================================

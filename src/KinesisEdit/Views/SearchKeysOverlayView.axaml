@@ -18,12 +18,19 @@
       <StackPanel Spacing="3">
         <TextBlock Text="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" Classes="sectionLabel" />
         <!-- A real TextBox: capture stands down while focus sits in one, so the query is typed
-             into the box instead of being swallowed as a keystroke. -->
-        <TextBox Text="{Binding Query, Mode=TwoWay}" Watermark="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" />
+             into the box instead of being swallowed as a keystroke. Sans, not mono — a query is
+             what the user is looking for, never a value the config file carries. -->
+        <TextBox Classes="searchField"
+                 Text="{Binding Query, Mode=TwoWay}"
+                 Watermark="{x:Static vm:SearchKeysOverlayViewModel.SearchLabel}" />
       </StackPanel>
 
+      <!-- The rows are named here rather than left to a blanket ListBoxItem style: one used to sit
+           in Styles/Buttons.axaml for this very list and leaked onto every other list in the app,
+           overriding their container themes. -->
       <ListBox ItemsSource="{Binding Results}"
                SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+               ItemContainerTheme="{StaticResource SelectableListRow}"
                MaxHeight="320">
         <ListBox.ItemTemplate>
           <DataTemplate DataType="keys:KeySearchEntry">

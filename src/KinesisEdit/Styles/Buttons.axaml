@@ -1,72 +1,78 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    Buttons and the other things a pointer clicks that are not part of the keyboard picture or the
-    editor's own chrome.
+    The controls a pointer drives that are not part of the keyboard picture or the editor's own
+    chrome: the button roles, the two that carry a `selected` state of their own, and the field
+    types with exactly one appearance in the app.
 
-    Where a style paints a button's own surface it targets the template's
-    `ContentPresenter#PART_ContentPresenter` rather than the Button: the Fluent theme's
-    `:pointerover` / `:pressed` / `:disabled` setters target that presenter, and a Background set
-    on the Button itself would lose to them.
+    Everything below is a *bridge*, not paint: each maps one class — or, for a type that has no
+    competing variant, the type itself — onto a ControlTheme in Themes/ControlThemes/, which owns
+    the template and the whole state matrix. Views keep writing `Classes="primaryAction"`, so the
+    class stays the authoring API and nothing here has to know what the template looks like.
+
+    That indirection is the point. These styles used to paint a button by reaching into Fluent's
+    template for the content presenter, because Fluent's own `:pointerover` / `:pressed` /
+    `:disabled` setters target it and a Background set on the Button itself would lose to them. A
+    control theme that writes its own template has no such problem: its Border template-binds the
+    Background, so a value set on the control wins. Nothing in Styles/ may name a template part
+    again — see Themes/ControlThemes/Shared.axaml.
+
+    A bridge sets the theme and, wherever it can, nothing else: a Style setter outranks a
+    ControlTheme setter, so every extra property here is one the theme no longer decides.
   -->
 
-  <!-- The one button of a surface that commits something: the editor's Save, a panel's Ok, Assign.
-       Accent, because accent means "you changed this" and this is the button that keeps it.
-
-       An accent *fill* with AccentText on it, not accent-coloured text: the accent as a foreground
-       on a neutral face measures 2.4-2.8:1 in the light theme, which is not a legible label.
-       AccentText is exactly the on-accent colour the design defines for this treatment.
-
-       The four states come from the AccentButton* keys, which Themes/Controls.axaml maps onto the
-       accent roles per variant — the fill has to move away from the label colour, and the label
-       colour flips between the variants. Disabled leaves the accent family entirely: a Save that
-       has nothing to save must not look like a Save that does. -->
+  <!-- The one button of a surface that commits something: the editor's Save, a panel's Ok, Assign,
+       a card's Configure. Accent, because accent means "you changed this" and this is the button
+       that keeps it. -->
   <Style Selector="Button.primaryAction">
-    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Theme" Value="{StaticResource PrimaryActionButton}" />
   </Style>
-  <Style Selector="Button.primaryAction /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+
+  <!-- The bordered neutral button, and the default for anything that is not the committing action:
+       Home, Scan for v-Drive, Cancel, Retry access. -->
+  <Style Selector="Button.secondary">
+    <Setter Property="Theme" Value="{StaticResource SecondaryButton}" />
   </Style>
-  <Style Selector="Button.primaryAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPointerOver}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+
+  <!-- The green-tinted Eject on a device card — the one place the app releases a drive. -->
+  <Style Selector="Button.eject">
+    <Setter Property="Theme" Value="{StaticResource EjectButton}" />
   </Style>
-  <Style Selector="Button.primaryAction:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushPressed}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+
+  <!-- The red-tinted Discard in the leave-with-unsaved modal. The only red button in the app. -->
+  <Style Selector="Button.discard">
+    <Setter Property="Theme" Value="{StaticResource DiscardButton}" />
   </Style>
-  <Style Selector="Button.primaryAction:disabled /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundDisabled}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrushDisabled}" />
-    <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundDisabled}" />
+
+  <!-- Chromeless until the pointer arrives: the small actions that must not compete with the
+       button beside them. -->
+  <Style Selector="Button.ghost">
+    <Setter Property="Theme" Value="{StaticResource GhostButton}" />
+  </Style>
+
+  <!-- Accent text inside a sentence, no chrome. -->
+  <Style Selector="Button.link">
+    <Setter Property="Theme" Value="{StaticResource LinkButton}" />
   </Style>
 
   <!-- A full-width flat button that reads as a list entry: a macro in the profile's list, a
-       recorded step. Declared in increasing precedence — selected wins over hover. -->
+       recorded step. `Classes.selected` drives its selected face. -->
   <Style Selector="Button.rowButton">
-    <Setter Property="HorizontalAlignment" Value="Stretch" />
-    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-    <Setter Property="Padding" Value="8,4" />
-    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Theme" Value="{StaticResource RowButton}" />
   </Style>
-  <Style Selector="Button.rowButton /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+
+  <!-- One of a small set, exactly one of which is live: the macro-slot picker. The active pill is
+       a raised neutral face rather than the accent — the accent means selection-of-a-thing-you-are-
+       editing, and a slot you are merely looking at is not that. -->
+  <Style Selector="Button.navPill">
+    <Setter Property="Theme" Value="{StaticResource NavPill}" />
   </Style>
-  <Style Selector="Button.rowButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
-  </Style>
-  <Style Selector="Button.rowButton.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+
+  <!-- A standalone two-state segment: the macro co-triggers, each independently on, and the pedal
+       editor's Single Action / Macro latch. A Button driven by `Classes.selected` rather than a
+       ListBoxItem, because none of these is one-of-a-selection. -->
+  <Style Selector="Button.toggleSegment">
+    <Setter Property="Theme" Value="{StaticResource ToggleSegment}" />
   </Style>
 
   <!-- One lighting zone (specs/07-lighting.md §4): a small chip in a wrapping row. -->
@@ -76,15 +82,33 @@
     <Setter Property="Cursor" Value="Hand" />
   </Style>
 
-  <!-- The rows of a long catalog (the Search Keys picker). Compact, because roughly twice as much
-       of the catalog is worth more here than the default row rhythm.
+  <!-- ===== Fields ============================================================================
+       Three types with exactly one appearance each in this app, so the bridge is the type itself:
+       inventing a class to carry a theme every instance wants would only be a second name for the
+       same thing. A view that ever needs a second slider (or check box, or drop-down) adds a class
+       then, and this style stays the default.
 
-       The colours come from the SystemControlHighlightList* keys Themes/Controls.axaml maps —
-       Fluent exposes no ListBoxItem-specific key, so those shared ones are what a row paints its
-       hover and its selection with. -->
-  <Style Selector="ListBoxItem">
-    <Setter Property="Padding" Value="8,4" />
-    <Setter Property="MinHeight" Value="0" />
+       There is deliberately no blanket `ListBoxItem` style any more. One used to sit here for the
+       Search Keys picker's compact rows and leaked onto every list in the app, including the
+       segmented control's — and because an app style outranks a ControlTheme setter, a segment's
+       padding came out 8,4 instead of the theme's 11,4. The picker names
+       `ItemContainerTheme="{StaticResource SelectableListRow}"` instead, which is the same rhythm
+       scoped to the one list that asked for it. -->
+  <Style Selector="Slider">
+    <Setter Property="Theme" Value="{StaticResource Slider}" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="Theme" Value="{StaticResource CheckBox}" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="Theme" Value="{StaticResource ComboBox}" />
+  </Style>
+
+  <!-- The one query box in the app (the Search Keys picker). Sans, not mono: it holds what the user
+       is looking for, never a value the config file carries — which is exactly the line
+       `TextBox.monoValue` in Styles/Text.axaml sits on the other side of. -->
+  <Style Selector="TextBox.searchField">
+    <Setter Property="Theme" Value="{StaticResource SearchField}" />
   </Style>
 
   <!-- The app's one indeterminate bar (LoadingView). Fluent gives it no key of its own, so the two

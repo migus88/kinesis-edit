@@ -1,0 +1,570 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The field family: the places a value is typed, picked, dragged or merely displayed. Read
+    Shared.axaml's header first — it carries the authoring contract, and everything below obeys it
+    except where a comment says otherwise and why.
+
+    A field is a HOLE IN THE PANEL, not a thing on top of it: it rests on SurfaceInset with a
+    SurfaceLine hairline, where a button rests on SurfaceBar with a SurfaceBorderRaised one
+    (Themes/Controls.axaml, "A field (TextBox, ComboBox) rests on SurfaceInset instead"). That is
+    the single rule that makes the seven themes below read as one family.
+
+    ================================================================================================
+    TEMPLATE OR BasedOn — the decision, per control, and the reason
+    ================================================================================================
+
+    Contract 1 says "write your own template". Three of the controls here cannot have one, and it is
+    worth writing down exactly why rather than rediscovering it:
+
+      TextBox   — TextBox.OnApplyTemplate does `NameScope.Get<TextPresenter>("PART_TextPresenter")`,
+                  and Get THROWS when the part is missing. A hand-written TextBox template must
+                  therefore carry a `PART_`-prefixed name, which contract 2 forbids outright.
+      ComboBox  — the same, for `PART_Popup`.
+      Slider    — the same, for `PART_Track`, `PART_DecreaseButton` and `PART_IncreaseButton`.
+
+    So those three derive from FluentTheme's own theme with `BasedOn` and extend it — the route
+    Views/SavantElitePedalView.axaml already takes for MenuItem. The ban the redesign is enforcing
+    is on a CLASS SELECTOR IN Styles/ reaching into a template it does not own; inheriting a
+    template and adding setters to the CONTROL is a different thing and is safe, because a
+    TemplateBinding carries the control's value into the part without anybody naming the part.
+
+    The other three do own their template, because nothing in them is required to be named:
+      CheckBox         — ToggleButton registers `PART_ContentPresenter` opportunistically and is
+                         content with any other name (Shared.axaml, consequence of contract 2).
+      SelectableListRow— same, ListBoxItem is a ContentControl.
+      TokenField       — a Border, which has no template at all; the theme is setters only.
+
+    ================================================================================================
+    WHAT THAT COSTS: THE HALO, AND WHERE IT REACHES
+    ================================================================================================
+
+    The design's focus ring is two things — a 1px accent border AND a 3px 28% halo
+    (docs/design/handoff.md, "Focus, selection, key badges"). The halo is a BoxShadow, and a
+    BoxShadow can only be set on a Border. Where we own the template we own a `Border#Root` and the
+    ring is complete. Where we do not, the halo would require a setter aimed at Fluent's own
+    `Border#PART_BorderElement` / `Border#Background` / the Slider's unnamed root — a `/template/`
+    selector into somebody else's template, naming a `PART_`. Contract 2 forbids it and the issue
+    exists to remove exactly that, so the accent border is where the ring stops:
+
+      | theme             | accent border on focus                                   | halo |
+      | CheckBox          | own template, set on the control                         | yes  |
+      | SelectableListRow | own template, set on the control                         | yes  |
+      | SearchField       | Fluent's `TextControlBorderBrushFocused` -> AccentBrush   | no   |
+      | MonoValueField    | same                                                     | no   |
+      | ComboBox          | Fluent's `ComboBoxBackgroundBorderBrushFocused` -> Accent | no   |
+      | Slider            | our BorderBrush, carried by the template's TemplateBinding| no   |
+      | TokenField        | not focusable — it is a display, see its own comment      | n/a  |
+
+    Every row of that table is a VISIBLE, non-offset keyboard focus ring, which is the requirement;
+    only the halo outside it is missing on the four BasedOn themes, and it is missing for a stated
+    reason rather than by omission. Documented in docs/app/design-system.md.
+
+    ================================================================================================
+    STATE PRECEDENCE (contract 5) — the qualifiers used below, once
+    ================================================================================================
+
+      - `:not(:focus-visible)` on every pointer-state BorderBrush setter: the focus ring owns the
+        border whenever it is visible, and Avalonia has no selector specificity to arrange that for
+        us.
+      - `:not(:pressed)` on every hover setter: Avalonia raises `:pointerover` AND `:pressed` while
+        the pointer is down, so the two are split explicitly instead of by file order.
+      - `:not(:selected)` / `:not(.armed)` on the hover setters of a control that has a selected or
+        an armed face: both outrank hover.
+
+    A TEXT FIELD IS NOT A BUTTON. A button shows its ring only on `:focus-visible`, because a click
+    that pressed it needs no further confirmation. A TextBox clicked into must still say so — that
+    is where the caret now is, and the user is about to type — so the accent border of the two
+    TextBox themes rides `:focus` (any focus) while `:focus-visible` is what the halo would ride if
+    it were reachable. That is the one place the ring is deliberately louder than on a button.
+  -->
+
+  <!--
+    ================================================================================================
+    SEARCH FIELD — the token picker's query box (specs/11-feature-dialogs.md §11.6, mockup 1e:
+    "search field ⌕ containing typed text 'esc' ... and a match counter 18/1204"). ⌘F focuses it
+    from anywhere in the editor.
+    ================================================================================================
+
+    Nothing consumes this yet: the Search Keys panel is rebuilt on it in a later issue, and the
+    theme landing first is deliberate so the panel has something to name.
+
+    THE LEADING GLYPH is a Path, not the mockup's `⌕` character, and that is a considered deviation
+    from docs/design/mockups.md's transcription:
+      - neither embedded family carries U+2315 (checked against the glyph typeface: IBM Plex Sans
+        and IBM Plex Mono both answer "no glyph"), so the character would fall through to whatever
+        the platform substitutes and tofu on a box that substitutes nothing;
+      - the design's own icon law is "16px grid, 1.5px stroke, square caps, geometry only"
+        (docs/design/mockups.md, 2b), which is what a magnifier drawn as geometry is.
+    It rides `InnerLeftContent`, a property Fluent's TextBox template already presents at the left
+    of the text — so the glyph costs no template of our own. The `<Template>` wrapper is load
+    bearing: a Setter holding a bare control would hand the SAME instance to every search field in
+    the app, and a control has one parent. Wrapped, Avalonia builds a fresh one per field.
+  -->
+  <ControlTheme x:Key="SearchField" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="6,6" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="InnerLeftContent">
+      <Template>
+        <Path Classes="searchGlyph"
+              Width="{StaticResource IconSize}"
+              Height="{StaticResource IconSize}"
+              Margin="8,0,2,0"
+              Stroke="{DynamicResource TextMutedBrush}"
+              StrokeThickness="{StaticResource IconStrokeThickness}"
+              StrokeLineCap="Square"
+              StrokeJoin="Miter"
+              Data="M 2.5,6.5 A 4,4 0 1 0 10.5,6.5 A 4,4 0 1 0 2.5,6.5 M 9.5,9.5 L 13,13" />
+      </Template>
+    </Setter>
+
+    <!-- The pointer and focus ramp. These set the CONTROL, so the template binding carries them to
+         Fluent's border; FluentTheme's own `/template/` state setters, fed by the aliases in
+         Themes/Controls.axaml, name the very same roles, so the two agree rather than fight. They
+         are written out anyway: a theme that states its own ramp survives the alias map changing
+         under it, and a reader should not have to open two files to learn what a focused field
+         looks like. -->
+    <Style Selector="^:pointerover:not(:focus)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- `:focus`, not `:focus-visible` — see the header. A click put the caret here. -->
+    <Style Selector="^:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    MONO VALUE FIELD — a delay in milliseconds, a repeat count, anything typed that is written into
+    a config file verbatim: the Tap and Hold delay (§11.1) and the macro delay (§11.3) today.
+    ================================================================================================
+
+    It is mono BECAUSE of what it holds, not because it is small: "mono type means this is literally
+    a value in a config file" (docs/design/README.md), and 250 in a field is the same 250 the
+    firmware reads back out of layoutN.txt. That law also says what this theme must NOT be used for
+    — a name, a caption, a search query — hence the separate SearchField above, which is sans.
+
+    "Read-only-looking" is the design intent, not a behaviour: the field is editable (the user types
+    the delay), but it is drawn quiet — the inset face, the hairline, no lift on hover — so a panel
+    full of them reads as a table of values rather than as a row of controls shouting for input.
+    Styles/Text.axaml's `TextBox.monoValue` is the pre-redesign spelling of exactly this and becomes
+    the class the bridge points here.
+  -->
+  <ControlTheme x:Key="MonoValueField" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeMonoValue}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Style Selector="^:pointerover:not(:focus)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    TOKEN FIELD — the box that shows what a key is assigned to: "factory [d] · now [esc]" in the
+    inspector, and the Tap / Hold action fields of §11.1.
+    ================================================================================================
+
+    IT TARGETS Border, AND IT HAS TO. The obvious shape for a field is a TextBox, and a TextBox is
+    exactly wrong here: focus inside one suspends the keystroke-capture service (text-input focus is
+    one of the two things KeystrokeCaptureSession.IsSuspended reports), so a token field the user
+    could click into would swallow the very keypress it exists to record. Styles/Editor.axaml says
+    the same thing about `Border.actionField`, which this theme replaces. A token field is a
+    DISPLAY; the capture is armed by the button beside it.
+
+    That is also why it carries no focus ring: a Border is not focusable, so there is no focus to
+    ring. Anything that must be reachable by Tab is a Button and belongs on Shared.axaml's
+    BaseButton, which has the ring already.
+
+    The content supplies the mono, not this theme: every call site puts a `TextBlock.monoValue`
+    inside, because a key token is a config-file value. Setting the family here as well would put
+    the mono law in two places.
+
+    `.armed` is the listening state — the same advisory border a listening key wears, because it
+    means the same thing ("press something now"), and amber is the app's only warning colour. It
+    outranks hover, hence the qualifier.
+  -->
+  <ControlTheme x:Key="TokenField" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="{StaticResource PaddingButton}" />
+    <Setter Property="MinHeight" Value="32" />
+
+    <Style Selector="^:pointerover:not(.armed)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- Armed. The 2px thickness is what carries it at a glance across a panel of three such
+         fields; the tint is the amber advisory ramp at its lightest strength. -->
+    <Style Selector="^.armed">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    SLIDER — the Tap and Hold delay (1-999 ms, default 250) and the lighting / settings speeds
+    (1-9). mockup 2h: "Delay slider showing 250 ms, range min 1 to max 999".
+    ================================================================================================
+
+    BasedOn, for the reason in the header: Fluent's Slider template is a Track holding two
+    RepeatButtons and a Thumb, all three of which it looks up by a `PART_` name. What it takes from
+    us through plain TemplateBindings is the root Border's BorderBrush, BorderThickness and
+    CornerRadius — which is precisely enough to carry a focus ring, and is the whole of this theme.
+
+    Two properties are deliberately NOT set here:
+      - Background, because Fluent's Slider hands the control's Background to the UNFILLED half of
+        the track rather than to a face. Setting it would silently repaint the track; the track
+        ramp already lives in Themes/Controls.axaml as SliderTrackFill / SliderTrackValueFill /
+        SliderThumbBackground, and one home is enough.
+      - Foreground, for the same reason — a slider has no label of its own; the mono readout beside
+        it is the view's.
+
+    The border is present at rest and merely transparent, so acquiring it on hover or focus costs no
+    reflow. `:focus-visible`, not `:focus`: a slider dragged with the mouse needs no ring, and the
+    ring exists here for the arrow keys that step the value.
+  -->
+  <ControlTheme x:Key="Slider" TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <!-- No height of our own, deliberately. Fluent's horizontal Slider asks for 50 — a 20px track
+         row with 15 of clearance above and below for tick bars the app never turns on — so the ring
+         boxes 50px around a 2px track, which is taller than the 32 every other field here takes.
+         Pinning Height to 32 does NOT fix it: the template's rows are fixed, so the track keeps its
+         y offset of 15 and the thumb simply hangs 2px out of the bottom. Tightening it means
+         rewriting `Grid#HorizontalTemplate`, which needs the `PART_` names this layer refuses, so
+         the slider keeps Fluent's extent and the ring tells the truth about it. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Style Selector="^:pointerover:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- A disabled slider drops the frame entirely rather than dimming it: the track and thumb
+         already state the disabled case (SurfaceLine / SurfaceLineHigh), and a second grey outline
+         around them only adds noise. -->
+    <Style Selector="^:disabled">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    CHECK BOX — the settings "Disable" rows, the Export scope (§11.5), the leave-with-unsaved
+    suppression ("Don't ask again — always save on leaving", mockup 1f) and the message box's own
+    "Don't ask this again" (1k).
+    ================================================================================================
+
+    This one owns its template, because nothing in a CheckBox has to be named and because the design
+    wants the focus ring ON THE BOX: "it has to read on a 26px key without eating its neighbour"
+    (2b). A halo around the whole control would wrap the label as well and, in a settings panel of
+    stacked rows, would bleed into the row above and below.
+
+    DEVIATION FROM CONTRACT 1, and the only one in this file: the template root is a Grid, not
+    `Border#Root`. `Root` is still there, still template-binds Background / BorderBrush /
+    BorderThickness / CornerRadius, and is still what the halo lands on — it is simply the box
+    rather than the whole control, with the label a sibling beside it. Padding is the gap between
+    the two, carried to the label's Margin, because a check box has no interior for padding to
+    describe.
+
+    The checked ramp reaches for the AccentButton* keys rather than naming AccentBrush directly, for
+    the same reason PrimaryActionButton does: the colour riding an accent fill flips with the
+    variant, so each variant has to move the fill AWAY from its own glyph colour, and
+    Themes/Controls.axaml is where that divergence is already written down per variant.
+
+    The glyph is geometry on the design's 16px grid with its 1.5px square-capped stroke, drawn
+    rather than typed so it is the same mark in every font situation.
+  -->
+  <ControlTheme x:Key="CheckBox" TargetType="CheckBox">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+
+    <!-- Contract 3: Fluent's dotted adorner would sit on top of our ring. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+
+    <!-- Contract 6: the halo is a BoxShadow with spread, drawn outside Root's bounds. -->
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="CheckBox">
+        <Grid ColumnDefinitions="Auto,*" ClipToBounds="False">
+          <Border x:Name="Root"
+                  Width="16"
+                  Height="16"
+                  ClipToBounds="False"
+                  VerticalAlignment="Center"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <!-- Hidden at rest; the checked and indeterminate states show it and pick the mark.
+                 Both marks are drawn inside the 14x14 the 1px border leaves. -->
+            <Path x:Name="Glyph"
+                  IsVisible="False"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Stroke="{DynamicResource AccentButtonForeground}"
+                  StrokeThickness="{StaticResource IconStrokeThickness}"
+                  StrokeLineCap="Square"
+                  StrokeJoin="Miter"
+                  Data="M 0,3.5 L 3,6.5 L 8.5,1" />
+          </Border>
+          <ContentPresenter x:Name="Label"
+                            Grid.Column="1"
+                            Margin="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                            RecognizesAccessKey="True" />
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- ===== Unchecked ======================================================================= -->
+    <Style Selector="^:pointerover:not(:pressed):not(:checked):not(:indeterminate)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:checked):not(:indeterminate)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <!-- ===== Checked and indeterminate =======================================================
+         The same face, two marks. The mark is swapped on our own part, which contract 2 allows
+         precisely because this theme declares that part. -->
+    <Style Selector="^:checked, ^:indeterminate">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+    </Style>
+    <Style Selector="^:checked:not(:focus-visible), ^:indeterminate:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorderBrush}" />
+    </Style>
+    <Style Selector="^:checked /template/ Path#Glyph, ^:indeterminate /template/ Path#Glyph">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:indeterminate /template/ Path#Glyph">
+      <Setter Property="Data" Value="M 0,0 L 8.5,0" />
+    </Style>
+
+    <Style Selector="^:pointerover:not(:pressed):checked, ^:pointerover:not(:pressed):indeterminate">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+    </Style>
+    <Style Selector="^:pressed:checked, ^:pressed:indeterminate">
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+    </Style>
+
+    <!-- ===== Disabled ========================================================================
+         A disabled box leaves the accent family entirely, exactly as a disabled primary action
+         does: an unreachable "on" must not look like an "on" that works. A disabled control is not
+         hit-testable, so it can never also be :pointerover or :pressed and needs no qualifier. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+    <Style Selector="^:disabled /template/ Path#Glyph">
+      <Setter Property="Stroke" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- ===== Focus ===========================================================================
+         Contract 3, verbatim. Written last, and qualified nowhere: focus outranks every other
+         state, which is why the pointer and selection setters above carry `:not(:focus-visible)`
+         rather than relying on where they sit in the file. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    COMBO BOX — the device picker on the no-device screen, the settings panel's choice rows, and
+    "the macro is picked by name from a dropdown" (2i).
+    ================================================================================================
+
+    BasedOn, because of `PART_Popup`. What this theme adds over the alias map in
+    Themes/Controls.axaml — which already puts the face, the border, the drop-down and its rows on
+    our roles — is the design's own control step (12/500 sans, where Fluent's is 14/400) and the
+    field geometry, plus a focus-ring setter of its own so the theme states the rule rather than
+    inheriting it invisibly from an alias.
+
+    Its rows are ComboBoxItems, which derive from ListBoxItem, so `SelectableListRow` below fits
+    them: a view that wants the redesign's drop-down rows sets `ItemContainerTheme` to it. That is
+    left to the view rather than forced here, because the drop-down of a settings row and the
+    drop-down of a macro picker want different row heights.
+  -->
+  <ControlTheme x:Key="ComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeControl}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(:focus)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:focus)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- A drop-down is a picker, not a text field, but it is opened as often by click as by
+         keyboard and the open popup has to be anchored to something that looks focused — so it
+         follows the TextBox rule and rides `:focus`. -->
+    <Style Selector="^:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    SELECTABLE LIST ROW — one row of a list the user picks from: the token picker's results
+    ("[esc] Escape · ↵ assign", 1e), the macro library's rows (2i), a drop-down's items.
+    ================================================================================================
+
+    Own template — a ListBoxItem is a ContentControl and needs no named part — so this is the one
+    field-family theme that carries the complete design ring.
+
+    SELECTION IS AN INSET RING, and the handoff names its colour for exactly this role
+    ("selected-row inset ring", AccentSelectedRing). It is drawn as the Border's own 1px border
+    rather than as an `inset` BoxShadow: a Border draws its border INSIDE its bounds, so the two are
+    the same mark, and one of them is a token we already have while the other would be a hardcoded
+    inset shadow. `Button.rowButton` in Buttons.axaml spells the selected row the same way, so a
+    list row and a row-shaped button match.
+
+    FOCUS AND SELECTION COEXIST (contract 4): the fill is selection's, the border and the halo are
+    focus's. A row that is both shows the 14% accent fill, the full accent border and the halo
+    outside it, and is still distinguishable from a row that is merely selected — which keeps the
+    deeper, quieter AccentSelectedRing.
+  -->
+  <ControlTheme x:Key="SelectableListRow" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ListBoxItem">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <ContentPresenter x:Name="Label"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Selection outranks hover: a selected row the pointer happens to be over is still a selected
+         row, and the qualifier says so rather than leaving it to file order. -->
+    <Style Selector="^:pointerover:not(:pressed):not(:selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(:selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    </Style>
+    <Style Selector="^:selected:not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <!-- A row keeps no face when it is disabled; it is a line of a list, not a control. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+
+    <!-- Contract 3, verbatim; qualified nowhere, for the reason given on the CheckBox above. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>
