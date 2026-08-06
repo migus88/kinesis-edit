@@ -44,6 +44,7 @@ namespace KinesisEdit.Tests.Design
         [InlineData("GutterSplit", 26)]
         [InlineData("CardGridGap", 12)]
         [InlineData("WidthCardStatusRail", 2)]
+        [InlineData("HeightDeviceCard", 212)]
         [InlineData("IconSize", 16)]
         [InlineData("IconStrokeThickness", 1.5)]
         [InlineData("IconSizeDialog", 24)]
@@ -71,6 +72,30 @@ namespace KinesisEdit.Tests.Design
             foreach (var variant in DesignTokens.Variants)
             {
                 Assert.Equal(new Thickness(horizontal, vertical), (Thickness)DesignTokens.Resolve(key, variant));
+            }
+        }
+
+        [AvaloniaFact]
+        public void TheCardGridMargins_AreDerivedFromTheOneGap()
+        {
+            // `CardGridGap` is the number; the two Thicknesses are how it reaches a UniformGrid,
+            // which has no spacing property and takes a Margin that no markup can compose out of an
+            // x:Double. Three separate literals could drift apart in silence and leave the token
+            // documented as the grid's gap while the grid used something else — so the derivation
+            // is asserted rather than trusted.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                var gap = (double)DesignTokens.Resolve("CardGridGap", variant);
+
+                Assert.Equal(
+                    new Thickness(0, 0, gap, gap),
+                    (Thickness)DesignTokens.Resolve("CardGridCellGap", variant));
+
+                // The panel's negative of it: a negative margin inflates the slot a Layoutable is
+                // arranged in, which is what removes the trailing gutter.
+                Assert.Equal(
+                    new Thickness(0, 0, -gap, -gap),
+                    (Thickness)DesignTokens.Resolve("CardGridPanelBleed", variant));
             }
         }
 

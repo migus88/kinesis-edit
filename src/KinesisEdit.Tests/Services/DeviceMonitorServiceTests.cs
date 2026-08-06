@@ -210,7 +210,9 @@ namespace KinesisEdit.Tests.Services
 
             service.Refresh();
 
-            Assert.Equal(1, dispatcher.PostCount);
+            // RefreshActivityChanged shares the dispatcher, so the post count is no longer 1;
+            // what this test guards is that no Updated reaches a handler before the drain.
+            Assert.NotEqual(0, dispatcher.PostCount);
             Assert.Empty(updates);
 
             dispatcher.DrainPending();
@@ -226,6 +228,7 @@ namespace KinesisEdit.Tests.Services
                 new VDriveMonitor(scanner, _neverPolls),
                 new FakeVDriveFileService(),
                 new FakeUiDispatcher(),
+                new FakeSystemClock(),
                 _neverPolls);
             var poll = new Thread(service.Refresh);
 
@@ -250,6 +253,7 @@ namespace KinesisEdit.Tests.Services
                 new VDriveMonitor(scanner, _neverPolls),
                 new FakeVDriveFileService(),
                 new FakeUiDispatcher(),
+                new FakeSystemClock(),
                 _neverPolls);
             var poll = new Thread(service.Refresh);
 
@@ -272,7 +276,7 @@ namespace KinesisEdit.Tests.Services
             var scanner = new FakeVDriveScanner();
             var fileService = new FakeVDriveFileService();
             var monitor = new VDriveMonitor(scanner, _neverPolls);
-            using var service = new DeviceMonitorService(monitor, fileService, new FakeUiDispatcher(), _neverPolls);
+            using var service = new DeviceMonitorService(monitor, fileService, new FakeUiDispatcher(), new FakeSystemClock(), _neverPolls);
             var location = TestDevices.CreateLocation(DeviceId.Tko);
             fileService.SetFile(location.VersionFilePath, TestDevices.CreateVersionFileLines(DeviceId.Tko));
             scanner.SetResult(location);
@@ -345,16 +349,219 @@ namespace KinesisEdit.Tests.Services
             Assert.False(service.IsPolling);
         }
 
+        [Fact]
+        public void LastRefreshedUtc_BeforeTheFirstRefresh_IsNull()
+        {
+            using var service = CreateService(out _, out _, out _);
+
+            Assert.Null(service.LastRefreshedUtc);
+            Assert.False(service.IsRefreshing);
+        }
+
+        [Fact]
+        public void LastRefreshedUtc_AfterARefresh_CarriesTheClock()
+        {
+            using var service = CreateService(out var scanner, out var fileService, out _, out _);
+            var location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb);
+            fileService.SetFile(location.VersionFilePath, TestDevices.CreateVersionFileLines(DeviceId.FreestyleEdgeRgb));
+            scanner.SetResult(location);
+
+            service.Refresh();
+
+            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void LastRefreshedUtc_AfterASecondRefresh_Advances()
+        {
+            using var service = CreateService(out _, out _, out _, out var clock);
+
+            service.Refresh();
+            clock.Advance(TimeSpan.FromSeconds(2));
+            service.Refresh();
+
+            Assert.Equal(FakeSystemClock.Start + TimeSpan.FromSeconds(2), service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void LastRefreshedUtc_WhenTheRefreshFindsNothing_IsStillStamped()
+        {
+            // "Refreshed" means the loop looked, not that it found something: an empty scan is the
+            // complete, correct answer of a healthy pass, and the dashboard's readout must reset
+            // for it — otherwise unplugging the only keyboard freezes the readout forever.
+            using var service = CreateService(out _, out _, out _);
+
+            service.Refresh();
+
+            Assert.All(service.Snapshots, snapshot => Assert.False(snapshot.IsDetected));
+            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void LastRefreshedUtc_WhenAVersionFileCannotBeRead_IsStillStamped()
+        {
+            // Same rule one level down: an unreadable version file is a device-level fault the
+            // snapshot already reports as v-Drive Error, not a failure of the pass.
+            using var service = CreateService(out var scanner, out var fileService, out _);
+            var location = TestDevices.CreateLocation(DeviceId.Tko);
+            fileService.SetUnreadable(location.VersionFilePath);
+            scanner.SetResult(location);
+
+            service.Refresh();
+
+            Assert.Equal(VDriveHealth.Error, GetSnapshot(service, DeviceId.Tko).Health);
+            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void LastRefreshedUtc_WhenTheScanThrows_KeepsThePreviousValue()
+        {
+            var scanner = new CallbackScanner();
+            var clock = new FakeSystemClock();
+            using var service = CreateService(scanner, clock);
+
+            service.Refresh();
+            clock.Advance(TimeSpan.FromSeconds(5));
+            scanner.Failure = new InvalidOperationException("the volume enumerator fell over");
+
+            Assert.Throws<InvalidOperationException>(service.Refresh);
+
+            // The readout keeps ageing while the loop is broken instead of claiming a scan that
+            // never completed.
+            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void IsRefreshing_WhileARefreshRuns_IsTrueAndClearsAfterwards()
+        {
+            var scanner = new CallbackScanner();
+            using var service = CreateService(scanner, new FakeSystemClock());
+            var isRefreshingDuringScan = false;
+            scanner.OnScan = () => isRefreshingDuringScan = service.IsRefreshing;
+
+            service.Refresh();
+
+            Assert.True(isRefreshingDuringScan);
+            Assert.False(service.IsRefreshing);
+        }
+
+        [Fact]
+        public void IsRefreshing_WhenTheScanThrows_IsCleared()
+        {
+            var scanner = new CallbackScanner
+            {
+                Failure = new InvalidOperationException("the volume enumerator fell over")
+            };
+            using var service = CreateService(scanner, new FakeSystemClock());
+
+            Assert.Throws<InvalidOperationException>(service.Refresh);
+
+            // A stuck Scanning card would outlive the app otherwise: nothing retries the flag.
+            Assert.False(service.IsRefreshing);
+        }
+
+        [Fact]
+        public void IsRefreshing_WhenARefreshCoalescesIntoARepeat_NeverReportsIdleInBetween()
+        {
+            var scanner = new CallbackScanner();
+            using var service = CreateService(scanner, new FakeSystemClock());
+            var states = new List<bool>();
+            service.RefreshActivityChanged += () => states.Add(service.IsRefreshing);
+            scanner.OnScan = () =>
+            {
+                if (scanner.ScanCount == 1)
+                {
+                    service.Refresh();
+                }
+            };
+
+            service.Refresh();
+
+            Assert.Equal(2, scanner.ScanCount);
+            Assert.All(states.Take(states.Count - 1), state => Assert.True(state));
+            Assert.False(states[^1]);
+        }
+
+        [Fact]
+        public void RefreshActivityChanged_AroundARefresh_ReportsTheStartTheStampAndTheEnd()
+        {
+            using var service = CreateService(out _, out _, out _);
+            var states = new List<(bool IsRefreshing, DateTimeOffset? LastRefreshedUtc)>();
+            var expected = new List<(bool IsRefreshing, DateTimeOffset? LastRefreshedUtc)>
+            {
+                (true, null),
+                (true, FakeSystemClock.Start),
+                (false, FakeSystemClock.Start)
+            };
+            service.RefreshActivityChanged += () => states.Add((service.IsRefreshing, service.LastRefreshedUtc));
+
+            service.Refresh();
+
+            Assert.Equal(expected, states);
+        }
+
+        [Fact]
+        public void RefreshActivityChanged_Always_IsRaisedThroughTheDispatcher()
+        {
+            using var service = CreateService(out _, out _, out var dispatcher);
+            dispatcher.IsDeferred = true;
+            var changeCount = 0;
+            service.RefreshActivityChanged += () => changeCount++;
+
+            service.Refresh();
+
+            Assert.Equal(0, changeCount);
+
+            dispatcher.DrainPending();
+
+            Assert.Equal(3, changeCount);
+        }
+
+        [Fact]
+        public void RefreshActivityChanged_AfterDispose_IsNotRaised()
+        {
+            var service = CreateService(out _, out _, out _);
+            var changeCount = 0;
+            service.RefreshActivityChanged += () => changeCount++;
+            service.Dispose();
+
+            service.Refresh();
+
+            Assert.Equal(0, changeCount);
+            Assert.Null(service.LastRefreshedUtc);
+            Assert.False(service.IsRefreshing);
+        }
+
+        private static DeviceMonitorService CreateService(CallbackScanner scanner, FakeSystemClock clock)
+        {
+            return new DeviceMonitorService(
+                new VDriveMonitor(scanner, _neverPolls),
+                new FakeVDriveFileService(),
+                new FakeUiDispatcher(),
+                clock,
+                _neverPolls);
+        }
+
         private static DeviceMonitorService CreateService(
             out FakeVDriveScanner scanner,
             out FakeVDriveFileService fileService,
             out FakeUiDispatcher dispatcher)
         {
+            return CreateService(out scanner, out fileService, out dispatcher, out _);
+        }
+
+        private static DeviceMonitorService CreateService(
+            out FakeVDriveScanner scanner,
+            out FakeVDriveFileService fileService,
+            out FakeUiDispatcher dispatcher,
+            out FakeSystemClock clock)
+        {
             scanner = new FakeVDriveScanner();
             fileService = new FakeVDriveFileService();
             dispatcher = new FakeUiDispatcher();
+            clock = new FakeSystemClock();
 
-            return new DeviceMonitorService(new VDriveMonitor(scanner, _neverPolls), fileService, dispatcher, _neverPolls);
+            return new DeviceMonitorService(new VDriveMonitor(scanner, _neverPolls), fileService, dispatcher, clock, _neverPolls);
         }
 
         private static List<DeviceMonitorUpdate> CollectUpdates(DeviceMonitorService service)
@@ -373,6 +580,35 @@ namespace KinesisEdit.Tests.Services
         private static DeviceSnapshot GetDetectedSnapshot(DeviceMonitorService service)
         {
             return Assert.Single(service.Snapshots, snapshot => snapshot.IsDetected);
+        }
+
+        /// <summary>
+        /// Scanner that runs a test callback <em>inside</em> the scan — the window in which a
+        /// refresh is provably in flight — and that can be told to fail. <c>VDriveMonitor.Poll</c>
+        /// propagates a scanner throw (only its own timer tick swallows one), so this is also the
+        /// failing-refresh path. Everything happens on the calling thread: no timing, no waits.
+        /// </summary>
+        private sealed class CallbackScanner : IVDriveScanner
+        {
+            public int ScanCount { get; private set; }
+
+            public Action? OnScan { get; set; }
+
+            public Exception? Failure { get; set; }
+
+            public IReadOnlyList<VDriveLocation> Scan()
+            {
+                ScanCount++;
+
+                OnScan?.Invoke();
+
+                if (Failure is not null)
+                {
+                    throw Failure;
+                }
+
+                return [];
+            }
         }
 
         /// <summary>

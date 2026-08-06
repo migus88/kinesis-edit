@@ -84,7 +84,13 @@ namespace KinesisEdit
             var fileService = new VDriveFileService();
             var monitor = new VDriveMonitor(new VDriveScanner(PlatformVolumeEnumerator.Create()));
 
-            _deviceMonitor = new DeviceMonitorService(monitor, fileService, new AvaloniaUiDispatcher());
+            // One clock and one dispatcher for the whole shell: the detection loop stamps its
+            // completed passes with the clock and the app bar's "refreshed Ns ago" readout ages
+            // against the same one, and both marshal onto the UI thread the same way.
+            var clock = new SystemClock();
+            var dispatcher = new AvaloniaUiDispatcher();
+
+            _deviceMonitor = new DeviceMonitorService(monitor, fileService, dispatcher, clock);
 
             // One settings service for the whole app: app_settings.txt must have a single reader
             // and a single writer, or the notification-suppression flags and the lighting pickers'
@@ -122,7 +128,15 @@ namespace KinesisEdit
                 urlLauncher);
 
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, urlLauncher);
-            _shell = new MainWindowViewModel(_dashboard, _deviceMonitor, sessions, notifications, ejectNotifier, editorFactory);
+            _shell = new MainWindowViewModel(
+                _dashboard,
+                _deviceMonitor,
+                sessions,
+                notifications,
+                ejectNotifier,
+                editorFactory,
+                clock,
+                dispatcher);
 
             return notifications;
         }

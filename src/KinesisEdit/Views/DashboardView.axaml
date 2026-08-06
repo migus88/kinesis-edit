@@ -3,28 +3,71 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
   <Panel>
-    <!-- Cards for detected devices only; the card list is rebuilt by the detection loop. -->
+    <!--
+      A card exists once its device has been detected at least once this session and stays, resting,
+      if the drive later goes away; a refresh updates each card in place and never rebuilds the
+      list, so scroll offset and the control under the pointer survive it (docs/design/mockups.md
+      §2b, "the 2s refresh must not move anything").
+    -->
     <Grid RowDefinitions="Auto,*" IsVisible="{Binding HasDevices}" Margin="24">
-      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,16">
-        <Button Content="{x:Static vm:NoDeviceViewModel.ScanButtonCaption}" Command="{Binding ScanCommand}" />
-      </StackPanel>
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Bottom">
+          <TextBlock Text="{Binding HeaderTitle}" Classes="pageTitle" />
+          <TextBlock Text="{Binding HeaderSubtitle}" Classes="meta muted" />
+        </StackPanel>
 
-      <ScrollViewer Grid.Row="1">
-        <ItemsControl ItemsSource="{Binding Devices}">
+        <Button Grid.Column="1"
+                Classes="secondary"
+                VerticalAlignment="Bottom"
+                Content="{Binding ScanAllCaption}"
+                Command="{Binding ScanCommand}" />
+      </Grid>
+
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="Cards" ItemsSource="{Binding Devices}">
+          <!--
+            Two columns at `CardGridGap`, with no trailing gutter.
+
+            Avalonia's UniformGrid has no spacing property, so the gap is a right-and-bottom margin
+            on every cell (`CardGridCellGap`) and the panel carries the negative of it
+            (`CardGridPanelBleed`) - two Thicknesses because a Margin cannot be composed out of the
+            x:Double in markup; Themes/Geometry.axaml declares all three together and a test pins
+            them to one number. A negative margin inflates the slot a Layoutable is measured and
+            arranged in, so the panel is laid out one gap wider and one gap taller than the space
+            the ScrollViewer gives it and the last column's card ends exactly on the viewport's
+            right edge: the gap lands only *between* cells, nothing is clipped, and the scroll
+            extent stops at the bottom of the last row rather than one gap below it.
+
+            The style is scoped to the item containers (`ItemsControl > ContentPresenter`) rather
+            than to every ContentPresenter in the subtree - each card contains several of them,
+            inside the buttons' own templates. The child combinator is the *logical* parent, and a
+            generated container's logical parent is the ItemsControl rather than the panel it is
+            arranged in, which is why this cannot name the UniformGrid.
+
+            Top-aligned, because a UniformGrid spreads its rows over whatever height it is arranged
+            at and the ScrollViewer arranges its content at the full viewport when the content is
+            shorter: one row of cards in a tall window would otherwise sit in the middle of a row
+            half the window high, and two rows would be 100px apart.
+          -->
+          <ItemsControl.Styles>
+            <Style Selector="ItemsControl > ContentPresenter">
+              <Setter Property="Margin" Value="{StaticResource CardGridCellGap}" />
+            </Style>
+          </ItemsControl.Styles>
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="16" />
+              <UniformGrid Columns="2" Margin="{StaticResource CardGridPanelBleed}" VerticalAlignment="Top" />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
         </ItemsControl>
       </ScrollViewer>
     </Grid>
 
-    <!-- specs/11-feature-dialogs.md §11.8 troubleshoot panel while nothing is detected. -->
+    <!-- specs/11-feature-dialogs.md §11.8 troubleshoot panel while nothing has been detected. -->
     <ContentControl Content="{Binding EmptyState}" IsVisible="{Binding IsEmpty}" Margin="24" />
   </Panel>
 </UserControl>
