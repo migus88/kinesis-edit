@@ -30,6 +30,21 @@ namespace KinesisEdit.ViewModels
         /// <summary>The confirmation prompt, quoted verbatim from specs/07-lighting.md §4.</summary>
         public const string ResetAllConfirmation = "Do you want to erase color assignments for each key";
 
+        /// <summary>
+        /// The affirmative of that confirmation, named after what it does rather than "Yes"
+        /// (docs/design/mockups.md, mockup 1k). It still answers <c>Yes</c>.
+        /// <para>
+        /// <c>color</c>, not <c>colour</c>: every user-facing lighting string in this app is
+        /// American ("Effect Color", "Add to Custom Colors", and the spec prompt this button
+        /// answers — "erase color assignments for each key"). One British spelling in the middle of
+        /// them would read as a typo.
+        /// </para>
+        /// </summary>
+        public const string ResetAllConfirmCaption = "Erase colors";
+
+        /// <summary>The way out of that confirmation. It still answers <c>No</c>.</summary>
+        public const string ResetAllDeclineCaption = "Cancel";
+
         /// <summary>The note shown in demo mode (03 §3.5): everything is explorable, nothing is written.</summary>
         public const string DemoModeHint =
             "This device is open in demo mode, so lighting can be explored but not saved.";
@@ -619,7 +634,9 @@ namespace KinesisEdit.ViewModels
                     Title = ResetAllTitle,
                     Message = ResetAllConfirmation,
                     Icon = MessageBoxIcon.Confirmation,
-                    Buttons = MessageBoxButtons.YesNo
+                    Buttons = MessageBoxButtons.YesNo,
+                    YesCaption = ResetAllConfirmCaption,
+                    NoCaption = ResetAllDeclineCaption
                 }).ConfigureAwait(true);
             }
             catch (Exception)

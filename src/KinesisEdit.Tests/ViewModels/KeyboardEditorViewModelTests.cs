@@ -372,7 +372,7 @@ namespace KinesisEdit.Tests.ViewModels
                 "To load Profile 1 to the keyboard, hold the SmartSet key and tap the 1 key.",
                 Assert.Single(_notifications.Toasts).Message);
             Assert.Empty(_notifications.MessageBoxes);
-            Assert.Equal(new string?[] { "Saving...", null }, _notifications.LoadingHistory);
+            Assert.Equal(new string?[] { "Saving…", null }, _notifications.LoadingHistory);
         }
 
         [Fact]

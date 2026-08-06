@@ -19,7 +19,58 @@ namespace KinesisEdit.Tests.ViewModels
             var viewModel = new MessageBoxViewModel(CreateRequest(NotificationKeys.Save));
 
             Assert.True(viewModel.IsSuppressionAvailable);
-            Assert.Equal("Hide this notification?", MessageBoxViewModel.SuppressionCaption);
+
+            // Mockup 1k's wording, which supersedes spec 11 §11.9's "Hide this notification?".
+            // Only the caption moved: the flag it writes is still one of the twelve `*_msg` keys.
+            Assert.Equal("Don't ask this again", MessageBoxViewModel.SuppressionCaption);
+        }
+
+        [Fact]
+        public void Captions_WithoutOverrides_AreTheStandardLabels()
+        {
+            var viewModel = new MessageBoxViewModel(CreateRequest() with
+            {
+                Buttons = MessageBoxButtons.YesNoCancel
+            });
+
+            Assert.Equal("Yes", viewModel.YesCaption);
+            Assert.Equal("No", viewModel.NoCaption);
+            Assert.Equal("OK", viewModel.OkCaption);
+            Assert.Equal("Cancel", viewModel.CancelCaption);
+        }
+
+        [Fact]
+        public void Captions_WithOverrides_RenameTheButtonsWithoutMovingTheOutcomes()
+        {
+            // Mockup 1k labels the affirmatives by outcome. The label is all that changes: a click
+            // on "Include macros" still reports Yes, which is what keeps every caller's switch and
+            // every SuppressedResult honest.
+            var viewModel = new MessageBoxViewModel(CreateRequest() with
+            {
+                Buttons = MessageBoxButtons.YesNoCancel,
+                YesCaption = "Include macros",
+                NoCaption = "Key data only",
+                CancelCaption = "Cancel"
+            });
+
+            Assert.Equal("Include macros", viewModel.YesCaption);
+            Assert.Equal("Key data only", viewModel.NoCaption);
+
+            viewModel.YesCommand.Execute(null);
+
+            Assert.Equal(MessageBoxResult.Yes, viewModel.Outcome!.Result);
+        }
+
+        [Fact]
+        public void Captions_WithABlankOverride_FallBackToTheStandardLabel()
+        {
+            var viewModel = new MessageBoxViewModel(CreateRequest() with
+            {
+                Buttons = MessageBoxButtons.YesNo,
+                YesCaption = "   "
+            });
+
+            Assert.Equal("Yes", viewModel.YesCaption);
         }
 
         [Fact]

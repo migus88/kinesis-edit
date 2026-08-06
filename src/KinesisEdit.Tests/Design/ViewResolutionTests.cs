@@ -31,9 +31,6 @@ namespace KinesisEdit.Tests.Design
             // Built by the composition root, which passes it to `new MainWindow(...)`.
             [typeof(MainWindowViewModel)] = "App.axaml.cs constructs MainWindow directly.",
 
-            // A Window, not a View: the message box is shown modally by MessageBoxPresenter.
-            [typeof(MessageBoxViewModel)] = "MessageBoxPresenter constructs MessageBoxWindow directly.",
-
             // Rendered by an explicit DataTemplate in the view named after their owner.
             [typeof(KeyboardKeyViewModel)] = "DataTemplate in Controls/KeyboardView.axaml (-> KeyCapView).",
             [typeof(KeyboardLayerViewModel)] = "ItemTemplate in Views/KeyboardEditorView.axaml (the layer segments).",

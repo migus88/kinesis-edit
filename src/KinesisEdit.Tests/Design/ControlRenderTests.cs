@@ -4,6 +4,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using KinesisEdit.Core.Devices;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
@@ -136,8 +137,11 @@ namespace KinesisEdit.Tests.Design
 
             using var scenes = new ViewSceneFactory();
 
-            // No device detected anywhere, which is what puts the shell into demo mode.
-            var window = new MainWindow(scenes.CreateShell(withDevices: false), new Services.FakeNotificationService());
+            // An OPEN DEMO SESSION is what puts the shell into demo mode — "nothing is written".
+            // Nothing detected is not the same fact: after a completed scan the dashboard's chip
+            // reads v-Drive Error, which mockup 1a defines as "gone · unwritable" and mockup 1d
+            // asks for by name.
+            var window = new MainWindow(CreateDemoShell(scenes), new Services.FakeNotificationService());
 
             using var host = ThemedHost.Show(window, variant);
 
@@ -169,7 +173,7 @@ namespace KinesisEdit.Tests.Design
 
             using var scenes = new ViewSceneFactory();
 
-            var window = new MainWindow(scenes.CreateShell(withDevices: false), new Services.FakeNotificationService());
+            var window = new MainWindow(CreateDemoShell(scenes), new Services.FakeNotificationService());
 
             using var host = ThemedHost.Show(window, variant);
 
@@ -296,8 +300,23 @@ namespace KinesisEdit.Tests.Design
             using var scenes = new ViewSceneFactory();
 
             var view = (Control)Activator.CreateInstance(viewType)!;
+            var context = await scenes.CreateDemoModeContextAsync(viewType).ConfigureAwait(true);
 
-            view.DataContext = await scenes.CreateDemoModeContextAsync(viewType).ConfigureAwait(true);
+            // An editor that draws its own toolbar reads its chip from the shell, as data
+            // (IShellChrome), and in the app that shell is reporting the demo session the editor
+            // was opened under. A shell that never opened anything is a *dashboard* with nothing
+            // detected, whose chip reads v-Drive Error (mockup 1d) — so the session is opened here
+            // rather than inferred from an empty scan.
+            if (context is DeviceEditorViewModel editorContext && editorContext.ProvidesOwnChrome)
+            {
+                var shell = scenes.CreateShell(withDevices: false);
+
+                shell.OpenDevice(editorContext.Device);
+
+                editorContext.Shell = shell;
+            }
+
+            view.DataContext = context;
 
             using var host = ThemedHost.Show(view, variant);
 
@@ -342,6 +361,20 @@ namespace KinesisEdit.Tests.Design
                 ?? throw new InvalidOperationException("The control is not in the window's visual tree.");
 
             return FramePixels.At(frame, (int)probe.X, (int)probe.Y);
+        }
+
+        /// <summary>
+        /// A shell whose chip is in the demo state, which is what an <b>open demo session</b>
+        /// produces. The Advantage2 is used because its editor is the placeholder, which draws no
+        /// chrome of its own — so the app bar this suite reads is still on screen.
+        /// </summary>
+        private static MainWindowViewModel CreateDemoShell(ViewSceneFactory scenes)
+        {
+            var shell = scenes.CreateShell(withDevices: false);
+
+            shell.OpenDevice(KinesisEdit.Services.DeviceSnapshot.CreateDemo(DeviceCatalog.GetById(DeviceId.Advantage2)));
+
+            return shell;
         }
 
         private static Border AppBarStatusChipOf(MainWindow window)

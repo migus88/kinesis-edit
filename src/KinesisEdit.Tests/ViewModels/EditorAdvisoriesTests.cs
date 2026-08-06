@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 using KinesisEdit.ViewModels.Advisories;
@@ -486,6 +487,43 @@ namespace KinesisEdit.Tests.ViewModels
             await editor.SaveCommand.ExecuteAsync(null);
 
             Assert.Equal("Profile 1 written.", Assert.Single(fixture.Notifications.Toasts).Message);
+        }
+
+        [Fact]
+        public async Task ASaveWithAdvisories_ToastsOnTheAmberFace()
+        {
+            // Mockup 1k draws two toasts, and "saved with n advisories" is the amber one. Sending
+            // that sentence on the green success face said "all clear" while counting warnings.
+            using var fixture = new EditorFixture();
+
+            var editor = await fixture.LoadAsync();
+            var layer = editor.SelectedLayer!;
+
+            fixture.Remap(editor, TestLayouts.RgbDigitOneKeyIndex, layer.Keys[0].Key.OriginalKey);
+
+            Assert.True(editor.Advisories.Total > 0);
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal(ToastSeverity.Advisory, Assert.Single(fixture.Notifications.Toasts).Severity);
+        }
+
+        [Fact]
+        public async Task ACleanSave_ToastsOnTheSuccessFace()
+        {
+            // The other half of the pair: nothing to remark on, so the device's own post-save
+            // wording arrives green.
+            using var fixture = new EditorFixture();
+
+            fixture.PostSaveMessage = "Profile 1 written.";
+
+            var editor = await fixture.LoadAsync();
+
+            Assert.Equal(0, editor.Advisories.Total);
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal(ToastSeverity.Success, Assert.Single(fixture.Notifications.Toasts).Severity);
         }
 
         [Fact]

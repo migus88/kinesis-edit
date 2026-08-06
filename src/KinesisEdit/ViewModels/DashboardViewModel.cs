@@ -148,7 +148,14 @@ namespace KinesisEdit.ViewModels
 
             ArgumentNullException.ThrowIfNull(urlLauncher);
 
-            EmptyState = new NoDeviceViewModel(urlLauncher, RequestConfigure, ScanAsync);
+            // The loop's completed-pass count right now is the empty state's zero: the dashboard
+            // and its empty state are built once, at app start, so the delta against this baseline
+            // is exactly "since you opened this window".
+            EmptyState = new NoDeviceViewModel(
+                urlLauncher,
+                RequestConfigure,
+                ScanAsync,
+                _monitor.CompletedRefreshCount);
             ScanCommand = new AsyncRelayCommand(ScanAsync);
 
             var webToolDevice = WebToolCardViewModel.WebToolDevices().FirstOrDefault();
@@ -409,6 +416,11 @@ namespace KinesisEdit.ViewModels
         private void UpdateRefreshActivity()
         {
             IsRefreshing = _monitor.IsRefreshing;
+
+            // The empty state renders the same two facts the cards do — a pass being in flight,
+            // and how many have completed — and is fed the same way, pushed down rather than
+            // subscribed, so there is one subscription to the loop on this screen.
+            EmptyState.SetRefreshActivity(_monitor.IsRefreshing, _monitor.CompletedRefreshCount);
 
             for (var index = 0; index < DeviceCardCount; index++)
             {

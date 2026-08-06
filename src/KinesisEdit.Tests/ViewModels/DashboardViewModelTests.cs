@@ -44,6 +44,86 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void IsEmpty_WhenADriveAppears_DropsTheEmptyStateForTheDeviceCard()
+        {
+            // The empty state's own promise: "This screen will replace itself with your device
+            // card automatically." Nothing is pressed here — the loop's next pass is the whole
+            // mechanism, and this is the regression guard over it.
+            _monitor.Refresh();
+
+            Assert.True(_dashboard.IsEmpty);
+
+            SetDrives(CreateDrive(DeviceId.Tko));
+
+            _monitor.Refresh();
+
+            Assert.False(_dashboard.IsEmpty);
+            Assert.Equal(DeviceId.Tko, Assert.Single(_dashboard.DeviceCards).DeviceId);
+        }
+
+        [Fact]
+        public void EmptyState_AfterEachPass_CountsTheRescansSinceTheScreenOpened()
+        {
+            // The baseline is captured when the dashboard is built, so the sentence is true of
+            // this window rather than of the process.
+            Assert.Equal(0, _dashboard.EmptyState.RescanCount);
+
+            _monitor.Refresh();
+
+            Assert.Equal(1, _dashboard.EmptyState.RescanCount);
+
+            _monitor.Refresh();
+            _monitor.Refresh();
+
+            Assert.Equal(3, _dashboard.EmptyState.RescanCount);
+            Assert.Equal(
+                "Still watching · rescanned 3 times since you opened this window",
+                _dashboard.EmptyState.RescanText);
+        }
+
+        [Fact]
+        public void EmptyState_WhenBuiltOverALoopThatHasAlreadyRun_StartsCountingFromZero()
+        {
+            _monitor.Refresh();
+            _monitor.Refresh();
+
+            using var dashboard = new DashboardViewModel(
+                _monitor,
+                new VDriveEjectNotifier(new FakeDeviceEjectService(), new FakeNotificationService()),
+                _urlLauncher);
+
+            Assert.Equal(0, dashboard.EmptyState.RescanCount);
+
+            _monitor.Refresh();
+
+            Assert.Equal(1, dashboard.EmptyState.RescanCount);
+        }
+
+        [Fact]
+        public async Task EmptyState_WhileAPassIsInFlight_SaysSoOnItsScanButton()
+        {
+            // The same fact the cards render as Scanning, on the one button this screen has for it.
+            _monitor.Refresh();
+
+            Assert.Equal(NoDeviceViewModel.ScanButtonCaption, _dashboard.EmptyState.ScanCaption);
+
+            using var gate = new ManualResetEventSlim(false);
+            _scanner.Gate = gate;
+
+            var scan = _dashboard.ScanAsync();
+
+            Assert.True(SpinWait.SpinUntil(() => _dashboard.EmptyState.IsRefreshing, TimeSpan.FromSeconds(5)));
+            Assert.Equal(NoDeviceViewModel.ScanningButtonCaption, _dashboard.EmptyState.ScanCaption);
+            Assert.False(_dashboard.EmptyState.ScanCommand.CanExecute(null));
+
+            gate.Set();
+            await scan;
+
+            Assert.Equal(NoDeviceViewModel.ScanButtonCaption, _dashboard.EmptyState.ScanCaption);
+            Assert.True(_dashboard.EmptyState.ScanCommand.CanExecute(null));
+        }
+
+        [Fact]
         public void Devices_WithDetectedDrives_HasOneCardPerDetectedDeviceInCatalogOrder()
         {
             SetDrives(

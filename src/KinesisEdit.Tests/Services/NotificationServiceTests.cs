@@ -148,7 +148,7 @@ namespace KinesisEdit.Tests.Services
             service.ShowLoading();
             service.HideLoading();
 
-            Assert.Equal(new string?[] { "Loading...", null }, captions);
+            Assert.Equal(new string?[] { "Loading…", null }, captions);
             Assert.Null(service.LoadingCaption);
         }
 
@@ -159,7 +159,7 @@ namespace KinesisEdit.Tests.Services
 
             service.ShowLoading(LoadingCaptions.ForDevice("TKO"));
 
-            Assert.Equal("Loading TKO...", service.LoadingCaption);
+            Assert.Equal("Loading TKO…", service.LoadingCaption);
         }
 
         private static NotificationService CreateService(INotificationSuppressionStore store, out FakeMessageBoxPresenter presenter)

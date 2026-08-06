@@ -25,6 +25,32 @@
     <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
   </Style>
 
+  <!-- The "1." "2." "3." of a numbered instruction - today the connection steps of the empty state
+       (docs/design/mockups.md mockup 1d), which draws the digit at 10/500 mono inside a small tile.
+
+       Why a role of its own rather than a reused scale class:
+
+       - `.monoValueSmall` is the same 10px mono step, but it *means* "a value that exists verbatim
+         in a config file, somewhere tight". A step number is the app counting in its own voice, so
+         borrowing it would say the digit came out of a file - the same argument that gave the logo
+         mark its own size rather than this one (see Themes/Typography.axaml).
+       - `.sectionLabel` is 10/600 mono *with 1.2px of tracking*, and tracking is trailing space:
+         on a single digit centred in a 20px tile it pushes the glyph visibly off-centre. It also
+         means "caption over a group of controls", which a step number is not.
+
+       So: the family and colour are named here, and the size is the 10px mono step the app already
+       spends on label chrome (`FontSizeSectionLabel`) rather than the one that means a config
+       value. The weight is 500, as the mockup draws it, and there is no tracking. `TextBodyMuted`
+       is the digit's own colour in the mock - a step number is a marker, quieter than the
+       instruction beside it, and it must not compete with the sentence it numbers. The tile behind
+       it is a surface role, not a type one, and lives with the other surfaces. -->
+  <Style Selector=":is(TextBlock).stepNumber">
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeSectionLabel}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBodyMutedBrush}" />
+  </Style>
+
   <!-- "Modified" / "EDITING: <input>": a short accent tag next to the thing it qualifies. The
        accent means "you changed this", which is exactly one of its two sanctioned meanings. -->
   <Style Selector=":is(TextBlock).badge">

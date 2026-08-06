@@ -5,17 +5,49 @@
              xmlns:views="clr-namespace:KinesisEdit.Views"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.NotificationOverlay"
-             x:DataType="views:NotificationOverlay"
-             IsHitTestVisible="False">
-  <!-- Toasts and the loading indicator float over the content; neither is modal, so the whole
-       overlay is transparent to input (specs/11-feature-dialogs.md §11.9). -->
+             x:DataType="views:NotificationOverlay">
+  <!--
+    Everything that floats over the shell: the toasts, the blocking loading card and the modal
+    message box (specs/11-feature-dialogs.md §11.9; docs/design/mockups.md, mockup 1k).
+
+    The root is deliberately NOT `IsHitTestVisible="False"` any more. Two of the three surfaces
+    now take input — the toast has an `×` and the message box is genuinely modal — so the overlay
+    stays transparent to the pointer by *geometry* instead: the scrim below is the only full-bleed
+    element in here, and it is hit-testable only while something modal is up. Every other child is
+    alignment-constrained and sizes to its content, so it occupies no area it does not paint, and
+    the `Panel` and the `UserControl` above them carry no background and are therefore not hit-
+    tested at all. A full-bleed transparent element anywhere in this file would silently swallow
+    every click on the dashboard behind it.
+
+    Z-order is the order below: scrim, then what the scrim is for, then the toasts, which are
+    notices rather than obstacles and belong on top of everything.
+  -->
   <Panel>
+    <!-- The one full-bleed surface. It dims what is behind it and swallows the clicks aimed at it,
+         which is what makes an in-app card modal; `IsHitTestVisible` is driven from code together
+         with the `.open` class, so at rest it is both invisible and untouchable. It stays in the
+         tree rather than being collapsed, because `IsVisible="False"` gives the 140 ms fade
+         nothing to run on. -->
+    <Border x:Name="Scrim" Classes="overlayScrim" IsHitTestVisible="False" />
+
+    <!-- The message box. `ViewLocator` turns the view model into `MessageBoxView`; the host fades
+         the container over the already-dimmed shell rather than with it. -->
+    <ContentControl x:Name="ModalHost"
+                    Classes="overlayHost"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+
+    <ContentControl Content="{Binding Loading}"
+                    IsVisible="{Binding Loading.IsVisible}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+
     <ItemsControl ItemsSource="{Binding CenteredToasts}"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <StackPanel Spacing="8" />
+          <StackPanel Spacing="{DynamicResource Space8}" />
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
     </ItemsControl>
@@ -26,14 +58,9 @@
                   Margin="0,0,24,24">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
-          <StackPanel Spacing="8" />
+          <StackPanel Spacing="{DynamicResource Space8}" />
         </ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
     </ItemsControl>
-
-    <ContentControl Content="{Binding Loading}"
-                    IsVisible="{Binding Loading.IsVisible}"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center" />
   </Panel>
 </UserControl>

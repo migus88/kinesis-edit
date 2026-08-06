@@ -483,6 +483,92 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public void CompletedRefreshCount_BeforeTheFirstRefresh_IsZero()
+        {
+            using var service = CreateService(out _, out _, out _);
+
+            Assert.Equal(0, service.CompletedRefreshCount);
+        }
+
+        [Fact]
+        public void CompletedRefreshCount_PerCompletedPass_AdvancesByOne()
+        {
+            // This is what the empty state's "rescanned N times" counts, so it has to mean passes
+            // rather than anything that merely looks like one.
+            using var service = CreateService(out _, out _, out _);
+
+            service.Refresh();
+
+            Assert.Equal(1, service.CompletedRefreshCount);
+
+            service.Refresh();
+
+            Assert.Equal(2, service.CompletedRefreshCount);
+        }
+
+        [Fact]
+        public void CompletedRefreshCount_WhenARefreshCoalescesIntoARepeat_CountsBothPasses()
+        {
+            // A call arriving while a pass runs marks the running one to repeat rather than
+            // starting a second one, so the two callers share one gate — but the repeat is a real
+            // second scan of the drives and completes on its own, so it is a second count.
+            var scanner = new CallbackScanner();
+            using var service = CreateService(scanner, new FakeSystemClock());
+            scanner.OnScan = () =>
+            {
+                if (scanner.ScanCount == 1)
+                {
+                    service.Refresh();
+                }
+            };
+
+            service.Refresh();
+
+            Assert.Equal(2, scanner.ScanCount);
+            Assert.Equal(2, service.CompletedRefreshCount);
+        }
+
+        [Fact]
+        public void CompletedRefreshCount_WhenTheRefreshThatCoalescedNeverRanTwice_CountsOnce()
+        {
+            // The other half of the same rule: a refresh call that is dropped outright — one made
+            // after Dispose — never becomes a pass and never counts.
+            var service = CreateService(out _, out _, out _);
+
+            service.Refresh();
+            service.Dispose();
+            service.Refresh();
+
+            Assert.Equal(1, service.CompletedRefreshCount);
+        }
+
+        [Fact]
+        public void CompletedRefreshCount_WhenTheScanThrows_DoesNotCountThatPass()
+        {
+            var scanner = new CallbackScanner { Failure = new IOException("the volume went away") };
+            using var service = CreateService(scanner, new FakeSystemClock());
+
+            Assert.Throws<IOException>(service.Refresh);
+
+            Assert.Equal(0, service.CompletedRefreshCount);
+            Assert.Null(service.LastRefreshedUtc);
+        }
+
+        [Fact]
+        public void CompletedRefreshCount_AndLastRefreshedUtc_MoveTogether()
+        {
+            // Two views of one fact — "a pass finished" — so an observer can never see one without
+            // the other.
+            using var service = CreateService(out _, out _, out _);
+            var observed = new List<(int Count, DateTimeOffset? Stamp)>();
+            service.RefreshActivityChanged += () => observed.Add((service.CompletedRefreshCount, service.LastRefreshedUtc));
+
+            service.Refresh();
+
+            Assert.All(observed, entry => Assert.Equal(entry.Stamp is null, entry.Count == 0));
+        }
+
+        [Fact]
         public void RefreshActivityChanged_AroundARefresh_ReportsTheStartTheStampAndTheEnd()
         {
             using var service = CreateService(out _, out _, out _);

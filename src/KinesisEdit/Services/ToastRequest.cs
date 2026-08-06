@@ -22,5 +22,11 @@ namespace KinesisEdit.Services
 
         /// <summary>Where the notice appears; the spec's two placements, defaulting to bottom-right.</summary>
         public ToastPosition Position { get; init; } = ToastPosition.BottomRight;
+
+        /// <summary>
+        /// Which of mockup 1k's two toasts this is. Success is the default because that is what
+        /// nearly every notice in the app reports; an advisory has to be asked for.
+        /// </summary>
+        public ToastSeverity Severity { get; init; } = ToastSeverity.Success;
     }
 }

@@ -7,17 +7,23 @@
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="90"
              x:Class="KinesisEdit.Views.LoadingView"
              x:DataType="vm:LoadingViewModel">
-  <!-- Non-modal progress indicator with a caller-supplied caption
-       (specs/11-feature-dialogs.md §11.9, "Loading"). -->
-  <Border Classes="overlayCard" MinWidth="240">
-    <StackPanel Spacing="10">
-      <TextBlock Text="{Binding Caption}" Classes="body" HorizontalAlignment="Center" TextWrapping="Wrap" />
+  <!-- Progress indicator with a caller-supplied caption (specs/11-feature-dialogs.md §11.9,
+       "Loading"). Mockup 1k draws it as "Loading · blocking": the card sits on the same scrim the
+       message box uses, so the app takes no input while it is up. The scrim belongs to
+       NotificationOverlay; this view is the card, and it casts the modal shadow because it floats
+       at the same height. -->
+  <Border Classes="overlayCard modalCard" MinWidth="240">
+    <StackPanel Spacing="{DynamicResource Space8}">
       <!-- The design's one busy affordance: a 14px ring with a quadrant missing, turning once every
            1.1s. `.spinner` (Styles/Icons.axaml) carries the geometry, the box and the rotation, so
            the only thing left to name here is the accent it turns in. -->
       <controls:Icon Classes="spinner"
                      Stroke="{DynamicResource AccentBrush}"
                      HorizontalAlignment="Center" />
+      <TextBlock Text="{Binding Caption}"
+                 Classes="modalBody"
+                 HorizontalAlignment="Center"
+                 TextWrapping="Wrap" />
     </StackPanel>
   </Border>
 </UserControl>

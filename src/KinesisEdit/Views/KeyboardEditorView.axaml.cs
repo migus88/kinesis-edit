@@ -31,7 +31,7 @@ namespace KinesisEdit.Views
         {
             InitializeComponent();
 
-            // Tunneling, as in MessageBoxWindow: Escape must leave the listening state whatever
+            // Tunneling, as in MessageBoxView: Escape must leave the listening state whatever
             // has focus, instead of being swallowed by the focused key cap. handledEventsToo is
             // set because the keystroke-capture service previews the same event on the window
             // above us and marks it handled while a key is listening

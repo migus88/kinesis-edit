@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:services="clr-namespace:KinesisEdit.Services"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="330" d:DesignHeight="220"
+             x:Class="KinesisEdit.Views.MessageBoxView"
+             x:DataType="vm:MessageBoxViewModel"
+             Focusable="True"
+             KeyboardNavigation.TabNavigation="Cycle">
+  <!-- The app-wide message box of specs/11-feature-dialogs.md §11.9, drawn as mockup 1k draws it:
+       an in-app card over the shell's scrim rather than a second OS window, so it can carry the
+       budget's 140 ms modal fade and the scrim's 62% dim. NotificationOverlay hosts it.
+
+       Tab navigation cycles inside this card: with the scrim swallowing every pointer event
+       outside it, the keyboard is the only way out of the dialog, and the Enter/Escape contract
+       below is a tunneled handler on this view — it only ever sees a key while focus is in here.
+
+       The mock's 26px "KinesisEdit" strip above the card is deliberately not drawn: it is the
+       window chrome of a dialog window, and this is not one. The dialog's own title carries the
+       identity instead. -->
+  <Border Classes="overlayCard modalCard" Width="330">
+    <StackPanel Spacing="{DynamicResource Space12}">
+      <!-- A Grid and not a horizontal StackPanel: a StackPanel measures its children with infinite
+           width, so `TextWrapping="Wrap"` never fires and a one-line message walks straight out of
+           the card's right edge. The star column is what gives the prose something to wrap in. -->
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="{DynamicResource Space12}">
+        <!-- The dialog-type mark of specs/11-feature-dialogs.md §11.9, the design's stroked
+             geometry rather than a Latin-1 character. Each type is spelled out instead of resolved
+             by a converter because the four differ in colour as well as in shape, and a colour is a
+             named role a call site must state: accent for the two that inform or ask, amber for an
+             advisory, red for a failure. Exactly one is visible; `MessageBoxIcon.None` shows none of
+             them, and the cell is a fixed square so the message body does not shift. A dialog mark
+             is drawn at IconSizeDialog rather than the 16px rail size: it is the one thing that
+             says what kind of interruption this is. -->
+        <Panel Grid.Column="0"
+               Width="{DynamicResource IconSizeDialog}"
+               Height="{DynamicResource IconSizeDialog}"
+               VerticalAlignment="Top">
+          <controls:Icon Data="{DynamicResource IconInformation}"
+                         Size="{DynamicResource IconSizeDialog}"
+                         Stroke="{DynamicResource AccentBrush}"
+                         IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Information}" />
+          <controls:Icon Data="{DynamicResource IconConfirmation}"
+                         Size="{DynamicResource IconSizeDialog}"
+                         Stroke="{DynamicResource AccentBrush}"
+                         IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Confirmation}" />
+          <controls:Icon Data="{DynamicResource IconWarning}"
+                         Size="{DynamicResource IconSizeDialog}"
+                         Stroke="{DynamicResource StatusAdvisoryBrush}"
+                         IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Warning}" />
+          <controls:Icon Data="{DynamicResource IconError}"
+                         Size="{DynamicResource IconSizeDialog}"
+                         Stroke="{DynamicResource StatusErrorBrush}"
+                         IsVisible="{Binding Icon, Converter={StaticResource EnumMatch}, ConverterParameter=Error}" />
+        </Panel>
+
+        <StackPanel Grid.Column="1" Spacing="{DynamicResource Space4}">
+          <TextBlock Text="{Binding Title}" Classes="modalTitle" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Message}" Classes="modalBody muted" TextWrapping="Wrap" />
+        </StackPanel>
+      </Grid>
+
+      <!-- The suppression opt-out reads as a field rather than as a bare check box (mockup 1k
+           boxes it), so it cannot be mistaken for one of the answers. It is present only when the
+           request carries one of the twelve `*_msg` keys of specs/08-settings.md §3. -->
+      <Border Classes="suppressionRow" IsVisible="{Binding IsSuppressionAvailable}">
+        <CheckBox Content="{x:Static vm:MessageBoxViewModel.SuppressionCaption}"
+                  IsChecked="{Binding IsSuppressChecked, Mode=TwoWay}" />
+      </Border>
+
+      <!-- Mockup 1k's order: the way out first, then the affirmatives, with the primary one last
+           and on the accent. Custom buttons sit with the secondary answers - the only one in the
+           app today is the firmware gate's "Update Firmware", which is an alternative to OK
+           rather than the expected answer. -->
+      <StackPanel Orientation="Horizontal"
+                  Spacing="{DynamicResource Space8}"
+                  HorizontalAlignment="Right">
+        <Button Classes="secondary"
+                Content="{Binding CancelCaption}"
+                Command="{Binding CancelCommand}"
+                IsVisible="{Binding ShowsCancel}" />
+
+        <ItemsControl ItemsSource="{Binding CustomButtons}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space8}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="services:MessageBoxButton">
+              <Button Classes="secondary"
+                      Content="{Binding Caption}"
+                      CommandParameter="{Binding}"
+                      Command="{Binding $parent[UserControl].((vm:MessageBoxViewModel)DataContext).CustomButtonCommand}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Button Classes="secondary"
+                Content="{Binding NoCaption}"
+                Command="{Binding NoCommand}"
+                IsVisible="{Binding ShowsNo}" />
+        <Button x:Name="AcceptOk"
+                Classes="primaryAction"
+                Content="{Binding OkCaption}"
+                Command="{Binding OkCommand}"
+                IsVisible="{Binding ShowsOk}" />
+        <Button x:Name="AcceptYes"
+                Classes="primaryAction"
+                Content="{Binding YesCaption}"
+                Command="{Binding YesCommand}"
+                IsVisible="{Binding ShowsYes}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

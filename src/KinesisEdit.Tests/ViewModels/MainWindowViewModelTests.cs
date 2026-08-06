@@ -549,7 +549,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
 
-            Assert.Equal(new string?[] { "Loading TKO...", null }, _notifications.LoadingHistory);
+            Assert.Equal(new string?[] { "Loading TKO…", null }, _notifications.LoadingHistory);
             Assert.Null(_notifications.LoadingCaption);
         }
 
@@ -718,43 +718,57 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void StatusIndicator_WithoutAnyDrive_ReportsDemoMode()
+        public void StatusIndicator_WithoutAnyDrive_ReportsVDriveError()
         {
+            // Mockup 1a defines v-Drive Error as "gone · unwritable", and 1d says outright that
+            // the chip reads v-Drive Error while nothing is present: "gone" is exactly this state.
+            // Demo Mode is not it — that means "nothing is written", which is a thing an open
+            // session is doing, not a thing the dashboard found.
             _monitor.Refresh();
 
-            Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
-            Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
+            Assert.Equal("v-Drive Error", _shell.StatusIndicatorText);
+            Assert.Equal(StatusSeverity.Error, _shell.StatusIndicatorSeverity);
         }
 
         [Fact]
-        public void StatusIndicator_BeforeTheFirstScan_AlreadyReportsDemoMode()
+        public void StatusIndicator_BeforeTheFirstScan_ReportsDemoMode()
         {
-            // The field initialisers are the state the chip renders in the instant between the
-            // shell being constructed and the detection loop first answering, so they carry the
-            // same pair the demo branch below sets rather than a fourth, transient one.
+            // "Gone" is a finding, and before the first pass there is none — so the pre-scan state
+            // is deliberately NOT the error the same empty snapshot list produces afterwards. The
+            // field initialisers carry the same pair, so the chip never flickers through a fourth,
+            // transient value. In the shipped app this state is never on screen: the composition
+            // root runs one synchronous pass in Start() before the first frame.
+            Assert.Null(_monitor.LastRefreshedUtc);
             Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
             Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
         }
 
         [Fact]
-        public void StatusIndicator_DemoMode_IsNotAnAdvisory()
+        public void StatusIndicator_InADemoSession_IsNotAnAdvisory()
         {
             // docs/design/: amber is the *only* warning colour and means "advisory, never blocks".
             // Demo mode means "nothing is written", which is its own state with its own colour, so
             // it must never land on the amber ramp.
-            _monitor.Refresh();
+            _shell.OpenDevice(DeviceSnapshot.CreateDemo(DeviceCatalog.GetById(DeviceId.Tko)));
 
+            Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
+            Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
             Assert.NotEqual(StatusSeverity.Warning, _shell.StatusIndicatorSeverity);
         }
 
         [Fact]
-        public void StatusIndicator_AcrossEveryDriveState_UsesADistinctSeverityPerState()
+        public void StatusIndicator_AcrossEveryStateItCanReport_UsesTheThreeSeveritiesAndNeverAmber()
         {
-            // The four states of the design's vocabulary each mean one thing, so no two of the
-            // shell's own indicator states may share a severity.
+            // The shell's indicator answers with exactly three of the design's four states, and
+            // amber is not among them: an advisory is never a drive fact. Two drive states share
+            // Error on purpose — a drive that is gone and a drive that cannot be read are both
+            // "gone · unwritable" (mockup 1a) — so this pins the mapping, not distinctness.
             var severities = new List<StatusSeverity>();
 
-            // Nothing detected at all.
+            // Nothing looked at yet.
+            severities.Add(_shell.StatusIndicatorSeverity);
+
+            // A completed scan that found nothing.
             _monitor.Refresh();
             severities.Add(_shell.StatusIndicatorSeverity);
 
@@ -770,8 +784,11 @@ namespace KinesisEdit.Tests.ViewModels
             _monitor.Refresh();
             severities.Add(_shell.StatusIndicatorSeverity);
 
-            Assert.Equal(new[] { StatusSeverity.Demo, StatusSeverity.Error, StatusSeverity.Ok }, severities);
-            Assert.Equal(severities.Count, severities.Distinct().Count());
+            Assert.Equal(
+                new[] { StatusSeverity.Demo, StatusSeverity.Error, StatusSeverity.Error, StatusSeverity.Ok },
+                severities);
+            Assert.DoesNotContain(StatusSeverity.Warning, severities);
+            Assert.DoesNotContain(StatusSeverity.Unknown, severities);
         }
 
         [Fact]

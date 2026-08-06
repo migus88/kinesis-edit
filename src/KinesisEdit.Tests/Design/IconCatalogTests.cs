@@ -24,13 +24,16 @@ namespace KinesisEdit.Tests.Design
         private static readonly string[] _stateAndActionMarks =
         [
             "IconCannotAccess",
+            "IconClose",
             "IconConfirmation",
             "IconConnected",
             "IconConnectedCore",
             "IconEject",
             "IconError",
+            "IconExternalLink",
             "IconInformation",
             "IconNotDetected",
+            "IconRefresh",
             "IconScanning",
             "IconWarning"
         ];
