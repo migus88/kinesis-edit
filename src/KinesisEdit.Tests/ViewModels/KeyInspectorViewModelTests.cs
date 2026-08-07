@@ -213,21 +213,40 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Inspector.CopyKeyCommand.CanExecute(null));
         }
 
+        /// <summary>
+        /// The Macro tab hosts a panel like every other mode since issue #93 — it used to bridge out
+        /// to the Macros tab, and navigating away from the board when a mode tab is pressed was the
+        /// placeholder, not the design.
+        /// </summary>
         [Fact]
-        public void TheMacroTab_BridgesToTheMacrosTabRatherThanHostingAPanel()
+        public void TheMacroTab_HostsItsPanelAndWidensTheRail()
         {
-            // Issue #93 owns in-place macro editing; here the tab is drawn, takes part in the
-            // exclusivity warning, and asks the editor to open the Macros tab.
-            var scene = new Scene();
-            var requests = 0;
+            var panel = new WidePanel();
+            var scene = new Scene([panel]);
 
-            scene.Inspector.MacroRequested += (_, _) => requests++;
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.False(scene.Inspector.IsWide);
+
+            scene.Inspector.SelectModeCommand.Execute(scene.Tab(KeyInspectorMode.Macro));
+
+            Assert.Same(panel, scene.Inspector.ActivePanel);
+            Assert.True(scene.Inspector.IsWide);
+        }
+
+        /// <summary>
+        /// The rail is 268 px wide for every mode but the macro one, and the panel is what says so
+        /// (docs/design/handoff.md § Geometry).
+        /// </summary>
+        [Fact]
+        public void TheRail_IsNarrowForEveryPanelThatDoesNotAskForTheWideOne()
+        {
+            var scene = new Scene([new NarrowPanel()]);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Inspector.SelectModeCommand.Execute(scene.Tab(KeyInspectorMode.Macro));
 
-            Assert.Equal(1, requests);
-            Assert.Null(scene.Inspector.ActivePanel);
+            Assert.False(scene.Inspector.IsWide);
         }
 
         [Fact]
@@ -460,6 +479,40 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>A rail over a real Freestyle Edge RGB board and three fake editor commands.</summary>
+        /// <summary>A stand-in Macro panel that asks for the handoff's 300 px rail.</summary>
+        private sealed class WidePanel : KeyInspectorPanelViewModel
+        {
+            public override KeyInspectorMode Mode => KeyInspectorMode.Macro;
+
+            public override string Title => KeyInspectorTabViewModel.MacroCaption;
+
+            public override bool WantsWideRail => true;
+
+            public override void Refresh(
+                KeyboardKeyViewModel? key,
+                KeyboardLayerViewModel? layer,
+                KeyboardLayout? layout,
+                EditorAdvisories advisories)
+            {
+            }
+        }
+
+        /// <summary>The same slot, by a panel that does not — the rail must stay at 268.</summary>
+        private sealed class NarrowPanel : KeyInspectorPanelViewModel
+        {
+            public override KeyInspectorMode Mode => KeyInspectorMode.Macro;
+
+            public override string Title => KeyInspectorTabViewModel.MacroCaption;
+
+            public override void Refresh(
+                KeyboardKeyViewModel? key,
+                KeyboardLayerViewModel? layer,
+                KeyboardLayout? layout,
+                EditorAdvisories advisories)
+            {
+            }
+        }
+
         private sealed class Scene
         {
             public KeyboardLayout Layout { get; }

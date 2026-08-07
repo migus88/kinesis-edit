@@ -35,6 +35,9 @@ namespace KinesisEdit.Tests.Services
 
         public List<AppSettings> AppSettingsSaves { get; } = [];
 
+        /// <summary>Every macro-name write, with the profile it was scoped to (issue #93).</summary>
+        public List<MacroNameSaveCall> MacroNameSaves { get; } = [];
+
         public KeyboardSettings LoadKeyboardSettings(VDriveLocation location)
         {
             ArgumentNullException.ThrowIfNull(location);
@@ -88,6 +91,22 @@ namespace KinesisEdit.Tests.Services
             AppSettingsSaves.Add(settings);
         }
 
+        public void SaveMacroNames(VDriveLocation location, AppSettings settings, int profileNumber)
+        {
+            ArgumentNullException.ThrowIfNull(location);
+            ArgumentNullException.ThrowIfNull(settings);
+
+            if (SaveAppExceptionToThrow is not null)
+            {
+                throw SaveAppExceptionToThrow;
+            }
+
+            AppSettingsToReturn = settings;
+            MacroNameSaves.Add(new MacroNameSaveCall(location, settings, profileNumber));
+        }
+
         internal sealed record KeyboardSaveCall(VDriveLocation Location, VersionFileInfo VersionFile, KeyboardSettings Settings);
+
+        internal sealed record MacroNameSaveCall(VDriveLocation Location, AppSettings Settings, int ProfileNumber);
     }
 }

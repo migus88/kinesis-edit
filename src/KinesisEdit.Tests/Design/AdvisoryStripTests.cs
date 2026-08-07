@@ -254,11 +254,11 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            // Scoped to the macro panel: the editor also hosts the settings panel, which reports
+            // Scoped to the Macros tab: the editor also hosts the settings panel, which reports
             // genuine failures (an unwritable settings file) and is legitimately red.
             var panel = view.GetVisualDescendants()
                 .OfType<Control>()
-                .First(control => control.DataContext is MacroPanelViewModel);
+                .First(control => control.DataContext is MacroLibraryViewModel);
 
             var marked = panel.GetVisualDescendants()
                 .OfType<TextBlock>()
@@ -277,24 +277,42 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public void TheEditorsMarkup_BindsTheThreeBudgetRowsToAmberAndNamesNoErrorRampAtAll()
+        public void TheMacroTabsMarkup_BindsEveryBudgetMeterToAmberAndNeitherFileNamesAnErrorRamp()
         {
-            // The rows only carry the class while a budget is actually over, so no rendered scene
+            // The meters only carry the class while a budget is actually over, so no rendered scene
             // of a clean profile can see this. It is the flip itself: `statusError` (red) became
-            // `statusWarning` (amber) on all three, and the editor now names no error role at all —
-            // an advisory is never red, and every state this screen reports is an advisory.
-            var xaml = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Views/KeyboardEditorView.axaml"]);
+            // `statusWarning` (amber) on every one, and neither the tab nor the editor around it
+            // names an error role at all — an advisory is never red, and every state this screen
+            // reports is an advisory.
+            //
+            // The meters live in Views/MacroLibraryView.axaml since issue #93 turned the Macros tab
+            // into a library; the editor is still swept for the error ramp, so the claim covers
+            // exactly the same screen it always did.
+            var files = AuthoredXaml.Files();
+            var panel = AuthoredXaml.WithoutComments(files["Views/MacroLibraryView.axaml"]);
+            var editor = AuthoredXaml.WithoutComments(files["Views/KeyboardEditorView.axaml"]);
 
-            foreach (var flag in new[] { "IsMacroOverBudget", "IsTotalOverBudget", "IsMacroCountOverBudget" })
+            var meters = new[] { "LayoutKeystrokeMeter", "MacroLengthMeter", "MacroCountMeter" };
+
+            foreach (var meter in meters)
             {
                 Assert.Contains(
-                    $"Classes.statusWarning=\"{{Binding Budget.{flag}}}\"",
-                    xaml,
+                    $"Classes.statusWarning=\"{{Binding {meter}.IsOverBudget}}\"",
+                    panel,
                     StringComparison.Ordinal);
             }
 
-            Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
-            Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
+            // ...and the per-row length, which is the same rule stated once per macro.
+            Assert.Contains(
+                "Classes.statusWarning=\"{Binding IsOverBudget}\"",
+                panel,
+                StringComparison.Ordinal);
+
+            foreach (var xaml in new[] { panel, editor })
+            {
+                Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
+                Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
+            }
         }
 
         [AvaloniaFact]

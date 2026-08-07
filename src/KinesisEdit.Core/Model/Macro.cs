@@ -28,6 +28,35 @@ namespace KinesisEdit.Core.Model
         public Guid Id { get; }
 
         /// <summary>
+        /// User-facing name of the macro; the empty string means unnamed. Sanitized on the way in
+        /// through <see cref="MacroNaming.Sanitize"/> — trimmed, single line, at most
+        /// <see cref="MacroNaming.MaxNameLength"/> characters — because a newline here would
+        /// corrupt the line-oriented settings file the name is stored in.
+        /// <para>
+        /// <b>The name is not in the layout file.</b> 04 has no comment syntax and an unrecognised
+        /// line is dropped on the next save (<c>LayoutInvalidLine.Keep</c> defaults false), so
+        /// there is nowhere in <c>layoutN.txt</c> to put it. It is persisted by the settings layer
+        /// instead, as <c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>
+        /// in this app's own <c>settings/app_settings.txt</c>
+        /// (<see cref="Settings.MacroNameKey"/>). A freshly parsed layout therefore always has
+        /// empty names until that file is applied over it
+        /// (<see cref="MacroLibrary.ApplyNames"/>).
+        /// </para>
+        /// <para>
+        /// <b>Naming never changes a macro's identity as a macro.</b> <see cref="IsEquivalentTo"/>
+        /// (the §1.2 content comparison) and <see cref="CollidesWith"/> (the 06 §5 duplicate-trigger
+        /// rule) deliberately ignore this property: those two answer content and trigger questions
+        /// that decide what the firmware does, and a naming feature must never be able to turn a
+        /// collision into a non-collision. Grouping *by name* is <see cref="MacroLibrary"/>'s job.
+        /// </para>
+        /// </summary>
+        public string Name
+        {
+            get => _name;
+            set => _name = MacroNaming.Sanitize(value);
+        }
+
+        /// <summary>
         /// The legacy <c>MultiKey</c> flag (§1.2). Always true here: this type only models
         /// multi-keystroke lists, so the equality rule of §1.2 reduces to count + per-item equality.
         /// </summary>
@@ -84,6 +113,8 @@ namespace KinesisEdit.Core.Model
                 return total;
             }
         }
+
+        private string _name = string.Empty;
 
         private readonly List<Keystroke> _keystrokes = [];
         private readonly List<KeyDefinition> _coTriggers = [];
@@ -221,6 +252,10 @@ namespace KinesisEdit.Core.Model
         /// the answer is the same whichever macro is asked — a one-way test would call
         /// <c>[lctrl, lctrl]</c> and <c>[lctrl, lshft]</c> equal, since the counts match and every
         /// entry of the first is present in the second.
+        /// <para>
+        /// <see cref="Name"/> takes no part in it either: this is what the firmware sees, and no
+        /// name a user types may turn a duplicate trigger into a legal one.
+        /// </para>
         /// </summary>
         public bool CollidesWith(Macro other)
         {
@@ -278,6 +313,10 @@ namespace KinesisEdit.Core.Model
         /// The macro comparison of §1.2: same multi-key flag, same keystroke count, per-item key
         /// equality. Kept as an explicit method rather than an <c>Equals</c> override — macros are
         /// mutable, so reference identity stays their list identity.
+        /// <para>
+        /// <see cref="Name"/> takes no part in it: this is the content question, and two macros
+        /// that type the same thing are equivalent whatever they are called.
+        /// </para>
         /// </summary>
         public bool IsEquivalentTo(Macro? other)
         {
@@ -298,14 +337,16 @@ namespace KinesisEdit.Core.Model
         }
 
         /// <summary>
-        /// Deep copy: trigger info and macro settings are copied and every keystroke is cloned
-        /// (§1.2 assignment semantics). The copy gets a fresh <see cref="Id"/> — it is a distinct
-        /// macro. Co-trigger entries are shared key-table records, which are immutable.
+        /// Deep copy: trigger info, macro settings and <see cref="Name"/> are copied and every
+        /// keystroke is cloned (§1.2 assignment semantics). The copy gets a fresh <see cref="Id"/>
+        /// — it is a distinct macro. Co-trigger entries are shared key-table records, which are
+        /// immutable.
         /// </summary>
         public Macro Clone()
         {
             var clone = new Macro
             {
+                Name = _name,
                 TriggerKey = TriggerKey,
                 LayerIndex = LayerIndex,
                 MacroIndex = MacroIndex,

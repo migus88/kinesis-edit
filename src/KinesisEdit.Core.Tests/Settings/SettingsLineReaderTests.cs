@@ -97,5 +97,70 @@ namespace KinesisEdit.Core.Tests.Settings
         {
             Assert.Throws<ArgumentException>(() => SettingsLineReader.FindValue([], string.Empty));
         }
+
+        [Fact]
+        public void FindPrefixedValues_ReturnsTheKeyRemainderAndValueInFileOrder()
+        {
+            var lines = new[]
+            {
+                "save_msg=on",
+                "macro_name_1_0_65_1=Sign-off",
+                "macro_name_2_1_70_3=Other",
+                "macro_speed=5"
+            };
+
+            var matches = SettingsLineReader.FindPrefixedValues(lines, "macro_name_");
+
+            Assert.Equal(
+                new[]
+                {
+                    KeyValuePair.Create("1_0_65_1", "Sign-off"),
+                    KeyValuePair.Create("2_1_70_3", "Other"),
+                },
+                matches);
+        }
+
+        [Fact]
+        public void FindPrefixedValues_IsCaseInsensitiveOnThePrefix()
+        {
+            var matches = SettingsLineReader.FindPrefixedValues(["MACRO_NAME_1_0_65_1=Sign-off"], "macro_name_");
+
+            Assert.Equal("1_0_65_1", Assert.Single(matches).Key);
+        }
+
+        [Fact]
+        public void FindPrefixedValues_KeepsDuplicatesInOrderSoTheLastOneCanWin()
+        {
+            var lines = new[] { "macro_name_1_0_65_1=First", "macro_name_1_0_65_1=Second" };
+
+            var matches = SettingsLineReader.FindPrefixedValues(lines, "macro_name_");
+
+            Assert.Equal(new[] { "First", "Second" }, matches.Select(match => match.Value));
+        }
+
+        [Theory]
+        [InlineData("macro_name_")]
+        [InlineData("macro_name_=orphan")]
+        [InlineData("macro_names")]
+        [InlineData("macro_speed=5")]
+        public void FindPrefixedValues_WithNothingBetweenThePrefixAndTheSeparator_DoesNotMatch(string line)
+        {
+            Assert.Empty(SettingsLineReader.FindPrefixedValues([line], "macro_name_"));
+        }
+
+        [Fact]
+        public void FindPrefixedValues_WithAValueContainingTheSeparator_KeepsEverythingAfterTheFirstOne()
+        {
+            var matches = SettingsLineReader.FindPrefixedValues(["macro_name_1_0_65_1=a=b"], "macro_name_");
+
+            Assert.Equal("a=b", Assert.Single(matches).Value);
+        }
+
+        [Fact]
+        public void FindPrefixedValues_WithNullLinesOrEmptyPrefix_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => SettingsLineReader.FindPrefixedValues(null!, "macro_name_"));
+            Assert.Throws<ArgumentException>(() => SettingsLineReader.FindPrefixedValues([], string.Empty));
+        }
     }
 }

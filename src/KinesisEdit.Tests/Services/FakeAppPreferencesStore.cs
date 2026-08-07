@@ -19,6 +19,9 @@ namespace KinesisEdit.Tests.Services
 
         public int UpdateCount { get; private set; }
 
+        /// <summary>Every profile number handed to <see cref="UpdateMacroNames"/>, in order.</summary>
+        public List<int> MacroNameWrites { get; } = [];
+
         public event Action? Changed;
 
         private readonly Dictionary<string, bool> _hiddenKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -49,6 +52,21 @@ namespace KinesisEdit.Tests.Services
             ArgumentNullException.ThrowIfNull(mutate);
 
             UpdateCount++;
+            Current = mutate(Current);
+
+            Changed?.Invoke();
+        }
+
+        /// <summary>
+        /// The macro-name write path. It is recorded separately because the two go to different
+        /// Core writers — <c>SaveAppSettings</c> cannot reach a name — and a test has to be able to
+        /// say which one the editor used.
+        /// </summary>
+        public void UpdateMacroNames(int profileNumber, Func<AppSettings, AppSettings> mutate)
+        {
+            ArgumentNullException.ThrowIfNull(mutate);
+
+            MacroNameWrites.Add(profileNumber);
             Current = mutate(Current);
 
             Changed?.Invoke();

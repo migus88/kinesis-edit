@@ -399,6 +399,95 @@ namespace KinesisEdit.Core.Tests.Settings
             Assert.Equal(Path.Combine(location.RootPath, "settings", "app_settings.txt"), path);
         }
 
+        [Fact]
+        public void SaveMacroNames_WritesTheProfilesNamesAndLeavesEveryOtherLineAlone()
+        {
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "save_msg=on", "future_key=whatever");
+
+            var settings = _service.LoadAppSettings(location).WithMacroNamesForProfile(
+                1,
+                [KeyValuePair.Create(new MacroNameKey(1, 0, 65, 1), "Sign-off")]);
+
+            _service.SaveMacroNames(location, settings, 1);
+
+            Assert.Equal(
+                new[] { "save_msg=on", "future_key=whatever", "macro_name_1_0_65_1=Sign-off" },
+                File.ReadAllLines(path));
+        }
+
+        [Fact]
+        public void SaveMacroNames_RemovesOnlyTheSavedProfilesStaleKeys()
+        {
+            // One app_settings.txt holds every profile's macro names, so a removal that was not
+            // scoped to the profile being written would delete another profile's work.
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(
+                path,
+                "macro_name_1_0_65_1=Sign-off",
+                "macro_name_1_0_66_1=Deleted",
+                "macro_name_2_0_65_1=Profile two",
+                "cust_color_1=[255][0][128]");
+
+            var settings = _service.LoadAppSettings(location).WithMacroNamesForProfile(
+                1,
+                [KeyValuePair.Create(new MacroNameKey(1, 0, 65, 1), "Renamed")]);
+
+            _service.SaveMacroNames(location, settings, 1);
+
+            Assert.Equal(
+                new[]
+                {
+                    "macro_name_1_0_65_1=Renamed",
+                    "macro_name_2_0_65_1=Profile two",
+                    "cust_color_1=[255][0][128]",
+                },
+                File.ReadAllLines(path));
+        }
+
+        [Fact]
+        public void SaveMacroNames_WithNothingToWriteButSomethingToRemove_StillReachesTheDrive()
+        {
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "macro_name_1_0_65_1=Sign-off", "future_key=whatever");
+
+            var settings = _service.LoadAppSettings(location).WithMacroNamesForProfile(1, []);
+
+            _service.SaveMacroNames(location, settings, 1);
+
+            Assert.Equal(new[] { "future_key=whatever" }, File.ReadAllLines(path));
+        }
+
+        [Fact]
+        public void SaveMacroNames_WithNothingToSay_DoesNotCreateTheFile()
+        {
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+
+            _service.SaveMacroNames(location, AppSettings.Empty, 1);
+
+            Assert.False(File.Exists(SettingsService.GetAppSettingsFilePath(location)));
+        }
+
+        [Fact]
+        public void SaveAppSettings_NeverWritesOrRemovesAMacroName()
+        {
+            // The preference/swatch path has no profile to scope a removal to, so it must leave the
+            // macro-name family entirely alone.
+            var location = CreateLocation(DeviceId.FreestyleEdgeRgb);
+            var path = SettingsService.GetAppSettingsFilePath(location);
+            WriteFile(path, "macro_name_1_0_65_1=Sign-off");
+
+            var settings = _service.LoadAppSettings(location)
+                .WithMacroName(new MacroNameKey(1, 0, 66, 1), "Never written");
+
+            _service.SaveAppSettings(location, settings with { IsSaveMessageHidden = true });
+
+            Assert.Equal(new[] { "macro_name_1_0_65_1=Sign-off", "save_msg=on" }, File.ReadAllLines(path));
+        }
+
         private VDriveLocation CreateLocation(DeviceId deviceId, bool createAppSettingsFolder = true)
         {
             var device = DeviceCatalog.GetById(deviceId);

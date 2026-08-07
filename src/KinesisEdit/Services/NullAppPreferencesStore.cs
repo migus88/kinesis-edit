@@ -47,5 +47,15 @@ namespace KinesisEdit.Services
         {
             ArgumentNullException.ThrowIfNull(mutate);
         }
+
+        /// <summary>
+        /// Discards the names; there is nowhere to write them. A macro renamed in this session
+        /// keeps its name in memory (it lives on <c>Macro.Name</c>) and is simply not persisted —
+        /// which is what "demo mode must not throw" means here.
+        /// </summary>
+        public void UpdateMacroNames(int profileNumber, Func<AppSettings, AppSettings> mutate)
+        {
+            ArgumentNullException.ThrowIfNull(mutate);
+        }
     }
 }

@@ -212,6 +212,41 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
+        /// The shared editor with three macros in it — one of them past the device's per-macro cap,
+        /// so the Macros tab draws its amber sentence, and one of them named, so a row shows a name
+        /// the app stored rather than one Core derived.
+        /// <para>
+        /// They are recorded through the app's own path (select a cap, arm the rail's Macro panel,
+        /// push keystrokes in from the capture fake) rather than written behind the editor's back,
+        /// because the refresh funnel is half of what these scenes exercise. A library of nothing
+        /// draws nothing and would prove nothing about the rows.
+        /// </para>
+        /// </summary>
+        public async Task<KeyboardEditorViewModel> CreateEditorWithMacrosAsync()
+        {
+            var editor = await CreateEditorAsync().ConfigureAwait(true);
+            var limit = editor.Device.Device.Macros.MaxCharactersPerMacro ?? 0;
+
+            RecordMacro(editor, TestLayouts.RgbDigitOneKeyIndex, 4);
+            RecordMacro(editor, TestLayouts.RgbDigitTwoKeyIndex, limit + 1);
+
+            var library = editor.MacroLibrary
+                ?? throw new InvalidOperationException("The editor scene built no macro library.");
+
+            editor.RenameMacro(library.Entries[0], "Sign-off block");
+
+            // Back to the first cap: the slot branch is about the board's selection, and a scene
+            // whose header names a position with no macros draws an empty column of cards.
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+            editor.SelectedTab = EditorTab.Macros;
+
+            return editor;
+        }
+
+        /// <summary>
         /// A lighting panel whose <c>Fn</c> layer sits <b>below</b> the LED 1.0.44 firmware gate
         /// (07 §3), so the panel refuses it. The shared editor is deliberately firmware-complete —
         /// its version file is what lets the key inspector draw its Tap &amp; hold fields rather
@@ -677,6 +712,15 @@ namespace KinesisEdit.Tests.Design
                 return (await CreateEditorAsync().ConfigureAwait(true)).Lighting;
             }
 
+            // The Macros tab. It is the editor's own instance rather than a hand-made one, so the
+            // scene shows the slot cards, the meters and the profile's library of a real device over
+            // a real layout — and over a layout that actually holds macros, because a library of
+            // nothing draws nothing and proves nothing about the rows.
+            if (viewType == typeof(MacroLibraryView))
+            {
+                return (await CreateEditorWithMacrosAsync().ConfigureAwait(true)).MacroLibraryPanel;
+            }
+
             if (viewType == typeof(SavantElitePedalView))
             {
                 return await CreatePedalEditorAsync().ConfigureAwait(true);
@@ -726,11 +770,6 @@ namespace KinesisEdit.Tests.Design
                 return new ExportOverlayViewModel(null, _folderPicker, _files, _notifications);
             }
 
-            if (viewType == typeof(MacroDelayOverlayView))
-            {
-                return new MacroDelayOverlayViewModel(TokenDialect.Gen1);
-            }
-
             if (viewType == typeof(TokenPickerOverlayView))
             {
                 return new TokenPickerOverlayViewModel(TokenPickerOverlayViewModel.MacroTitle, TokenDialect.Gen1);
@@ -755,6 +794,14 @@ namespace KinesisEdit.Tests.Design
                 return await FindInspectorPanelAsync<TapAndHoldPanelViewModel>().ConfigureAwait(true);
             }
 
+            // The Macro panel (issue #93). It comes off the same open rail as its neighbours, on a
+            // position that already carries a macro — an empty step list would render a shape the
+            // mock is not about, and every frame captured off this scene would be of the wrong panel.
+            if (viewType == typeof(MacroInspectorPanelView))
+            {
+                return await CreateMacroInspectorPanelAsync().ConfigureAwait(true);
+            }
+
             // The picker itself, hosted by the Remap panel. It is the same instance the panel draws,
             // so the scene shows a picker over a real catalog rather than an empty one.
             if (viewType == typeof(TokenPickerView))
@@ -772,6 +819,55 @@ namespace KinesisEdit.Tests.Design
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The rail's Macro panel over a position that really carries a macro, recorded through the
+        /// panel's own capture path rather than written into the model behind its back — the library
+        /// and the dropdown are built off the editor's refresh funnel, and a scene that skipped it
+        /// would render a panel the app never produces.
+        /// </summary>
+        public async Task<MacroInspectorPanelViewModel> CreateMacroInspectorPanelAsync()
+        {
+            var editor = await CreateEditorWithInspectorAsync().ConfigureAwait(true);
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            // The KEY first, the MODE second, and the order is not cosmetic: a new selection puts
+            // the rail back on whichever mode that position already carries, so a tab chosen before
+            // the click is thrown away by the very next refresh.
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+
+            var panel = SelectMacroMode(editor);
+
+            panel.RecordCommand.Execute(null);
+
+            foreach (var token in new[] { "e", "s", "t" })
+            {
+                _capture.RaiseKeystroke(KeyRegistry.FindByToken(token, TokenDialect.Gen1)!);
+            }
+
+            panel.Deactivate();
+
+            return panel;
+        }
+
+        /// <summary>
+        /// Puts the open rail on its Macro mode and hands the panel back. The rail exposes only the
+        /// showing panel, so this is also what proves the tab reaches it.
+        /// </summary>
+        private static MacroInspectorPanelViewModel SelectMacroMode(KeyboardEditorViewModel editor)
+        {
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
+
+            return editor.Inspector.ActivePanel as MacroInspectorPanelViewModel
+                   ?? throw new InvalidOperationException("The key inspector hosts no MacroInspectorPanelViewModel.");
         }
 
         /// <summary>
@@ -814,6 +910,41 @@ namespace KinesisEdit.Tests.Design
             editor.BeginRemapCommand.Execute(null);
 
             _capture.RaiseKeystroke(assignment);
+        }
+
+        /// <summary>
+        /// Records <paramref name="keystrokes"/> letters into the macro of position
+        /// <paramref name="keyIndex"/>, through the key inspector's Macro panel — the app's one
+        /// macro editor since issue #93.
+        /// </summary>
+        private void RecordMacro(KeyboardEditorViewModel editor, int keyIndex, int keystrokes)
+        {
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(keyIndex));
+
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
+
+            if (editor.Inspector.ActivePanel is not MacroInspectorPanelViewModel panel)
+            {
+                throw new InvalidOperationException("The rail did not open its Macro panel.");
+            }
+
+            panel.RecordCommand.Execute(null);
+
+            for (var index = 0; index < keystrokes; index++)
+            {
+                _capture.RaiseKeystroke(KeyRegistry.FindByToken("a", TokenDialect.Gen1)!);
+            }
+
+            panel.Deactivate();
         }
 
         /// <summary>

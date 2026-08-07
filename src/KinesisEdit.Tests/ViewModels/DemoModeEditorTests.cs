@@ -64,7 +64,7 @@ namespace KinesisEdit.Tests.ViewModels
             // Which reach the board and the legend row, not only the model.
             Assert.Contains(editor.Layers[0].Keys, key => key.IsModified);
             Assert.True(editor.BoardLegend.RemappedCount > 0);
-            Assert.NotEmpty(editor.MacroPanel!.Macros);
+            Assert.NotEmpty(editor.MacroLibraryPanel.Rows);
         }
 
         [Fact]

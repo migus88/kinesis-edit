@@ -94,7 +94,8 @@ namespace KinesisEdit.Tests.Design
                 (typeof(LightingTabView).FullName!, "directionSegment", "DirectionSegment"),
                 (typeof(LightingTabView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(LightingModeRailView).FullName!, "directionSegment", "DirectionSegment"),
-                (typeof(MacroDelayOverlayView).FullName!, "monoValue", "MonoValueField"),
+                // MacroDelayOverlayView's `monoValue` row went with the view in #93; the delay is
+                // edited on the step now, and the rail's own field is covered below.
 
                 // The key inspector rail (issue #92), which is where the two deleted overlays'
                 // roles now live — and where `FilterChip` finally got the call site #86 wrote it
@@ -109,7 +110,18 @@ namespace KinesisEdit.Tests.Design
                 (typeof(TokenPickerView).FullName!, "filterChip", "FilterChip"),
                 (typeof(KeyInspectorView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(KeyInspectorView).FullName!, "ghost", "GhostButton"),
-                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton")
+                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton"),
+
+                // The rail's Macro panel (issue #93). `monoValue` moved here from the deleted Macro
+                // Timing Delays modal — §11.3's millisecond field is the same typed value in the
+                // same mono face, now beside the step it belongs to — and `macroStepRow` is the
+                // step list's own row, which is a RowButton so hover, press and the selected face
+                // are the theme's rather than this panel's.
+                (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
+                (typeof(MacroInspectorPanelView).FullName!, "toggleSegment", "ToggleSegment"),
+                (typeof(MacroInspectorPanelView).FullName!, "ghost", "GhostButton")
             })
             {
                 cases.Add(viewTypeName, className, themeKey);
@@ -159,10 +171,10 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheMacroPanel_BridgesItsSlotPillsAndItsCoTriggerToggles()
+        public async Task TheMacrosTab_BridgesItsSearchFieldAndItsRowActions()
         {
-            // The panel is the Macros tab's, hosted in a ContentControl's template, so none of it
-            // exists until that section is open.
+            // The tab is hosted in a ContentControl's template, so none of it exists until that
+            // section is open.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -175,8 +187,8 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            AssertClassCarriesTheme(view, "navPill", "NavPill");
-            AssertClassCarriesTheme(view, "toggleSegment", "ToggleSegment");
+            AssertClassCarriesTheme(view, "searchField", "SearchField");
+            AssertClassCarriesTheme(view, "secondary", "SecondaryButton");
         }
 
         [AvaloniaFact]

@@ -117,9 +117,40 @@ namespace KinesisEdit.Core.Settings
             ArgumentNullException.ThrowIfNull(location);
             ArgumentNullException.ThrowIfNull(settings);
 
-            var pairs = AppSettingsSerializer.Serialize(settings);
-            var removedKeys = AppSettingsSerializer.SerializeRemovals(settings);
+            Write(
+                location,
+                AppSettingsSerializer.Serialize(settings),
+                AppSettingsSerializer.SerializeRemovals(settings));
+        }
 
+        /// <summary>
+        /// Saves <b>one profile's</b> macro names into app_settings.txt, through the same
+        /// read-modify-write merge (spec 08 §1): the profile's named places are written and its
+        /// tombstoned ones deleted. Flags, colours and every other profile's names are untouched.
+        /// <para>
+        /// This is a separate entry point from <see cref="SaveAppSettings"/> on purpose. Names are
+        /// the one part of this file that is per profile and part of the editor session's dirty
+        /// model — a rename reaches the drive when the user saves the profile, not the moment they
+        /// type it — so it takes the profile number that scopes the deletion, and the preference and
+        /// swatch path cannot reach a name at all.
+        /// </para>
+        /// </summary>
+        public void SaveMacroNames(VDriveLocation location, AppSettings settings, int profileNumber)
+        {
+            ArgumentNullException.ThrowIfNull(location);
+            ArgumentNullException.ThrowIfNull(settings);
+
+            Write(
+                location,
+                AppSettingsSerializer.SerializeMacroNames(settings, profileNumber),
+                AppSettingsSerializer.SerializeMacroNameRemovals(settings, profileNumber));
+        }
+
+        private void Write(
+            VDriveLocation location,
+            IReadOnlyList<KeyValuePair<string, string>> pairs,
+            IReadOnlyList<string> removedKeys)
+        {
             if (pairs.Count == 0 && removedKeys.Count == 0)
             {
                 return;

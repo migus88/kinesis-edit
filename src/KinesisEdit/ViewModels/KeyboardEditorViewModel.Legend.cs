@@ -172,11 +172,9 @@ namespace KinesisEdit.ViewModels
             // Invariant 3: Core announces nothing, so the cap that just changed is re-read by hand.
             target.RefreshFromModel();
 
-            // The macro half of the copy adds rows to the profile's macro list, exactly as a reset
-            // removes them, so the panel is sitting on a list that has moved.
-            _macroPanel?.RefreshFromModel();
-
-            // Invariant 16: the counters, the advisories, the legend and the dirty flag all follow.
+            // Invariant 16: the counters, the library snapshot the Macros tab lists — the copy's
+            // macro half puts the same macro on a second key, which is one more site of one row —
+            // the advisories, the legend and the dirty flag all follow.
             RefreshCounters();
         }
 
@@ -220,6 +218,10 @@ namespace KinesisEdit.ViewModels
             // makes "every mutation reaches the rail" true by construction rather than by a list
             // somebody has to remember to maintain (KeyboardEditorViewModel.Inspector.cs).
             RefreshInspector();
+
+            // And the Macros tab, for exactly the same reason: it is the other view of the very
+            // macros every one of those paths can move (KeyboardEditorViewModel.MacrosTab.cs).
+            RefreshMacroLibraryPanel();
         }
     }
 }

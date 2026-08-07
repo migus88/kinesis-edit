@@ -1,0 +1,331 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:model="clr-namespace:KinesisEdit.Core.Model;assembly=KinesisEdit.Core"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="560"
+             x:Class="KinesisEdit.Views.MacroLibraryView"
+             x:DataType="vm:MacroLibraryViewModel">
+  <!--
+    The Macros tab (mockup 1i), which is a LIBRARY and not an editor: "every macro has a name, so
+    the tab lists them once — rename, see which keys and layers fire each one, duplicate, delete"
+    (2i). Editing a macro happens on the key inspector rail beside the board.
+
+    ONE VIEW, TWO BRANCHES, PICKED BY THE CAPABILITY RECORD. `UsesMacroSlots` draws 1i's left half
+    (the selected key's slot cards, its two meters and its `Pick another key`) and
+    `UsesFlatMacroList` its right (the Advantage 360's flat table with its `Macro / Trigger / Layer /
+    Length` columns and `New macro`). There is no device-specific view and no device id anywhere in
+    this file — a feature a board lacks is not rendered at all.
+
+    THE TABLE IS THE SAME ROWS ON BOTH BRANCHES. `Rows` is one row per library entry, so a macro on
+    two keys is one row with two sites, whichever branch is drawn. The slot branch heads it "Every
+    macro in this profile"; the flat branch heads it with 1i's four column captions.
+
+    NOTHING HERE CAPTURES A KEYSTROKE. `＋ Record a macro` and `New macro` both leave for the Layout
+    tab, where the board and the app's one recording surface are. Mockup 1i draws a capture-mode
+    overlay on this tab; not building it is a deliberate deviation, recorded in
+    docs/app/design-system.md.
+
+    MONO IS THE FILE'S VOICE. The keystrokes, the trigger tokens and the lengths are values that
+    exist verbatim in layoutN.txt or are counted against it; a macro's NAME is not — it rides
+    app_settings.txt and is the app speaking — so it is sans.
+  -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <!-- ===== The header ======================================================================
+         "Macros on F3 · Freestyle Edge RGB" / "3 of 5 slots used · 1 active" / "Pick another key",
+         or the flat branch's own three. -->
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,12">
+      <StackPanel Grid.Column="0" Spacing="2">
+        <TextBlock Text="{Binding Header}" Classes="pageTitle" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding Subtitle}" Classes="meta muted" TextWrapping="Wrap" />
+      </StackPanel>
+
+      <Button Grid.Column="1"
+              Classes="secondary"
+              Content="{Binding PrimaryActionCaption}"
+              Command="{Binding PrimaryActionCommand}"
+              IsVisible="{Binding IsSupported}"
+              VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- ===== The refusal =====================================================================
+         Drawn INSTEAD of the tab's contents. A board with no macros at all still carries this tab
+         (the strip is built from device facts before a profile is read), so the tab says so itself
+         rather than rendering an empty library. Amber, never red — nothing failed. -->
+    <Border Grid.Row="1"
+            Background="{DynamicResource StatusAdvisoryTintBrush}"
+            BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="{DynamicResource RadiusControl}"
+            Padding="9,7"
+            IsVisible="{Binding !IsSupported}">
+      <TextBlock Text="{x:Static vm:MacroLibraryViewModel.NotSupportedMessage}"
+                 Classes="body statusWarning"
+                 TextWrapping="Wrap" />
+    </Border>
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsSupported}">
+      <StackPanel Spacing="16">
+
+        <!-- ===== The slot cards ==============================================================
+             1i's left half: "Slot 1 — Sign-off block" with its keystrokes, badged ACTIVE or
+             offering `Make active`; "Slot 4 — empty" offering `＋ Record a macro`; and the
+             over-budget slot carrying its amber sentence, which changes nothing else about it.
+
+             The card is a Border with a pointer handler rather than a Button, because it holds
+             buttons of its own and a button nested in a button fires both commands on one click. -->
+        <ItemsControl ItemsSource="{Binding Slots}" IsVisible="{Binding HasSlots}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:MacroSlotViewModel">
+              <Border Classes="macroSlotCard"
+                      Classes.selected="{Binding IsSelected}"
+                      PointerPressed="OnSlotPointerPressed">
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding Title}"
+                               Classes="cardTitle"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                      <!-- The accent means "this is the one selected" in its second sanctioned
+                           sense: which macro the key actually fires. -->
+                      <TextBlock Text="{x:Static vm:MacroSlotViewModel.ActiveBadge}"
+                                 Classes="badge"
+                                 IsVisible="{Binding IsActive}"
+                                 VerticalAlignment="Center" />
+                      <Button Classes="secondary"
+                              Content="{x:Static vm:MacroSlotViewModel.MakeActiveCaption}"
+                              IsVisible="{Binding CanMakeActive}"
+                              Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).MakeActiveCommand}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Grid>
+
+                  <TextBlock Text="{Binding KeystrokesText}"
+                             Classes="monoValue"
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding IsOccupied}" />
+
+                  <!-- "512 of 500 characters — over the device budget. Saved as-is." Amber, and the
+                       whole consequence: the macro keeps its slot and the profile still saves. -->
+                  <TextBlock Text="{Binding BudgetAdvisory}"
+                             Classes="body statusWarning"
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding IsOverBudget}" />
+
+                  <!-- The `＋` is geometry (IconInsert), never a character: U+FF0B is in neither
+                       embedded IBM Plex family and would tofu. -->
+                  <Button Classes="secondary"
+                          HorizontalAlignment="Left"
+                          IsVisible="{Binding IsEmpty}"
+                          Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).RecordMacroCommand}"
+                          CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <controls:Icon Classes="insertMark" Data="{DynamicResource IconInsert}" VerticalAlignment="Center" />
+                      <TextBlock Text="{x:Static vm:MacroSlotViewModel.RecordCaption}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Spacing="8">
+          <!-- The slot branch's heading over the profile's whole library. The flat branch heads the
+               same rows with 1i's column captions instead. -->
+          <TextBlock Text="{x:Static vm:MacroLibraryViewModel.LibrarySectionTitle}"
+                     Classes="cardTitle"
+                     IsVisible="{Binding UsesMacroSlots}" />
+
+          <!-- ===== Search and the layer filter ===============================================
+               `⌕ Search name, trigger, or contents…` and `All layers ▾`. The magnifier belongs to
+               the SearchField control theme and the chevron to the ComboBox's; neither is a glyph.
+               Both filters narrow the rows and write nothing. -->
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Grid.Column="0"
+                     Classes="searchField"
+                     Watermark="{x:Static vm:MacroLibraryViewModel.SearchPlaceholder}"
+                     Text="{Binding SearchQuery, Mode=TwoWay}" />
+            <ComboBox Grid.Column="1"
+                      MinWidth="150"
+                      ItemsSource="{Binding LayerFilters}"
+                      SelectedItem="{Binding SelectedLayerFilter, Mode=TwoWay}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="vm:MacroLayerFilter">
+                  <TextBlock Text="{Binding Caption}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+
+          <!-- 1i's column captions. Drawn on the flat branch, which is where the mock puts them;
+               the columns themselves are in every row on both branches. -->
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto"
+                ColumnSpacing="12"
+                Margin="0,4,0,0"
+                IsVisible="{Binding UsesFlatMacroList}">
+            <TextBlock Grid.Column="0" Text="{x:Static vm:MacroLibraryViewModel.MacroColumnCaption}" Classes="sectionLabel" />
+            <TextBlock Grid.Column="1" Text="{x:Static vm:MacroLibraryViewModel.TriggerColumnCaption}" Classes="sectionLabel" MinWidth="120" />
+            <TextBlock Grid.Column="2" Text="{x:Static vm:MacroLibraryViewModel.LayerColumnCaption}" Classes="sectionLabel" MinWidth="70" />
+            <TextBlock Grid.Column="3" Text="{x:Static vm:MacroLibraryViewModel.LengthColumnCaption}" Classes="sectionLabel" MinWidth="48" />
+          </Grid>
+
+          <!-- ===== One row per macro, by name ================================================
+               Not a walk over the keys: MacroLibrary.Entries is the answer to "which keys and
+               layers fire this one", and a macro on two keys is one row with two sites. -->
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:MacroLibraryRowViewModel">
+                <Border Classes="listRow">
+                  <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                      <TextBlock Text="{Binding Name}"
+                                 Classes="rowCaption"
+                                 IsVisible="{Binding !IsRenaming}" />
+
+                      <!-- Renaming in place. A blank name CLEARS the stored one, which is why the
+                           field is allowed to be empty; MacroNaming bounds its length, so the box
+                           does too rather than letting Core silently truncate what was typed. -->
+                      <StackPanel Orientation="Horizontal"
+                                  Spacing="6"
+                                  IsVisible="{Binding IsRenaming}">
+                        <TextBox MinWidth="180"
+                                 MaxLength="{x:Static model:MacroNaming.MaxNameLength}"
+                                 Watermark="{x:Static vm:MacroLibraryViewModel.RenameWatermark}"
+                                 Text="{Binding RenameText, Mode=TwoWay}" />
+                        <Button Classes="primaryAction"
+                                Content="{x:Static vm:MacroLibraryViewModel.SaveNameCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).CommitRenameCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Classes="secondary"
+                                Content="{x:Static vm:MacroLibraryViewModel.CancelRenameCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).CancelRenameCommand}"
+                                CommandParameter="{Binding}" />
+                      </StackPanel>
+
+                      <TextBlock Text="{Binding ContentsText}"
+                                 Classes="monoValueSmall muted"
+                                 TextTrimming="CharacterEllipsis" />
+
+                      <!-- "Fires from [f3] · Fn, [f7] · Fn" — said only when there is more than one
+                           place, because the Trigger and Layer columns already name the first. -->
+                      <TextBlock Text="{Binding SitesText}"
+                                 Classes="meta muted"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding HasSeveralSites}" />
+
+                      <TextBlock Text="{Binding BudgetAdvisory}"
+                                 Classes="body statusWarning"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding IsOverBudget}" />
+
+                      <!-- Ghost, not link: four affordances per row in the accent colour would
+                           spend the accent on something that is neither selection nor "you changed
+                           this" (docs/design/README.md). -->
+                      <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding !IsRenaming}">
+                        <Button Classes="ghost"
+                                Content="{x:Static vm:MacroLibraryViewModel.EditCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).EditMacroCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Classes="ghost"
+                                Content="{x:Static vm:MacroLibraryViewModel.RenameCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).BeginRenameCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Classes="ghost"
+                                Content="{x:Static vm:MacroLibraryViewModel.DuplicateCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).DuplicateCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Classes="ghost"
+                                Content="{x:Static vm:MacroLibraryViewModel.DeleteCaption}"
+                                Command="{Binding $parent[views:MacroLibraryView].((vm:MacroLibraryViewModel)DataContext).DeleteCommand}"
+                                CommandParameter="{Binding}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding TriggerText}"
+                               Classes="monoValue"
+                               MinWidth="120"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding LayerText}"
+                               Classes="meta muted"
+                               MinWidth="70"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="3"
+                               Text="{Binding LengthText}"
+                               Classes="monoValue"
+                               Classes.statusWarning="{Binding IsOverBudget}"
+                               MinWidth="48"
+                               VerticalAlignment="Top" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Text="{x:Static vm:MacroLibraryViewModel.NoMacrosMessage}"
+                     Classes="body muted"
+                     IsVisible="{Binding IsEmpty}" />
+          <TextBlock Text="{x:Static vm:MacroLibraryViewModel.NoMatchesMessage}"
+                     Classes="body muted"
+                     IsVisible="{Binding HasNoMatches}" />
+        </StackPanel>
+
+        <!-- What the tab refused, and why. Amber: a full slot strip is a fact about the profile,
+             not a failure. -->
+        <TextBlock Text="{Binding Message}"
+                   Classes="body statusWarning"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding HasMessage}" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- ===== The meters ======================================================================
+         1i's two, in its words — "layout keystroke budget 5 140 / 7 200" and "this macro 512 / 500"
+         — plus the macro count, which is the only place the profile's 06 §6 limit is readable now
+         that the old panel's budget block is gone. Over budget goes AMBER and still saves. -->
+    <StackPanel Grid.Row="3" Spacing="4" Margin="0,12,0,0" IsVisible="{Binding IsSupported}">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding LayoutKeystrokeMeter.Label}" Classes="body" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1"
+                   Text="{Binding LayoutKeystrokeMeter.Caption}"
+                   Classes="monoValue"
+                   Classes.statusWarning="{Binding LayoutKeystrokeMeter.IsOverBudget}"
+                   VerticalAlignment="Center" />
+      </Grid>
+
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasSlots}">
+        <TextBlock Grid.Column="0" Text="{Binding MacroLengthMeter.Label}" Classes="body" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1"
+                   Text="{Binding MacroLengthMeter.Caption}"
+                   Classes="monoValue"
+                   Classes.statusWarning="{Binding MacroLengthMeter.IsOverBudget}"
+                   VerticalAlignment="Center" />
+      </Grid>
+
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding MacroCountMeter.Label}" Classes="body" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1"
+                   Text="{Binding MacroCountMeter.Caption}"
+                   Classes="monoValue"
+                   Classes.statusWarning="{Binding MacroCountMeter.IsOverBudget}"
+                   VerticalAlignment="Center" />
+      </Grid>
+    </StackPanel>
+  </Grid>
+</UserControl>

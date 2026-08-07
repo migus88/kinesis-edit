@@ -240,10 +240,12 @@ namespace KinesisEdit.Core.Tests.Model
             macro.MacroIndex = 3;
             macro.Speed = 4;
             macro.RepeatFrequency = 2;
+            macro.Name = "Sign-off";
             macro.AddCoTrigger(ModelTokens.Key("lshft"));
 
             var clone = macro.Clone();
 
+            Assert.Equal("Sign-off", clone.Name);
             Assert.Equal(42, clone.TriggerKey);
             Assert.Equal(1, clone.LayerIndex);
             Assert.Equal(3, clone.MacroIndex);
@@ -257,6 +259,70 @@ namespace KinesisEdit.Core.Tests.Model
 
             Assert.NotSame(macro.Keystrokes[0], clone.Keystrokes[0]);
             Assert.Equal(MacroModifiers.None, macro.Keystrokes[0].Modifiers);
+        }
+
+        [Fact]
+        public void Name_ForAFreshMacro_IsEmpty()
+        {
+            // A macro name is not in the layout file (04 has no comment syntax), so a parsed layout
+            // always starts unnamed and the settings layer stamps the names over it.
+            Assert.Equal(string.Empty, new Macro().Name);
+        }
+
+        [Theory]
+        [InlineData(null, "")]
+        [InlineData("   ", "")]
+        [InlineData("  Sign-off  ", "Sign-off")]
+        [InlineData("Sign\noff", "Sign off")]
+        public void Name_OnAssignment_IsSanitized(string? assigned, string expected)
+        {
+            var macro = new Macro
+            {
+                Name = assigned!
+            };
+
+            Assert.Equal(expected, macro.Name);
+        }
+
+        [Fact]
+        public void Name_WhenOverlong_IsBoundedByTheNamingRule()
+        {
+            var macro = new Macro
+            {
+                Name = new string('x', MacroNaming.MaxNameLength + 20)
+            };
+
+            Assert.Equal(MacroNaming.MaxNameLength, macro.Name.Length);
+        }
+
+        [Fact]
+        public void IsEquivalentTo_ForMacrosDifferingOnlyInName_IsTrue()
+        {
+            // The §1.2 comparison is about content. A naming feature must never be able to change
+            // what the firmware sees as the same macro.
+            var first = CreateWord();
+            var second = CreateWord();
+
+            first.Name = "Sign-off";
+            second.Name = "Something else";
+
+            Assert.True(first.IsEquivalentTo(second));
+            Assert.True(second.IsEquivalentTo(first));
+        }
+
+        [Fact]
+        public void CollidesWith_ForMacrosDifferingOnlyInName_IsStillTrue()
+        {
+            // 06 §5's duplicate-trigger rule compares co-trigger sets and nothing else; a name must
+            // never turn a duplicate trigger into a legal one.
+            var first = CreateWord();
+            var second = CreateWord();
+
+            first.Name = "Sign-off";
+            second.Name = "Greeting";
+
+            Assert.True(first.CollidesWith(second));
+            Assert.True(second.CollidesWith(first));
         }
 
         private static Macro CreateWord()

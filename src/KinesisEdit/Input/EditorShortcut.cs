@@ -45,6 +45,16 @@ namespace KinesisEdit.Input
         Save = 11,
 
         /// <summary>⌘W — leave the editor for the dashboard.</summary>
-        GoHome = 12
+        GoHome = 12,
+
+        /// <summary>
+        /// ⌥↑ — move the selected macro step one place earlier (mockup <c>2i</c>: "drag ⠿ · ⌥↑↓").
+        /// It is <b>not</b> a board move: <see cref="EditorShortcuts.ToDirection"/> answers
+        /// <c>None</c> for it, so it can never reach <c>KeyAdjacency</c>.
+        /// </summary>
+        MoveStepUp = 13,
+
+        /// <summary>⌥↓ — move the selected macro step one place later.</summary>
+        MoveStepDown = 14
     }
 }

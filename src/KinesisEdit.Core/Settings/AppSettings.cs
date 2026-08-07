@@ -16,6 +16,12 @@ namespace KinesisEdit.Core.Settings
     /// read-modify-write merge and the legacy Pascal app ignores keys it does not model.
     /// </para>
     /// <para>
+    /// <b>A sixth addition is a whole key family</b>: <see cref="MacroNames"/>, the
+    /// <c>macro_name_*</c> keys of <see cref="MacroNameKey"/>. It is the only part of this file
+    /// that is <b>per profile</b> and the only part written by the editor's Save rather than
+    /// through immediately — see <c>docs/app/settings.md</c>.
+    /// </para>
+    /// <para>
     /// <b>Two polarities live in this record and they are opposites.</b> Every <c>Is…Hidden</c>
     /// property is a suppression flag — <c>on</c> = hide, absent = show. <c>advisory_detail</c>
     /// is a <i>display</i> preference — <c>on</c> = expand, absent = the one-line form — and is
@@ -127,7 +133,40 @@ namespace KinesisEdit.Core.Settings
             }
         }
 
+        /// <summary>
+        /// Macro names by place, the <c>macro_name_*</c> half of this file
+        /// (<see cref="MacroNameKey"/>). Keyed by profile + layer + trigger + slot, because
+        /// <c>Macro.Id</c> is edit-time identity and reaches no file.
+        /// <para>
+        /// <b>An empty value is a tombstone, not a name.</b> A blank macro name is never written
+        /// (unnamed macros derive a display name from their content instead), so an entry whose
+        /// value is empty means "this key must be <b>deleted</b> from the file" —
+        /// <see cref="AppSettingsSerializer.SerializeMacroNames"/> skips it and
+        /// <see cref="AppSettingsSerializer.SerializeMacroNameRemovals"/> emits it. This is the
+        /// same two-halves shape the custom colours use, and for the same reason: skipping a key
+        /// and clearing it look identical to a read-modify-write merge.
+        /// </para>
+        /// <para>
+        /// The map spans <b>every</b> profile of the device, since one file holds them all. Rewrite
+        /// one profile's names with <see cref="WithMacroNamesForProfile"/>, which is what makes the
+        /// tombstones — and never touches another profile's entries.
+        /// </para>
+        /// </summary>
+        public IReadOnlyDictionary<MacroNameKey, string> MacroNames
+        {
+            get => _macroNames;
+            init
+            {
+                ArgumentNullException.ThrowIfNull(value);
+
+                _macroNames = value;
+            }
+        }
+
         private readonly IReadOnlyList<SettingsColor?> _customColors = new SettingsColor?[CustomColorCount];
+
+        private readonly IReadOnlyDictionary<MacroNameKey, string> _macroNames =
+            new Dictionary<MacroNameKey, string>();
 
         /// <summary>
         /// Returns a copy with one custom-color slot replaced. <paramref name="slotNumber"/> is
@@ -152,6 +191,81 @@ namespace KinesisEdit.Core.Settings
             colors[slotNumber - 1] = color;
 
             return this with { CustomColors = colors };
+        }
+
+        /// <summary>
+        /// The stored name of one macro place, or null when the file carries none — in which case
+        /// the caller derives one from the macro's content
+        /// (<c>Model.MacroNaming.DeriveDisplayName</c>). A tombstoned entry (empty value) also
+        /// reads as null: it is a pending deletion, not a name.
+        /// </summary>
+        public string? GetMacroName(MacroNameKey key)
+        {
+            return _macroNames.TryGetValue(key, out var name) && name.Length > 0 ? name : null;
+        }
+
+        /// <summary>
+        /// Returns a copy with one macro name set. A null or blank <paramref name="name"/> leaves a
+        /// <b>tombstone</b> — the entry stays with an empty value so the next save deletes the key
+        /// — rather than dropping the entry, which a merge could not tell from "unchanged".
+        /// </summary>
+        public AppSettings WithMacroName(MacroNameKey key, string? name)
+        {
+            var names = new Dictionary<MacroNameKey, string>(_macroNames)
+            {
+                [key] = name?.Trim() ?? string.Empty
+            };
+
+            return this with { MacroNames = names };
+        }
+
+        /// <summary>
+        /// Replaces <b>all</b> of <paramref name="profileNumber"/>'s macro names with
+        /// <paramref name="names"/>, tombstoning every key of that profile the new set does not
+        /// carry. Entries of every other profile are untouched, which is the whole point: one
+        /// device file holds nine profiles' names and saving one must never delete another's.
+        /// <para>
+        /// Hand it the complete current picture of the profile —
+        /// <c>MacroLibrary.EnumerateStoredNames()</c> mapped through
+        /// <see cref="MacroNameKey.TryCreate"/> — and renames, deletions and unassignments all
+        /// resolve by themselves: whatever is gone becomes a removal.
+        /// </para>
+        /// <para>
+        /// Entries in <paramref name="names"/> whose <see cref="MacroNameKey.ProfileNumber"/> is not
+        /// <paramref name="profileNumber"/> are rejected with <see cref="ArgumentException"/> — a
+        /// caller mixing profiles here is the exact mistake this signature exists to stop.
+        /// </para>
+        /// </summary>
+        public AppSettings WithMacroNamesForProfile(
+            int profileNumber,
+            IEnumerable<KeyValuePair<MacroNameKey, string>> names)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(profileNumber, 1);
+            ArgumentNullException.ThrowIfNull(names);
+
+            var updated = new Dictionary<MacroNameKey, string>(_macroNames);
+
+            foreach (var pair in _macroNames)
+            {
+                if (pair.Key.ProfileNumber == profileNumber)
+                {
+                    updated[pair.Key] = string.Empty;
+                }
+            }
+
+            foreach (var pair in names)
+            {
+                if (pair.Key.ProfileNumber != profileNumber)
+                {
+                    throw new ArgumentException(
+                        $"Name key names profile {pair.Key.ProfileNumber}, but profile {profileNumber} is being written.",
+                        nameof(names));
+                }
+
+                updated[pair.Key] = pair.Value?.Trim() ?? string.Empty;
+            }
+
+            return this with { MacroNames = updated };
         }
     }
 }

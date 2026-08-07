@@ -12,7 +12,8 @@ namespace KinesisEdit.Input
     /// The editor's keyboard grammar as a pure lookup: a key plus its modifiers in, an
     /// <see cref="EditorShortcut"/> out. Transcribed from docs/design/mockups.md <c>2b</c>
     /// ("↑↓←→ move key selection across the physical grid · ⌥1–5 jump to layer n · ⌘F focus the
-    /// token search · ⌘S / ⌘W save · return to the dashboard").
+    /// token search · ⌘S / ⌘W save · return to the dashboard"), plus <c>2i</c>'s <c>⌥↑↓</c>, which
+    /// reorders the macro step the key inspector has selected.
     /// <para>
     /// <b>It decides nothing and touches nothing</b> — no view, no view model, no capture service.
     /// That is what makes the whole table testable as data, on any host, which matters because the
@@ -67,8 +68,17 @@ namespace KinesisEdit.Input
             {
                 // The digit row only. A keypad digit is a different physical key and the design
                 // names the row it draws on the layer switcher ("⌥1–5", mockup 1f).
+                //
+                // ⌥↑ / ⌥↓ join the table with issue #93: mockup 2i's step editor draws "drag ⠿ ·
+                // ⌥↑↓" as the reorder affordance. They are deliberately NOT board moves — the four
+                // plain arrows are — so ToDirection answers None for them and the view dispatches
+                // them like ⌘F/⌘S/⌘W, past the arrow gate that exists to protect a focused
+                // one-of-N control. ⌥← / ⌥→ stay out of the grammar: the design names no gesture
+                // for them.
                 return key switch
                 {
+                    Key.Up => EditorShortcut.MoveStepUp,
+                    Key.Down => EditorShortcut.MoveStepDown,
                     Key.D1 => EditorShortcut.SelectLayer1,
                     Key.D2 => EditorShortcut.SelectLayer2,
                     Key.D3 => EditorShortcut.SelectLayer3,

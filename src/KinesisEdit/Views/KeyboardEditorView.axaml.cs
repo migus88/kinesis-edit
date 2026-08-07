@@ -242,6 +242,14 @@ namespace KinesisEdit.Views
 
             return shortcut switch
             {
+                // ⌥↑↓ reorders the key inspector's selected macro step (mockup 2i). It is NOT gated
+                // like the four plain arrows: the step list is deliberately not a
+                // SelectingItemsControl (see MacroInspectorStepsViewModel), and nothing else in the
+                // editor consumes Alt+arrow — so gating it on BoardOwnsArrows would only make it die
+                // the moment the user clicked a tab or a layer segment. A focused text input still
+                // wins, exactly as it does for ⌥n.
+                EditorShortcut.MoveStepUp => BoardOwnsLayerShortcuts() && TryRun(viewModel.MoveMacroStepUpCommand),
+                EditorShortcut.MoveStepDown => BoardOwnsLayerShortcuts() && TryRun(viewModel.MoveMacroStepDownCommand),
                 EditorShortcut.FocusSearch => TryRun(viewModel.OpenSearchCommand),
                 EditorShortcut.Save => TryRun(viewModel.SaveCommand),
 

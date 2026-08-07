@@ -24,7 +24,12 @@
     of the parent grid: the parent's Auto column then measures nothing and the board takes the
     width back.
   -->
-  <Border Classes="inspectorRail" IsVisible="{Binding IsOpen}">
+  <!--
+    THE WIDTH FOLLOWS THE MODE. 268px everywhere except the Macro panel, which gets the handoff's
+    300px macro-editing variant (mockup 2i). The class is bound off `IsWide`, which the rail reads
+    from whichever panel is active — the panel owns that fact, not this file.
+  -->
+  <Border Classes="inspectorRail" Classes.wide="{Binding IsWide}" IsVisible="{Binding IsOpen}">
     <Grid RowDefinitions="Auto,*,Auto">
 
       <!-- ===== The header ====================================================================
@@ -162,7 +167,7 @@
 
             <!-- The showing mode's own panel, resolved by ViewLocator from whichever
                  KeyInspectorPanelViewModel the editor handed the rail. Empty for a mode with no
-                 panel — the Macro tab always, which bridges to the Macros tab instead. -->
+                 panel — which since issue #93 is only Multi-mod, on the boards that have it. -->
             <ContentControl Content="{Binding ActivePanel}" />
           </StackPanel>
         </Panel>
