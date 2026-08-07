@@ -35,6 +35,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(KeyboardKeyViewModel)] = "DataTemplate in Controls/KeyboardView.axaml (-> KeyCapView).",
             [typeof(KeyboardLayerViewModel)] = "ItemTemplate in Views/KeyboardEditorView.axaml (the layer segments).",
             [typeof(EditorTabViewModel)] = "ItemTemplate in Views/KeyboardEditorView.axaml (the section strip's tabs).",
+            [typeof(KeyInspectorTabViewModel)] = "ItemTemplate in Views/KeyInspectorView.axaml and Views/LockedKeyPanelView.axaml (the mode tabs).",
             [typeof(MacroPanelViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the macro panel).",
             [typeof(MacroSlotViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the slot pills).",
             [typeof(MacroStepViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the recorded steps).",

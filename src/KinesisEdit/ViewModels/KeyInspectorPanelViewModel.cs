@@ -22,7 +22,9 @@ namespace KinesisEdit.ViewModels
     /// <c>KeyboardEditorViewModel.RefreshCounters()</c>, which every path that can write the layout
     /// already ends in — reaches the rail, and the rail calls
     /// <see cref="Refresh(KeyboardKeyViewModel?, KeyboardLayerViewModel?, KeyboardLayout?, EditorAdvisories)"/>
-    /// on the active panel. <b>Every panel therefore has to survive being refreshed with a null
+    /// on <b>every</b> panel it holds, not only the showing one: a panel the user switches to must
+    /// already be right, and the alternative is a second refresh path down the mode switch.
+    /// <b>Every panel therefore has to survive being refreshed with a null
     /// key</b> (nothing selected, nothing loaded, a device with no board picture) and with the same
     /// key it already had (a refresh caused by somebody else's edit).</para>
     ///
