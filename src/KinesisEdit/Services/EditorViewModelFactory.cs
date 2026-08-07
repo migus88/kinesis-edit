@@ -33,6 +33,7 @@ namespace KinesisEdit.Services
         private readonly IVDriveFileService _files;
         private readonly IUrlLauncher _urlLauncher;
         private readonly IDeviceSessionAccessor? _sessions;
+        private readonly IMotionSettings? _motionSettings;
 
         /// <summary>
         /// Creates the factory. The capture service is resolved through a delegate rather than
@@ -50,6 +51,12 @@ namespace KinesisEdit.Services
         /// that a factory built for a test or a design scene needs no session at all, and every
         /// preference then sits at its default.
         /// </para>
+        /// <para>
+        /// <paramref name="motionSettings"/> reaches exactly one tab: the Lighting tab's live
+        /// preview is the app's only animated surface, and it freezes at frame zero when motion is
+        /// reduced. It is optional for the same reason as <paramref name="sessions"/> — a test or a
+        /// design scene that passes none animates, which is the state the app was designed in.
+        /// </para>
         /// </summary>
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
@@ -61,7 +68,8 @@ namespace KinesisEdit.Services
             IFilePickerService filePicker,
             IVDriveFileService files,
             IUrlLauncher urlLauncher,
-            IDeviceSessionAccessor? sessions = null)
+            IDeviceSessionAccessor? sessions = null,
+            IMotionSettings? motionSettings = null)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -73,6 +81,7 @@ namespace KinesisEdit.Services
             _files = files ?? throw new ArgumentNullException(nameof(files));
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _sessions = sessions;
+            _motionSettings = motionSettings;
         }
 
         /// <inheritdoc />
@@ -105,7 +114,8 @@ namespace KinesisEdit.Services
                 _filePicker,
                 _files,
                 _urlLauncher,
-                _sessions);
+                _sessions,
+                _motionSettings);
         }
 
         private static bool CanRender(DeviceSnapshot device)

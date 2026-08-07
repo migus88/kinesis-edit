@@ -6,233 +6,192 @@
              xmlns:views="clr-namespace:KinesisEdit.Views"
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
-             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="620"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="596"
              x:Class="KinesisEdit.Views.LightingTabView"
              x:DataType="vm:LightingTabViewModel">
-  <!-- The editor's Lighting tab (specs/07-lighting.md §3, §4): the layer switch, the mode menu,
-       the per-mode parameter panels, and — for the two per-key modes — the keyboard picture, the
-       zone buttons and "Reset All". Which panels appear is the view model's Panels value; nothing
-       here knows a mode name. -->
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Spacing="12" Margin="0,4">
+  <!--
+    The editor's Lighting tab, as design mockup 2f redraws it: THE MODE IS RENDERED ON THE BOARD,
+    not named in a dropdown. Two columns — the board on the left, the mode rail on the right — and
+    the board animates the selected effect at its real speed and direction while the rail is
+    scrubbed.
 
-      <!-- Demo mode: everything is explorable, nothing is written (03 §3.5). -->
-      <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
-        <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
-      </Border>
+    THE BOARD IS THE SCREEN'S SUBJECT, so it gets the canvas and everything else sits around it: the
+    layer switch above it, its own header naming what it is showing, and the paint line under it.
+    There is no `keyboardBoard` surround any more — the picture draws its own bordered section
+    panels (Controls/KeyboardView.axaml), and an inset frame around them was the visible double
+    frame issue #91 removed from the Layout canvas. This board now sits on a canvas of its own for
+    exactly the same reason that one does.
 
-      <!-- Layer switch. The two layers are fully independent (§4), and the Fn segment is disabled
-           below the LED 1.0.44 gate (§3), which is also what hides the base-colour swatch. -->
-      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-        <!-- The same segmented control the Keys tab's layer switch is, for the same reason: one of
-             N, one tab stop. `SelectedItem` reads the panel one way — SelectLayer owns that
-             property — and the selection change runs the command the pills used to. -->
-        <ListBox Theme="{StaticResource SegmentedControl}"
-                 ItemsSource="{Binding Layers}"
-                 SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
-                 SelectionChanged="OnLayerSelectionChanged">
-          <!-- The Fn segment below the LED 1.0.44 gate: shown and dimmed rather than hidden,
-               because the layer exists and the reason is printed beside it. Scoped to this list, so
-               it cannot outrank another one's container theme. -->
-          <ListBox.Styles>
-            <Style Selector="ListBoxItem" x:DataType="vm:LightingLayerViewModel">
-              <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
-            </Style>
-          </ListBox.Styles>
-          <ListBox.ItemTemplate>
-            <DataTemplate DataType="vm:LightingLayerViewModel">
-              <TextBlock Text="{Binding Caption}" />
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+    WHAT IS *NOT* HERE. No mode name, no parameter, no direction set, no zone and no speed bound is
+    spelled in this file: LightingTabViewModel asks Core for every one of them
+    (LightingModeParameters, LightingAvailability, LightingZoneCatalog, LayerLightingState). The
+    frame timer that drives the animation is in the code-behind, and it does nothing but hand
+    elapsed seconds to AdvancePreview — including the reduce-motion decision, which the view model
+    re-reads on every call.
+  -->
+  <Grid ColumnDefinitions="*,Auto">
 
-        <TextBlock Text="{Binding LayerLockHint}"
-                   Classes="body muted"
-                   TextWrapping="Wrap"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding !IsLayerCustomizationAvailable}" />
+    <!-- ===== The board ======================================================================= -->
+    <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,16,0">
+
+      <!-- The layer switch, relabelled "Lighting layer" (2f) — the two layers a led file describes
+           are not the layout's five, and the switch says which of the two is being lit. The Fn
+           segment is shown and dimmed below the LED 1.0.44 gate rather than hidden, because the
+           layer exists and the reason is printed beside it. -->
+      <StackPanel Grid.Row="0" Spacing="8">
+        <!-- Demo mode: everything is explorable, nothing is written (03 §3.5). -->
+        <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
+          <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
+        </Border>
+
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+          <TextBlock Grid.Column="0"
+                     Text="{x:Static views:LightingTabView.LayerSwitchLabel}"
+                     Classes="sectionLabel"
+                     VerticalAlignment="Center" />
+
+          <!-- The same segmented control the Keys tab's layer switch is, for the same reason: one
+               of N, one tab stop. `SelectedItem` reads the panel one way — SelectLayer owns that
+               property — and the selection change runs the command the pills used to. -->
+          <ListBox Grid.Column="1"
+                   Theme="{StaticResource SegmentedControl}"
+                   ItemsSource="{Binding Layers}"
+                   SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
+                   SelectionChanged="OnLayerSelectionChanged"
+                   VerticalAlignment="Center">
+            <!-- Scoped to this list, so it cannot outrank another one's container theme. -->
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem" x:DataType="vm:LightingLayerViewModel">
+                <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+              </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="vm:LightingLayerViewModel">
+                <TextBlock Text="{Binding Caption}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <TextBlock Grid.Column="2"
+                     Text="{Binding LayerLockHint}"
+                     Classes="meta muted"
+                     TextWrapping="Wrap"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding !IsLayerCustomizationAvailable}" />
+        </Grid>
       </StackPanel>
 
-      <Grid ColumnDefinitions="180,*,Auto" ColumnSpacing="16">
+      <!-- The picture, centred as one block with the line that names it. `BoardHeader` is the whole
+           point of this screen: "Wave · live preview" while it animates, "Wave · preview" while
+           reduce-motion holds it on the effect's first frame. Sans — the mode's name is the app's
+           own caption for it, not a token out of the file.
 
-        <!-- The mode menu (§3): membership and firmware gating are the view model's. -->
-        <!-- Tighter than a card's own padding: the rows inside carry theirs, so the menu would
-             otherwise read as double-inset. 8 is the spacing scale's second step. -->
-        <Border Grid.Column="0" Classes="card" Padding="8" VerticalAlignment="Top">
-          <ItemsControl ItemsSource="{Binding Modes}">
+           The caps draw the LIT face (ShowsLighting) and NOT the state badges: the remap bar, the
+           macro dot, the tap-and-hold corner and the advisory bar all report the *layout*, and this
+           board cannot edit one. The two tabs render the same layer and the same cap view models;
+           only what each picture draws differs.
+
+           TOP-ALIGNED, NOT CENTRED, and that is a frame's finding rather than a preference. The
+           board is the one thing on this screen the eye is fixed on while the rail is scrubbed, and
+           it must not move under the pointer — so its position is fixed at the top of the column
+           and anything under it grows downwards. (The defect that found this was the paint line
+           appearing and disappearing with the mode, which slid a centred board ~70 px every time
+           the rail's selection crossed between Wave and Freestyle. That row is now on screen in
+           every mode, so the original cause is gone; the anchoring stays, because it is what makes
+           the guarantee independent of what is drawn beneath.) -->
+      <StackPanel Grid.Row="1"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Margin="0,20,0,0"
+                  Spacing="10"
+                  IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+        <TextBlock Text="{Binding BoardHeader}"
+                   Classes="cardTitle"
+                   HorizontalAlignment="Center" />
+
+        <controls:KeyboardView DataContext="{Binding Board}"
+                               HorizontalAlignment="Center"
+                               ShowsLighting="True"
+                               ShowsStateBadges="False"
+                               KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectKeyCommand}" />
+
+        <!-- ===== The paint line ==============================================================
+             2f's "Paint · 2 keys selected" with "Select all" and "Clear". It sits directly under
+             the picture, exactly as the Layout tab's legend row does and for the same reason: it is
+             a statement ABOUT the board, so it is the board's own width and its ends line up with
+             the board's ends.
+
+             IT IS ON SCREEN WHATEVER THE MODE IS, and 2f is the proof: the board it draws this row
+             on is running WAVE, which ignores paint. The painted colours belong to the layer rather
+             than to the effect over them — "the colors are still on file" — and the 40% paint layer
+             exists precisely so they can be seen and edited under a mode that will not use them. A
+             row that came and went with the mode would take the controls off the one screen the
+             design chose to illustrate them on. Whether this board can paint at all is settled by
+             the tab existing (LightingTabViewModel.IsSupported); the mode must not answer it twice.
+
+             `Clear` turns the selected keys OFF rather than black, which is why the swatch rule
+             beside it matters: an unlit key is hatched, never black. -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+              ColumnSpacing="8"
+              Margin="0,4,0,0">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding Selection.Caption}"
+                     Classes="body"
+                     VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1"
+                     Text="{x:Static views:LightingTabView.HatchRule}"
+                     Classes="meta muted"
+                     TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center"
+                     Margin="8,0,0,0" />
+          <Button Grid.Column="2"
+                  Classes="secondary"
+                  Content="{x:Static vm:LightingPaintSelection.SelectAllCaption}"
+                  Command="{Binding SelectAllKeysCommand}" />
+          <Button Grid.Column="3"
+                  Classes="secondary"
+                  Content="{x:Static vm:LightingPaintSelection.ClearCaption}"
+                  Command="{Binding ClearKeyColorsCommand}" />
+        </Grid>
+
+        <!-- ===== The zones ===================================================================
+             §4's named colour zones and the "Reset All" that erases every per-key colour: the bulk
+             versions of the paint line above, so they sit with it rather than at the far end of the
+             column — and on screen under the same rule, for the same reason. They cost the board
+             nothing by being here: the whole block is top-aligned, so a field that appears, wraps
+             or vanishes with the mode moves only itself. -->
+        <Grid ColumnDefinitions="*,Auto"
+              ColumnSpacing="8"
+              Margin="0,8,0,0">
+          <ItemsControl Grid.Column="0" ItemsSource="{Binding Zones}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <StackPanel Spacing="2" />
+                <WrapPanel Orientation="Horizontal" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:LightingModeViewModel">
-                <Button Classes="modeOption"
-                        Classes.selected="{Binding IsSelected}"
-                        HorizontalAlignment="Stretch"
-                        Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectModeCommand}"
-                        CommandParameter="{Binding}">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <!-- The mode's mark, which "draws the motion rather than naming it twice"
-                         (docs/design/handoff.md). Two Icons in one cell because thirteen of the
-                         sixteen marks are outlines and three are solids, and those are different
-                         properties on an Icon: the converter answers only the half the mode is
-                         drawn in, so the other draws nothing. Stroking a ring *and* filling it
-                         would turn it into a disc, which is why they are never both answered. -->
-                    <Panel Width="{DynamicResource IconSize}"
-                           Height="{DynamicResource IconSize}"
-                           VerticalAlignment="Center">
-                      <controls:Icon Classes="modeMark"
-                                     Classes.selected="{Binding IsSelected}"
-                                     Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Stroke}" />
-                      <controls:Icon Classes="modeMark filled"
-                                     Classes.selected="{Binding IsSelected}"
-                                     Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Fill}" />
-                    </Panel>
-
-                    <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
-                  </StackPanel>
-                </Button>
+              <DataTemplate DataType="vm:LightingZoneViewModel">
+                <Button Classes="zoneButton"
+                        Content="{Binding Caption}"
+                        Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).ApplyZoneCommand}"
+                        CommandParameter="{Binding}" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </Border>
 
-        <!-- The parameter panels of the selected mode. -->
-        <StackPanel Grid.Column="1" Spacing="14" VerticalAlignment="Top">
-
-          <!-- The two colour swatches. The picker edits whichever one is selected; for the per-key
-               modes only the effect swatch exists and it is the colour a click paints with (§4). -->
-          <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Panels.ShowsAnyColor}">
-            <Button Classes="colorSlot"
-                    Classes.selected="{Binding EffectColor.IsSelected}"
-                    IsVisible="{Binding EffectColor.IsVisible}"
-                    Command="{Binding SelectColorSlotCommand}"
-                    CommandParameter="{Binding EffectColor}">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="colorSwatchFill"
-                        Background="{Binding EffectColor.ColorHex, Converter={StaticResource HexColorToBrush}}" />
-                <TextBlock Text="{Binding EffectColor.Caption}" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-
-            <Button Classes="colorSlot"
-                    Classes.selected="{Binding BaseColor.IsSelected}"
-                    IsVisible="{Binding BaseColor.IsVisible}"
-                    Command="{Binding SelectColorSlotCommand}"
-                    CommandParameter="{Binding BaseColor}">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="colorSwatchFill"
-                        Background="{Binding BaseColor.ColorHex, Converter={StaticResource HexColorToBrush}}" />
-                <TextBlock Text="{Binding BaseColor.Caption}" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-          </StackPanel>
-
-          <!-- Speed 1-9 (§2.1). -->
-          <Grid ColumnDefinitions="80,*,32" IsVisible="{Binding Panels.ShowsSpeed}">
-            <TextBlock Grid.Column="0" Text="SPEED" Classes="sectionLabel" VerticalAlignment="Center" />
-            <Slider Grid.Column="1"
-                    Minimum="{Binding MinimumSpeed}"
-                    Maximum="{Binding MaximumSpeed}"
-                    Value="{Binding Speed}"
-                    TickFrequency="1"
-                    IsSnapToTickEnabled="True"
-                    VerticalAlignment="Center" />
-            <TextBlock Grid.Column="2"
-                       Text="{Binding Speed}"
-                       Classes="monoValue"
-                       HorizontalAlignment="Right"
-                       VerticalAlignment="Center" />
-          </Grid>
-
-          <!-- Direction (§3). Rebound's two entries read "Horizontal"/"Vertical".
-
-               Deliberately still a row of buttons rather than the segmented control the layer
-               switch became: the panel replaces the whole Directions collection whenever the mode
-               changes and states the chosen one only as each entry's IsSelected, so a
-               SelectingItemsControl would have nothing to bind its selection to — and, with
-               AlwaysSelected, would silently write direction 0 into the model on every mode change.
-               `ToggleSegment` is the same "chosen is accent-filled" face, driven by that class. -->
-          <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Panels.ShowsDirection}">
-            <TextBlock Text="DIRECTION" Classes="sectionLabel" Width="80" VerticalAlignment="Center" />
-            <ItemsControl ItemsSource="{Binding Directions}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Horizontal" Spacing="6" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:LightingDirectionViewModel">
-                  <Button Classes="toggleSegment"
-                          Classes.selected="{Binding IsSelected}"
-                          Content="{Binding Caption}"
-                          Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectDirectionCommand}"
-                          CommandParameter="{Binding}" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
-
-          <!-- Zone buttons and "Reset All": Freestyle and Breathe only (§3, §4). -->
-          <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsZones}">
-            <TextBlock Text="ZONES" Classes="sectionLabel" />
-            <ItemsControl ItemsSource="{Binding Zones}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:LightingZoneViewModel">
-                  <Button Classes="zoneButton"
-                          Content="{Binding Caption}"
-                          Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).ApplyZoneCommand}"
-                          CommandParameter="{Binding}" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <Button Content="{x:Static vm:LightingTabViewModel.ResetAllCaption}"
-                    Command="{Binding ResetAllCommand}"
-                    HorizontalAlignment="Left"
-                    IsVisible="{Binding Panels.ShowsResetAll}" />
-          </StackPanel>
-        </StackPanel>
-
-        <!-- The picker itself, shown whenever there is a colour to edit or keys to paint —
-             ShowsAnyColor covers both, because a per-key mode's "effect colour" is the colour a
-             click paints with (§4). Hidden in Disabled/Spectrum/Wave/Pulse, where dragging the
-             ring would write nowhere. The binding walks back up to the tab's DataContext because
-             this element's own is the picker. -->
-        <controls:ColorPickerView Grid.Column="2"
-                                  DataContext="{Binding Picker}"
-                                  IsVisible="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).Panels.ShowsAnyColor}"
-                                  VerticalAlignment="Top" />
-      </Grid>
-
-      <!-- Per-key colouring (§4): the same generic picture the Keys tab uses, with the click
-           wired to the colour-assign command instead of the remap one — and with the LED strip
-           asked for, which is what makes this picture a lighting surface and the Keys tab's not
-           (an unlit key hatches here and shows nothing at all there).
-
-           AND WITH THE STATE BADGES OFF. A colouring board is about colour: the remap bar, the
-           macro dot, the tap-and-hold corner and the advisory bar all report the *layout*, and
-           this board cannot edit one — so they are not drawn here, and there is no legend row
-           counting them either (the counts follow the badges). The two pictures are the same
-           control over the same layer view models; only what each one draws differs. -->
-      <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsPerKeyColors}">
-        <TextBlock Text="Click a key to paint it with the selected colour; black erases it."
-                   Classes="body muted" />
-
-        <Border Classes="keyboardBoard"
-                IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-          <controls:KeyboardView DataContext="{Binding Board}"
-                                 ShowsLedStrips="True"
-                                 ShowsStateBadges="False"
-                                 KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).AssignKeyColorCommand}" />
-        </Border>
+          <Button Grid.Column="1"
+                  Classes="secondary"
+                  Content="{x:Static vm:LightingTabViewModel.ResetAllCaption}"
+                  Command="{Binding ResetAllCommand}"
+                  VerticalAlignment="Top" />
+        </Grid>
       </StackPanel>
-    </StackPanel>
-  </ScrollViewer>
+    </Grid>
+
+    <!-- ===== The mode rail ===================================================================
+         Its own view, over this very DataContext: the rail is a 300px column with a header, a
+         scrolled list, a disclosed picker and a pinned parameter footer, and folding all of that
+         into this file would bury the board it is beside. -->
+    <views:LightingModeRailView Grid.Column="1" />
+  </Grid>
 </UserControl>

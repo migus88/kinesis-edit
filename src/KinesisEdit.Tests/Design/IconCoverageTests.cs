@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using Avalonia.Styling;
+using KinesisEdit.Converters;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Lighting;
 using KinesisEdit.Services;
@@ -8,10 +9,11 @@ namespace KinesisEdit.Tests.Design
 {
     /// <summary>
     /// The catalog's coverage, driven by the domain rather than by a list: the devices come from
-    /// <see cref="DeviceCatalog"/>, the lighting marks from the <see cref="LightingMode"/> enum and
-    /// the message marks from <see cref="MessageBoxIcon"/>. Adding a member to any of those fails
-    /// this suite until its mark exists, which is the point — a missing mark is a hole in a rail
-    /// nobody notices until the device is plugged in.
+    /// <see cref="DeviceCatalog"/>, the lighting marks from the <see cref="LightingMode"/> enum, the
+    /// direction arrows from <see cref="LightingDirection"/> and the message marks from
+    /// <see cref="MessageBoxIcon"/>. Adding a member to any of those fails this suite until its mark
+    /// exists, which is the point — a missing mark is a hole in a rail nobody notices until the
+    /// device is plugged in.
     /// <para>
     /// It runs the other way too: a mark that names nothing is dead weight the catalog must not
     /// carry, and a mark for a device the app cannot configure would be worse than dead — it would
@@ -117,6 +119,63 @@ namespace KinesisEdit.Tests.Design
             }
         }
 
+        [AvaloniaTheory]
+        [MemberData(nameof(LightingDirections))]
+        public void EveryLightingDirection_OtherThanNone_HasAnArrow(LightingDirection direction)
+        {
+            // The direction row is data-driven — which arrows a mode accepts comes out of the
+            // lighting catalog — so the four marks are reached from C# through
+            // LightingDirectionMarkConverter and are invisible to every markup guard. This is the
+            // one thing that can see them, which is why the key is asked of the converter rather
+            // than composed here: a typo in its prefix would resolve to nothing and simply draw an
+            // arrow-shaped hole in the row.
+            var key = LightingDirectionMarkConverter.GetResourceKey(direction);
+
+            Assert.NotNull(key);
+
+            foreach (var variant in DesignTokens.Variants)
+            {
+                IconCatalog.ResolveGeometry(key!, variant);
+            }
+        }
+
+        [AvaloniaFact]
+        public void TheDirectionlessMember_HasNoArrowAndAsksForNone()
+        {
+            // `None` is "this effect has no direction", not "it points nowhere" — the file format
+            // never writes it (specs/07-lighting.md). It converts to null, and an Icon handed null
+            // Data draws nothing, which is what the design's "a feature a device lacks is not
+            // rendered at all" needs.
+            Assert.Null(LightingDirectionMarkConverter.GetResourceKey(LightingDirection.None));
+            Assert.False(
+                DesignTokens.TryResolve(LightingDirectionMarkConverter.KeyPrefix + LightingDirection.None, ThemeVariant.Dark, out _),
+                "There is a mark for the directionless member, which nothing can ever draw.");
+        }
+
+        [AvaloniaFact]
+        public void NoArrowMark_NamesSomethingOutsideTheDirectionEnum()
+        {
+            // The mirror, as for the device art and the mode marks. The arrows share
+            // Themes/Icons.axaml with the state and action marks rather than living in a family of
+            // their own, so the scan is by prefix rather than by file.
+            var strays = IconCatalog.DeclaredKeys(IconCatalog.FamilyOf("Themes/Icons.axaml"))
+                .Where(key => key.StartsWith(LightingDirectionMarkConverter.KeyPrefix, StringComparison.Ordinal))
+                .Where(key => !Enum.TryParse<LightingDirection>(
+                    key[LightingDirectionMarkConverter.KeyPrefix.Length..],
+                    ignoreCase: false,
+                    out var direction) || direction == LightingDirection.None)
+                .ToArray();
+
+            Assert.True(strays.Length == 0, $"Arrows naming no direction: {string.Join(", ", strays)}.");
+
+            // ...and there are four of them, so a scan that stopped finding any cannot pass.
+            Assert.Equal(
+                4,
+                IconCatalog.DeclaredKeys(IconCatalog.FamilyOf("Themes/Icons.axaml"))
+                    .Count(key => key.StartsWith(LightingDirectionMarkConverter.KeyPrefix, StringComparison.Ordinal)));
+        }
+
+
         /// <summary>Every member of the lighting-mode enum, which is what the mode picker lists.</summary>
         public static TheoryData<LightingMode> LightingModes()
         {
@@ -128,6 +187,19 @@ namespace KinesisEdit.Tests.Design
             }
 
             return modes;
+        }
+
+        /// <summary>Every direction that is drawn; <c>None</c> is the absence of one.</summary>
+        public static TheoryData<LightingDirection> LightingDirections()
+        {
+            var directions = new TheoryData<LightingDirection>();
+
+            foreach (var direction in Enum.GetValues<LightingDirection>().Where(direction => direction != LightingDirection.None))
+            {
+                directions.Add(direction);
+            }
+
+            return directions;
         }
 
         /// <summary>Every dialog type that draws a mark; <c>None</c> draws nothing by definition.</summary>

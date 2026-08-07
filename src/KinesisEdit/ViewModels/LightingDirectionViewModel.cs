@@ -1,13 +1,21 @@
-using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One entry of the lighting tab's direction control (specs/07-lighting.md §3). Which
-    /// directions a mode offers on a device is <see cref="LightingAvailability"/>'s answer — it
-    /// is device-aware, so Fireball correctly offers nothing on the Freestyle Edge RGB even
-    /// though its file line carries a direction token.
+    /// One arrow of the lighting tab's direction row (specs/07-lighting.md §3, design mockup 2f).
+    /// <para>
+    /// <b>All four are always present.</b> Which ones a mode can actually use is
+    /// <see cref="LightingModeParameters.Directions"/>'s answer — device-aware, so Fireball offers
+    /// none on the Freestyle Edge RGB even though its file line carries a direction token — and an
+    /// arrow the mode cannot use stays in place with <see cref="IsAvailable"/> false, struck
+    /// through by its control theme. That is 2f overriding the app's own "absent, never disabled"
+    /// law, verbatim and for a stated reason: "Directions a mode can't use stay in place, struck
+    /// through — the row never changes shape as you move down the list." The rail is a column of
+    /// fourteen rows the user scrubs, and a control that changed shape under the pointer as the
+    /// selection moved would be worse than a struck arrow.
+    /// </para>
     /// </summary>
     public sealed class LightingDirectionViewModel : ViewModelBase
     {
@@ -18,35 +26,58 @@ namespace KinesisEdit.ViewModels
         public const string VerticalCaption = "Vertical";
 
         /// <summary>
-        /// The direction entries <paramref name="mode"/> offers on <paramref name="deviceId"/>,
-        /// empty when it has no direction panel there. <b>Rebound is relabelled</b>: §3 replaces
-        /// its four arrows with "Horizontal"/"Vertical" buttons mapping to left/up.
+        /// The row's four arrows, in <see cref="LightingDirection"/> order — down, left, up, right,
+        /// which is also the order <see cref="LightingModeCatalog"/> lists a mode's own set in, so
+        /// an available subset never appears shuffled against the row it sits in.
         /// </summary>
-        public static IReadOnlyList<LightingDirectionViewModel> CreateAll(DeviceId deviceId, LightingMode mode)
+        public static IReadOnlyList<LightingDirection> Order { get; } =
+        [
+            LightingDirection.Down,
+            LightingDirection.Left,
+            LightingDirection.Up,
+            LightingDirection.Right
+        ];
+
+        /// <summary>
+        /// The four arrows for <paramref name="parameters"/>' mode, each marked available or not.
+        /// </summary>
+        public static IReadOnlyList<LightingDirectionViewModel> CreateAll(LightingModeParameters parameters)
         {
-            var directions = LightingAvailability.GetKeyBacklightDirections(deviceId, mode);
+            ArgumentNullException.ThrowIfNull(parameters);
 
-            if (directions.Count == 0)
+            var entries = new List<LightingDirectionViewModel>(Order.Count);
+
+            foreach (var direction in Order)
             {
-                return [];
-            }
-
-            var entries = new List<LightingDirectionViewModel>(directions.Count);
-
-            foreach (var direction in directions)
-            {
-                entries.Add(new LightingDirectionViewModel(direction, GetCaption(direction, mode)));
+                entries.Add(new LightingDirectionViewModel(
+                    direction,
+                    GetCaption(direction, parameters.Mode),
+                    parameters.Directions.Contains(direction)));
             }
 
             return entries;
         }
 
-        /// <summary>The caption of <paramref name="direction"/> in <paramref name="mode"/>.</summary>
+        /// <summary>
+        /// The caption of <paramref name="direction"/> in <paramref name="mode"/>. <b>Rebound is
+        /// relabelled</b>: §3 replaces its arrows with "Horizontal"/"Vertical" buttons mapping to
+        /// left/up. Only the two it offers are renamed — the two it does not are struck through
+        /// under their own names, because calling an unusable arrow "Horizontal" would say the mode
+        /// has two horizontals.
+        /// </summary>
         public static string GetCaption(LightingDirection direction, LightingMode mode)
         {
             if (mode == LightingMode.Rebound)
             {
-                return direction == LightingDirection.Up ? VerticalCaption : HorizontalCaption;
+                if (direction == LightingDirection.Left)
+                {
+                    return HorizontalCaption;
+                }
+
+                if (direction == LightingDirection.Up)
+                {
+                    return VerticalCaption;
+                }
             }
 
             return direction switch
@@ -58,11 +89,18 @@ namespace KinesisEdit.ViewModels
             };
         }
 
-        /// <summary>The direction this entry writes.</summary>
+        /// <summary>The direction this arrow writes.</summary>
         public LightingDirection Direction { get; }
 
-        /// <summary>The entry's caption.</summary>
+        /// <summary>The arrow's caption.</summary>
         public string Caption { get; }
+
+        /// <summary>
+        /// Whether the selected mode runs in this direction. False draws the arrow struck through
+        /// in place, and selecting it is a no-op rather than a refused command — the control is not
+        /// hit-testable, so the guard is the last line rather than the only one.
+        /// </summary>
+        public bool IsAvailable { get; }
 
         /// <summary>Whether this is the layer's current direction.</summary>
         public bool IsSelected
@@ -73,13 +111,14 @@ namespace KinesisEdit.ViewModels
 
         private bool _isSelected;
 
-        /// <summary>Creates one direction entry.</summary>
-        public LightingDirectionViewModel(LightingDirection direction, string caption)
+        /// <summary>Creates one direction arrow.</summary>
+        public LightingDirectionViewModel(LightingDirection direction, string caption, bool isAvailable)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(caption);
 
             Direction = direction;
             Caption = caption;
+            IsAvailable = isAvailable;
         }
     }
 }

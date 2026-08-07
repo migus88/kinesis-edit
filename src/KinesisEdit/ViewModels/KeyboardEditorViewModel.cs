@@ -565,7 +565,8 @@ namespace KinesisEdit.ViewModels
             IFilePickerService filePicker,
             IVDriveFileService files,
             IUrlLauncher urlLauncher,
-            IDeviceSessionAccessor? sessions = null) : base(device)
+            IDeviceSessionAccessor? sessions = null,
+            IMotionSettings? motionSettings = null) : base(device)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _capture = capture ?? throw new ArgumentNullException(nameof(capture));
@@ -587,7 +588,12 @@ namespace KinesisEdit.ViewModels
             // (docs/app/settings.md). Neither parameter has a default, so an editor that forgot to
             // thread the store is a compile error rather than a screen that quietly reads nothing.
             Settings = new KeyboardSettingsViewModel(device, settings, notifications, _preferences, urlLauncher);
-            Lighting = new LightingTabViewModel(device, notifications, _preferences);
+            // The lighting tab is the app's one animated surface, so it is the one view model that
+            // needs the motion switch: its preview freezes at frame zero under reduce-motion. It is
+            // read per frame rather than once, because since issue #96 the setting is a live user
+            // preference (MotionPreferenceApplier) that the Settings screen can flip while this
+            // editor is open, and IMotionSettings raises nothing when it moves.
+            Lighting = new LightingTabViewModel(device, notifications, _preferences, motionSettings);
 
             // The strip owns the projection and the Review walk; selecting what a note is about is
             // this class's, because the board and the macro panel are. Built before SelectTab

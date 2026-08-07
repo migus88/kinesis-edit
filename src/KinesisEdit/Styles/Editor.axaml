@@ -233,6 +233,63 @@
     <Setter Property="Theme" Value="{StaticResource ModeOption}" />
   </Style>
 
+  <!-- The rail row's SECOND LINE: the parameters the mode accepts ("spd · L/R", "color · spd"),
+       under its name. Mockup 2f writes every row as that pair, which is what makes the rail an
+       answer to "what will change if I pick this one" rather than a list of names.
+
+       It is a descendant style and not part of the ModeOption theme because a ControlTheme's nested
+       styles are matched against the templated control and its TEMPLATE children only, never
+       against content the view supplied — see the theme's own header. Nothing here names a template
+       part; `Button.modeOption :is(TextBlock).modeSummary` is an ordinary descendant selector.
+
+       MUTED RATHER THAN SMALLER, which is a deviation from the mock and is recorded in
+       docs/app/design-system.md: the type scale has no sans step below 11 (10 is the mono section
+       label), and inventing one for a rail row would put a new number in Themes/Typography.axaml to
+       separate two lines that colour already separates. The name keeps the weight step the theme
+       gives the row on selection; the summary stays at 400 either way, so the pair reads as a
+       heading over a caption rather than as two headings. -->
+  <Style Selector="Button.modeOption :is(TextBlock).modeSummary">
+    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- On the chosen row the fill is the full accent, and TextMuted on it is unreadable. AccentText
+       is the colour that rides a solid accent face; the summary keeps its 400 against the name's
+       500, which is what still tells the two lines apart there. -->
+  <Style Selector="Button.modeOption.selected :is(TextBlock).modeSummary">
+    <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+
+  <!-- ===== The lighting parameter row ========================================================
+       The direction arrows and the speed bars under the mode rail (mockup 2f: "Color `57C4D8`",
+       "Speed 6 / 9", "Direction ← → ↑ ↓"). Both are bridges and nothing else — DirectionSegment
+       carries the struck-through `.unavailable` state and SpeedBar the accent fill, each in
+       Themes/ControlThemes/Segmented.axaml, and a setter here would outrank them. -->
+  <Style Selector="Button.directionSegment">
+    <Setter Property="Theme" Value="{StaticResource DirectionSegment}" />
+  </Style>
+  <Style Selector="Button.speedBar">
+    <Setter Property="Theme" Value="{StaticResource SpeedBar}" />
+  </Style>
+
+  <!-- The arrow inside a direction segment, for the reason `Icon.modeMark` below exists: an Icon
+       paints from a brush property and cannot inherit the button's Foreground, so the three roles
+       the segment walks through are spelled out here. They are descendant selectors off the
+       button's own classes rather than classes on the Icon, so a view writes the state once.
+
+       `.unavailable` is declared LAST and therefore wins over `.selected`, which matches the
+       theme's own `:not(.unavailable)` qualifier on the accent face: a struck arrow is never drawn
+       as the chosen one. -->
+  <Style Selector="Button.directionSegment controls|Icon">
+    <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Button.directionSegment.selected controls|Icon">
+    <Setter Property="Stroke" Value="{DynamicResource AccentTextBrush}" />
+  </Style>
+  <Style Selector="Button.directionSegment.unavailable controls|Icon">
+    <Setter Property="Stroke" Value="{DynamicResource TextDisabledBrush}" />
+  </Style>
+
   <!-- The mark beside a mode's caption. It cannot inherit the row's foreground the way the caption
        does - an Icon paints from a brush property, not from TextElement.Foreground - so the pair of
        roles the row switches between is spelled out here instead of at the call site.

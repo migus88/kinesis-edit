@@ -1,5 +1,7 @@
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
+using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 
 namespace KinesisEdit.ViewModels
@@ -229,7 +231,7 @@ namespace KinesisEdit.ViewModels
         /// Whether this position carries an advisory — a duplicate token today
         /// (<see cref="Core.Model.DuplicateKeyScan"/>), anything anchored to a key tomorrow. Pushed
         /// in by the editor from <see cref="Advisories.EditorAdvisories"/> after every rebuild, for
-        /// the same reason as <see cref="ColorOverlayHex"/>: the fact lives outside
+        /// the same reason as <see cref="PaintColorHex"/>: the fact lives outside
         /// <see cref="KeyboardKey"/>, so <see cref="RefreshFromModel"/> cannot reach it.
         /// <para>
         /// It is drawn as the 12×3 px <c>StatusAdvisoryStrong</c> rounded bar in the cap's
@@ -245,51 +247,171 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The key's LED colour as <c>#RRGGBB</c>, or null when it has none. Settable and
-        /// notifying because the Lighting tab re-paints keys while the editor is open
-        /// (docs/app/keyboard-editor.md, "The Lighting tab"): the colour lives in the lighting
-        /// model, not in <see cref="KeyboardKey"/>, so it is pushed in through
-        /// <see cref="KeyboardLayerViewModel.ApplyColorOverlays"/> rather than re-read here.
+        /// The colour this key carries <b>on file</b> — one entry of
+        /// <see cref="LayerLightingState.KeyColors"/> — as <c>#RRGGBB</c>, or null when the key is
+        /// unpainted. It is the *paint* layer of the lighting board, drawn under the previewed
+        /// effect at <see cref="PaintOpacity"/>, and it is model state: a mode that ignores it does
+        /// not erase it.
+        /// <para>
+        /// Pushed in through <see cref="ApplyPaint"/> rather than re-read by
+        /// <see cref="RefreshFromModel"/>, because the colour lives in the lighting model and not
+        /// in <see cref="KeyboardKey"/> (docs/app/keyboard-editor.md, "The Lighting tab"). The
+        /// setter is public so a test or a design scene can stand a lit cap up in one initializer;
+        /// the app writes through <see cref="ApplyPaint"/>, which is the path that skips the
+        /// formatting when nothing moved.
+        /// </para>
         /// </summary>
-        public string? ColorOverlayHex
+        public string? PaintColorHex
         {
-            get => _colorOverlayHex;
+            get => _paintColorHex;
             set
             {
-                if (SetProperty(ref _colorOverlayHex, value))
+                _paintColor = KeyColorOverlay.TryParseHex(value, out var parsed) ? parsed : null;
+
+                SetPaintColorHex(value);
+            }
+        }
+
+        /// <summary>Whether this key carries a painted colour on file.</summary>
+        public bool HasPaintColor => PaintColorHex is not null;
+
+        /// <summary>
+        /// The opacity the paint layer is drawn at under the previewed effect:
+        /// <see cref="LightingEffectFrame.PaintOpacityDirect"/> under a mode that renders the paint,
+        /// <see cref="LightingEffectFrame.PaintOpacityDimmed"/> under one that ignores it ("the
+        /// colors are still on file"), <see cref="LightingEffectFrame.PaintOpacityHidden"/> under
+        /// Disable and Pitch Black. It is the frame's answer, never this cap's
+        /// (<see cref="LightingPaintModes.PaintOpacityFor"/>).
+        /// </summary>
+        public double PaintOpacity
+        {
+            get => _paintOpacity;
+            set
+            {
+                if (SetProperty(ref _paintOpacity, value))
                 {
-                    OnPropertyChanged(nameof(HasColorOverlay));
+                    RaisePaintSideChanged();
                 }
             }
         }
 
         /// <summary>
-        /// Whether this key's LED is <b>lit</b>. It is not "should the cap draw an LED strip" — the
-        /// Keys tab and the Lighting tab render the same cap view models, so that question is the
-        /// picture's (<c>KeyboardView.ShowsLedStrips</c>) and an unlit key on a lighting board is
-        /// hatched rather than absent.
+        /// The colour the previewed effect lights this key with in <b>this frame</b>, as
+        /// <c>#RRGGBB</c>, or null when the effect does not reach it. It is not file state and
+        /// never survives a save; it is re-pushed ~30 times a second by
+        /// <see cref="LightingTabViewModel.AdvancePreview"/>.
+        /// <para>
+        /// Null rather than black when unlit: black is a colour a key can legitimately be lit
+        /// (Pitch Black lights every key black), so "unlit" has to be absence — which is exactly
+        /// <see cref="LightingEffectFrame.Cells"/>'s own contract.
+        /// </para>
         /// </summary>
-        public bool HasColorOverlay => ColorOverlayHex is not null;
+        public string? EffectColorHex
+        {
+            get => _effectColorHex;
+            set
+            {
+                _effectColor = KeyColorOverlay.TryParseHex(value, out var parsed) ? parsed : null;
+
+                SetEffectColorHex(value);
+            }
+        }
+
+        /// <summary>Whether the previewed effect lights this key in the current frame.</summary>
+        public bool HasEffectColor => EffectColorHex is not null;
+
+        /// <summary>
+        /// The alpha the effect layer is drawn at this frame, 0..1 — the sampler's own answer
+        /// (<c>LightingPreviewCell.Intensity</c>), untouched. Which <i>side</i> of it the paint is
+        /// drawn on is <see cref="ShowsPaintUnderEffect"/>/<see cref="ShowsPaintOverEffect"/>.
+        /// </summary>
+        public double EffectIntensity
+        {
+            get => _effectIntensity;
+            set => SetProperty(ref _effectIntensity, value);
+        }
+
+        /// <summary>
+        /// <b>Which side of the effect the paint layer is drawn on — the one place the 40 % / 60 %
+        /// blend lives</b>, together with <see cref="ShowsPaintOverEffect"/>. Exactly one of the
+        /// two is ever true, and neither is when the key is unpainted.
+        /// <para>
+        /// This is <b>under</b>: a mode that renders the paint directly
+        /// (<see cref="LightingEffectFrame.PaintOpacityDirect"/> — Freestyle, Breathe, Frozen Wave)
+        /// paints the cap in full and lets the effect layer above modulate it, which is what makes
+        /// Breathe pulse.
+        /// </para>
+        /// <para>
+        /// <b>Why the two sides.</b> Mockup 2f, verbatim: "Wave ignores painted colors, so the
+        /// paint layer is shown at 40% under the effect — the colors are still on file." Drawn
+        /// literally under, that sentence renders as nothing at all: Wave, Solid and Spectrum light
+        /// every key at intensity 1.0, so the effect above covers the paint outright and 0 % of it
+        /// survives. Putting the same layer, at the same
+        /// <see cref="LightingEffectFrame.PaintOpacityDimmed"/>, <i>over</i> the effect composites
+        /// to the blend the design describes — <c>effect·(1 − 0.4) + paint·0.4</c> — so the effect
+        /// still reads and travels and the painted colour is present at the 40 % it was promised.
+        /// The two shares are therefore one number, the paint layer's own opacity, and its
+        /// complement is whatever is left of the cap: they cannot drift apart because there is only
+        /// one of them.
+        /// </para>
+        /// </summary>
+        public bool ShowsPaintUnderEffect => HasPaintColor && _paintOpacity >= LightingEffectFrame.PaintOpacityDirect;
+
+        /// <summary>
+        /// The other side: a mode that <b>ignores</b> the paint draws it over the effect, at the
+        /// dimmed opacity the frame handed down. See <see cref="ShowsPaintUnderEffect"/> for the
+        /// arithmetic and why the order is what carries it.
+        /// <para>
+        /// A paint opacity of <see cref="LightingEffectFrame.PaintOpacityHidden"/> — Disable and
+        /// Pitch Black — draws no paint layer on either side, so those two boards stay hatched.
+        /// </para>
+        /// </summary>
+        public bool ShowsPaintOverEffect => HasPaintColor
+            && _paintOpacity > LightingEffectFrame.PaintOpacityHidden
+            && _paintOpacity < LightingEffectFrame.PaintOpacityDirect;
+
+        /// <summary>
+        /// Whether this cap is in the <b>lighting board's</b> paint selection — the set a colour
+        /// or a Clear applies to (<see cref="LightingPaintSelection"/>).
+        /// <para>
+        /// Deliberately not <see cref="IsSelected"/>: that is the Keys tab's <i>single</i>
+        /// selection, the one the key inspector rail follows, and the two boards render the very
+        /// same cap view models. One flag for both would make a lighting multi-selection open the
+        /// inspector on whichever key happened to be last.
+        /// </para>
+        /// </summary>
+        public bool IsLightingSelected
+        {
+            get => _isLightingSelected;
+            set => SetProperty(ref _isLightingSelected, value);
+        }
 
         private readonly KeyVisual _visual;
         private readonly TokenDialect _dialect;
         private string _caption;
         private string _currentAssignmentText;
-        private string? _colorOverlayHex;
+        private LedColor? _paintColor;
+        private LedColor? _effectColor;
+        private string? _paintColorHex;
+        private string? _effectColorHex;
+        private double _paintOpacity = LightingEffectFrame.PaintOpacityDirect;
+        private double _effectIntensity;
         private bool _isModified;
         private bool _isMacro;
         private bool _isTapAndHold;
         private bool _isSelected;
         private bool _isListening;
         private bool _hasAdvisory;
+        private bool _isLightingSelected;
 
         /// <summary>Joins one model key to its placement.</summary>
-        public KeyboardKeyViewModel(KeyboardKey key, KeyVisual visual, TokenDialect dialect, string? colorOverlayHex = null)
+        public KeyboardKeyViewModel(KeyboardKey key, KeyVisual visual, TokenDialect dialect, LedColor? paintColor = null)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
             _visual = visual ?? throw new ArgumentNullException(nameof(visual));
             _dialect = dialect;
-            _colorOverlayHex = colorOverlayHex;
+
+            ApplyPaint(paintColor, LightingEffectFrame.PaintOpacityDirect);
 
             _caption = ResolveCaption();
             FactoryAssignmentText = FormatToken(key.OriginalKey, dialect);
@@ -311,6 +433,83 @@ namespace KinesisEdit.ViewModels
             IsModified = Key.IsModified;
             IsMacro = Key.IsMacro;
             IsTapAndHold = Key.IsTapAndHold;
+        }
+
+        /// <summary>
+        /// Sets the key's painted colour and the opacity the paint layer is drawn at.
+        /// <paramref name="color"/> is null when the key is unpainted.
+        /// <para>
+        /// It takes a <see cref="LedColor"/> rather than a hex string so that the string is
+        /// formatted only when the colour actually moved: this runs for every cap of a layer, and
+        /// <see cref="ApplyEffect"/> beside it runs ~30 times a second on ~76 caps, so an
+        /// unconditional format-and-notify would be the most expensive thing on the screen.
+        /// </para>
+        /// </summary>
+        public void ApplyPaint(LedColor? color, double opacity)
+        {
+            if (_paintColor != color)
+            {
+                _paintColor = color;
+
+                SetPaintColorHex(color is { } value ? KeyColorOverlay.ToHex(value) : null);
+            }
+
+            PaintOpacity = opacity;
+        }
+
+        /// <summary>
+        /// Sets what the previewed effect lights this key with this frame — see
+        /// <see cref="EffectColorHex"/>. <paramref name="color"/> is null when the effect does not
+        /// reach the key, and the intensity is then irrelevant rather than meaningful.
+        /// </summary>
+        public void ApplyEffect(LedColor? color, double intensity)
+        {
+            if (_effectColor != color)
+            {
+                _effectColor = color;
+
+                SetEffectColorHex(color is { } value ? KeyColorOverlay.ToHex(value) : null);
+            }
+
+            EffectIntensity = intensity;
+        }
+
+        /// <summary>
+        /// Writes <see cref="PaintColorHex"/>'s backing field and raises the pair of notifications
+        /// that go with it — the half of the property that is shared with <see cref="ApplyPaint"/>,
+        /// which has already resolved the <see cref="LedColor"/> and must not re-parse the string
+        /// it just formatted.
+        /// </summary>
+        private void SetPaintColorHex(string? hex)
+        {
+            if (SetProperty(ref _paintColorHex, hex, nameof(PaintColorHex)))
+            {
+                OnPropertyChanged(nameof(HasPaintColor));
+
+                // A key that has just gained or lost its paint has gained or lost a paint LAYER,
+                // and the mode need not have moved for that to happen.
+                RaisePaintSideChanged();
+            }
+        }
+
+        /// <summary>The same, for <see cref="EffectColorHex"/> and <see cref="ApplyEffect"/>.</summary>
+        private void SetEffectColorHex(string? hex)
+        {
+            if (SetProperty(ref _effectColorHex, hex, nameof(EffectColorHex)))
+            {
+                OnPropertyChanged(nameof(HasEffectColor));
+            }
+        }
+
+        /// <summary>
+        /// Announces the pair of derived flags that say which side of the effect the paint layer is
+        /// drawn on. Both inputs — whether the key is painted at all, and at what opacity — move
+        /// independently of each other, and neither notifies for the other.
+        /// </summary>
+        private void RaisePaintSideChanged()
+        {
+            OnPropertyChanged(nameof(ShowsPaintUnderEffect));
+            OnPropertyChanged(nameof(ShowsPaintOverEffect));
         }
 
         /// <summary>

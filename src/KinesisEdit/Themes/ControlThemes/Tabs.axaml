@@ -197,6 +197,24 @@
     entry, because the rail is a column of a dozen of them and a border each would read as a dozen
     buttons.
 
+    IT CARRIES TWO LINES, not one: the mode's name, and under it the parameters that mode accepts —
+    2f lists every row as a pair ("Wave — spd · L/R", "Solid — color", "Rebound — color · spd · L/R"),
+    which is what turns the rail from a list of names into the answer to "what will change if I pick
+    this one". The row is therefore taller than a single-line button and its content is a stack.
+
+    THE SECOND LINE IS CONTENT, NOT A TEMPLATE PART. A Button has one content slot, and inventing a
+    second (a `Tag`, an attached property) to hold a caption would be a worse API than the stack the
+    view already writes. So the view supplies both lines and classes the second one `modeSummary`
+    (the first needs no class — it is the row's own step), and Styles/Editor.axaml gives the summary
+    its muted role — including the flip to AccentText when
+    the row is chosen, which is the one thing a plain descendant style has to restate. A
+    ControlTheme cannot do it: its nested styles are matched against the templated control and its
+    TEMPLATE children, never against content the view put in it.
+
+    `VerticalContentAlignment` stays Center (BaseButton's): with two lines the stack fills the row
+    and the setting stops mattering, and a one-line row — the rail's `Off` and `Pitch black`, whose
+    parameter list is "—" — still centres.
+
     DEVIATION FROM docs/design/. 2f draws the chosen row as the 14% accent tint with a full accent
     border, not as an accent fill; this fills it, on issue #86's instruction and to say the same
     thing the layer segment beside it says. The mock's geometry and type are followed (RadiusControl,
@@ -207,7 +225,7 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
 
     <!-- 9 horizontal by 7 vertical, the rail's own rhythm rather than a button's 13x8. -->
     <Setter Property="Padding" Value="9,7" />

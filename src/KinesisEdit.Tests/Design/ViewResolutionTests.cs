@@ -45,8 +45,9 @@ namespace KinesisEdit.Tests.Design
             [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
             [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
-            [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the mode menu).",
-            [typeof(LightingDirectionViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the direction toggles).",
+            [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the mode rail's rows).",
+            [typeof(LightingDirectionViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the four direction arrows).",
+            [typeof(LightingSpeedSegmentViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the nine speed bars).",
             [typeof(SettingsSliderRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
             [typeof(SettingsToggleRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
             [typeof(SettingsChoiceRowViewModel)] = "DataTemplate in Views/KeyboardSettingsView.axaml.",
@@ -59,8 +60,10 @@ namespace KinesisEdit.Tests.Design
 
             // Bound into their parent's markup by property; never hosted as content.
             [typeof(AdvisoryStripViewModel)] = "Views/KeyboardEditorView.axaml hosts Views/AdvisoryStripView explicitly, on the AdvisoryStrip property.",
-            [typeof(ColorPickerViewModel)] = "Views/LightingTabView.axaml hosts Controls/ColorPickerView explicitly.",
-            [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
+            [typeof(ColorPickerViewModel)] = "Views/LightingModeRailView.axaml hosts Controls/ColorPickerView explicitly, disclosed from a swatch.",
+            [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingModeRailView.axaml.",
+            [typeof(LightingSpeedViewModel)] = "Bound as SpeedControl.* inside Views/LightingModeRailView.axaml.",
+            [typeof(LightingPaintSelection)] = "Bound as Selection.* inside Views/LightingTabView.axaml (the paint line under the board).",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
             [typeof(MacroInspectorStepsViewModel)] = "Bound as Steps.* inside Views/MacroInspectorPanelView.axaml.",
             [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml, and as the three meters of Views/MacroLibraryView.axaml."
