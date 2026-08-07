@@ -109,19 +109,54 @@
            two blocks below, and LightingTabTests.ThePaintLine_IsOnScreen_WhateverTheModeIs), so
            nothing under the picture changes height as the rail is scrubbed and the anchoring was
            outliving the defect it was added for. Issue #124 chose parity with the Keys board
-           instead — the same `HorizontalAlignment="Center" VerticalAlignment="Center"` block in a
-           column with no gutter — because switching tabs and finding the same board in a different
-           place, at a different size, is what a user actually notices. -->
-      <StackPanel Grid.Row="1"
-                  HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Spacing="10"
-                  IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-        <TextBlock Text="{Binding BoardHeader}"
-                   Classes="cardTitle"
-                   HorizontalAlignment="Center" />
+           instead — the same centred block in a column with no gutter — because switching tabs and
+           finding the same board in a different place, at a different size, is what a user actually
+           notices.
 
-        <controls:KeyboardView DataContext="{Binding Board}"
+           WHAT THE REVERSAL DOES *NOT* TOUCH is the row structure beneath, and the distinction
+           matters: issue #123 replaced this block's StackPanel with the Grid below to stop the
+           picture overflowing its slot, and the Keys board it is now matching is itself a
+           `RowDefinitions="*,Auto"` Grid that is ALSO `VerticalAlignment="Center"`. Anchoring and
+           fitting are independent — the star row still hands the board the height that is actually
+           left, and centring only decides where the finished block sits in the column. Turning this
+           back into a centred StackPanel would reintroduce #123's defect *and* fail the rule it
+           left behind.
+
+           A GRID, NOT A StackPanel (issue #123). A vertically-oriented StackPanel measures its
+           children with double.PositiveInfinity down its own axis, so the picture's BoardScaleHost
+           took its scale from the width alone and the block overflowed the slot — painted over its
+           neighbours rather than cut, because nothing on the board chain clips. The board sits in
+           the one star row and is therefore fitted to the height that is left after the header and
+           the two rows beneath it. The former `Spacing="10"` is spelled into each row's own margin
+           so the rhythm is unchanged: 10 under the header, 10+4 above the paint line, 10+8 above
+           the zones. (The 20 px top inset that used to sit on this Grid went with the anchoring;
+           the Keys block carries no such inset either.) -->
+      <Grid Grid.Row="1"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+        <!-- The board's row carries a FLOOR, and the long form is what it takes to say so. The
+             three Auto rows are measured before the star one and take everything they ask for, and
+             on this screen they ask for a lot: at the 720x480 minimum the header, the paint line
+             and the wrapped zone buttons want 231 of the column's 235px, which left the picture
+             four pixels tall. Below HeightBoardMin the board stops giving way and the zone row -
+             the bottom-most and least urgent thing on the screen - runs past the column instead,
+             exactly as it does today at that window. -->
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" MinHeight="{StaticResource HeightBoardMin}" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="{Binding BoardHeader}"
+                   Classes="cardTitle"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,10" />
+
+        <controls:KeyboardView Grid.Row="1"
+                               DataContext="{Binding Board}"
                                HorizontalAlignment="Center"
                                ShowsLighting="True"
                                ShowsStateBadges="False"
@@ -143,9 +178,10 @@
 
              `Clear` turns the selected keys OFF rather than black, which is why the swatch rule
              beside it matters: an unlit key is hatched, never black. -->
-        <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+        <Grid Grid.Row="2"
+              ColumnDefinitions="Auto,*,Auto,Auto"
               ColumnSpacing="8"
-              Margin="0,4,0,0">
+              Margin="0,14,0,0">
           <TextBlock Grid.Column="0"
                      Text="{Binding Selection.Caption}"
                      Classes="body"
@@ -173,6 +209,13 @@
              fixed set of chips whatever the mode is, which is what lets the block above be centred
              without the board moving as the rail is scrubbed.
 
+             THEY ARE NOT FREE, and the note that used to say they were was written when the board
+             was measured against infinite height. This row is an Auto row above a star one, so
+             every line the zone buttons wrap onto is a line the picture does not get; at the
+             720x480 minimum that is what takes the board down to its HeightBoardMin floor. A field
+             that appears or vanishes with the mode still moves only itself — the block above is one
+             fixed set of rows — but one that WRAPS now resizes the board with it.
+
              A ZONE SELECTS; IT DOES NOT PAINT (issue #124). `SelectZoneCommand` toggles the zone's
              keys in the paint selection and writes no colour at all — Apply, in the rail's footer,
              is the commit. The button therefore has a selected face, bound to the view model's
@@ -180,9 +223,10 @@
              another zone). The face itself is the `ToggleSegment` control theme's, reached through
              the `zoneButton` bridge in Styles/Buttons.axaml: a zone is an independent latch rather
              than one-of-a-selection, which is the shape that theme was written for. -->
-        <Grid ColumnDefinitions="*,Auto"
+        <Grid Grid.Row="3"
+              ColumnDefinitions="*,Auto"
               ColumnSpacing="8"
-              Margin="0,8,0,0">
+              Margin="0,18,0,0">
           <ItemsControl Grid.Column="0" ItemsSource="{Binding Zones}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
@@ -206,7 +250,7 @@
                   Command="{Binding ResetAllCommand}"
                   VerticalAlignment="Top" />
         </Grid>
-      </StackPanel>
+      </Grid>
     </Grid>
 
     <!-- The seam. The Keys tab's, verbatim: 6px of hit target over a 1px hairline, all of it the

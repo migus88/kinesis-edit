@@ -100,6 +100,34 @@
   <Thickness x:Key="PaddingBoardSection">9</Thickness>
   <CornerRadius x:Key="RadiusBoardSection">7</CornerRadius>
 
+  <!-- How far the picture may be grown (issue #123). The handoff caps nothing - "scale the whole
+       board up with available space" - which was written against its own 1000px canvas and reads
+       as absurd on a large display: at 2560 wide the Freestyle Edge RGB's 695x196 board was drawn
+       2238x631, with 40px legends on caps the size of a fist.
+
+       1.5 is the largest step that still reads as a keyboard rather than as a wall of caps, and it
+       is reached at ~1050px of board width - a little above the 1000px default window, so the
+       default and the 720x480 floor are both below the cap and unchanged by it. Beyond it the
+       board stays centred and the extra space becomes canvas.
+
+       BoardScaleHost itself defaults to no cap: the policy is this token plus the one call site in
+       Controls/KeyboardView.axaml, so a host used anywhere else is unaffected. -->
+  <x:Double x:Key="BoardScaleMax">1.5</x:Double>
+
+  <!-- And how far it may be shrunk. Fitting the board to its slot (issue #123) makes every row that
+       shares the column a claim on the picture, and on the Lighting tab those rows can win: at the
+       720x480 floor the paint line, the wrapped zone buttons and the header want 231 of the 235px
+       the column has, which left the board FOUR PIXELS TALL. This is the floor its row keeps.
+
+       100 rather than a round guess: at the 356px the Lighting board's column is wide at that
+       window, the Freestyle Edge RGB fits at 0.511 by width and 0.510 by height, so the floor is
+       the point where the two constraints meet rather than a number that overrides one of them. It
+       is a floor on the ROW, not on the scale, so a taller board is simply drawn smaller.
+
+       The Layout tab's board needs none: the only thing sharing its column is the 34px legend row,
+       so nothing there can starve it. -->
+  <x:Double x:Key="HeightBoardMin">100</x:Double>
+
   <!-- The keycap badge vocabulary (handoff.md, "Focus, selection, key badges"). One badge, one
        hue, one shape: a bar across the bottom edge for a remap, a dot top-right for a macro, a
        right-triangle bottom-right for tap-and-hold, a rounded bar top-right for an advisory.

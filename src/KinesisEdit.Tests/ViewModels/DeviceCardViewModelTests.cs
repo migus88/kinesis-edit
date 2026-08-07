@@ -1,5 +1,6 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.VDrive.Discovery;
+using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
@@ -297,6 +298,59 @@ namespace KinesisEdit.Tests.ViewModels
             await card.EjectCommand.ExecuteAsync(null);
 
             Assert.Equal(snapshot.Location!.RootPath, Assert.Single(ejectService.EjectedPaths));
+        }
+
+        /// <summary>
+        /// Issue #123, bug 1: the volume is gone the instant the unmount returns, and a card outlives
+        /// no drive. Without a scan of its own the card would go on describing an unmounted volume
+        /// until <c>DeviceLivenessWatcher</c>'s next tick — so the eject asks for the same pass the
+        /// watcher would have, straight away.
+        /// </summary>
+        [Fact]
+        public async Task EjectCommand_WhenTheEjectSucceeds_RescansSoTheCardGoesWithTheDrive()
+        {
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out _, out var scans);
+
+            await card.EjectCommand.ExecuteAsync(null);
+
+            Assert.Single(scans);
+        }
+
+        /// <summary>
+        /// A failed eject changed nothing about the drive. Scanning anyway would put every card into
+        /// its Scanning face just to re-confirm the state the user is already looking at, on top of
+        /// the failure dialog they have just been shown.
+        /// </summary>
+        [Fact]
+        public async Task EjectCommand_WhenTheEjectFails_RescansNothing()
+        {
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out var ejectService, out var scans);
+            ejectService.ResultToReturn = new VDriveEjectResult
+            {
+                Succeeded = false,
+                Message = "busy"
+            };
+
+            await card.EjectCommand.ExecuteAsync(null);
+
+            Assert.Single(ejectService.EjectedPaths);
+            Assert.Empty(scans);
+        }
+
+        /// <summary>
+        /// Nor does a platform that cannot eject: nothing was released, so there is nothing to look
+        /// at again.
+        /// </summary>
+        [Fact]
+        public async Task EjectCommand_WhereEjectionIsUnsupported_RescansNothing()
+        {
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out var ejectService, out var scans);
+            ejectService.IsSupported = false;
+
+            await card.EjectCommand.ExecuteAsync(null);
+
+            Assert.Empty(ejectService.EjectedPaths);
+            Assert.Empty(scans);
         }
 
         [Fact]

@@ -297,26 +297,45 @@
                 <!-- The keyboard canvas and its legend row, centred as one block in the content
                      area (handoff § "Screens → 3. Layout tab": "Content = keyboard canvas
                      (centered, both split halves as separate panels with 26px gutter) + legend
-                     row"). The two are one StackPanel so the row is exactly as wide as the board
+                     row"). The two share one container so the row is exactly as wide as the board
                      and its ends line up with the board's, which is how mockups 1e/2a draw it.
+
+                     IT IS A GRID, AND NOT A StackPanel, AND THAT IS THE WHOLE OF ISSUE #123's
+                     SECOND HALF. A vertically-oriented StackPanel measures its children with
+                     double.PositiveInfinity down its own stack axis — so the BoardScaleHost inside
+                     the picture saw no vertical constraint at all, took its scale from the width
+                     alone, and reported a block taller than the slot it had been given. Nothing
+                     clips on this chain (deliberately, for the focus halo), so the excess was
+                     PAINTED OVER the action row beneath rather than cut — at 1600x520 the legend
+                     row landed 18px past the bottom edge of the window. A star row hands the
+                     picture the height that is actually there, minus the legend,
+                     which is what "scale the whole board uniformly to fit the content area"
+                     (handoff § "Avalonia implementation notes") asks for.
+
+                     RULE: no vertically-oriented StackPanel may be an ancestor of a
+                     BoardScaleHost. KeyboardViewTests walks the real views and fails if one is.
 
                      NO OUTER FRAME. The picture draws its own bordered section panels now
                      (Controls/KeyboardView.axaml), so the `keyboardBoard` inset surround this used
                      to carry would be a second frame around them; the canvas here is the content
                      area itself. The Lighting tab keeps the surround, because its board sits inside
                      a column of controls rather than on a canvas of its own. -->
-                <StackPanel Grid.Row="1"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-                  <controls:KeyboardView DataContext="{Binding SelectedLayer}"
+                <Grid Grid.Row="1"
+                      RowDefinitions="*,Auto"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+                  <controls:KeyboardView Grid.Row="0"
+                                         DataContext="{Binding SelectedLayer}"
                                          HorizontalAlignment="Center"
                                          KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
 
                   <!-- ~14px below the board, as the mock spaces it. The row counts the state of
                        the layer on screen and carries `Copy key…` and `Reset layer`. -->
-                  <views:BoardLegendView DataContext="{Binding BoardLegend}" Margin="0,14,0,0" />
-                </StackPanel>
+                  <views:BoardLegendView Grid.Row="1"
+                                         DataContext="{Binding BoardLegend}"
+                                         Margin="0,14,0,0" />
+                </Grid>
               </Grid>
 
               <!-- The seam. 6px of hit target over a 1px hairline, all of it the `RailSplitter`

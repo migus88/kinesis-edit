@@ -365,7 +365,22 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            await _ejectNotifier.EjectAsync(location.RootPath).ConfigureAwait(true);
+            var isEjected = await _ejectNotifier.EjectAsync(location.RootPath).ConfigureAwait(true);
+
+            if (!isEjected)
+            {
+                // A failed eject changed nothing about the drive, so there is nothing to look at
+                // again — and a scan here would put every card into its Scanning face to confirm
+                // the state the user is already looking at.
+                return;
+            }
+
+            // The volume is gone the instant the unmount returns, and a card outlives no drive
+            // (invariant 9). Scanning here is what makes the card disappear with the eject rather
+            // than up to one liveness tick later — the same pass DeviceLivenessWatcher would have
+            // asked for, requested by the action that caused it. The delegate is the card's own
+            // scan request, the one 'Retry access' uses.
+            await _scanRequested().ConfigureAwait(true);
         }
     }
 }

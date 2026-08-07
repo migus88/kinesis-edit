@@ -17,7 +17,10 @@
          BoardScaleHost   grows the finished picture into the space there is, as one transform, so
                           the hairlines, the 9/400 legends and the 2px badges grow with the caps
                           (docs/design/handoff.md: "scale the whole board up with available space;
-                          keep proportions").
+                          keep proportions") - up to BoardScaleMax, which is where this app stops
+                          agreeing with the handoff (issue #123: at 2560 wide an uncapped board was
+                          drawn 2238x631). The host defaults to no ceiling; the policy is the token
+                          and this one call site.
          Sections         a split board is two bordered panels with the design's 26px gutter between
                           them (mockup 1e: the hotkey column and the left half in one box, the right
                           half in another). A one-piece board is one panel and the same markup.
@@ -25,7 +28,8 @@
        ClipToBounds is off on every one of them, all the way out to this control: a focused cap casts
        a 3px halo past its own bounds into a grid whose caps are 4px apart, and a clip anywhere on
        the chain erases it. -->
-  <controls:BoardScaleHost ClipToBounds="False">
+  <controls:BoardScaleHost ClipToBounds="False"
+                           MaxScale="{StaticResource BoardScaleMax}">
     <ItemsControl ItemsSource="{Binding Sections}" ClipToBounds="False">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
