@@ -977,7 +977,12 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>
         /// The centred block under the layer switch: the board header, the picture, the paint line
-        /// and the zones, as one thing. It is the <see cref="StackPanel"/> the board hangs off.
+        /// and the zones, as one thing. It is the <see cref="Grid"/> the board hangs off — a Grid
+        /// and not a <see cref="StackPanel"/> because issue #123 forbids a vertically-oriented
+        /// StackPanel above a <c>BoardScaleHost</c> (one measures its children against infinite
+        /// height, so the picture takes its scale from the width alone and overflows the slot).
+        /// Centring the block and fitting the board to its row are independent, and this helper
+        /// finding a Grid is what says so.
         /// </summary>
         private static Control BoardBlockOf(Control view)
         {
@@ -985,8 +990,8 @@ namespace KinesisEdit.Tests.Design
                 ?? throw new InvalidOperationException("The lighting scene drew no board.");
 
             return board.GetSelfAndVisualAncestors()
-                .OfType<StackPanel>()
-                .First(panel => panel.GetVisualParent() is Grid);
+                .OfType<Grid>()
+                .First(grid => grid.GetVisualParent() is Grid);
         }
 
         /// <summary>The chip drawn for one zone of the paint row.</summary>
