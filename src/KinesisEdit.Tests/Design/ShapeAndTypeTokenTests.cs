@@ -101,6 +101,15 @@ namespace KinesisEdit.Tests.Design
         [InlineData("KeycapPitchX", 34)]
         [InlineData("KeycapPitchY", 30)]
         [InlineData("KeycapGap", 4)]
+        // How far the picture may be grown (issue #123). A deliberate deviation: the handoff caps
+        // nothing, and an uncapped board was drawn 2238x631 at 2560 wide. BoardScaleHost itself
+        // still defaults to no ceiling — this token, named once in KeyboardView.axaml, is the whole
+        // of the policy.
+        [InlineData("BoardScaleMax", 1.5)]
+        // And the floor its row keeps. Fitting the board to its slot made every row sharing the
+        // column a claim on it, and on the Lighting tab the wrapped zone buttons won: at 720x480
+        // the picture came out four pixels tall.
+        [InlineData("HeightBoardMin", 100)]
         [InlineData("BadgeRemapBarHeight", 2)]
         [InlineData("BadgeMacroDotSize", 5)]
         [InlineData("BadgeTapHoldSize", 6)]

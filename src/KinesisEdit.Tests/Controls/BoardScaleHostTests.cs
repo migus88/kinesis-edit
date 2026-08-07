@@ -142,15 +142,126 @@ namespace KinesisEdit.Tests.Controls
         }
 
         [AvaloniaFact]
-        public void TheHost_AppliesNoMaximumScale()
+        public void TheHost_AppliesNoMaximumScale_UnlessOneIsSet()
         {
-            // Deliberate: the handoff caps nothing, and the board is vector all the way down, so a
-            // ceiling would only strand a small picture in the middle of a large window.
+            // The control carries no policy of its own: MaxScale defaults to infinity, so a host
+            // nobody has configured behaves exactly as it did before the property existed. The
+            // ceiling the app actually uses is the BoardScaleMax token, named by KeyboardView.
             var host = CreateHost(out _);
+
+            Assert.Equal(double.PositiveInfinity, host.MaxScale);
 
             Arrange(host, NaturalWidth * 100, NaturalHeight * 100);
 
             Assert.Equal(100, host.Scale);
+        }
+
+        [AvaloniaTheory]
+        // A room of 100x the picture, so the fitted scale is 100 and the ceiling is what answers.
+        [InlineData(1.5, 20000, 10000, 300, 150)]
+        [InlineData(2, 20000, 10000, 400, 200)]
+        // A ceiling above the fitted scale changes nothing: it is a maximum, not a target. 1000x1000
+        // over a 200x100 picture fits at 5, and a ceiling of 50 leaves that alone.
+        [InlineData(50, 1000, 1000, 1000, 500)]
+        public void Measure_NeverReportsMoreThanTheMaximumScale(
+            double maxScale,
+            double availableWidth,
+            double availableHeight,
+            double expectedWidth,
+            double expectedHeight)
+        {
+            var host = CreateHost(out _);
+
+            host.MaxScale = maxScale;
+
+            host.Measure(new Size(availableWidth, availableHeight));
+
+            Assert.Equal(new Size(expectedWidth, expectedHeight), host.DesiredSize);
+        }
+
+        [AvaloniaFact]
+        public void Arrange_NeverDrawsAboveTheMaximumScale()
+        {
+            // Issue #123: the Freestyle Edge RGB's 695x196 board was drawn 2238x631 in a 2560-wide
+            // window. The cap is what stops the picture where it still reads as a keyboard.
+            var host = CreateHost(out var child);
+
+            host.MaxScale = 2;
+
+            Arrange(host, 1000, 1000);
+
+            Assert.Equal(2, host.Scale);
+
+            var transform = Assert.IsType<ScaleTransform>(child.RenderTransform);
+
+            Assert.Equal(2, transform.ScaleX);
+            Assert.Equal(2, transform.ScaleY);
+        }
+
+        [AvaloniaFact]
+        public void Arrange_AtTheCap_CentresThePictureOnBothAxes()
+        {
+            // The whole point of a ceiling is the space it leaves over, and a picture stranded in
+            // the top-left corner of it would be worse than the wall of caps it replaced.
+            var host = CreateHost(out var child);
+
+            host.MaxScale = 2;
+
+            Arrange(host, 1000, 1000);
+
+            // 200x100 at 2x is 400x200, so 600 of spare width and 800 of spare height are split.
+            Assert.Equal(new Point(300, 400), child.Bounds.Position);
+        }
+
+        [AvaloniaFact]
+        public void TheMaximumScale_CapsTheMockScaleFallbackToo()
+        {
+            // With neither axis constraining the answer is mock scale — but "mock scale" is still a
+            // scale, and a host told the picture may never exceed half size means it.
+            var host = CreateHost(out _);
+
+            host.MaxScale = 0.5;
+
+            host.Measure(Size.Infinity);
+
+            Assert.Equal(new Size(NaturalWidth / 2, NaturalHeight / 2), host.DesiredSize);
+        }
+
+        [AvaloniaTheory]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NaN)]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public void AMaximumScaleThatIsNotAUsableLength_CapsNothing(double maxScale)
+        {
+            // Same rule the two axes follow: a length that cannot constrain does not. A zero or
+            // negative ceiling would otherwise erase the board rather than bound it.
+            var host = CreateHost(out _);
+
+            host.MaxScale = maxScale;
+
+            Arrange(host, 1000, 1000);
+
+            Assert.Equal(5, host.Scale);
+        }
+
+        [AvaloniaFact]
+        public void ChangingTheMaximumScale_RemeasuresThePicture()
+        {
+            // A different ceiling is a differently sized picture, so the parent has to be told.
+            var host = CreateHost(out _);
+
+            host.Measure(new Size(1000, 1000));
+
+            Assert.True(host.IsMeasureValid);
+
+            host.MaxScale = 2;
+
+            Assert.False(host.IsMeasureValid);
+
+            host.Measure(new Size(1000, 1000));
+
+            Assert.Equal(new Size(NaturalWidth * 2, NaturalHeight * 2), host.DesiredSize);
         }
 
         [AvaloniaTheory]

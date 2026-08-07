@@ -170,6 +170,65 @@ namespace KinesisEdit.Tests.Controls
         }
 
         [AvaloniaFact]
+        public void ThePicture_TakesItsCeilingFromTheGeometryToken()
+        {
+            // Issue #123. BoardScaleHost defaults to no maximum on purpose — the policy is the
+            // token plus this one call site — so a picture that stopped naming it would go back to
+            // being drawn 2238x631 in a 2560-wide window with every other assertion still passing.
+            var board = CreateBoard();
+
+            using var host = ThemedHost.Show(board, ThemeVariant.Dark, HostWidth, HostHeight);
+
+            var scaleHost = Assert.Single(board.GetVisualDescendants().OfType<BoardScaleHost>());
+
+            Assert.Equal(
+                (double)DesignTokens.Resolve("BoardScaleMax", ThemeVariant.Dark),
+                scaleHost.MaxScale);
+        }
+
+        [AvaloniaFact]
+        public async Task NoScreenTheAppCanShow_PutsAVerticalStackPanelAboveTheBoard()
+        {
+            // The second half of issue #123, as a rule rather than as two fixes. A vertically
+            // oriented StackPanel measures its children with double.PositiveInfinity down its own
+            // axis, so the scale host's vertical candidate abstains, the scale comes from the width
+            // alone, and the picture's desired height exceeds the slot it was given. Nothing on
+            // this chain clips (deliberately, for the focus halo), so that overflow is PAINTED OVER
+            // its neighbours rather than cut: at 1600x520 the legend row landed 18px below the
+            // bottom of the window.
+            //
+            // It is asserted over every screen rather than over the two views that had the defect,
+            // because the next board to be authored (issues #39-#42) will be hosted by somebody who
+            // has not read this comment.
+            using var scenes = new ViewSceneFactory();
+
+            var checkedHosts = 0;
+
+            foreach (var viewType in ViewSceneFactory.ViewTypes())
+            {
+                var view = await scenes.CreateAsync(viewType.FullName!);
+
+                using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+                host.Capture();
+
+                foreach (var scaleHost in view.GetVisualDescendants().OfType<BoardScaleHost>())
+                {
+                    checkedHosts++;
+
+                    foreach (var ancestor in scaleHost.GetVisualAncestors().OfType<StackPanel>())
+                    {
+                        Assert.False(
+                            ancestor.Orientation == Orientation.Vertical,
+                            $"{viewType.Name} hosts a board under a vertical StackPanel, which measures it with infinite height.");
+                    }
+                }
+            }
+
+            Assert.True(checkedHosts > 0, "No screen rendered a board, so this test would pass vacuously.");
+        }
+
+        [AvaloniaFact]
         public void NothingBetweenACapAndThePicture_Clips()
         {
             // The single most-repeated trap in this control: a focused cap casts a 3px halo past its
@@ -260,6 +319,9 @@ namespace KinesisEdit.Tests.Controls
             var layer = CreateLayer();
             var keys = new KeyboardView { DataContext = layer };
             var lighting = new KeyboardView { DataContext = layer, ShowsStateBadges = false };
+
+            // A two-picture fixture, not a screen: the "no vertical StackPanel above a board" rule
+            // above is about the app's own view tree, and nothing here is measured.
             var panel = new StackPanel { Children = { keys, lighting } };
 
             using var host = ThemedHost.Show(panel, ThemeVariant.Dark, HostWidth, HostHeight);
@@ -281,6 +343,8 @@ namespace KinesisEdit.Tests.Controls
             var layer = CreateLayer();
             var keys = new KeyboardView { DataContext = layer };
             var lighting = new KeyboardView { DataContext = layer, ShowsLighting = true };
+
+            // As above: a fixture, and the only thing read off it is what each cap was told.
             var panel = new StackPanel { Children = { keys, lighting } };
 
             using var host = ThemedHost.Show(panel, ThemeVariant.Dark, HostWidth, HostHeight);
