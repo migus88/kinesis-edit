@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:core="clr-namespace:KinesisEdit.Core.Devices;assembly=KinesisEdit.Core"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="268" d:DesignHeight="420"
+             x:Class="KinesisEdit.Views.LockedKeyPanelView"
+             x:DataType="vm:LockedKeyPanelViewModel">
+  <!--
+    The key inspector's locked-key panel (mockup 2h): what the rail shows instead of its mode
+    panels when the selected position can never be remapped (specs/05-key-model.md §5.3).
+
+    THE DEAD TABS ARE THE DESIGN'S OWN EXCEPTION, AND THEY CARRY THEIR REASON. Everywhere else
+    "absent features are not shown, not disabled"; here the three tabs are drawn and disabled,
+    each reading `Remap — not writable`. The reason is what makes that legal — a bare grey tab
+    would be the promise-and-refusal the law forbids — so the caption the tab renders is
+    DisplayCaption, which carries it, and never Caption alone.
+
+    NOTHING HERE IS A SECOND COPY PATH. `Copy to…` runs the editor's own CopyKeyCommand, the same
+    armed pick the legend row's `Copy key…` starts (issue #91). `Copy from…` is the direction that
+    is refused, so it is drawn dead beside its reason rather than left out: the user asked about
+    copying, and half an answer is worse than a whole one.
+  -->
+  <StackPanel>
+
+    <!-- ===== The state line and the explanation ============================================== -->
+    <Border Classes="inspectorSection">
+      <StackPanel Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <!-- The cap's own hatched face at legend size, so the panel and the board agree about
+               what "locked" looks like. A Rectangle rather than a Border because only a shape can
+               carry a dash array. -->
+          <Rectangle Width="12"
+                     Height="10"
+                     RadiusX="2"
+                     RadiusY="2"
+                     Fill="{DynamicResource HatchBrush}"
+                     Stroke="{DynamicResource SurfaceLineHighBrush}"
+                     StrokeThickness="1"
+                     StrokeDashArray="2,2"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{x:Static vm:LockedKeyPanelViewModel.StateLine}"
+                     Classes="cardTitle"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock Text="{x:Static vm:LockedKeyPanelViewModel.Explanation}"
+                   Classes="body muted"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <!-- ===== The three dead tabs ============================================================
+         The same TabStrip / TabStripItem control themes the live rail uses, so a disabled tab
+         here wears the very `:disabled` face the theme already declares.
+
+         ONE COLUMN, NOT THE RAIL'S 2x2. Mockup 2h draws these as three full-width rows with the
+         mode on the left and its reason pushed to the right, and it is right to: "Remap — not
+         writable" does not fit half of a 268px rail, and a truncated reason is the same as no
+         reason at all — which is what makes a dead tab legal in the first place.
+
+         The IsEnabled setter is a style on the container rather than a binding at the item
+         template: a TabStrip builds its own containers, and the item template's DataContext is
+         the item, not the container. The same style stretches the content, because the theme
+         centres it and these rows are two things at opposite ends. -->
+    <TabStrip Theme="{StaticResource TabStrip}"
+              Height="114"
+              ItemsSource="{Binding Tabs}"
+              SelectedIndex="-1"
+              IsHitTestVisible="False">
+      <TabStrip.Styles>
+        <Style Selector="TabStripItem">
+          <Setter Property="IsEnabled" Value="{Binding IsEnabled, DataType=vm:KeyInspectorTabViewModel}" />
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+      </TabStrip.Styles>
+      <TabStrip.ItemsPanel>
+        <ItemsPanelTemplate>
+          <UniformGrid Columns="1" />
+        </ItemsPanelTemplate>
+      </TabStrip.ItemsPanel>
+      <TabStrip.ItemTemplate>
+        <DataTemplate DataType="vm:KeyInspectorTabViewModel">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0" Text="{Binding Caption}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2"
+                       Text="{Binding DisabledReason}"
+                       Classes="meta"
+                       ToolTip.Tip="{Binding DisplayCaption}"
+                       VerticalAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </TabStrip.ItemTemplate>
+    </TabStrip>
+
+    <!-- ===== What it does on the board ======================================================
+         Per-device facts from KinesisEdit.Core.Devices.DeviceHotkeyCatalog, never literals here:
+         the Freestyle family mounts its v-Drive with F8, the TKO with right shift + V, the
+         Advantage2 with F1. Sans, not mono — a key on the board is not a value in a config file.
+
+         Collapsed outright on a device this app has no facts about, rather than drawn empty. -->
+    <Border Classes="inspectorSection" IsVisible="{Binding HasHotkeys}">
+      <StackPanel Spacing="8">
+        <TextBlock Text="{x:Static vm:LockedKeyPanelViewModel.HotkeySectionTitle}"
+                   Classes="sectionLabel" />
+
+        <ItemsControl ItemsSource="{Binding Hotkeys}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="core:DeviceHotkeyFact">
+              <TextBlock Text="{Binding Text}"
+                         Classes="meta muted"
+                         TextWrapping="Wrap"
+                         Margin="0,0,0,4" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <!-- ===== The copy asymmetry ============================================================= -->
+    <Border Classes="inspectorSection" BorderThickness="0">
+      <StackPanel Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <!-- Dead, and never removed: the reason under it is the answer to the question the
+               dead button asks. -->
+          <Button Classes="secondary"
+                  Content="{x:Static vm:LockedKeyPanelViewModel.CopyFromCaption}"
+                  IsEnabled="False" />
+          <Button Classes="secondary"
+                  Content="{x:Static vm:LockedKeyPanelViewModel.CopyToCaption}"
+                  Command="{Binding CopyToCommand}" />
+        </StackPanel>
+
+        <TextBlock Text="{x:Static vm:LockedKeyPanelViewModel.CopyDirectionReason}"
+                   Classes="body muted"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

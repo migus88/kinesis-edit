@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="560"
+             x:Class="KinesisEdit.Views.TokenPickerOverlayView"
+             x:DataType="vm:TokenPickerOverlayViewModel">
+  <!--
+    The token picker as a modal — specs/11-feature-dialogs.md §11.6's `Search Keys (Macro)`, the one
+    call site that inserts a keystroke into a macro rather than assigning it to a position.
+
+    IT IS THE SAME PICKER THE RAIL HOSTS, hosted here inside a card. Everything the user searches,
+    filters and reads is Views/TokenPickerView; this file adds only the title, §11.6's validation
+    line and the accept/cancel pair an overlay owes EditorOverlayViewModel.
+
+    The card is wider than the rail, which is what puts the chip row above the picker's narrow
+    threshold: all seven chips fit here, and five fit in the rail. One responsive rule, both of the
+    mockups' chip rows.
+  -->
+  <Border Classes="overlayCard modalCard" Width="480">
+    <StackPanel Spacing="10">
+      <TextBlock Text="{Binding Title}" Classes="modalTitle" />
+
+      <StackPanel Spacing="3">
+        <TextBlock Text="{x:Static vm:TokenPickerOverlayViewModel.SearchLabel}" Classes="sectionLabel" />
+        <!-- Resolved by ViewLocator from the overlay's own TokenPickerViewModel. -->
+        <ContentControl Content="{Binding Picker}" />
+      </StackPanel>
+
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Classes="body statusError"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+        <Button Content="Ok" Command="{Binding AcceptCommand}" MinWidth="88" Classes="primaryAction" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" Classes="secondary" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

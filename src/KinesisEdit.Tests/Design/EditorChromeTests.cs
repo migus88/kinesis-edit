@@ -554,12 +554,13 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task ResetLayer_HasLeftTheProvisionalActionRow_ForTheLegendRow()
+        public async Task TheProvisionalActionRow_ShrinksAsEachActionReachesItsRealHome()
         {
-            // Issue #91 gave `Reset Layer` its real home under the board, beside the counts it acts
-            // on, and it took the mockups' sentence case with it (`Reset layer`). Everything else in
-            // the provisional row stays: #92 owns `Reset Key` (the inspector's `Revert key`) and
-            // #92/#93 own the feature buttons.
+            // Issue #91 gave `Reset Layer` its home under the board, beside the counts it acts on,
+            // and it took the mockups' sentence case with it (`Reset layer`). Issue #92 took two
+            // more into the key inspector rail: `Reset Key` is its footer's `Revert key`, and
+            // `Tap and Hold` is a rail panel rather than a modal. What is left is #93's — the
+            // editor-level action bar.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -573,16 +574,17 @@ namespace KinesisEdit.Tests.Design
             var captions = provisional.Children.OfType<Button>().Select(button => button.Content as string).ToArray();
 
             Assert.Equal(
-                new[] { "Reset Key", "Reset Layout", "Tap and Hold", "Insert Delay", "Special Action", "Export", "Import" },
+                new[] { "Reset Layout", "Insert Delay", "Special Action", "Export", "Import" },
                 captions);
 
-            // And the command did not move owners with it: the row runs the editor's own instance.
+            // And no command moved owners with it: each new home runs the editor's own instance.
             var row = Assert.Single(view.GetVisualDescendants().OfType<BoardLegendView>());
             var moved = Assert.Single(
                 row.GetVisualDescendants().OfType<Button>(),
                 button => Equals(button.Content, BoardLegendViewModel.ResetLayerCaption));
 
             Assert.Same(editor.ResetLayerCommand, moved.Command);
+            Assert.Same(editor.ResetKeyCommand, editor.Inspector.ResetKeyCommand);
         }
 
         [AvaloniaTheory]

@@ -52,10 +52,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Arms a copy from the selected key (mockup 1e's <c>Copy key…</c>). Deliberately distinct
-        /// from the inspector's own <c>Copy to…</c> of
-        /// <a href="https://github.com/migus88/kinesis-edit/issues/92">#92</a>, which the handoff
-        /// places in the inspector footer.
+        /// Arms a copy from the selected key. <b>One action, three entry points</b>: the legend
+        /// row's <c>Copy key…</c> (mockup <c>1e</c>), the inspector footer's <c>Copy to…</c> and the
+        /// locked-key panel's. They are the same command on purpose — a second copy path would be a
+        /// second set of refusals to keep in step — and the earlier note in this file calling the
+        /// footer's a different action is superseded by issue #92.
         /// </summary>
         public IRelayCommand CopyKeyCommand { get; }
 
@@ -66,18 +67,30 @@ namespace KinesisEdit.ViewModels
         private string _copyPrompt = string.Empty;
 
         /// <summary>
-        /// §1.3's precondition, restated: a copy needs a source that has something to copy and a
-        /// board that may be edited. The <c>!IsLoading &amp;&amp; !IsBusy</c> pair is the same guard
-        /// every other model-writing command carries — a save serializes the model on a background
-        /// thread — and an open feature panel owns the surface outright, so the board underneath it
-        /// cannot be clicked to finish the pick.
+        /// §1.3's precondition, restated: a copy needs a <b>source</b>, and a board that is not
+        /// being written to underneath it. The <c>!IsLoading &amp;&amp; !IsBusy</c> pair is the same
+        /// guard every other model-writing command carries — a save serializes the model on a
+        /// background thread.
+        /// <para>
+        /// <b>The source does not have to be editable.</b> A locked position (05 §5.3) can be copied
+        /// <em>from</em> — its assignment is perfectly readable — and never <em>onto</em>, which
+        /// <see cref="CompleteCopyKey"/>'s <c>!target.CanEdit</c> refusal already covers. Requiring
+        /// <c>CanEdit</c> here refused the whole action rather than one direction of it, which is
+        /// what made the locked-key panel's <c>Copy from…</c>/<c>Copy to…</c> asymmetry cosmetic.
+        /// </para>
+        /// <para>
+        /// <b>It no longer consults the open overlay.</b> The key inspector's footer runs this very
+        /// command, and the rail is not modal — nothing about it may be phrased in terms of
+        /// <c>HasActiveOverlay</c>. Nothing is lost: <see cref="ShowOverlay"/> disarms an armed copy
+        /// on the way in, and the scrim over the board is what stops a pick being finished under a
+        /// panel.
+        /// </para>
         /// </summary>
         private bool CanCopyKey()
         {
-            return SelectedKey is { CanEdit: true }
+            return SelectedKey is not null
                    && !IsLoading
-                   && !IsBusy
-                   && ActiveOverlay is null;
+                   && !IsBusy;
         }
 
         /// <summary>
@@ -201,6 +214,12 @@ namespace KinesisEdit.ViewModels
             SelectedLayer?.RefreshFromModel();
 
             BoardLegend.Refresh(SelectedLayer, _copyPrompt);
+
+            // The key inspector is pushed here too. This method is the tail of RefreshCounters,
+            // which every path that can write the layout already ends in, so hanging the rail off it
+            // makes "every mutation reaches the rail" true by construction rather than by a list
+            // somebody has to remember to maintain (KeyboardEditorViewModel.Inspector.cs).
+            RefreshInspector();
         }
     }
 }

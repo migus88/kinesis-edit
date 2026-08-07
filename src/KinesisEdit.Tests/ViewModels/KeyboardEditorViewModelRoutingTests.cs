@@ -223,12 +223,125 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Gate 1 of the editor's keyboard grammar, from the side that decides it: the three
-        /// consumers of "one keystroke, one target" are exactly the three states in which no
-        /// shortcut may be handled at all.
+        /// The key inspector's branch, which sits <b>ahead of everything else</b>: an armed record
+        /// button in the rail is the most specific claim on the next keystroke there is.
         /// </summary>
         [Fact]
-        public async Task IsCaptureActive_IsTrueForEachOfTheThreeKeystrokeConsumers()
+        public async Task KeystrokeCaptured_WithAnArmedInspectorPanel_GoesToTheRailFirst()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var key = SelectDigitOne(editor);
+
+            editor.MacroPanel!.RecordCommand.Execute(null);
+
+            var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            remap.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
+
+            Assert.Equal(TestLayouts.Gen1Key("z"), key.Key.ModifiedOrOriginalKey);
+            Assert.Empty(editor.MacroPanel.Steps.Items);
+        }
+
+        /// <summary>
+        /// <b>The one real difference from the modal this replaced.</b> A feature panel took a
+        /// keystroke on being merely <em>open</em>, because the scrim under it meant nothing else
+        /// could want one. The rail is not modal, so a panel that is only showing must let the key
+        /// fall through — otherwise it eats the remap being recorded on the cap beside it.
+        /// </summary>
+        [Fact]
+        public async Task KeystrokeCaptured_WithAnOpenButUnarmedInspectorPanel_FallsThroughToTheBoard()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var key = SelectDigitOne(editor);
+
+            Assert.True(editor.Inspector.IsOpen);
+            Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            editor.BeginRemapCommand.Execute(null);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
+
+            Assert.True(key.IsModified);
+            Assert.Equal(TestLayouts.Gen1Key("z"), key.Key.ModifiedOrOriginalKey);
+            Assert.False(editor.IsListening);
+        }
+
+        /// <summary>
+        /// Capture belongs to the editor, never to a panel — and the rail announces its recording
+        /// state on every mode switch and every selection change, not only when something really
+        /// armed. Hence "never stop a capture you did not start": the macro underneath keeps the
+        /// service it owns.
+        /// </summary>
+        [Fact]
+        public async Task TheInspectorsRecording_StartsAndStopsCaptureWithoutStoppingSomebodyElses()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            SelectDigitOne(editor);
+
+            var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            Assert.False(_capture.IsCapturing);
+
+            remap.RecordCommand.Execute(null);
+
+            Assert.True(_capture.IsCapturing);
+            Assert.True(editor.IsCaptureActive);
+
+            remap.RecordCommand.Execute(null);
+
+            Assert.False(_capture.IsCapturing);
+            Assert.False(editor.IsCaptureActive);
+
+            // Somebody else's capture. Switching the rail's mode announces its recording state
+            // again — unchanged and false — and answering that with an unconditional Stop would
+            // silently deafen the macro that owns the service.
+            editor.SelectTabCommand.Execute(editor.Tabs[1]);
+            editor.MacroPanel!.RecordCommand.Execute(null);
+
+            Assert.True(_capture.IsCapturing);
+
+            SelectMode(editor, KeyInspectorMode.TapAndHold);
+
+            Assert.True(_capture.IsCapturing);
+            Assert.True(editor.MacroPanel.IsRecording);
+        }
+
+        /// <summary>
+        /// The shell disposes the open editor whenever it is replaced — Home, or another device —
+        /// so this is the navigation path too. The capture service is app-wide: a rail left armed
+        /// would go on swallowing the dashboard's keystrokes behind the editor that is gone.
+        /// </summary>
+        [Fact]
+        public async Task Dispose_WithAnArmedInspectorPanel_LeavesNoCaptureRunning()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            SelectDigitOne(editor);
+
+            var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            remap.RecordCommand.Execute(null);
+
+            Assert.True(_capture.IsCapturing);
+
+            editor.Dispose();
+
+            Assert.False(_capture.IsCapturing);
+            Assert.False(_capture.HasSubscribers);
+            Assert.False(editor.Inspector.IsOpen);
+            Assert.False(remap.IsRecording);
+        }
+
+        /// <summary>
+        /// Gate 1 of the editor's keyboard grammar, from the side that decides it: the consumers
+        /// of "one keystroke, one target" are exactly the states in which no shortcut may be
+        /// handled at all.
+        /// </summary>
+        [Fact]
+        public async Task IsCaptureActive_IsTrueForEachKeystrokeConsumer()
         {
             var editor = await CreateLoadedEditorAsync();
 
@@ -260,6 +373,21 @@ namespace KinesisEdit.Tests.ViewModels
             // An open panel that is *not* waiting for a keypress is not a keystroke consumer: it
             // suspended capture, so ⌘S there is a save and not a swallowed 's'.
             editor.ShowOverlay(new TextEntryOverlay());
+
+            Assert.False(editor.IsCaptureActive);
+
+            // ...and the fourth consumer, which no gate but this one covers: the rail is not modal,
+            // so an armed record button in it is invisible to the view's "an open panel owns the
+            // keyboard" gate. Without this term ⌘S fires while a hold action is being recorded.
+            editor.CloseOverlayCommand.Execute(null);
+
+            var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            remap.RecordCommand.Execute(null);
+
+            Assert.True(editor.IsCaptureActive);
+
+            remap.RecordCommand.Execute(null);
 
             Assert.False(editor.IsCaptureActive);
         }
@@ -495,6 +623,22 @@ namespace KinesisEdit.Tests.ViewModels
             editor.SelectKeyCommand.Execute(key);
 
             return key;
+        }
+
+        /// <summary>Puts the key inspector on <paramref name="mode"/> through its own tab.</summary>
+        private static void SelectMode(KeyboardEditorViewModel editor, KeyInspectorMode mode)
+        {
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == mode)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException($"The key inspector carries no {mode} tab.");
         }
 
         private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync()

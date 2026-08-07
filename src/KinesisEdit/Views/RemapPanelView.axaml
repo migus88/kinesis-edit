@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="268" d:DesignHeight="520"
+             x:Class="KinesisEdit.Views.RemapPanelView"
+             x:DataType="vm:RemapPanelViewModel">
+  <!--
+    The key inspector's Remap panel (mockups 1e/2a) — the body under the rail's mode tabs.
+
+    IT IS NOT MODAL AND CARRIES NO OVERLAY ROLE. This is the panel that replaced the Search Keys
+    overlay of §11.6: there is no scrim, no card and no `HasActiveOverlay` anywhere near it, and the
+    board beside the rail stays clickable the whole time.
+
+    TWO WAYS TO CHANGE THE ASSIGNMENT, IN THE ORDER THE USER SHOULD TRY THEM. `● Record` arms
+    keystroke capture and the next physical keypress becomes the assignment — the fast path, and the
+    only way this app has ever assigned from a real key. The picker below it is for the actions no
+    keyboard can press: a media key, a mouse button, a profile selector.
+
+    `● Record` SITS BESIDE THE TOKEN FIELD, NOT BESIDE THE SEARCH FIELD. Mockup 1e draws it on the
+    search row; it is here instead for two reasons. The picker is reusable — the macro-insertion
+    modal hosts the same control and has no keystroke capture at all — so a Record button inside it
+    would be a capture dependency in a control that must not have one. And the rail is 268 px wide:
+    a field, a counter and a button on one line leaves the query box too narrow to show what was
+    typed into it. The pairing that results — the field, and the button that fills it — is the one
+    the Tap and Hold panel uses for its own two fields.
+
+    THE TOKEN FIELD IS A BORDER, NEVER A TEXTBOX. Focus inside a text box suspends keystroke
+    capture, so a field the user could click into would swallow the very keypress it exists to
+    record. `TokenField` is a Border and declares the `.armed` face this binds. The SEARCH field
+    inside the picker below IS a real TextBox, and is supposed to suspend capture — a query is typed,
+    not pressed.
+  -->
+  <Border Padding="{DynamicResource PaddingInspectorSection}">
+    <StackPanel Spacing="8">
+
+      <!-- ===== What the position sends now ===================================================
+           The rail's header already says `factory [d] · now [esc]`; this is the same "now" as an
+           editable surface rather than as a readout — it is what the Record button fills and what
+           the picker replaces. -->
+      <StackPanel Spacing="4">
+        <TextBlock Text="{x:Static vm:RemapPanelViewModel.CurrentTokenLabel}" Classes="sectionLabel" />
+
+        <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its children with infinite
+             width, so the field would never give the button room inside 244 px of rail. -->
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <Border Grid.Column="0"
+                  Classes="actionField"
+                  Classes.armed="{Binding IsRecording}"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding CurrentToken}"
+                       Classes="monoValue"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+          </Border>
+
+          <!-- Red, because handoff.md:82 gives that hue to Record as well as to Discard. The `●` is
+               an Ellipse and not the mockup's U+25CF: neither embedded IBM Plex family carries the
+               codepoint, so the character would tofu on a platform that substitutes nothing. -->
+          <Button Grid.Column="1"
+                  Classes="recordAction"
+                  Command="{Binding RecordCommand}"
+                  VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Classes="recordDot" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding RecordCommandCaption}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <!-- Said only while something is actually waiting for a key, so the panel never instructs
+             a user who has not asked for anything. -->
+        <TextBlock Text="{x:Static vm:RemapPanelViewModel.RecordingHint}"
+                   Classes="body muted"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding IsRecording}" />
+      </StackPanel>
+
+      <!-- ===== What the app noticed ==========================================================
+           Amber and non-blocking: the assignment already happened. The sentence is READ off the
+           editor's advisory set, which is built from DuplicateKeyScan — nothing here rescans, and
+           nothing here re-words: "Duplicates are allowed." is AdvisoryText's own closing clause. -->
+      <Border Classes="pickerAdvisory" IsVisible="{Binding HasDuplicateAdvisory}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+          <Ellipse Grid.Column="0"
+                   Width="6"
+                   Height="6"
+                   Fill="{DynamicResource StatusAdvisoryStrongBrush}"
+                   VerticalAlignment="Top"
+                   Margin="0,4,0,0" />
+          <TextBlock Grid.Column="1"
+                     Text="{Binding DuplicateAdvisory}"
+                     Classes="body statusWarning"
+                     TextWrapping="Wrap" />
+        </Grid>
+      </Border>
+
+      <!-- ===== The refusal ===================================================================
+           A locked position (05 §5.3) is the design's own exception to "absent features are not
+           shown": the panel stays and explains itself rather than vanishing, because the user
+           pointed at this key. The rail normally answers a locked position with its own locked-key
+           panel, so this is the belt to that braces. -->
+      <TextBlock Text="{Binding UnavailableReason}"
+                 Classes="body statusWarning"
+                 TextWrapping="Wrap"
+                 IsVisible="{Binding !IsAvailable}" />
+
+      <!-- ===== The picker ====================================================================
+           Resolved by ViewLocator from the panel's own TokenPickerViewModel, like every other view
+           model this app hosts as content. -->
+      <ContentControl Content="{Binding Picker}" IsVisible="{Binding IsAvailable}" />
+    </StackPanel>
+  </Border>
+</UserControl>

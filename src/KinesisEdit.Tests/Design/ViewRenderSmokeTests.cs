@@ -69,7 +69,19 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("SavantElitePedalView", names);
             Assert.Contains("KeyCapView", names);
             Assert.Contains("BoardLegendView", names);
-            Assert.True(names.Count >= 20, $"Only {names.Count} views were discovered.");
+
+            // The key inspector rail and everything it hosts (issue #92). The two overlays it
+            // replaced — SearchKeysOverlayView and TapAndHoldOverlayView — are gone.
+            Assert.Contains("KeyInspectorView", names);
+            Assert.Contains("RemapPanelView", names);
+            Assert.Contains("TapAndHoldPanelView", names);
+            Assert.Contains("LockedKeyPanelView", names);
+            Assert.Contains("TokenPickerView", names);
+            Assert.Contains("TokenPickerOverlayView", names);
+            Assert.DoesNotContain("SearchKeysOverlayView", names);
+            Assert.DoesNotContain("TapAndHoldOverlayView", names);
+
+            Assert.True(names.Count >= 30, $"Only {names.Count} views were discovered.");
         }
 
         [AvaloniaFact]

@@ -53,6 +53,63 @@ namespace KinesisEdit.Tests.Design
             Assert.True(rowTop >= boardBottom, $"The legend row sits at {rowTop}, above the board's bottom edge at {boardBottom}.");
         }
 
+        /// <summary>
+        /// The row's two actions stay clear of the key inspector rail with a key selected.
+        /// <para>
+        /// This is the defect the visual gate caught on issue #92 and ~5 900 passing tests did not:
+        /// the row was <c>Auto,*,Auto</c>, and a horizontal <see cref="StackPanel"/> measures its
+        /// children at infinite width — so when the rail took 268px the counts column did not
+        /// shrink, it overflowed, and <c>Reset layer</c> arranged 4px <em>under</em> the rail. Every
+        /// assertion about the row was still true: the buttons existed, were bound, carried their
+        /// captions and their theme. Only where they landed was wrong, and nothing that asks a
+        /// control about itself can see that.
+        /// </para>
+        /// <para>
+        /// It is asserted at the window, not at the row, because the row's own bounds are exactly
+        /// what was lying: the overflowing child was outside them.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheRowsActions_AreNotArrangedUnderTheKeyInspectorRail(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var editor = await scenes.CreateEditorAsync();
+            var view = new KeyboardEditorView { DataContext = editor };
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            // The cap is clicked AFTER the view is on screen: attaching the editor makes the layer
+            // switcher raise its initial selection, which stands the rail down again.
+            var layer = Assert.IsType<KeyboardLayerViewModel>(editor.SelectedLayer);
+            editor.SelectKeyCommand.Execute(layer.Keys[0]);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var rail = Assert.Single(view.GetVisualDescendants().OfType<KeyInspectorView>());
+            Assert.True(rail.IsEffectivelyVisible, "The rail did not open, so this test would pass vacuously.");
+
+            var railLeft = rail.TranslatePoint(default, host.Window)!.Value.X;
+            var row = Assert.Single(view.GetVisualDescendants().OfType<BoardLegendView>());
+
+            var actions = row.GetVisualDescendants().OfType<Button>().Where(button => button.IsEffectivelyVisible).ToList();
+
+            Assert.Equal(2, actions.Count);
+
+            foreach (var action in actions)
+            {
+                var right = action.TranslatePoint(default, host.Window)!.Value.X + action.Bounds.Width;
+
+                Assert.True(
+                    right <= railLeft,
+                    $"'{action.Content}' is arranged to {right}, past the key inspector rail's left edge at {railLeft}.");
+            }
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]

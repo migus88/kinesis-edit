@@ -138,7 +138,13 @@ namespace KinesisEdit.Tests.Design
                 return _editor;
             }
 
-            var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+            // A version file, so the firmware gates of spec 09 §2 are MET. Without one the key
+            // inspector's Tap & hold panel renders its polite refusal instead of its two fields —
+            // a real state, but not the one the mockups are about, and every frame captured off
+            // this scene would be of the wrong face.
+            var device = TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                versionFile: TestDevices.CreateVersionFile(DeviceId.FreestyleEdgeRgb));
 
             // A settings file the panel can actually read. Without one the Settings tab's rows load
             // nothing, HasLoadedSettings stays false, every row and its Save are disabled and the
@@ -201,6 +207,22 @@ namespace KinesisEdit.Tests.Design
             }
 
             return editor;
+        }
+
+        /// <summary>
+        /// A lighting panel whose <c>Fn</c> layer sits <b>below</b> the LED 1.0.44 firmware gate
+        /// (07 §3), so the panel refuses it. The shared editor is deliberately firmware-complete —
+        /// its version file is what lets the key inspector draw its Tap &amp; hold fields rather
+        /// than a refusal — so a scene that wants a gate to be <em>unmet</em> has to build its own
+        /// editor and say why.
+        /// </summary>
+        public async Task<LightingTabViewModel> CreateGatedLightingAsync()
+        {
+            var editor = CreateEditorFor(DeviceId.FreestyleEdgeRgb);
+
+            await editor.LoadAsync().ConfigureAwait(true);
+
+            return editor.Lighting;
         }
 
         /// <summary>
@@ -436,18 +458,30 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// The Tap and Hold panel of spec 11 §11.1, over the board's Escape key — §11.1 refuses
-        /// A-Z and 0-9 on the top layer, so the scene cannot use one of those.
+        /// The shared editor with its key inspector rail <b>open on a remappable position</b>. Every
+        /// rail scene goes through here rather than building a panel by hand: the rail is only ever
+        /// on screen because a cap was clicked, and a scene that skipped the click would be
+        /// rendering a state the app cannot reach.
+        /// <para>
+        /// The position is the board's Escape key rather than a letter or a digit, because §11.1
+        /// refuses A-Z and 0-9 on the top layer — so the Tap &amp; hold panel of the very same rail
+        /// would draw its refusal instead of its fields.
+        /// </para>
         /// </summary>
-        public async Task<TapAndHoldOverlayViewModel> CreateTapAndHoldOverlayAsync()
+        public async Task<KeyboardEditorViewModel> CreateEditorWithInspectorAsync()
         {
             var editor = await CreateEditorAsync().ConfigureAwait(true);
-            var layout = editor.Layout!;
-            var layer = layout.Layers[0];
-            var result = TapAndHoldOverlayViewModel.TryCreate(layout, layer, layer.Keys[0]);
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
 
-            return result.Overlay
-                ?? throw new InvalidOperationException($"Tap and Hold refused the scene: {result.RefusalMessage}");
+            editor.SelectKeyCommand.Execute(layer.Keys[0]);
+
+            if (!editor.Inspector.IsOpen)
+            {
+                throw new InvalidOperationException("Selecting a cap did not open the key inspector.");
+            }
+
+            return editor;
         }
 
         /// <summary>
@@ -652,17 +686,70 @@ namespace KinesisEdit.Tests.Design
                 return new MacroDelayOverlayViewModel(TokenDialect.Gen1);
             }
 
-            if (viewType == typeof(SearchKeysOverlayView))
+            if (viewType == typeof(TokenPickerOverlayView))
             {
-                return new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.DefaultTitle, TokenDialect.Gen1);
+                return new TokenPickerOverlayViewModel(TokenPickerOverlayViewModel.MacroTitle, TokenDialect.Gen1);
             }
 
-            if (viewType == typeof(TapAndHoldOverlayView))
+            // ===== The key inspector rail and its panels ========================================
+            // All five come off ONE loaded editor with the rail open on a real position, never off a
+            // hand-built view model: the rail's state is pushed in by the editor's refresh funnel, so
+            // a scene that constructed a panel directly would render a shape the app never produces.
+            if (viewType == typeof(KeyInspectorView))
             {
-                return await CreateTapAndHoldOverlayAsync().ConfigureAwait(true);
+                return (await CreateEditorWithInspectorAsync().ConfigureAwait(true)).Inspector;
+            }
+
+            if (viewType == typeof(RemapPanelView))
+            {
+                return await FindInspectorPanelAsync<RemapPanelViewModel>().ConfigureAwait(true);
+            }
+
+            if (viewType == typeof(TapAndHoldPanelView))
+            {
+                return await FindInspectorPanelAsync<TapAndHoldPanelViewModel>().ConfigureAwait(true);
+            }
+
+            // The picker itself, hosted by the Remap panel. It is the same instance the panel draws,
+            // so the scene shows a picker over a real catalog rather than an empty one.
+            if (viewType == typeof(TokenPickerView))
+            {
+                return (await FindInspectorPanelAsync<RemapPanelViewModel>().ConfigureAwait(true)).Picker;
+            }
+
+            // The locked-key panel is UNREACHABLE on the only board with a picture — the Edge RGB's
+            // index 0 is an ordinary hotkey, and Locked() appears only in the Advantage2/TKO/Adv360
+            // geometries (issues #40/#41). The rail builds it either way, so the scene is the rail's
+            // own instance, refreshed against the loaded profile.
+            if (viewType == typeof(LockedKeyPanelView))
+            {
+                return (await CreateEditorWithInspectorAsync().ConfigureAwait(true)).Inspector.LockedPanel;
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The rail's panel of type <typeparamref name="TPanel"/>, off an editor whose inspector is
+        /// open. The rail exposes only the <em>showing</em> panel, so each mode is put on screen and
+        /// then read back — which also proves the tab actually reaches it.
+        /// </summary>
+        private async Task<TPanel> FindInspectorPanelAsync<TPanel>()
+            where TPanel : KeyInspectorPanelViewModel
+        {
+            var inspector = (await CreateEditorWithInspectorAsync().ConfigureAwait(true)).Inspector;
+
+            foreach (var tab in inspector.Tabs)
+            {
+                inspector.SelectModeCommand.Execute(tab);
+
+                if (inspector.ActivePanel is TPanel panel)
+                {
+                    return panel;
+                }
+            }
+
+            throw new InvalidOperationException($"The key inspector hosts no {typeof(TPanel).Name}.");
         }
 
         /// <summary>

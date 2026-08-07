@@ -21,6 +21,50 @@
        transition in the first place; Avalonia 11's TabStrip and TabControl carry no PageTransition
        property either — Carousel is the only container that does, and the app uses none. -->
 
+  <!-- ===== The key inspector rail ============================================================
+       The Layout tab's third column (mockups 1e/2a): 268 wide on the inset surface, hairlined off
+       the canvas beside it. Every number here is a token — the width is `WidthInspectorRail`,
+       declared in Themes/Geometry.axaml since issue #86 and reached by nothing until now.
+
+       The rail is NOT a modal surface and carries none of the overlay roles: the board stays
+       clickable while it is open, which is the whole reason it replaces the feature panels it
+       replaces. It is a column of the content grid, nothing more. -->
+  <Style Selector="Border.inspectorRail">
+    <Setter Property="Width" Value="{DynamicResource WidthInspectorRail}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1,0,0,0" />
+  </Style>
+
+  <!-- One block of the rail, separated from the next by a hairline rather than by a gap: the rail
+       is 268 wide and a stack of bordered cards inside it would spend a quarter of that on frames.
+       `PaddingInspectorSection` is the design's own inspector rhythm. -->
+  <Style Selector="Border.inspectorSection">
+    <Setter Property="Padding" Value="{DynamicResource PaddingInspectorSection}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+  <!-- The footer is the same block with its hairline on top: it is pinned to the bottom of the
+       rail, so the line belongs above it and not below the section it happens to follow. -->
+  <Style Selector="Border.inspectorFooter">
+    <Setter Property="Padding" Value="{DynamicResource PaddingInspectorSection}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+  </Style>
+
+  <!-- The 32px tile at the head of the rail carrying the cap's own legend, so the inspector and
+       the key it is talking about are visibly the same thing. Accent, because "selection" is one
+       of the accent's two sanctioned meanings — this IS the selected key. -->
+  <Style Selector="Border.inspectorKeyTile">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
   <!-- ===== Action fields =====================================================================
        A read-only field showing what the next captured keystroke (or the Search Keys picker) put
        there. `TokenField` targets a Border and not a TextBox, and that is the point: focus in a
@@ -29,6 +73,59 @@
        wears — so this bridge sets nothing but the theme, or it would outrank it. -->
   <Style Selector="Border.actionField">
     <Setter Property="Theme" Value="{StaticResource TokenField}" />
+  </Style>
+
+  <!-- ===== The token picker ==================================================================
+       The Remap panel's search field, chips and result rows (mockups 1e/2a), and the same picker
+       inside the macro-insertion modal. The catalog rows themselves wear the `SelectableListRow`
+       control theme, named directly by the view; what is left here is the chrome around them.
+
+       Nothing below carries a colour literal — every brush is a token — and nothing names a template
+       part: the picker is authored out of a Border, a TextBox, a WrapPanel of Buttons and an Icon,
+       each of which reaches its own ControlTheme through a class. -->
+
+  <!-- The `●` of the Record button. It is an Ellipse and not the mockup's U+25CF, for the same
+       reason mockup 1e's `⌕` became a Path: neither embedded IBM Plex family carries the codepoint,
+       so the character would fall through to a platform substitute and tofu where there is none.
+       StatusError, which handoff.md:82 names as "also the Record ● color". -->
+  <Style Selector="Ellipse.recordDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="{DynamicResource StatusErrorBrush}" />
+  </Style>
+
+  <!-- The `↵` of the selected row's `↵ assign` hint — drawn, not typed, for the same reason. It is
+       TextSecondary rather than the accent: the row it sits in is already filled with the 14%
+       accent selection tint, and AccentText is the colour that rides a SOLID accent fill (white on
+       the light variant), which on a tint is invisible. -->
+  <Style Selector="controls|Icon.assignHint">
+    <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Size" Value="12" />
+  </Style>
+
+  <!-- One block of the picker's result list: a counted header and its rows. The rows are inset from
+       the header so the grouping reads without a rule between the blocks — the rail is 268 px wide
+       and a stack of framed groups inside it would spend most of that on frames. -->
+  <Style Selector="Border.tokenPickerGroup">
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <!-- The result list is bounded rather than free: a dialect's catalog runs to a couple of hundred
+       rows, and an unbounded list would push the picker's own chips and counter out of the rail's
+       scroll long before the user reached the end of it. The pre-redesign picker capped its list the
+       same way, at the same order of height. -->
+  <Style Selector="ScrollViewer.tokenPickerResults">
+    <Setter Property="MaxHeight" Value="300" />
+  </Style>
+
+  <!-- The picker's inline advisory: amber, non-blocking, and the same tint block the rail states its
+       mode-switch warning in, so "the app noticed something" reads the same wherever it is said. -->
+  <Style Selector="Border.pickerAdvisory">
+    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="9,7" />
   </Style>
 
   <!-- ===== Lighting mode menu ================================================================
