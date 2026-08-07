@@ -21,24 +21,28 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed class KeyboardLayerViewModel : ViewModelBase
     {
-        /// <summary>How the layer shortcut is spelled on macOS: the Option glyph.</summary>
-        public const string MacShortcutPrefix = "⌥";
-
-        /// <summary>How it is spelled everywhere else — ⌥ is Alt on every other platform.</summary>
+        /// <summary>How the shortcut is spelled off macOS — ⌥ is Alt on every other platform.</summary>
         public const string ShortcutPrefix = "Alt+";
 
         /// <summary>
-        /// The layer's shortcut legend. <paramref name="isMacOs"/> is a parameter rather than a
-        /// read of <see cref="KeyCaption.IsMacOs"/> so both platforms are testable on one machine —
-        /// the same shape <see cref="KeyCaption.For"/> uses. ⌥ is Alt on every platform
+        /// The <b>text</b> half of the layer's shortcut legend: <c>1</c> on macOS, <c>Alt+1</c>
+        /// elsewhere. The Option mark macOS puts in front of it is <b>not</b> here and is not a
+        /// string at all — U+2325 is in neither embedded IBM Plex family, so the character would
+        /// draw as tofu. The view pairs this text with the <c>IconOption</c> mark, shown when
+        /// <see cref="ShowsOptionMark"/> is set (docs/app/design-system.md, "Icons and device art").
+        /// <para>
+        /// <paramref name="isMacOs"/> is a parameter rather than a read of
+        /// <see cref="KeyCaption.IsMacOs"/> so both platforms are testable on one machine — the same
+        /// shape <see cref="KeyCaption.For"/> uses. The Option key is Alt on every platform
         /// (docs/design/handoff.md § "Interactions": "map ⌘→Ctrl and ⌥→Alt on Windows/Linux"), so
         /// only the spelling changes, never which physical key it names.
+        /// </para>
         /// </summary>
         public static string BuildShortcutHint(int layerIndex, bool isMacOs)
         {
             var number = (layerIndex + 1).ToString(CultureInfo.InvariantCulture);
 
-            return isMacOs ? MacShortcutPrefix + number : ShortcutPrefix + number;
+            return isMacOs ? number : ShortcutPrefix + number;
         }
 
         /// <summary>
@@ -75,7 +79,8 @@ namespace KinesisEdit.ViewModels
         public int Index => Layer.Index;
 
         /// <summary>
-        /// The keyboard legend printed on the layer's segment — <c>⌥1</c>… on macOS, <c>Alt+1</c>…
+        /// The text of the keyboard legend printed on the layer's segment — <c>1</c>… on macOS,
+        /// where <see cref="ShowsOptionMark"/> puts a drawn ⌥ in front of it, and <c>Alt+1</c>…
         /// elsewhere (mockup 1f: "annotated with the shortcut ⌥1–5"). It is display text; the
         /// accelerator it promises is kept by the editor's keyboard grammar
         /// (<see cref="Input.EditorShortcuts"/>, docs/app/keyboard-editor.md), which maps ⌥ to
@@ -83,6 +88,14 @@ namespace KinesisEdit.ViewModels
         /// only the spelling differs.
         /// </summary>
         public string ShortcutHint { get; }
+
+        /// <summary>
+        /// Whether the segment draws the Option mark before <see cref="ShortcutHint"/> — true on
+        /// macOS only. It is a flag rather than a glyph in the string because the mark is geometry
+        /// (<c>IconOption</c>): neither embedded IBM Plex family carries U+2325, so a view that
+        /// printed the character would draw tofu on the one platform that uses it.
+        /// </summary>
+        public bool ShowsOptionMark { get; }
 
         /// <summary>What the layer switch calls this layer (see <see cref="LayerCaptions"/>).</summary>
         public string Caption { get; }
@@ -183,6 +196,7 @@ namespace KinesisEdit.ViewModels
             ArgumentException.ThrowIfNullOrWhiteSpace(caption);
 
             Caption = caption;
+            ShowsOptionMark = KeyCaption.IsMacOs;
             ShortcutHint = BuildShortcutHint(layer.Index, KeyCaption.IsMacOs);
             BoardWidth = visual.Width;
             BoardHeight = visual.Height;

@@ -1257,6 +1257,32 @@ namespace KinesisEdit.Tests.ViewModels
                     KeyboardLayerViewModel.BuildShortcutHint(1, KeyCaption.IsMacOs)
                 },
                 editor.Layers.Select(layer => layer.ShortcutHint));
+
+            // The mark is a flag, not a character in the string — U+2325 is in neither embedded
+            // IBM Plex family, so the view draws `IconOption` beside the number instead.
+            Assert.All(editor.Layers, layer => Assert.Equal(KeyCaption.IsMacOs, layer.ShowsOptionMark));
+            Assert.All(editor.Layers, layer => Assert.DoesNotContain('⌥', layer.ShortcutHint));
+        }
+
+        [Theory]
+        [InlineData(0, "1", "Alt+1")]
+        [InlineData(1, "2", "Alt+2")]
+        [InlineData(4, "5", "Alt+5")]
+        public void BuildShortcutHint_SpellsTheNumberAloneOnMacOs_AndAltElsewhere(
+            int layerIndex,
+            string expectedOnMac,
+            string expectedElsewhere)
+        {
+            // Both branches, on one machine: `isMacOs` is a parameter for exactly this reason. On
+            // macOS the ⌥ in front of the number is drawn by the view, so the text is the bare
+            // number; everywhere else the Option key IS Alt (handoff.md § "Interactions": "map
+            // ⌘→Ctrl and ⌥→Alt on Windows/Linux") and the legend spells it out.
+            Assert.Equal(expectedOnMac, KeyboardLayerViewModel.BuildShortcutHint(layerIndex, isMacOs: true));
+            Assert.Equal(expectedElsewhere, KeyboardLayerViewModel.BuildShortcutHint(layerIndex, isMacOs: false));
+            Assert.StartsWith(
+                KeyboardLayerViewModel.ShortcutPrefix,
+                KeyboardLayerViewModel.BuildShortcutHint(layerIndex, isMacOs: false),
+                StringComparison.Ordinal);
         }
 
         private void RunMutation(KeyboardEditorViewModel editor, string path)

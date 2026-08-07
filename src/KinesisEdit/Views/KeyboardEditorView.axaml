@@ -160,10 +160,24 @@
                   <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
                   <!-- The ⌥n legend of mockup 1f. The legend is display text; the accelerator it
                        names is wired by the editor's keyboard grammar, which maps ⌥ to Alt on every
-                       platform (KinesisEdit.Input.EditorShortcuts). -->
-                  <ContentControl Classes="kbd"
-                                  Content="{Binding ShortcutHint}"
-                                  VerticalAlignment="Center" />
+                       platform (KinesisEdit.Input.EditorShortcuts).
+
+                       The ⌥ is DRAWN, not typed: U+2325 is in neither embedded IBM Plex family, so
+                       the character would be tofu on the one platform that shows it. The chip's
+                       Content is therefore a panel of mark-plus-text rather than a string — its
+                       template ends in a plain ContentPresenter, so this needs nothing from the
+                       ControlTheme and names no template part. Windows and Linux hide the mark and
+                       read `Alt+1`; the mark cannot inherit the chip's Foreground (an Icon paints
+                       from Stroke), which is what `Icon.kbdMark` in Styles/Editor.axaml is for. -->
+                  <ContentControl Classes="kbd" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <controls:Icon Classes="kbdMark"
+                                     Data="{DynamicResource IconOption}"
+                                     IsVisible="{Binding ShowsOptionMark}"
+                                     VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding ShortcutHint}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </ContentControl>
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>

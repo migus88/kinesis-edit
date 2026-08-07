@@ -41,6 +41,7 @@ namespace KinesisEdit.Tests.Design
             "IconExternalLink",
             "IconInformation",
             "IconNotDetected",
+            "IconOption",
             "IconRefresh",
             "IconScanning",
             "IconWarning"
