@@ -218,6 +218,115 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(HostPreferences.MaximumInspectorRailWidth, RailOf(view).Bounds.Width);
         }
 
+        [AvaloniaFact]
+        public async Task TheRailsWidth_IsOneNumberForBothTabs()
+        {
+            // Issue #124: the key inspector and the Lighting tab's mode rail are two contents of ONE
+            // resizable column. A width dragged on either tab is the width the other opens at, and
+            // it is stored once. Driven through the real seam on the LIGHTING tab, because that is
+            // the half that is new — and the assertion is on the OTHER tab's rail, which is the only
+            // way to see that one number reached two columns.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            editor.SelectedTab = EditorTab.Lighting;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var modeRail = Descendants<LightingModeRailView>(view).Single();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, modeRail.Bounds.Width);
+
+            const double pull = 60;
+
+            // Two seams exist once the Lighting tab has been shown — one per tab's grid — so the
+            // one being dragged is named by the tab it belongs to rather than by being the only one.
+            var seam = Descendants<GridSplitter>(view)
+                .Single(splitter => splitter.FindAncestorOfType<LightingTabView>() is not null);
+            var grip = seam.TranslatePoint(new Point(seam.Bounds.Width / 2, seam.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The lighting seam is not in the window's visual tree.");
+
+            host.Window.MouseMove(grip);
+            host.Window.MouseDown(grip, MouseButton.Left);
+            host.Window.MouseMove(grip - new Point(pull, 0), RawInputModifiers.LeftMouseButton);
+            host.Window.MouseUp(grip - new Point(pull, 0), MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, modeRail.Bounds.Width);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, editor.InspectorRailWidth);
+
+            editor.SelectedTab = EditorTab.Keys;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, RailOf(view).Bounds.Width);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task BothTabsDrawTheBoardAtTheSameScale(string variantName)
+        {
+            // THE ACCEPTANCE CRITERION of issue #124's first defect. The Lighting board used to be
+            // drawn smaller than the Keys board for two reasons that had nothing to do with the
+            // picture: its column carried a 16 px right gutter the Keys column does not, and its
+            // rail was a fixed 300 where the key inspector's was 268. BoardScaleHost resolves the
+            // scale from the width its slot offers, so both differences came out as a smaller board.
+            //
+            // It is measured as the resolved SCALE and the arranged size, on one editor at one
+            // window size, because the defect is the difference between the two tabs and no
+            // single-tab assertion can see it.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            var keysScale = ShownBoardScale(view);
+            var keysBoard = ShownBoard(view).Bounds.Size;
+
+            editor.SelectedTab = EditorTab.Lighting;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(keysScale > 0, "The Keys board resolved no scale at all.");
+            Assert.Equal(keysScale, ShownBoardScale(view));
+            Assert.Equal(keysBoard, ShownBoard(view).Bounds.Size);
+
+            // ...and they stay equal at a dragged rail, which is the whole point of the two tabs
+            // sharing one width: a board that only matched at the default would drift apart the
+            // first time the seam was moved.
+            editor.InspectorRailWidth = 380;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var wideLightingScale = ShownBoardScale(view);
+
+            Assert.True(wideLightingScale < keysScale, "A wider rail did not shrink the board at all.");
+
+            editor.SelectedTab = EditorTab.Keys;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(wideLightingScale, ShownBoardScale(view));
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
@@ -923,6 +1032,24 @@ namespace KinesisEdit.Tests.Design
             var grid = (Grid)seam.GetVisualParent()!;
 
             return grid.Children.OfType<Control>().Single(child => Grid.GetColumn(child) == 0);
+        }
+
+        /// <summary>
+        /// The keyboard picture of whichever tab is open. Both tabs draw one, over the same layer,
+        /// and only one of them is ever on screen.
+        /// </summary>
+        private static KeyboardView ShownBoard(Control view)
+        {
+            return Descendants<KeyboardView>(view).Single(board => board.IsEffectivelyVisible);
+        }
+
+        /// <summary>
+        /// The factor the shown picture is drawn at. It is read off the arranged host rather than
+        /// computed, because the question is what the user is looking at.
+        /// </summary>
+        private static double ShownBoardScale(Control view)
+        {
+            return Descendants<BoardScaleHost>(view).Single(host => host.IsEffectivelyVisible).Scale;
         }
 
         /// <summary>The rail's <see cref="ColumnDefinition"/> — where its width lives since #119.</summary>

@@ -62,7 +62,27 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Raised whenever the selected set moved, <b>from any source</b> — a click on a cap, a
+        /// shift-click, "Select all", a zone button, an emptying, a layer change.
+        /// <para>
+        /// It exists because things outside this object have to follow the selection rather than
+        /// merely be told to change it (issue #124): a zone button lights up when every one of its
+        /// keys happens to be selected, however they got selected, and the Apply control is enabled
+        /// exactly while something is selected. Both used to be unanswerable without reaching into
+        /// this class from <see cref="LightingTabViewModel"/> at every call site that touches the
+        /// selection — a list somebody would have to keep complete.
+        /// </para>
+        /// <para>
+        /// <c>PropertyChanged</c> would have carried it too, but this is not a property moving: it
+        /// is one notification for a set, raised once per gesture even when the gesture touched
+        /// ninety-five caps.
+        /// </para>
+        /// </summary>
+        public event EventHandler? Changed;
+
         private readonly List<KeyboardKeyViewModel> _selected = [];
+        private readonly Dictionary<int, KeyboardKeyViewModel> _byKeyCode = [];
         private IReadOnlyList<KeyboardKeyViewModel> _layerKeys = [];
         private KeyboardKeyViewModel? _anchor;
 
@@ -77,6 +97,16 @@ namespace KinesisEdit.ViewModels
 
             _layerKeys = keys ?? [];
             _anchor = null;
+
+            // The index the key-code API answers from. Built here rather than searched per call
+            // because a zone is up to ninety-five codes and the zone buttons re-ask on every
+            // selection change; it is the layer's own caps, so it is exactly as fresh as _layerKeys.
+            _byKeyCode.Clear();
+
+            foreach (var key in _layerKeys)
+            {
+                _byKeyCode.TryAdd(key.Key.OriginalKey.Code, key);
+            }
 
             Notify();
         }
@@ -166,6 +196,85 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Adds every cap of this layer whose <b>memory key code</b> is in
+        /// <paramref name="keyCodes"/> — what a zone button does (issue #124).
+        /// <para>
+        /// The codes arrive already resolved for the shown layer:
+        /// <see cref="LightingTabViewModel"/> re-resolves a zone's top-layer codes through the
+        /// layout before calling in (specs/07-lighting.md §2.4 item 6), because that resolution
+        /// needs the layout layers and this object holds only caps.
+        /// </para>
+        /// </summary>
+        public void SelectByKeyCode(IEnumerable<int> keyCodes)
+        {
+            ArgumentNullException.ThrowIfNull(keyCodes);
+
+            foreach (var keyCode in keyCodes)
+            {
+                if (_byKeyCode.TryGetValue(keyCode, out var key))
+                {
+                    Add(key);
+                }
+            }
+
+            Notify();
+        }
+
+        /// <summary>
+        /// Takes those same caps back out — the other half of a zone button's toggle. The anchor is
+        /// left alone: a zone is not a place on the board, so it is not somewhere a shift-click
+        /// should extend from.
+        /// </summary>
+        public void DeselectByKeyCode(IEnumerable<int> keyCodes)
+        {
+            ArgumentNullException.ThrowIfNull(keyCodes);
+
+            foreach (var keyCode in keyCodes)
+            {
+                if (_byKeyCode.TryGetValue(keyCode, out var key) && _selected.Remove(key))
+                {
+                    key.IsLightingSelected = false;
+                }
+            }
+
+            Notify();
+        }
+
+        /// <summary>
+        /// Whether every cap this layer has for <paramref name="keyCodes"/> is currently selected —
+        /// which is what makes a zone button show its selected state, and what decides which way its
+        /// next click toggles.
+        /// <para>
+        /// <b>A set with no cap on this layer answers false</b>, not the vacuous true. A zone whose
+        /// codes all resolved to nothing has nothing selected, and lighting its button would tell the
+        /// user the opposite.
+        /// </para>
+        /// </summary>
+        public bool ContainsAll(IEnumerable<int> keyCodes)
+        {
+            ArgumentNullException.ThrowIfNull(keyCodes);
+
+            var found = false;
+
+            foreach (var keyCode in keyCodes)
+            {
+                if (!_byKeyCode.TryGetValue(keyCode, out var key))
+                {
+                    continue;
+                }
+
+                if (!_selected.Contains(key))
+                {
+                    return false;
+                }
+
+                found = true;
+            }
+
+            return found;
+        }
+
+        /// <summary>
         /// Empties the selection. It is <b>not</b> mockup 2f's "Clear" button, which erases the
         /// selected keys' colours (<see cref="LightingTabViewModel.ClearKeyColorsCommand"/>) and
         /// leaves them selected.
@@ -218,6 +327,8 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(Count));
             OnPropertyChanged(nameof(HasSelection));
             OnPropertyChanged(nameof(Caption));
+
+            Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 }

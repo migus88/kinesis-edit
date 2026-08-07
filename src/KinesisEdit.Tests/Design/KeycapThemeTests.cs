@@ -693,7 +693,9 @@ namespace KinesisEdit.Tests.Design
         {
             // The other half: the hatch means "off", so a key the effect is lighting must not show
             // any of it through. At full intensity the face is that colour and nothing else — read
-            // across the whole width, so a fill that covered only part of the cap would fail.
+            // across the whole width, so a fill that covered only part of the cap would fail. "That
+            // colour" is the softened one since #124: the cap is handed the sampler's value and
+            // paints the preview's, and this is the assertion that says the two are not the same.
             var variant = ToVariant(variantName);
             var view = KeyCap(showsLighting: true, effect: "#FF0000");
 
@@ -704,10 +706,11 @@ namespace KinesisEdit.Tests.Design
             Assert.True(effect.IsVisible, "A lit key drew no colour.");
             Assert.Equal(1d, effect.Opacity);
             Assert.Equal(
-                Color.FromRgb(0xFF, 0x00, 0x00),
+                Softened("#FF0000"),
                 Assert.IsAssignableFrom<ISolidColorBrush>(effect.Background).Color);
+            Assert.NotEqual(Color.FromRgb(0xFF, 0x00, 0x00), Softened("#FF0000"));
 
-            Assert.All(FaceSamples(host, view), sample => AssertClose(Color.FromRgb(0xFF, 0x00, 0x00), sample));
+            Assert.All(FaceSamples(host, view), sample => AssertClose(Softened("#FF0000"), sample));
         }
 
         [AvaloniaTheory]
@@ -723,9 +726,11 @@ namespace KinesisEdit.Tests.Design
             var variant = ToVariant(variantName);
             var ignored = KeyCap(showsLighting: true, paint: "#FF0000", paintOpacity: 0.4);
             var rendered = KeyCap(showsLighting: true, paint: "#FF0000");
+            var unpainted = KeyCap(showsLighting: true);
 
             using var ignoredHost = ThemedHost.Show(ignored, variant, HostWidth, HostHeight);
             using var renderedHost = ThemedHost.Show(rendered, variant, HostWidth, HostHeight);
+            using var unpaintedHost = ThemedHost.Show(unpainted, variant, HostWidth, HostHeight);
 
             Assert.Equal(0.4, FillLayersOf(ignored).Paint.Opacity);
             Assert.Equal(1d, FillLayersOf(rendered).Paint.Opacity);
@@ -741,11 +746,25 @@ namespace KinesisEdit.Tests.Design
             // the mean across the cap's whole width — which is what the eye reads anyway.
             var washed = MeanFace(ignoredHost, ignored);
             var full = MeanFace(renderedHost, rendered);
+            var bare = MeanFace(unpaintedHost, unpainted);
 
-            AssertClose(Color.FromRgb(0xFF, 0x00, 0x00), full);
+            AssertClose(Softened("#FF0000"), full);
 
-            Assert.True(washed.R < full.R, $"The 40% paint is as red as the full one ({washed}).");
-            Assert.True(washed.R > 80, $"The 40% paint barely reached the cap ({washed}).");
+            // The wash lies BETWEEN the unpainted cap and the full colour, which is what "40%"
+            // means at the glass — it has left the hatch, and it has not arrived at the paint.
+            //
+            // Stated as distances rather than as a red channel on purpose. Until #124 the full face
+            // was #FF0000, redder than any cap surface in either theme, so "washed.R < full.R" was
+            // a fair reading of it; softened to #A41010 the full face is DARKER than the light
+            // theme's own cap, and the wash of it is the redder of the two. The claim was never
+            // about a channel — it is about where the wash sits between two faces — and said that
+            // way it holds in both variants and survives the next re-tune of the tint.
+            Assert.True(
+                Distance(washed, bare) < Distance(full, bare),
+                $"The 40% paint is as far from the bare cap as the full one ({washed}).");
+            Assert.True(
+                Distance(washed, bare) > Distance(full, bare) / 4,
+                $"The 40% paint barely reached the cap ({washed}).");
         }
 
         [AvaloniaTheory]
@@ -772,7 +791,9 @@ namespace KinesisEdit.Tests.Design
 
             // effect·0.6 + paint·0.4 over a face the effect covers completely — read at the glass,
             // because the ORDER of the two layers is the whole of this fix and no property says it.
-            AssertClose(Color.FromRgb(0x00, 0x99, 0x66), MeanFace(host, painted));
+            // Both terms are the softened faces (#124): the blend is between what is DRAWN, and the
+            // arithmetic is what this test is about.
+            AssertClose(Blend(Softened("#00FF00"), Softened("#0000FF"), 0.4), MeanFace(host, painted));
         }
 
         [AvaloniaTheory]
@@ -793,7 +814,7 @@ namespace KinesisEdit.Tests.Design
             Assert.False(layers.PaintOver.IsVisible, "An unpainted key drew a paint layer over the effect.");
             Assert.False(layers.PaintUnder.IsVisible, "An unpainted key drew a paint layer under the effect.");
 
-            AssertClose(Color.FromRgb(0x00, 0xFF, 0x00), MeanFace(host, bare));
+            AssertClose(Softened("#00FF00"), MeanFace(host, bare));
         }
 
         [AvaloniaTheory]
@@ -819,7 +840,7 @@ namespace KinesisEdit.Tests.Design
 
             // The paint under covers the hatch, so the face is that colour whatever the effect above
             // is doing — which is what makes a Breathe cap fade rather than dissolve into a texture.
-            AssertClose(Color.FromRgb(0x00, 0x00, 0xFF), MeanFace(host, view));
+            AssertClose(Softened("#0000FF"), MeanFace(host, view));
         }
 
         [AvaloniaTheory]
@@ -2111,6 +2132,41 @@ namespace KinesisEdit.Tests.Design
         private static void AssertClose(Color expected, Color actual)
         {
             Assert.True(Distance(expected, actual) <= 3, $"Expected about {expected}, painted {actual}.");
+        }
+
+        /// <summary>
+        /// The colour a cap's face is actually painted when the lighting model holds
+        /// <paramref name="hex"/> — i.e. the stored value after the preview softening
+        /// (<c>LedPreviewTint</c>, issue #124).
+        /// <para>
+        /// Every expectation on this board goes through here rather than restating a literal,
+        /// because the tint's two constants are a look tuned against rendered frames and are meant
+        /// to be re-tuned. What these tests are about is the <b>layering</b> — which layer is drawn
+        /// on which side of which, at what opacity — and that claim must not break when somebody
+        /// makes the board a shade quieter. The tint has its own tests
+        /// (<c>ViewModels/LedPreviewTintTests</c>), which is where its shape is pinned.
+        /// </para>
+        /// </summary>
+        private static Color Softened(string hex)
+        {
+            Assert.True(KeyColorOverlay.TryParseHex(hex, out var color), $"'{hex}' is not a colour.");
+
+            var softened = LedPreviewTint.Soften(color);
+
+            return Color.FromRgb(softened.Red, softened.Green, softened.Blue);
+        }
+
+        /// <summary>
+        /// <paramref name="over"/> composited on <paramref name="under"/> at
+        /// <paramref name="opacity"/> — the arithmetic a stack of two opaque layers performs, so a
+        /// test can name the blend it expects instead of a colour somebody worked out once.
+        /// </summary>
+        private static Color Blend(Color under, Color over, double opacity)
+        {
+            return Color.FromRgb(
+                (byte)Math.Round((over.R * opacity) + (under.R * (1 - opacity))),
+                (byte)Math.Round((over.G * opacity) + (under.G * (1 - opacity))),
+                (byte)Math.Round((over.B * opacity) + (under.B * (1 - opacity))));
         }
     }
 }

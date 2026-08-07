@@ -100,6 +100,16 @@ namespace KinesisEdit.Tests.Design
                 (typeof(LightingTabView).FullName!, "directionSegment", "DirectionSegment"),
                 (typeof(LightingTabView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(LightingModeRailView).FullName!, "directionSegment", "DirectionSegment"),
+
+                // Issue #124's two. `zoneButton` had NO theme at all until then — it set padding, a
+                // margin and a cursor over Fluent's own template — which was survivable only while a
+                // zone painted on the spot and had no selected state to show. A zone selects now, so
+                // it wears the same independent-latch face the co-triggers do; a missing bridge here
+                // is the exact failure this suite exists for, since the chip would still draw. And
+                // `primaryAction` is the rail footer's Apply, the commit that came with the split.
+                (typeof(LightingTabView).FullName!, "zoneButton", "ToggleSegment"),
+                (typeof(LightingModeRailView).FullName!, "primaryAction", "PrimaryActionButton"),
+                (typeof(LightingTabView).FullName!, "railSplitter", "RailSplitter"),
                 // MacroDelayOverlayView's `monoValue` row went with the view in #93; the delay is
                 // edited on the step now, and the rail's own field is covered below.
 

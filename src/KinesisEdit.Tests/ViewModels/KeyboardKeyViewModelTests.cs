@@ -2,15 +2,19 @@ using Avalonia.Headless.XUnit;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
+using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The cap's own state: the badge flags it pushes at the picture, and the legend rule that
-    /// decides what an untouched cap reads. Core announces nothing, so everything here is about
-    /// <see cref="KeyboardKeyViewModel.RefreshFromModel"/> agreeing with the constructor.
+    /// The cap's own state: the badge flags it pushes at the picture, the legend rule that decides
+    /// what an untouched cap reads, and the two lighting layers pushed onto its face. Core announces
+    /// nothing, so most of this is about <see cref="KeyboardKeyViewModel.RefreshFromModel"/>
+    /// agreeing with the constructor; the face is the exception, because it is pushed in rather
+    /// than read back, and it is where a stored colour becomes a drawn one (issue #124).
     /// </summary>
     public class KeyboardKeyViewModelTests
     {
@@ -183,6 +187,107 @@ namespace KinesisEdit.Tests.ViewModels
                 TokenDialect.Gen1);
 
             Assert.Equal(1, cap.Section);
+        }
+
+        [AvaloniaFact]
+        public void ApplyPaint_PutsTheSoftenedColourOnTheFace_AndNotTheStoredOne()
+        {
+            // Issue #124: the seam. A stored colour becomes a FACE colour here, so the cap's hex is
+            // the softened value while the lighting model — and the rail's colour slots, and the
+            // picker, which read it — keep the value that is on file. Asserted against
+            // LedPreviewTint rather than against a literal, because the constants are a look and
+            // are meant to be re-tuned without a test moving with them; that the two differ at all
+            // is the claim.
+            var cap = CreateCap("1");
+
+            cap.ApplyPaint(new LedColor(255, 0, 0), LightingEffectFrame.PaintOpacityDirect);
+
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(255, 0, 0))),
+                cap.PaintColorHex);
+            Assert.NotEqual("#FF0000", cap.PaintColorHex);
+            Assert.True(cap.HasPaintColor);
+        }
+
+        [AvaloniaFact]
+        public void ApplyEffect_SoftensTheSampledColourTheSameWay()
+        {
+            // The effect layer is re-pushed ~30 times a second and is not file state at all, but it
+            // is drawn on the same face by the same rules, so it goes through the same tint. A
+            // preview whose paint was softened and whose effect was not would show two boards.
+            var cap = CreateCap("1");
+
+            cap.ApplyEffect(new LedColor(0, 255, 0), 1.0);
+
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 255, 0))),
+                cap.EffectColorHex);
+            Assert.NotEqual("#00FF00", cap.EffectColorHex);
+        }
+
+        [AvaloniaFact]
+        public void ApplyPaint_WithNoColour_LeavesTheCapUnlit_RatherThanDimGrey()
+        {
+            // "Off is hatched, never black" — and never a dim grey either. An unlit key is ABSENCE,
+            // so the softening must not be reached at all: a null that came back as a colour would
+            // put a face on every unpainted cap of the board.
+            var cap = CreateCap("1");
+
+            cap.ApplyPaint(new LedColor(255, 0, 0), LightingEffectFrame.PaintOpacityDirect);
+            cap.ApplyPaint(null, LightingEffectFrame.PaintOpacityDirect);
+            cap.ApplyEffect(null, 0);
+
+            Assert.Null(cap.PaintColorHex);
+            Assert.Null(cap.EffectColorHex);
+            Assert.False(cap.HasPaintColor);
+            Assert.False(cap.HasEffectColor);
+        }
+
+        [AvaloniaFact]
+        public void ApplyPaint_WithBlack_StaysBlack()
+        {
+            // The other half: black IS a colour a key can be lit (Pitch Black lights every key black
+            // at full intensity, and it has to read differently from off). Softening it toward grey
+            // would make that mode look like a board of faintly lit keys.
+            var cap = CreateCap("1");
+
+            cap.ApplyPaint(LedColor.Black, LightingEffectFrame.PaintOpacityDirect);
+
+            Assert.Equal("#000000", cap.PaintColorHex);
+            Assert.True(cap.HasPaintColor);
+        }
+
+        [AvaloniaFact]
+        public void ApplyPaint_WithTheSameStoredColourTwice_SoftensOnceAndNotifiesOnce()
+        {
+            // The change check stays on the STORED colour, which is what keeps the ~30 fps repaint
+            // free for a cap nothing moved on — and what stops the tint, which is not idempotent,
+            // from being applied to its own output.
+            var cap = CreateCap("1");
+            var changed = new List<string>();
+
+            cap.ApplyPaint(new LedColor(0, 128, 255), LightingEffectFrame.PaintOpacityDirect);
+
+            var first = cap.PaintColorHex;
+
+            cap.PropertyChanged += (_, arguments) => changed.Add(arguments.PropertyName!);
+            cap.ApplyPaint(new LedColor(0, 128, 255), LightingEffectFrame.PaintOpacityDirect);
+
+            Assert.Equal(first, cap.PaintColorHex);
+            Assert.DoesNotContain(nameof(KeyboardKeyViewModel.PaintColorHex), changed);
+        }
+
+        [AvaloniaFact]
+        public void PaintColorHex_SetDirectly_IsTakenAsTheFaceColour()
+        {
+            // The escape hatch a test or a design scene stands a lit cap up with. It is deliberately
+            // NOT softened: it is already a face colour, and softening it here would be the second
+            // application the one-seam rule exists to prevent.
+            var cap = CreateCap("1");
+
+            cap.PaintColorHex = "#FF0000";
+
+            Assert.Equal("#FF0000", cap.PaintColorHex);
         }
 
         private static KeyboardKeyViewModel CreateCap(string token, string? legend = null, string? secondaryLegend = null)

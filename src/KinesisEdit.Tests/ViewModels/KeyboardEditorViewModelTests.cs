@@ -1761,6 +1761,43 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void Rail_IsTheVeryObjectTheLightingTabResizes()
+        {
+            // Issue #124's "one rail, one width, both tabs": the mode rail is not a second column
+            // with a second preference, it is the same column with different content. Asserted as
+            // reference identity because that is the mechanism — anything weaker would pass over two
+            // objects that merely happen to agree at construction.
+            var editor = CreateEditor();
+
+            Assert.Same(editor.Rail, editor.Lighting.Rail);
+
+            editor.InspectorRailWidth = 420;
+
+            Assert.Equal(420, editor.Lighting.Rail.Width);
+
+            editor.Lighting.Rail.Width = 340;
+
+            Assert.Equal(340, editor.InspectorRailWidth);
+        }
+
+        [Fact]
+        public async Task Rail_WhileTheMacroPanelShows_RaisesTheFloorForTheKeysTabOnly()
+        {
+            // THE LIGHTING TAB MUST NOT INHERIT THE 300 PX FLOOR. It exists for the macro panel's
+            // step list, and the Lighting tab has no macro panel — a rail widened there would be
+            // widened for a reason that does not exist on that tab. The Keys tab binds
+            // EffectiveWidth, the Lighting tab binds Width, and this is the difference.
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.InspectorRailWidth = HostPreferences.MinimumInspectorRailWidth;
+
+            SelectMacroMode(editor);
+
+            Assert.Equal(KeyboardEditorViewModel.MacroInspectorRailWidth, editor.EffectiveInspectorRailWidth);
+            Assert.Equal(HostPreferences.MinimumInspectorRailWidth, editor.Lighting.Rail.Width);
+        }
+
+        [Fact]
         public async Task Dispose_StopsListeningToTheRailsWidthInputs()
         {
             var editor = await CreateLoadedEditorAsync();

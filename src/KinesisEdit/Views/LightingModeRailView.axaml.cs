@@ -27,6 +27,15 @@ namespace KinesisEdit.Views
         /// <summary>The section label over the four arrows (2f: "Direction").</summary>
         public const string DirectionLabel = "DIRECTION";
 
+        /// <summary>
+        /// The footer's commit (issue #124). It is the explicit half of the select-a-zone-then-apply
+        /// flow: a zone button now selects keys and paints nothing, so something has to be the act
+        /// of painting them. Sentence case, like every other action in the app; the section labels
+        /// above are uppercase because <c>sectionLabel</c> is authored that way and Avalonia has no
+        /// text-transform.
+        /// </summary>
+        public const string ApplyCaption = "Apply";
+
         /// <summary>The label over the disclosed picker, naming what is being edited.</summary>
         public const string PickerLabel = "PICK A COLOR";
 

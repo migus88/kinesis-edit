@@ -11,9 +11,16 @@
              x:DataType="vm:LightingTabViewModel">
   <!--
     The editor's Lighting tab, as design mockup 2f redraws it: THE MODE IS RENDERED ON THE BOARD,
-    not named in a dropdown. Two columns — the board on the left, the mode rail on the right — and
-    the board animates the selected effect at its real speed and direction while the rail is
-    scrubbed.
+    not named in a dropdown. Three columns — the board, the drag seam, and the mode rail — and the
+    board animates the selected effect at its real speed and direction while the rail is scrubbed.
+
+    THE COLUMNS ARE THE KEYS TAB'S, DELIBERATELY (issue #124). Same `* | Auto | Auto` shape, same
+    `GridSplitter.railSplitter`, same `Views/InspectorRailColumn` driving the rail's column from
+    code-behind, and NO GUTTER on the board's column — the rail carries its own inset surface and a
+    hairline down its left edge, and every pixel spent on a margin here comes out of the board's
+    column. That last part is the whole point: `BoardScaleHost` resolves the picture's scale from
+    the width it is offered, so two tabs whose board columns are offered different widths draw the
+    same board at two different sizes. They are the same width now.
 
     THE BOARD IS THE SCREEN'S SUBJECT, so it gets the canvas and everything else sits around it: the
     layer switch above it, its own header naming what it is showing, and the paint line under it.
@@ -29,10 +36,10 @@
     elapsed seconds to AdvancePreview — including the reduce-motion decision, which the view model
     re-reads on every call.
   -->
-  <Grid ColumnDefinitions="*,Auto">
+  <Grid x:Name="LightingColumns" ColumnDefinitions="*,Auto,Auto">
 
     <!-- ===== The board ======================================================================= -->
-    <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,16,0">
+    <Grid Grid.Column="0" RowDefinitions="Auto,*">
 
       <!-- The layer switch, relabelled "Lighting layer" (2f) — the two layers a led file describes
            are not the layout's five, and the switch says which of the two is being lit. The Fn
@@ -91,18 +98,23 @@
            board cannot edit one. The two tabs render the same layer and the same cap view models;
            only what each picture draws differs.
 
-           TOP-ALIGNED, NOT CENTRED, and that is a frame's finding rather than a preference. The
-           board is the one thing on this screen the eye is fixed on while the rail is scrubbed, and
-           it must not move under the pointer — so its position is fixed at the top of the column
-           and anything under it grows downwards. (The defect that found this was the paint line
-           appearing and disappearing with the mode, which slid a centred board ~70 px every time
-           the rail's selection crossed between Wave and Freestyle. That row is now on screen in
-           every mode, so the original cause is gone; the anchoring stays, because it is what makes
-           the guarantee independent of what is drawn beneath.) -->
+           CENTRED, LIKE THE KEYS BOARD — and the argument this reverses is recorded rather than
+           deleted, because it was right when it was written. This block used to be anchored to the
+           TOP of the column with a 20 px inset, on a frame's finding: the paint line appeared and
+           disappeared with the mode, so every time the rail's selection crossed between Wave and
+           Freestyle the row under the picture came or went and slid a centred board about 70 px.
+           Top-anchoring made the board's position independent of what was drawn beneath it.
+
+           THAT CAUSE IS GONE. The paint line and the zones are on screen in EVERY mode now (see the
+           two blocks below, and LightingTabTests.ThePaintLine_IsOnScreen_WhateverTheModeIs), so
+           nothing under the picture changes height as the rail is scrubbed and the anchoring was
+           outliving the defect it was added for. Issue #124 chose parity with the Keys board
+           instead — the same `HorizontalAlignment="Center" VerticalAlignment="Center"` block in a
+           column with no gutter — because switching tabs and finding the same board in a different
+           place, at a different size, is what a user actually notices. -->
       <StackPanel Grid.Row="1"
                   HorizontalAlignment="Center"
-                  VerticalAlignment="Top"
-                  Margin="0,20,0,0"
+                  VerticalAlignment="Center"
                   Spacing="10"
                   IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
         <TextBlock Text="{Binding BoardHeader}"
@@ -157,9 +169,17 @@
         <!-- ===== The zones ===================================================================
              §4's named colour zones and the "Reset All" that erases every per-key colour: the bulk
              versions of the paint line above, so they sit with it rather than at the far end of the
-             column — and on screen under the same rule, for the same reason. They cost the board
-             nothing by being here: the whole block is top-aligned, so a field that appears, wraps
-             or vanishes with the mode moves only itself. -->
+             column — and on screen under the same rule, for the same reason. The whole block is one
+             fixed set of chips whatever the mode is, which is what lets the block above be centred
+             without the board moving as the rail is scrubbed.
+
+             A ZONE SELECTS; IT DOES NOT PAINT (issue #124). `SelectZoneCommand` toggles the zone's
+             keys in the paint selection and writes no colour at all — Apply, in the rail's footer,
+             is the commit. The button therefore has a selected face, bound to the view model's
+             `IsSelected`, which follows the selection from any source (a cap click, "Select all",
+             another zone). The face itself is the `ToggleSegment` control theme's, reached through
+             the `zoneButton` bridge in Styles/Buttons.axaml: a zone is an independent latch rather
+             than one-of-a-selection, which is the shape that theme was written for. -->
         <Grid ColumnDefinitions="*,Auto"
               ColumnSpacing="8"
               Margin="0,8,0,0">
@@ -172,8 +192,9 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate DataType="vm:LightingZoneViewModel">
                 <Button Classes="zoneButton"
+                        Classes.selected="{Binding IsSelected}"
                         Content="{Binding Caption}"
-                        Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).ApplyZoneCommand}"
+                        Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectZoneCommand}"
                         CommandParameter="{Binding}" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -188,10 +209,26 @@
       </StackPanel>
     </Grid>
 
+    <!-- The seam. The Keys tab's, verbatim: 6px of hit target over a 1px hairline, all of it the
+         `RailSplitter` control theme's, and this file names a class and nothing else. It sits in
+         its own Auto column so the board's `*` and the rail's fixed width are the only two things
+         sharing the row, which is what makes the splitter's "the right column is fixed, so resize
+         only the right column" behaviour the one that fires. -->
+    <GridSplitter Grid.Column="1"
+                  Classes="railSplitter"
+                  DragDelta="OnRailSplitterDragged"
+                  DragCompleted="OnRailSplitterReleased" />
+
     <!-- ===== The mode rail ===================================================================
-         Its own view, over this very DataContext: the rail is a 300px column with a header, a
-         scrolled list, a disclosed picker and a pinned parameter footer, and folding all of that
-         into this file would bury the board it is beside. -->
-    <views:LightingModeRailView Grid.Column="1" />
+         Its own view, over this very DataContext: the rail is a column with a header, a scrolled
+         list, a disclosed picker and a pinned parameter footer, and folding all of that into this
+         file would bury the board it is beside.
+
+         ITS WIDTH IS THIS COLUMN'S, not the rail's own (issue #124). LightingModeRailView used to
+         set `WidthInspectorRailWide` on its Border; a local value outranks whatever the column
+         says, and a GridSplitter resizes a column — so the two would have disagreed the moment the
+         seam above was dragged. The column is driven from the code-behind's InspectorRailColumn,
+         off the very same InspectorRailWidthViewModel the Keys tab's rail reads. -->
+    <views:LightingModeRailView Grid.Column="2" />
   </Grid>
 </UserControl>
