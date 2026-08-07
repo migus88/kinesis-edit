@@ -17,14 +17,23 @@ namespace KinesisEdit.Services
     /// glyph silently, so a partial answer would still leave tofu on some surface.
     /// </para>
     /// <para>
-    /// Two behaviours matter to callers. It <b>caches per codepoint</b>, because the fonts ship
-    /// inside the assembly and the answer therefore cannot change while the process runs, while
-    /// the caption rule is resolved across ~100 positions × 5 layers on every refresh. And it
-    /// <b>never fails</b>: the families are resolved on first use rather than in a static
-    /// initializer, and a probe that cannot reach them — no <see cref="Application"/>, or a call
-    /// from off the UI thread, where reading an application's resources is not allowed — answers
-    /// "not printable" and lets the caller fall back to plain text instead of throwing. That
-    /// answer is <b>not</b> cached, so a later probe on the UI thread still reads the real fonts.
+    /// Two behaviours matter to callers. It <b>caches per codepoint</b>, because the caption rule
+    /// is resolved across ~100 positions × 5 layers on every refresh. And it <b>never fails</b>:
+    /// the families are resolved on first use rather than in a static initializer, and a probe
+    /// that cannot reach them — no <see cref="Application"/>, or a call from off the UI thread,
+    /// where reading an application's resources is not allowed — answers "not printable" and lets
+    /// the caller fall back to plain text instead of throwing. That answer is <b>not</b> cached,
+    /// so a later probe on the UI thread still reads the real fonts.
+    /// </para>
+    /// <para>
+    /// The cache is <b>process-wide and outlives any one <see cref="Application"/></b>, which is
+    /// not the same claim as "the fonts cannot change while the process runs": the test harness
+    /// starts and tears down an application per test, and each one gets a fresh
+    /// <see cref="FontManager"/>. What makes the cache sound is narrower — every session of this
+    /// process loads the <em>same</em> embedded fonts, so no session can disagree with another
+    /// about a codepoint. The cost is worth knowing when reading a green suite: the fonts are
+    /// measured <b>once per process per codepoint</b>, so a font that resolved in the first
+    /// session and failed in a later one would never be noticed here.
     /// </para>
     /// </summary>
     public sealed class EmbeddedFontGlyphCoverage : IGlyphCoverage

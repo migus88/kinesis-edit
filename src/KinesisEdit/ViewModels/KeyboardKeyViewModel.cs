@@ -528,7 +528,11 @@ namespace KinesisEdit.ViewModels
                 return legend;
             }
 
-            return KeyCaption.ForKey(Key, _dialect, EmbeddedFontGlyphCoverage.Instance);
+            // The cap's own abbreviation, applied here and nowhere else: this is the one caption
+            // that has to survive a 28 px box. Everything that writes the key's name into prose —
+            // FormatToken above, the macro rows, the co-trigger caption, the library header —
+            // calls KeyCaption directly and keeps the full word.
+            return KeyCapCaption.For(KeyCaption.ForKey(Key, _dialect, EmbeddedFontGlyphCoverage.Instance));
         }
     }
 }
