@@ -45,6 +45,7 @@
       IconClose          stroke only
       IconRefresh        stroke only
       IconExternalLink   stroke only
+      IconOption         stroke only
       IconScanning       stroke only
 
     Sizing hints are not re-declared here: `IconSize`, `IconStrokeThickness`, `SpinnerSize` and
@@ -161,6 +162,32 @@
        It exists as geometry because the law leaves no alternative: no Latin-1 character may stand
        in for an icon, so the arrow a link ends with is a mark like any other. -->
   <StreamGeometry x:Key="IconExternalLink">M 4,12 L 12,4 M 7,4 L 12,4 L 12,9</StreamGeometry>
+
+  <!-- Option: the `⌥` of the layer switcher's `⌥1`-`⌥5` legends. It exists for exactly the reason
+       `IconExternalLink` does - U+2325 OPTION KEY is in none of the seven embedded IBM Plex faces,
+       so typing it draws tofu - and it is a mark rather than a substitute word because the legend
+       names a key the user physically presses.
+
+       The shape is NOT invented. It is traced from the outlines macOS itself ships: the glyph was
+       pulled out of `.SFNS-Regular` (the system UI face), `Menlo-Regular`, `Lucida Grande` and
+       `Arial Unicode MS` with CoreText, and all four agree on one skeleton, so this follows it:
+
+         - a horizontal stub at the TOP LEFT,
+         - a diagonal falling from the end of that stub to the BOTTOM RIGHT,
+         - a horizontal stub along the bottom, to the right edge,
+         - and a DETACHED bar at the top right, sitting above the bottom stub and overhanging its
+           left end slightly.
+
+       It descends left-to-right; a version that rises would be a different (and wrong) picture.
+
+       The proportions are the four faces' averages mapped onto the 16px grid: ink spans x 2..14 and
+       y 4..12, centred on (8,8) like every other mark, so the option mark sits on the same baseline
+       as the marks beside it. The diagonal is 61 degrees from the horizontal (the faces run 50-63).
+       The three runs are 3.6 / 4.0 / 4.8 long against Menlo's 0.69 / 0.81 / 1.0 ratios. Stroked, at
+       the shared 1.5 pen; the square caps are what square off the four open ends.
+
+       Drawn at `Size` 12, not 16 - see `Icon.kbdMark` in Styles/Editor.axaml for why. -->
+  <StreamGeometry x:Key="IconOption">M 2,4 L 5.6,4 L 10,12 L 14,12 M 9.2,4 L 14,4</StreamGeometry>
 
   <!-- Scanning: the busy spinner, three quarters of a ring with the right quadrant open (the
        specimen is a 14px circle with `border-right-color: transparent`). The arc runs from the
