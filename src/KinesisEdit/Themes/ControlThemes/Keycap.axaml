@@ -22,6 +22,13 @@
          `.modified` LEFT that ladder with issue #91: a remap is a bar, not a face — see THE BADGE
          VOCABULARY below.
 
+         `.paintSelected` IS NOT IN THE LADDER EITHER, and never will be: it paints no face at all.
+         It beats nothing and loses to nothing except `:disabled`, which takes its ring the way it
+         takes `.selected`'s — a dead cap wears no accent. It does not fight `.selected` (they own
+         different elements and a cap may wear both), it does not fight the face states (the
+         Lighting board's face is the key's own colour, drawn by the cap's content, not by this
+         theme), and it does not fight focus, which owns the border as it always does.
+
          `:disabled` sits outside it from the other side and beats the whole ladder: the board is
          dimmed as a unit while a profile loads, so `.selected` and `.listening` carry
          `:not(:disabled)` and BaseButton's inset face is what a dead cap wears. `.locked` is the
@@ -44,6 +51,16 @@
          has already spoken for Root's with the focus halo, and two `{DynamicResource}` entries
          cannot be composed into one BoxShadows value in XAML. `Border#Ring` below is that element —
          inset so that its own 2px spread lands inside the cap rather than outside it.
+
+         THERE ARE TWO SELECTIONS, AND THEY ARE DIFFERENT SELECTIONS. `.selected` is the Layout
+         board's ONE selected key — the one the inspector rail is talking about. `.paintSelected` is
+         the Lighting board's paint selection, which is a MULTI-selection ("Paint · 2 keys
+         selected", mockup 2f) and answers a different question. Both tabs render the very same cap
+         view models, so both classes can be true on one cap at once — and each therefore owns its
+         own element, `Border#Ring` and `Border#PaintRing`, rather than sharing one. Two states
+         setting one BoxShadow is a matrix that works only while the two values agree; the moment
+         either ring's geometry changes (as `.listening` already changes Ring's) the other would
+         silently move with it.
 
       3. LOCKED IS A FACT, NOT A MOOD. "Hatching = not yours to edit" (docs/design/handoff.md,
          "Focus, selection, key badges"), so it is drawn as an overlay whose visibility depends on
@@ -74,11 +91,11 @@
          being true because a pointer crossed it or because the board is loading.
 
          WHETHER TO DRAW THEM AT ALL is the PICTURE's answer, not the key's — `.stateBadges`, bound
-         from KeyCapView.ShowsStateBadge. Same shape, and the same reason, as the LED strip's
-         ShowsLedStrip: the Keys tab and the Lighting tab render the very same cap view models, so
-         no state on the DataContext could separate them, and the Lighting tab wants to be about
-         colour. The four classes still say what the KEY is; `.stateBadges` says whether this
-         SURFACE draws it.
+         from KeyCapView.ShowsStateBadge. Same shape, and the same reason, as the lit face's
+         `.lighting` / ShowsLighting: the Keys tab and the Lighting tab render the very same cap
+         view models, so no state on the DataContext could separate them, and the Lighting tab
+         wants to be about colour. The four classes still say what the KEY is; `.stateBadges` says
+         whether this SURFACE draws it.
   -->
 
   <ControlTheme x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
@@ -167,6 +184,28 @@
               the thickness — restates it; see the note beside that state.
             -->
             <Border x:Name="Ring"
+                    Margin="-1"
+                    ClipToBounds="False"
+                    IsHitTestVisible="False"
+                    Background="Transparent"
+                    CornerRadius="{StaticResource RadiusChip}" />
+
+            <!--
+              THE PAINT SELECTION'S RING — the Lighting board's own, and the second element of the
+              pair described at the top of this file. Same geometry, same band, same accent as
+              `Border#Ring`: a selection is a selection, and drawing the paint one differently
+              would say the two mean different amounts rather than that they answer different
+              questions.
+
+              It is a SECOND Border and not a second setter on the first because both classes can
+              be true on one cap: the Layout tab's selection and the Lighting tab's paint selection
+              are computed on the SAME cap view models (KeyboardEditorViewModel.Apply hands its
+              Layers straight to LightingTabViewModel.Attach), so nothing stops a key from being
+              both the inspector's key and one of the painted ones. Sharing `Ring` would mean the
+              two states writing one property, which works only for as long as they agree — and
+              `.listening` already moves Ring's margin out from under `.selected`.
+            -->
+            <Border x:Name="PaintRing"
                     Margin="-1"
                     ClipToBounds="False"
                     IsHitTestVisible="False"
@@ -285,6 +324,27 @@
     </Style>
 
     <!--
+      ...and on a LIGHTING board the same statement is made with the outline alone. The Lighting
+      board paints the key's colour over the cap's whole inner area, in the cap's CONTENT — which
+      the template draws after `Rectangle#Locked` and before `Border#Ring` — so a lit locked cap
+      would have its hatch and its dashed edge painted over and stop reading as locked at all.
+
+      Two setters fix it and neither invents anything: the dash is lifted above the fill
+      (`ZIndex`, which orders siblings inside this Panel and nothing else), and the hatch FILL is
+      dropped, because on that board the whole face is already hatched under the colour — "off is
+      hatched, never black" is the fill's own bottom layer. What is left is exactly the part the
+      colour would otherwise have taken: the outline that says the position cannot be edited.
+
+      `.lighting` is the picture's answer, pushed down from KeyCapView.ShowsLighting, the same
+      shape as `.stateBadges`. The badges are off on that board, so nothing is hidden by the raised
+      Rectangle; on any board that ever drew both, this would have to be revisited.
+    -->
+    <Style Selector="^.locked.lighting /template/ Rectangle#Locked">
+      <Setter Property="ZIndex" Value="1" />
+      <Setter Property="Fill" Value="{x:Null}" />
+    </Style>
+
+    <!--
       HOVER — the face lightens by one surface step and nothing else moves. It sets no border, so a
       locked cap keeps the dashed edge that identifies it while the pointer is over it, and it
       loses the face to selection and to listening.
@@ -314,6 +374,28 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
     <Style Selector="^.selected:not(:disabled) /template/ Border#Ring">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
+    </Style>
+
+    <!--
+      PAINT-SELECTED — one of the caps the Lighting tab's paint actions will write to ("Paint · 2
+      keys selected · Select all · Clear", mockup 2f). A different selection from `.selected`
+      above: that one is the single key the inspector rail is talking about, this one is a set.
+
+      It paints NO FACE, and cannot: on that board the face is the key's own colour. The whole
+      signal is the accent border and the inward ring, which is the same grammar `.selected` uses —
+      the two never need to be told apart, because they are never on screen together (the Layout
+      board has no paint selection and the Lighting board draws no inspector selection of its own).
+
+      `:not(:disabled)` for the reason every accent state here carries it: BaseButton's disabled
+      face is applied first, and an unqualified class would leave a dead cap wearing a live ring.
+      `:not(:focus-visible)` on the border for the reason every other border setter carries it:
+      focus owns the border whenever it is visible.
+    -->
+    <Style Selector="^.paintSelected:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^.paintSelected:not(:disabled) /template/ Border#PaintRing">
       <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
     </Style>
 

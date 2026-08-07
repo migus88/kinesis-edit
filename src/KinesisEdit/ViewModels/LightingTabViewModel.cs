@@ -1,22 +1,24 @@
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The editor's Lighting tab: the per-layer LED editor of specs/07-lighting.md §3 and §4 —
-    /// mode menu, effect/base colors, speed, direction, per-key coloring, zone buttons and
-    /// "Reset All" — over the profile's <see cref="LightingModel"/>.
+    /// The editor's Lighting tab: the per-layer LED editor of specs/07-lighting.md §3 and §4,
+    /// redesigned around design mockup 2f — <b>the mode is rendered on the board</b> rather than
+    /// named in a dropdown. A mode rail beside the board, the board animating the selected mode at
+    /// its real speed and direction, and under it the paint selection the colour picker applies to.
     /// <para>
     /// It owns no lighting rules. Mode membership and firmware gating are
-    /// <see cref="LightingAvailability"/>'s, the per-mode panel matrix is
-    /// <see cref="LightingPanelVisibility"/>'s reading of <see cref="LightingModeCatalog"/>, the
-    /// zones are <see cref="LightingZoneCatalog"/>'s, and the file is written by
-    /// <c>ProfileSession.Save</c> — this panel mutates the model the session handed out, so the
-    /// editor's existing Save persists lighting with no save path of its own.
+    /// <see cref="LightingAvailability"/>'s, what a mode accepts is
+    /// <see cref="LightingModeParameters"/>'s, what the board looks like at an instant is
+    /// <see cref="LightingEffectSampler"/>'s, the zones are <see cref="LightingZoneCatalog"/>'s,
+    /// and the file is written by <c>ProfileSession.Save</c> — this panel mutates the model the
+    /// session handed out, so the editor's Save persists lighting with no save path of its own.
     /// </para>
     /// </summary>
     public sealed class LightingTabViewModel : ViewModelBase
@@ -52,6 +54,21 @@ namespace KinesisEdit.ViewModels
         /// <summary>Why the Fn layer and the base-color swatch are unavailable (specs/07-lighting.md §3).</summary>
         public const string LayerCustomizationLockedHint =
             "Fn-layer lighting and per-effect base colors need LED firmware 1.0.44 or newer.";
+
+        /// <summary>
+        /// What the board header says while the preview animates — mockup 2f's "Wave · live
+        /// preview", verbatim.
+        /// </summary>
+        public const string LivePreviewSuffix = " · live preview";
+
+        /// <summary>
+        /// What it says while the preview is frozen. The board still shows the mode's first frame,
+        /// so it is a preview; it is just not a live one.
+        /// </summary>
+        public const string FrozenPreviewSuffix = " · preview";
+
+        /// <summary>The rail's own header (mockup 2f), verbatim.</summary>
+        public const string ModeRailCaption = "Mode — click to preview on the board";
 
         /// <summary>
         /// Whether this panel can edit <paramref name="device"/>'s lighting. True exactly for a
@@ -103,30 +120,68 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _selectedLayer, value);
         }
 
-        /// <summary>The keyboard picture of <see cref="SelectedLayer"/>, for per-key coloring.</summary>
+        /// <summary>The keyboard picture of <see cref="SelectedLayer"/> — the previewed board.</summary>
         public KeyboardLayerViewModel? Board
         {
             get => _board;
             private set => SetProperty(ref _board, value);
         }
 
-        /// <summary>The device's mode menu for its firmware (§3).</summary>
+        /// <summary>The device's mode rail for its firmware (§3, mockup 2f).</summary>
         public IReadOnlyList<LightingModeViewModel> Modes { get; }
 
         /// <summary>The selected layer's mode.</summary>
         public LightingMode SelectedMode
         {
             get => _selectedMode;
-            private set => SetProperty(ref _selectedMode, value);
-        }
-
-        /// <summary>Which parameter panels the selected mode shows (§3).</summary>
-        public LightingPanelVisibility Panels
-        {
-            get => _panels;
             private set
             {
-                if (SetProperty(ref _panels, value))
+                if (SetProperty(ref _selectedMode, value))
+                {
+                    OnPropertyChanged(nameof(ModeCaption));
+                    OnPropertyChanged(nameof(BoardHeader));
+                }
+            }
+        }
+
+        /// <summary>What the rail calls the selected mode (<see cref="LightingModeCaptions"/>).</summary>
+        public string ModeCaption => LightingModeCaptions.For(SelectedMode);
+
+        /// <summary>
+        /// The line over the board: <c>Wave · live preview</c> while it animates,
+        /// <c>Wave · preview</c> while reduce-motion holds it on its first frame (mockup 2f).
+        /// </summary>
+        public string BoardHeader => ModeCaption + (IsPreviewAnimating ? LivePreviewSuffix : FrozenPreviewSuffix);
+
+        /// <summary>
+        /// Whether the board is animating. It is the negation of the live
+        /// <see cref="IMotionSettings.ReduceMotion"/> preference, re-read on every
+        /// <see cref="AdvancePreview"/> — see there for why it is polled rather than subscribed to.
+        /// </summary>
+        public bool IsPreviewAnimating
+        {
+            get => _isPreviewAnimating;
+            private set
+            {
+                if (SetProperty(ref _isPreviewAnimating, value))
+                {
+                    OnPropertyChanged(nameof(BoardHeader));
+                }
+            }
+        }
+
+        /// <summary>
+        /// What the selected mode accepts — the effect and base colours, the speed, the directions,
+        /// whether it paints per key and whether the preview renders that paint directly. It is
+        /// Core's answer (<see cref="LightingModeParameters.For"/>) and the one thing every control
+        /// on this tab asks: the app layer holds no second copy of the §3 table.
+        /// </summary>
+        public LightingModeParameters Parameters
+        {
+            get => _parameters;
+            private set
+            {
+                if (SetProperty(ref _parameters, value))
                 {
                     NotifyCommands();
                 }
@@ -139,6 +194,9 @@ namespace KinesisEdit.ViewModels
         /// <summary>The base-color swatch of the two-line effects.</summary>
         public LightingColorSlotViewModel BaseColor { get; }
 
+        /// <summary>The nine speed bars and their mono readout (mockup 2f).</summary>
+        public LightingSpeedViewModel SpeedControl { get; }
+
         /// <summary>The effect speed, always inside <see cref="MinimumSpeed"/>..<see cref="MaximumSpeed"/>.</summary>
         public int Speed
         {
@@ -147,10 +205,13 @@ namespace KinesisEdit.ViewModels
             {
                 var clamped = Math.Clamp(value, MinimumSpeed, MaximumSpeed);
 
+                SpeedControl.Show(clamped);
+
                 if (SetProperty(ref _speed, clamped) && SelectedLayer is not null)
                 {
                     SelectedLayer.State.Speed = clamped;
 
+                    RefreshBoard();
                     RaiseModelChanged();
                 }
             }
@@ -162,7 +223,11 @@ namespace KinesisEdit.ViewModels
         /// <summary>Highest speed the knob offers (§2.1).</summary>
         public int MaximumSpeed => LayerLightingState.MaximumSpeed;
 
-        /// <summary>The direction entries the selected mode offers, empty when it has no panel.</summary>
+        /// <summary>
+        /// The four direction arrows — always four, each carrying
+        /// <see cref="LightingDirectionViewModel.IsAvailable"/>, because 2f keeps the ones a mode
+        /// cannot use in place and strikes them through.
+        /// </summary>
         public IReadOnlyList<LightingDirectionViewModel> Directions
         {
             get => _directions;
@@ -172,26 +237,55 @@ namespace KinesisEdit.ViewModels
         /// <summary>The device's zone buttons (§4), built once.</summary>
         public IReadOnlyList<LightingZoneViewModel> Zones { get; }
 
-        /// <summary>The shared color picker; its color is what a key click or a zone paints with (§4).</summary>
+        /// <summary>
+        /// The keys a colour, or a Clear, applies to — the lighting board's own multi-selection,
+        /// which is <b>not</b> the editor's single selection (see
+        /// <see cref="LightingPaintSelection"/>).
+        /// </summary>
+        public LightingPaintSelection Selection { get; }
+
+        /// <summary>The shared color picker; its color is what the selection or a zone paints with (§4).</summary>
         public ColorPickerViewModel Picker { get; }
 
         /// <summary>Switches the tab to another layer, re-reading every control from it (§4).</summary>
         public IRelayCommand<LightingLayerViewModel> SelectLayerCommand { get; }
 
-        /// <summary>Sets the selected layer's mode.</summary>
+        /// <summary>Sets the selected layer's mode — what a click on a rail row runs.</summary>
         public IRelayCommand<LightingModeViewModel> SelectModeCommand { get; }
 
         /// <summary>Points the picker at one of the two color swatches.</summary>
         public IRelayCommand<LightingColorSlotViewModel> SelectColorSlotCommand { get; }
 
-        /// <summary>Sets the selected layer's direction.</summary>
+        /// <summary>Sets the selected layer's direction; an unavailable arrow is a no-op.</summary>
         public IRelayCommand<LightingDirectionViewModel> SelectDirectionCommand { get; }
+
+        /// <summary>Sets the speed from one of the nine bars.</summary>
+        public IRelayCommand<int> SetSpeedCommand { get; }
 
         /// <summary>Paints the picker's color onto every key of a zone (§4).</summary>
         public IRelayCommand<LightingZoneViewModel> ApplyZoneCommand { get; }
 
-        /// <summary>Paints the picker's color onto one key — what a click on the picture runs (§4).</summary>
-        public IRelayCommand<KeyboardKeyViewModel> AssignKeyColorCommand { get; }
+        /// <summary>Adds a key to the paint selection or takes it out — what a click on a cap runs.</summary>
+        public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand { get; }
+
+        /// <summary>Extends the paint selection to a key — what a shift-click on a cap runs.</summary>
+        public IRelayCommand<KeyboardKeyViewModel> ExtendSelectionCommand { get; }
+
+        /// <summary>Selects every key of the layer (mockup 2f's "Select all").</summary>
+        public IRelayCommand SelectAllKeysCommand { get; }
+
+        /// <summary>
+        /// Turns the selected keys off — mockup 2f's "Clear". They go hatched, because off is
+        /// hatched and never black.
+        /// </summary>
+        public IRelayCommand ClearKeyColorsCommand { get; }
+
+        /// <summary>
+        /// Paints the picker's current color onto the whole selection. Choosing a colour does this
+        /// on its own; the command is what re-applies the colour already in the picker to a
+        /// selection made afterwards.
+        /// </summary>
+        public IRelayCommand PaintSelectionCommand { get; }
 
         /// <summary>Erases every per-key color of the layer, after the §4 confirmation.</summary>
         public IAsyncRelayCommand ResetAllCommand { get; }
@@ -213,15 +307,18 @@ namespace KinesisEdit.ViewModels
 
         private readonly DeviceSnapshot _device;
         private readonly INotificationService _notifications;
+        private readonly IMotionSettings? _motionSettings;
+        private readonly LightingBoardPreview _preview = new();
         private IReadOnlyList<LightingLayerViewModel> _layers = [];
         private IReadOnlyList<LightingDirectionViewModel> _directions = [];
-        private LightingPanelVisibility _panels = LightingPanelVisibility.None;
+        private LightingModeParameters _parameters = LightingModeParameters.None;
         private LightingLayerViewModel? _selectedLayer;
         private KeyboardLayerViewModel? _board;
         private LightingModel? _model;
         private KeyboardLayer? _topLayoutLayer;
         private LightingMode _selectedMode = LightingMode.Disabled;
         private int _speed = LayerLightingState.DefaultSpeed;
+        private bool _isPreviewAnimating;
         private bool _isSynchronizing;
 
         /// <summary>
@@ -238,13 +335,22 @@ namespace KinesisEdit.ViewModels
         /// every swatch silently, with no test able to see it. A host with no drive passes
         /// <see cref="NullAppPreferencesStore.Instance"/> in as many words.
         /// </param>
+        /// <param name="motionSettings">
+        /// The app's live motion switch, polled by <see cref="AdvancePreview"/>. Optional for the
+        /// same reason the editor's session is — a panel built for a unit test or a design scene
+        /// has no app around it — and null then means "animate", which is the state the design was
+        /// drawn in. The shell passes the app's own instance, and only then is the Settings
+        /// screen's reduce-motion preference live on this board.
+        /// </param>
         public LightingTabViewModel(
             DeviceSnapshot device,
             INotificationService notifications,
-            IAppPreferencesStore preferences)
+            IAppPreferencesStore preferences,
+            IMotionSettings? motionSettings = null)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
+            _motionSettings = motionSettings;
 
             ArgumentNullException.ThrowIfNull(preferences);
 
@@ -255,24 +361,40 @@ namespace KinesisEdit.ViewModels
 
             StatusMessage = device.IsDemoMode || device.Location is null ? DemoModeHint : string.Empty;
 
-            Modes = LightingModeViewModel.CreateAll(device.DeviceId, device.Firmware);
+            Modes = LightingModeViewModel.CreateAll(device.DeviceId, device.Firmware, IsLayerCustomizationAvailable);
             Zones = LightingZoneViewModel.CreateAll(device.DeviceId);
 
             EffectColor = LightingColorSlotViewModel.CreateEffectColor();
             BaseColor = LightingColorSlotViewModel.CreateBaseColor();
+            SpeedControl = new LightingSpeedViewModel();
+            Selection = new LightingPaintSelection();
 
             Picker = new ColorPickerViewModel(device, preferences);
             Picker.ColorChanged += OnPickerColorChanged;
+
+            _isPreviewAnimating = !(motionSettings?.ReduceMotion ?? false);
+
+            Directions = LightingDirectionViewModel.CreateAll(_parameters);
 
             SelectLayerCommand = new RelayCommand<LightingLayerViewModel>(SelectLayer);
             SelectModeCommand = new RelayCommand<LightingModeViewModel>(SelectMode);
             SelectColorSlotCommand = new RelayCommand<LightingColorSlotViewModel>(SelectColorSlot);
             SelectDirectionCommand = new RelayCommand<LightingDirectionViewModel>(SelectDirection);
-            ApplyZoneCommand = new RelayCommand<LightingZoneViewModel>(ApplyZone, _ => Panels.ShowsZones);
-            AssignKeyColorCommand = new RelayCommand<KeyboardKeyViewModel>(
-                AssignKeyColor,
-                _ => Panels.ShowsPerKeyColors);
-            ResetAllCommand = new AsyncRelayCommand(ResetAllAsync, () => Panels.ShowsResetAll);
+            SetSpeedCommand = new RelayCommand<int>(speed => Speed = speed, _ => Parameters.AcceptsSpeed);
+
+            // NONE OF THE PAINT COMMANDS IS GATED ON THE MODE. The painted colours belong to the
+            // layer, not to the effect running over them (mockup 2f: "the colors are still on
+            // file"), so the controls that manage them are reachable whenever this tab is —
+            // which is already "this board has per-key RGB", because that is what puts the tab on
+            // screen at all (IsSupported). What the mode decides is how the paint is *drawn*:
+            // directly, or at 40% under the effect (LightingModeParameters.RendersPaintDirectly).
+            ApplyZoneCommand = new RelayCommand<LightingZoneViewModel>(ApplyZone);
+            SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Toggle);
+            ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Extend);
+            SelectAllKeysCommand = new RelayCommand(Selection.SelectAll);
+            ClearKeyColorsCommand = new RelayCommand(ClearKeyColors);
+            PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color));
+            ResetAllCommand = new AsyncRelayCommand(ResetAllAsync);
         }
 
         /// <summary>
@@ -306,6 +428,33 @@ namespace KinesisEdit.ViewModels
             return IsAvailable ? Picker.LoadAsync() : Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Moves the preview on by <paramref name="deltaSeconds"/> and re-draws the board. It is
+        /// the <b>only</b> entry point the view's frame timer calls, and the only place the elapsed
+        /// clock moves.
+        /// <para>
+        /// <b>Reduce-motion is read here, on every call.</b> Since issue #96 it is a live user
+        /// preference — the Settings screen can flip it while this editor is open — and
+        /// <see cref="IMotionSettings"/> raises no notification, so polling once a frame is the
+        /// mechanism that makes it live. While it is set the clock is held at zero and the board
+        /// shows the mode's <c>t = 0</c> frame: a frozen picture of the effect rather than a blank
+        /// board, because the point of this screen is to show what the mode looks like.
+        /// </para>
+        /// </summary>
+        public void AdvancePreview(double deltaSeconds)
+        {
+            if (!IsAvailable)
+            {
+                return;
+            }
+
+            var isFrozen = _motionSettings?.ReduceMotion ?? false;
+
+            IsPreviewAnimating = !isFrozen;
+
+            _preview.Advance(deltaSeconds, isFrozen);
+        }
+
         private IReadOnlyList<LightingLayerViewModel> BuildLayers(IReadOnlyList<KeyboardLayerViewModel> boards)
         {
             // A led file describes exactly two layers (§1.5); the picture may have more (an
@@ -331,7 +480,8 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Switches layers. Every control is re-read from the newly active layer, because the two
         /// layers are fully independent (§4 "Switching layers in lighting mode re-reads all
-        /// controls from the newly active layer's values").
+        /// controls from the newly active layer's values") — and the paint selection is emptied,
+        /// because a selection is a set of positions on one layer.
         /// </summary>
         private void SelectLayer(LightingLayerViewModel? layer)
         {
@@ -347,6 +497,9 @@ namespace KinesisEdit.ViewModels
 
             SelectedLayer = layer;
             Board = layer?.Board;
+
+            Selection.SetLayer(Board?.Keys);
+            _preview.SetLayer(Board, layer?.State);
 
             ReadFromState();
         }
@@ -369,16 +522,19 @@ namespace KinesisEdit.ViewModels
                 EffectColor.ReadFrom(state);
                 BaseColor.ReadFrom(state);
 
-                SetProperty(ref _speed, Math.Clamp(state?.Speed ?? LayerLightingState.DefaultSpeed, MinimumSpeed, MaximumSpeed), nameof(Speed));
+                var speed = Math.Clamp(state?.Speed ?? LayerLightingState.DefaultSpeed, MinimumSpeed, MaximumSpeed);
 
-                RefreshPanels();
+                SpeedControl.Show(speed);
+                SetProperty(ref _speed, speed, nameof(Speed));
+
+                RefreshParameters();
             }
             finally
             {
                 _isSynchronizing = false;
             }
 
-            RefreshOverlays();
+            RefreshBoard();
         }
 
         private void SelectMode(LightingModeViewModel? mode)
@@ -402,26 +558,30 @@ namespace KinesisEdit.ViewModels
 
             try
             {
-                RefreshPanels();
+                RefreshParameters();
             }
             finally
             {
                 _isSynchronizing = false;
             }
 
+            // The selection deliberately survives: picking a mode is how the user finds out what a
+            // set of keys looks like under it, and having to re-select them each time would make
+            // the rail unusable for exactly the comparison it exists for.
+            RefreshBoard();
             RaiseModelChanged();
         }
 
         /// <summary>
-        /// Recomputes the per-mode panel matrix, rebuilds the direction entries, and makes sure
-        /// the picker is pointed at a swatch the mode actually shows.
+        /// Recomputes what the selected mode accepts, rebuilds the direction arrows, and makes sure
+        /// the picker is pointed at a swatch the mode actually has.
         /// </summary>
-        private void RefreshPanels()
+        private void RefreshParameters()
         {
-            Panels = LightingPanelVisibility.For(_device.DeviceId, SelectedMode, IsLayerCustomizationAvailable);
+            Parameters = LightingModeParameters.For(_device.DeviceId, SelectedMode, IsLayerCustomizationAvailable);
 
-            EffectColor.IsVisible = Panels.ShowsEffectColor;
-            BaseColor.IsVisible = Panels.ShowsBaseColor;
+            EffectColor.IsVisible = Parameters.AcceptsEffectColor;
+            BaseColor.IsVisible = Parameters.AcceptsBaseColor;
 
             RefreshDirections();
             RefreshSelectedColorSlot();
@@ -429,21 +589,26 @@ namespace KinesisEdit.ViewModels
 
         private void RefreshDirections()
         {
-            Directions = LightingDirectionViewModel.CreateAll(_device.DeviceId, SelectedMode);
+            Directions = LightingDirectionViewModel.CreateAll(Parameters);
 
             var state = SelectedLayer?.State;
 
-            if (Directions.Count == 0 || state is null)
+            if (!Parameters.AcceptsDirection || state is null)
             {
                 return;
             }
 
-            var current = FindDirection(state.Direction) ?? Directions[0];
+            var current = FindDirection(state.Direction) ?? FirstAvailableDirection();
+
+            if (current is null)
+            {
+                return;
+            }
 
             // A direction the mode does not accept would be written as the default anyway
             // (specs/07-lighting.md §2.4 item 5), so the control and the file are kept in step.
             //
-            // THIS IS A WRITE INTO THE PROFILE'S MODEL, and it is announced like the other six.
+            // THIS IS A WRITE INTO THE PROFILE'S MODEL, and it is announced like the other seven.
             // Rebound offers only Left and Up, so a layer whose file carries Down normalizes the
             // moment it is shown — a mode pick, a layer switch, or the load itself — and without
             // the notification the session would be dirty with a grey Save (invariant 16).
@@ -466,7 +631,20 @@ namespace KinesisEdit.ViewModels
         {
             foreach (var entry in Directions)
             {
-                if (entry.Direction == direction)
+                if (entry.IsAvailable && entry.Direction == direction)
+                {
+                    return entry;
+                }
+            }
+
+            return null;
+        }
+
+        private LightingDirectionViewModel? FirstAvailableDirection()
+        {
+            foreach (var entry in Directions)
+            {
+                if (entry.IsAvailable)
                 {
                     return entry;
                 }
@@ -516,8 +694,10 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The picker moved: the selected swatch follows it into the model. While the tab is
-        /// re-reading a layer the flow is the other way round, so the write is suppressed.
+        /// The picker moved: the selected swatch follows it into the model, and — in a per-key mode
+        /// — so does every selected key. Both writes are announced <b>once</b>, because they are
+        /// one gesture. While the tab is re-reading a layer the flow is the other way round, so the
+        /// write is suppressed.
         /// </summary>
         private void OnPickerColorChanged(LedColor color)
         {
@@ -537,6 +717,9 @@ namespace KinesisEdit.ViewModels
                 BaseColor.Assign(state, color);
             }
 
+            PaintSelectedKeys(color);
+
+            RefreshBoard();
             RaiseModelChanged();
         }
 
@@ -544,7 +727,9 @@ namespace KinesisEdit.ViewModels
         {
             var state = SelectedLayer?.State;
 
-            if (direction is null || state is null)
+            // A struck-through arrow is not hit-testable, so this is the second line rather than
+            // the only one — but a mode that cannot run that way must not have it written.
+            if (direction is null || state is null || !direction.IsAvailable)
             {
                 return;
             }
@@ -556,28 +741,52 @@ namespace KinesisEdit.ViewModels
                 entry.IsSelected = ReferenceEquals(entry, direction);
             }
 
+            RefreshBoard();
             RaiseModelChanged();
         }
 
         /// <summary>
-        /// Paints one key with the picker's color. The map is keyed by <b>memory key code</b>
-        /// (§4), and black clears the key rather than storing it — that is
-        /// <see cref="LayerLightingState.SetKeyColor"/>'s contract (§2.1), honoured rather than
-        /// worked around.
+        /// Paints the whole paint selection with <paramref name="color"/> and announces it once.
+        /// Keys are addressed by <b>memory key code</b> (§4), and black clears the key rather than
+        /// storing it — that is <see cref="LayerLightingState.SetKeyColor"/>'s contract (§2.1),
+        /// honoured rather than worked around, which is also what makes the black swatch an eraser.
         /// </summary>
-        private void AssignKeyColor(KeyboardKeyViewModel? key)
+        private void PaintSelection(LedColor color)
         {
-            var state = SelectedLayer?.State;
-
-            if (key is null || state is null || !Panels.ShowsPerKeyColors)
+            if (!PaintSelectedKeys(color))
             {
                 return;
             }
 
-            state.SetKeyColor(key.Key.OriginalKey.Code, Picker.Color);
-
-            RefreshOverlays();
+            RefreshBoard();
             RaiseModelChanged();
+        }
+
+        /// <summary>
+        /// Turns every selected key off — mockup 2f's "Clear". It goes through
+        /// <see cref="LayerLightingState.SetKeyColor"/> with black rather than inventing a second
+        /// erase path, because black <i>is</i> "no colour" (§2.1) and the map never holds it.
+        /// </summary>
+        private void ClearKeyColors()
+        {
+            PaintSelection(LedColor.Black);
+        }
+
+        private bool PaintSelectedKeys(LedColor color)
+        {
+            var state = SelectedLayer?.State;
+
+            if (state is null || !Selection.HasSelection)
+            {
+                return false;
+            }
+
+            foreach (var key in Selection.Keys)
+            {
+                state.SetKeyColor(key.Key.OriginalKey.Code, color);
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -590,7 +799,7 @@ namespace KinesisEdit.ViewModels
         {
             var state = SelectedLayer?.State;
 
-            if (zone is null || state is null || !Panels.ShowsZones)
+            if (zone is null || state is null)
             {
                 return;
             }
@@ -605,7 +814,7 @@ namespace KinesisEdit.ViewModels
                 }
             }
 
-            RefreshOverlays();
+            RefreshBoard();
             RaiseModelChanged();
         }
 
@@ -631,7 +840,7 @@ namespace KinesisEdit.ViewModels
         {
             var state = SelectedLayer?.State;
 
-            if (state is null || !Panels.ShowsResetAll)
+            if (state is null)
             {
                 return;
             }
@@ -664,48 +873,46 @@ namespace KinesisEdit.ViewModels
 
             state.ClearKeyColors();
 
-            RefreshOverlays();
+            RefreshBoard();
             RaiseModelChanged();
         }
 
         /// <summary>
-        /// Re-paints the colour strips of the shown picture. Core's model announces nothing
-        /// (docs/app/keyboard-editor.md, invariant 3), so the map has to be pushed in by hand.
+        /// Re-draws the board at the preview's current instant. Core's model announces nothing
+        /// (docs/app/keyboard-editor.md, invariant 3), so every write on this panel ends here —
+        /// including while the clock is frozen, so that a mode or a colour picked under
+        /// reduce-motion still shows.
         /// <para>
         /// The Keys tab shares these very cap view models, so the colours land on its caps too —
-        /// but its picture asks for no LED strip (<c>KeyboardView.ShowsLedStrips</c>), so nothing
-        /// of this is drawn there.
+        /// but its picture draws no lighting at all (<c>KeyboardView.ShowsLighting</c>), so nothing
+        /// of this is visible there.
         /// </para>
         /// </summary>
-        private void RefreshOverlays()
+        private void RefreshBoard()
         {
-            var board = Board;
-
-            if (board is null || _model is null)
-            {
-                return;
-            }
-
-            board.ApplyColorOverlays(KeyColorOverlay.Build(_device.Device, _model, board.Layer));
+            _preview.Draw();
         }
 
         /// <summary>
-        /// Announces a write into the profile's lighting model. Every one of the eight write sites
-        /// on this panel ends here — the mode, the speed, the direction, either colour swatch, a
-        /// painted key, a painted zone, "Reset All", and the direction <b>normalization</b> of
-        /// <see cref="RefreshDirections"/> — because <see cref="ModelChanged"/> is what turns the
-        /// editor's Save amber.
+        /// Announces a write into the profile's lighting model. Every one of the write sites on
+        /// this panel ends here — the mode, the speed, the direction, either colour swatch, the
+        /// painted selection, "Clear", a painted zone, "Reset All", and the direction
+        /// <b>normalization</b> of <see cref="RefreshDirections"/> — because
+        /// <see cref="ModelChanged"/> is what turns the editor's Save amber.
         /// </summary>
         private void RaiseModelChanged()
         {
             ModelChanged?.Invoke(this, EventArgs.Empty);
         }
 
+        /// <summary>
+        /// Re-asks the one command whose availability the mode decides. The paint commands are
+        /// deliberately absent: they carry no gate at all, because the colours they manage are the
+        /// layer's rather than the effect's.
+        /// </summary>
         private void NotifyCommands()
         {
-            ApplyZoneCommand.NotifyCanExecuteChanged();
-            AssignKeyColorCommand.NotifyCanExecuteChanged();
-            ResetAllCommand.NotifyCanExecuteChanged();
+            SetSpeedCommand.NotifyCanExecuteChanged();
         }
     }
 }

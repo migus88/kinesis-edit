@@ -65,6 +65,12 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("NoDeviceView", names);
             Assert.Contains("KeyboardEditorView", names);
             Assert.Contains("LightingTabView", names);
+
+            // The Lighting tab's mode rail (issue #94), which is its own view for the same reason
+            // the key inspector's panels are theirs: a 300 px column with a header, a scrolled list
+            // and a pinned parameter footer does not belong inside the view of the board it sits
+            // beside.
+            Assert.Contains("LightingModeRailView", names);
             Assert.Contains("KeyboardSettingsView", names);
             Assert.Contains("SavantElitePedalView", names);
             Assert.Contains("KeyCapView", names);
@@ -81,7 +87,7 @@ namespace KinesisEdit.Tests.Design
             Assert.DoesNotContain("SearchKeysOverlayView", names);
             Assert.DoesNotContain("TapAndHoldOverlayView", names);
 
-            Assert.True(names.Count >= 30, $"Only {names.Count} views were discovered.");
+            Assert.True(names.Count >= 31, $"Only {names.Count} views were discovered.");
         }
 
         [AvaloniaFact]

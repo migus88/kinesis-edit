@@ -132,12 +132,22 @@
              SelectingItemsControl is, and it buys the whole group one tab stop with arrow-key
              movement inside it. `SelectedItem` reads the view model one way — the property is
              read-only, and SelectLayer is the only thing allowed to move it — while the selection
-             change runs the very command the buttons used to. -->
+             change runs the very command the buttons used to.
+
+             NOT ON THE LIGHTING TAB. There are two different "layers" in this app and they are not
+             the same object: this one is the LAYOUT layer (layoutN.txt, what a key does), and the
+             Lighting tab has its own switch for the LED file's layer (ledN.txt, what a key looks
+             like). Drawn together they are two identical Top/Fn segment pairs a few hundred pixels
+             apart, and only one of them does anything while lighting is open — mockup 2f draws one
+             switch, relabelled "Lighting layer", and that is the tab's own. So the shell's yields
+             the row while Lighting has the screen, exactly as the whole app bar yields to the
+             editor's chrome (IShellChrome): one bar, one status chip, and now one layer switch. -->
         <StackPanel Orientation="Horizontal"
                     Spacing="8"
                     Margin="0,0,12,0"
                     HorizontalAlignment="Right"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros,Settings'}">
           <TextBlock Text="LAYER" Classes="sectionLabel" VerticalAlignment="Center" />
 
           <ListBox Theme="{StaticResource SegmentedControl}"

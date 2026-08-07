@@ -5,13 +5,18 @@
     BaseButton carries the template, the geometry, the type step, the focus ring and the disabled
     face that ToggleSegment at the bottom of this file derives from.
 
-    Three themes, one shape language: a row of adjoining choices where exactly one — or, for the
+    Five themes, one shape language: a row of adjoining choices where exactly one — or, for the
     toggle, each one independently — is on.
 
-      SegmentedControl / SegmentedItem  the layer switcher and the lighting speed bars: a trough
-                                        with the segments inside it, one selected.
+      SegmentedControl / SegmentedItem  the layer switcher: a trough with the segments inside it,
+                                        one selected.
       ToggleSegment                     a standalone two-state segment: the macro co-triggers and
                                         the pedal's Single Action / Macro latch.
+      DirectionSegment                  one arrow of the lighting tab's direction row, which a mode
+                                        may not accept — and which is then STRUCK THROUGH in place
+                                        rather than removed.
+      SpeedBar                          one bar of the lighting tab's speed control, "segmented
+                                        bars (accent-filled)" (docs/design/handoff.md:150).
 
     WHY A ListBox AND NOT A RadioButton GROUP. docs/design/handoff.md offers both ("Segmented
     controls (layer switcher, speed bars): restyled ListBox with horizontal StackPanel, or
@@ -251,5 +256,170 @@
 
     <!-- Disabled and the focus ring both come from BaseButton: the inset face is right here, where
          the toggle has a face of its own to lose. -->
+  </ControlTheme>
+
+  <!--
+    ONE DIRECTION ARROW of the lighting tab's direction row (mockup 2f: "Direction" with
+    `← → ↑ ↓`). A square button carrying one `IconArrow…` mark, on the toggle's own neutral/accent
+    ramp, so "this is the direction the effect runs" reads the same way "this co-trigger is on"
+    does.
+
+    THE `.unavailable` STATE IS A DELIBERATE EXCEPTION TO A DESIGN LAW, and the design is the one
+    making it. The law is "capability-driven UI: absent features are not shown, not disabled"
+    (docs/design/README.md); 2f overrides it for this one control, verbatim: "Directions a mode
+    can't use stay in place, struck through — the row never changes shape as you move down the
+    list." The reason is in the sentence: the mode rail is a column of fourteen rows the user
+    scrubs through, and a direction row that shrank from four arrows to two and back again as the
+    selection moved would make the panel jump under the pointer. So the slot is KEPT and the
+    unavailable arrow is struck through in it.
+
+    It is NOT `:disabled`, and that distinction is the whole of this state. A disabled control is
+    dimmed and says nothing about why; this one carries a mark that says "this mode does not run
+    that way", which is a fact about the mode rather than about the app's willingness. It is also
+    not interactive and not focusable — `Focusable` and `IsHitTestVisible` are set by the class
+    itself rather than left to the view, because a struck-through arrow that could still be tabbed
+    to and pressed would be a lie the view could forget to tell.
+
+    THE STRIKE IS A DIAGONAL, not the horizontal rule "struck through" usually means. Two of the
+    four marks ARE a horizontal line through the middle of the box — `IconArrowLeft` and
+    `IconArrowRight` — so a horizontal strike would land exactly on the shaft and be invisible on
+    half the row. The slash is drawn corner to corner, which crosses all four at an angle.
+  -->
+  <ControlTheme x:Key="DirectionSegment" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <!-- Square, and sized by its padding rather than by a Width: a 16px mark inside 7 either side
+         is 30, which is the row's own rhythm and not one of the six spacing steps, exactly as
+         PaddingButton is not. -->
+    <Setter Property="Padding" Value="7" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+
+    <Setter Property="Template">
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="Root"
+                ClipToBounds="False"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <Panel>
+            <ContentPresenter x:Name="Label"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+
+            <!-- The strike. Transparent until `.unavailable` paints it, so acquiring it costs no
+                 reflow and the slot is the same size either way — which is the point of the whole
+                 state. `Stretch="Fill"` maps the unit diagonal onto whatever the mark's box turns
+                 out to be, so the line is corner to corner at any scale; the negative margin takes
+                 it back over the Root's padding so it crosses the button rather than the icon. -->
+            <Path x:Name="Strike"
+                  Margin="-4"
+                  IsHitTestVisible="False"
+                  Stretch="Fill"
+                  Data="M 0,1 L 1,0"
+                  Stroke="Transparent"
+                  StrokeThickness="1" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- The chosen direction. `:not(:disabled)` for the reason ToggleSegment's carries it — Avalonia
+         walks BasedOn first — and `:not(.unavailable)` because the two could be written together by
+         a view model that had not yet cleared a selection the new mode cannot honour, and a struck
+         arrow wearing the full accent fill would be the worst of both statements. -->
+    <Style Selector="^.selected:not(:disabled):not(.unavailable)">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+    </Style>
+    <Style Selector="^.selected:not(:disabled):not(.unavailable):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
+
+    <!-- Struck through, in place. It keeps its box and its border — the row must not change shape —
+         and loses its face, its interactivity and its tab stop. The pointer states above need no
+         `:not(.unavailable)` qualifier: a control that is not hit-testable can never raise them. -->
+    <Style Selector="^.unavailable">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+    <Style Selector="^.unavailable /template/ Path#Strike">
+      <Setter Property="Stroke" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ONE SPEED BAR. The lighting tab's speed control is nine of these in a row with a mono
+    `Speed 6 / 9` beside it: "speed as segmented bars (accent-filled)" (docs/design/handoff.md:150,
+    and mockup 2f draws the readout).
+
+    A bar is filled when it is at or below the chosen speed, which is a fact about the whole row
+    rather than about one bar — so it arrives as the `.filled` class from the view model, and this
+    theme knows only "filled" and "not". It is a Button and not a ListBoxItem for that reason: the
+    control is not one-of-N (clicking bar 6 selects speeds 1..6), so a SelectingItemsControl would
+    have to fight its own selection model to draw it.
+
+    Unfilled is the INSET surface rather than a transparent one: the row has to read as a track
+    with a level in it even at speed 1, where eight of the nine bars are empty.
+  -->
+  <ControlTheme x:Key="SpeedBar" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <!-- A bar, not a button: it holds no content at all, so its size is its own and there is no
+         padding for a label to sit in. 10 x 18 is the mock's own proportion — a shape wide enough
+         to hit and tall enough to read as a level. -->
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.filled)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.filled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.filled)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+    </Style>
+
+    <!-- At or below the chosen speed. `:not(:disabled)` for the reason every accent state in this
+         file carries it: BaseButton's disabled face is applied first, and an unqualified class
+         would leave a dead control wearing a live accent. -->
+    <Style Selector="^.filled:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="^.filled:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectedRingBrush}" />
+    </Style>
   </ControlTheme>
 </ResourceDictionary>

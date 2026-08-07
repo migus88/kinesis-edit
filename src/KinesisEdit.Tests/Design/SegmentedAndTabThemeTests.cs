@@ -4,10 +4,12 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Tests.Headless;
+using StrikePath = Avalonia.Controls.Shapes.Path;
 
 namespace KinesisEdit.Tests.Design
 {
@@ -57,6 +59,8 @@ namespace KinesisEdit.Tests.Design
                 ("SegmentedControl", nameof(ListBox)),
                 ("SegmentedItem", nameof(ListBoxItem)),
                 ("ToggleSegment", nameof(Button)),
+                ("DirectionSegment", nameof(Button)),
+                ("SpeedBar", nameof(Button)),
                 ("TabStrip", nameof(TabStrip)),
                 ("TabStripItem", nameof(TabStripItem)),
                 ("ModeOption", nameof(Button))
@@ -166,6 +170,29 @@ namespace KinesisEdit.Tests.Design
                 { "ToggleSegment", "pressed", "SurfaceLineBrush" },
                 { "ToggleSegment", "selected", "AccentBrush" },
                 { "ToggleSegment", "disabled", "SurfaceInsetBrush" },
+
+                // One arrow of the lighting tab's direction row: the toggle's ramp, because "this
+                // is the direction the effect runs" is the same kind of statement "this co-trigger
+                // is on" is. `.unavailable` is its own state and is not a face — see the tests
+                // below, and the theme's header for why it is not `:disabled`.
+                { "DirectionSegment", "rest", "SurfaceBarBrush" },
+                { "DirectionSegment", "hover", "SurfaceRaisedBrush" },
+                { "DirectionSegment", "pressed", "SurfaceLineBrush" },
+                { "DirectionSegment", "selected", "AccentBrush" },
+                { "DirectionSegment", "disabled", "SurfaceInsetBrush" },
+
+                // `.unavailable` is deliberately NOT a row here: this matrix probes the middle of
+                // the face, and the strike runs corner to corner straight through it. Its face is
+                // asserted off-diagonal in AnUnavailableDirection_IsStruckThroughInPlace instead.
+
+                // One bar of the speed control. Unfilled is the INSET surface and not a transparent
+                // face: the row has to read as a track with a level in it at speed 1, where eight
+                // of the nine bars are empty.
+                { "SpeedBar", "rest", "SurfaceInsetBrush" },
+                { "SpeedBar", "hover", "SurfaceRaisedBrush" },
+                { "SpeedBar", "pressed", "SurfaceLineBrush" },
+                { "SpeedBar", "filled", "AccentBrush" },
+                { "SpeedBar", "disabled", "SurfaceInsetBrush" },
 
                 { "ModeOption", "rest", null },
                 { "ModeOption", "hover", "SurfaceKeySelectedBrush" },
@@ -497,6 +524,179 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public void AnUnavailableDirection_IsStruckThroughInPlace(string variantName)
+        {
+            // The design's own exception to "absent features are not shown, not disabled", stated
+            // verbatim in mockup 2f: "Directions a mode can't use stay in place, struck through —
+            // the row never changes shape as you move down the list." So the three things this has
+            // to prove are: the strike is drawn, the arrow is out of reach, and the SLOT IS THE
+            // SAME SIZE as an available one — which is the whole reason the state exists.
+            // Both are built at their NATURAL size — no Width or Height — so the "same slot" claim
+            // is the theme's answer and not the fixture's.
+            var variant = ToVariant(variantName);
+            var available = new Button { Theme = Theme("DirectionSegment", variant), Content = new Border { Width = 16, Height = 16 } };
+            var struck = new Button { Theme = Theme("DirectionSegment", variant), Content = new Border { Width = 16, Height = 16 } };
+
+            struck.Classes.Add("unavailable");
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { available, struck } };
+
+            using var host = ThemedHost.Show(row, variant, HostWidth, HostHeight);
+
+            Assert.Equal(available.Bounds.Size, struck.Bounds.Size);
+
+            Assert.Equal(
+                DesignTokens.Resolve("TextDisabledBrush", variant),
+                StrikeOf(struck).Stroke);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)StrikeOf(available).Stroke!).Color);
+
+            // The face goes with the interactivity — the slot is kept, the button is not. Probed
+            // off the diagonal: the strike crosses the middle of the box, which is why this state
+            // has no row in the face matrix.
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant), FaceOf(host, struck));
+
+            // Not interactive and not a tab stop — set by the class rather than left to the view,
+            // because an arrow that could still be tabbed to and pressed would be a lie the view
+            // could forget to tell. It is NOT `:disabled`: the strike says "this mode does not run
+            // that way", which is a fact about the mode and not about the app's willingness.
+            Assert.False(struck.Focusable);
+            Assert.False(struck.IsHitTestVisible);
+            Assert.True(struck.IsEnabled, "The struck arrow was disabled; the strike is the statement, not a dim face.");
+            Assert.False(struck.Focus(NavigationMethod.Tab), "A struck arrow took keyboard focus.");
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void AnUnavailableDirectionThatIsAlsoSelected_IsNeverDrawnAsTheChosenOne(string variantName)
+        {
+            // Contract 5. A view model that had not yet cleared a direction the newly picked mode
+            // cannot honour would write both classes, and an unqualified `.selected` would leave a
+            // struck arrow wearing the full accent fill — the worst of both statements.
+            var variant = ToVariant(variantName);
+            var button = SizedButton("DirectionSegment", variant);
+
+            button.Classes.Add("selected");
+            button.Classes.Add("unavailable");
+
+            using var host = ThemedHost.Show(button, variant, HostWidth, HostHeight);
+
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), StrikeOf(button).Stroke);
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant), FaceOf(host, button));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ARowOfSpeedBars_FillsUpToTheChosenLevelAndNoFurther(string variantName)
+        {
+            // "Speed as segmented bars (accent-filled)" (docs/design/handoff.md:150). The row's
+            // meaning is cumulative — bars at or below the chosen speed are filled — which is a
+            // fact about the row and arrives as a class per bar; the theme knows only "filled" and
+            // "not", and this is that pair drawn side by side at the glass.
+            var variant = ToVariant(variantName);
+            // At the theme's own size, not the probe size the other fixtures use: nine 120px
+            // buttons would not fit the host, and a bar IS its size — see the test below.
+            var bars = Enumerable.Range(0, 9)
+                .Select(_ => new Button { Theme = Theme("SpeedBar", variant) })
+                .ToArray();
+
+            for (var index = 0; index < 6; index++)
+            {
+                bars[index].Classes.Add("filled");
+            }
+
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 2,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            foreach (var bar in bars)
+            {
+                row.Children.Add(bar);
+            }
+
+            using var host = ThemedHost.Show(row, variant, HostWidth, HostHeight);
+
+            var canvas = DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant);
+
+            AssertClose(
+                Composite(DesignTokens.ResolveBrushColor("AccentBrush", variant), canvas),
+                FaceOf(host, bars[5]));
+            AssertClose(
+                Composite(DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant), canvas),
+                FaceOf(host, bars[6]));
+
+            // Every bar is the same size whether it is filled or not, or the row would jump as the
+            // speed changed.
+            Assert.All(bars, bar => Assert.Equal(bars[0].Bounds.Size, bar.Bounds.Size));
+        }
+
+        [AvaloniaFact]
+        public void ASpeedBar_IsABarRatherThanAButton()
+        {
+            // It holds no content at all, so the theme owns its size outright — a padding-sized
+            // button would collapse to nothing.
+            var bar = new Button { Theme = Theme("SpeedBar", ThemeVariant.Dark) };
+
+            using var host = ThemedHost.Show(bar, ThemeVariant.Dark, HostWidth, HostHeight);
+
+            Assert.Equal(10, bar.Bounds.Width);
+            Assert.Equal(18, bar.Bounds.Height);
+            Assert.Equal(default, bar.Padding);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void AModeRailRow_CarriesItsNameOverItsParameterSummary(string variantName)
+        {
+            // Mockup 2f writes every row as a pair — "Wave — spd · L/R" — which is what turns the
+            // rail from a list of names into the answer to "what will change if I pick this one".
+            // The second line is CONTENT, not a template part (a Button has one content slot), so
+            // the muted role is a descendant style in Styles/Editor.axaml; this is the pair of them
+            // working together on a real button.
+            var variant = ToVariant(variantName);
+            var name = new TextBlock { Text = "Wave" };
+            var summary = new TextBlock { Text = "spd · L/R", Classes = { "modeSummary" } };
+            var row = new Button
+            {
+                Classes = { "modeOption" },
+                Content = new StackPanel { Children = { name, summary } }
+            };
+
+            using var host = ThemedHost.Show(row, variant, HostWidth, HostHeight);
+
+            Assert.Same(DesignTokens.Resolve("ModeOption", variant), row.Theme);
+
+            Assert.True(
+                summary.Bounds.Height > 0 && name.Bounds.Height > 0,
+                "One of the two lines was not drawn at all.");
+            Assert.True(
+                summary.TranslatePoint(default, row)!.Value.Y > name.TranslatePoint(default, row)!.Value.Y,
+                "The parameter summary is not under the mode's name.");
+
+            // Muted rather than smaller: the type scale has no sans step below 11 — see the
+            // deviation in docs/app/design-system.md — so colour is what separates the two lines,
+            // and the weight step the row takes on selection belongs to the name alone.
+            Assert.Equal(DesignTokens.Resolve("TextMutedBrush", variant), summary.Foreground);
+            Assert.Equal(FontWeight.Normal, summary.FontWeight);
+
+            row.Classes.Add("selected");
+
+            // On the accent fill TextMuted is unreadable, so the summary joins the label colour that
+            // rides a solid accent face. It keeps its 400 against the name's 500.
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), summary.Foreground);
+            Assert.Equal(FontWeight.Medium, row.FontWeight);
+            Assert.Equal(FontWeight.Normal, summary.FontWeight);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public void ADisabledActiveTab_LosesItsUnderlineWithTheRestOfTheState(string variantName)
         {
             // The same hole in the other file, and the one the dim face cannot plug on its own: the
@@ -614,9 +814,9 @@ namespace KinesisEdit.Tests.Design
                 guarded++;
             }
 
-            // A guard that matched nothing would pass for the wrong reason. Two: the segment inside
-            // the trough, and the standalone toggle.
-            Assert.Equal(2, guarded);
+            // A guard that matched nothing would pass for the wrong reason. Four: the segment inside
+            // the trough, the standalone toggle, one direction arrow and one speed bar.
+            Assert.Equal(4, guarded);
         }
 
         [AvaloniaTheory]
@@ -701,7 +901,9 @@ namespace KinesisEdit.Tests.Design
             var strip = Tabs(ThemeVariant.Dark);
             var toggle = new Button { Theme = Theme("ToggleSegment", ThemeVariant.Dark) };
             var mode = new Button { Theme = Theme("ModeOption", ThemeVariant.Dark) };
-            var panel = new StackPanel { Children = { segmented, strip, toggle, mode } };
+            var direction = new Button { Theme = Theme("DirectionSegment", ThemeVariant.Dark) };
+            var speed = new Button { Theme = Theme("SpeedBar", ThemeVariant.Dark) };
+            var panel = new StackPanel { Children = { segmented, strip, toggle, mode, direction, speed } };
 
             using var host = ThemedHost.Show(panel, ThemeVariant.Dark, HostWidth, HostHeight);
 
@@ -728,23 +930,25 @@ namespace KinesisEdit.Tests.Design
 
                 Assert.DoesNotContain("PART_", markup, StringComparison.Ordinal);
 
-                // Every `/template/` here targets Border#Root or Border#Underline, both declared by
-                // the ControlTheme that selects them.
+                // Every `/template/` here targets Border#Root, Border#Underline or Path#Strike, all
+                // declared by the ControlTheme that selects them.
                 foreach (var selector in TemplateSelectorsIn(markup))
                 {
                     found++;
 
                     Assert.True(
                         selector.Contains("Border#Root", StringComparison.Ordinal)
-                            || selector.Contains("Border#Underline", StringComparison.Ordinal),
+                            || selector.Contains("Border#Underline", StringComparison.Ordinal)
+                            || selector.Contains("Path#Strike", StringComparison.Ordinal),
                         $"{path} reaches for '{selector}', which is not one of its own parts.");
                 }
             }
 
-            // A guard that matched nothing would pass for the wrong reason. Three: the two container
-            // themes reach for their own halo, and the tab additionally for its underline. The
+            // A guard that matched nothing would pass for the wrong reason. Four: the two container
+            // themes reach for their own halo, the tab additionally for its underline, and the
+            // direction arrow for the strike that is its `.unavailable` state. The other
             // button-shaped themes reach for nothing, because BaseButton already carries the halo.
-            Assert.Equal(3, found);
+            Assert.Equal(4, found);
         }
 
         private static IEnumerable<string> TemplateSelectorsIn(string markup)
@@ -858,6 +1062,12 @@ namespace KinesisEdit.Tests.Design
                 case "selected":
                     button.Classes.Add("selected");
                     break;
+                case "filled":
+                    button.Classes.Add("filled");
+                    break;
+                case "unavailable":
+                    button.Classes.Add("unavailable");
+                    break;
                 case "disabled":
                     button.IsEnabled = false;
                     break;
@@ -933,6 +1143,14 @@ namespace KinesisEdit.Tests.Design
             return tab.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Name == "Underline");
+        }
+
+        /// <summary>The <c>Path#Strike</c> an unavailable direction is crossed out with.</summary>
+        private static StrikePath StrikeOf(Control segment)
+        {
+            return segment.GetVisualDescendants()
+                .OfType<StrikePath>()
+                .Single(path => path.Name == "Strike");
         }
 
         /// <summary>

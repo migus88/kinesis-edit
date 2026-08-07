@@ -1,6 +1,8 @@
+using Avalonia.Headless.XUnit;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -10,17 +12,18 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The Lighting tab of specs/07-lighting.md §3/§4. Everything asserted here is a rule the
-    /// panel reads off Core — mode membership, the per-mode panel matrix, the firmware gates, the
-    /// zone key sets, the black-clears-the-key contract — so a Core change that moved one of them
-    /// shows up as a failure here rather than as a silently wrong editor.
+    /// The Lighting tab of specs/07-lighting.md §3/§4 as design mockup 2f redraws it. Everything
+    /// asserted here is a rule the panel reads off Core — mode membership, the per-mode parameter
+    /// set, the firmware gates, the zone key sets, the black-clears-the-key contract, the sampled
+    /// preview frame — so a Core change that moved one of them shows up as a failure here rather
+    /// than as a silently wrong editor.
     /// </summary>
     public sealed class LightingTabViewModelTests
     {
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeAppPreferencesStore _preferences = new();
 
-        [Fact]
+        [AvaloniaFact]
         public void IsSupported_ForTheFreestyleEdgeRgb_IsTrueAndForEveryOtherBoardFalse()
         {
             // Per-key RGB without an edge strip is exactly the board whose led file is the plain
@@ -33,21 +36,24 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(IsSupported(DeviceId.FreestyleEdge));
         }
 
-        [Fact]
-        public void Modes_ForCurrentFirmware_AreTheThirteenEffectsThenDisable()
+        [AvaloniaFact]
+        public void Modes_ForCurrentFirmware_AreTheThirteenEffectsThenOff()
         {
             var tab = CreateAttachedTab(CreateSnapshot(keyboardFirmware: "1.0.121", ledFirmware: "1.0.58"));
 
             Assert.Equal(14, tab.Modes.Count);
             Assert.Equal(LightingMode.Disabled, tab.Modes[^1].Mode);
-            Assert.Equal("Disable", tab.Modes[^1].Caption);
+            Assert.Equal(LightingModeCaptions.OffCaption, tab.Modes[^1].Caption);
             Assert.DoesNotContain(LightingMode.PitchBlack, tab.Modes.Select(mode => mode.Mode));
             Assert.DoesNotContain(LightingMode.FrozenWave, tab.Modes.Select(mode => mode.Mode));
             Assert.Contains(LightingMode.Ripple, tab.Modes.Select(mode => mode.Mode));
             Assert.Contains(LightingMode.Fireball, tab.Modes.Select(mode => mode.Mode));
+
+            // Mockup 2f omits Freestyle; §3's RGB menu offers it, and the catalog wins membership.
+            Assert.Contains(LightingMode.Freestyle, tab.Modes.Select(mode => mode.Mode));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Modes_BelowTheRippleAndFireballGate_OmitThoseTwo()
         {
             // specs/07-lighting.md §3: KBD ≥ 1.0.121 and LED ≥ 1.0.58.
@@ -58,7 +64,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.DoesNotContain(LightingMode.Fireball, tab.Modes.Select(mode => mode.Mode));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Modes_InDemoMode_AreAllOffered()
         {
             var tab = CreateAttachedTab(TestDevices.CreateSnapshot(
@@ -69,7 +75,34 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Contains(LightingMode.Fireball, tab.Modes.Select(mode => mode.Mode));
         }
 
-        [Theory]
+        [AvaloniaFact]
+        public void Modes_CarryTheDesignsCaptionsAndCoresSummaries()
+        {
+            var tab = CreateAttachedTab();
+
+            // The three the design renames — and nothing else in the app spells a mode name.
+            Assert.Equal(
+                LightingModeCaptions.SolidCaption,
+                tab.Modes.Single(mode => mode.Mode == LightingMode.Monochrome).Caption);
+            Assert.Equal(
+                LightingModeCaptions.OffCaption,
+                tab.Modes.Single(mode => mode.Mode == LightingMode.Disabled).Caption);
+            Assert.Equal(LightingModeCaptions.PitchBlackCaption, LightingModeCaptions.For(LightingMode.PitchBlack));
+
+            // Every other caption is still the catalog's §3 display name.
+            Assert.Equal(
+                LightingModeCatalog.Find(LightingMode.Wave).DisplayName,
+                tab.Modes.Single(mode => mode.Mode == LightingMode.Wave).Caption);
+
+            // And every row's second line is Core's, never the app's reading of the §3 table.
+            Assert.All(
+                tab.Modes,
+                mode => Assert.Equal(
+                    LightingModeParameters.For(DeviceId.FreestyleEdgeRgb, mode.Mode, true).Summary,
+                    mode.Summary));
+        }
+
+        [AvaloniaTheory]
         [InlineData(LightingMode.Disabled, false, false, false, false, false)]
         [InlineData(LightingMode.Freestyle, true, false, false, false, true)]
         [InlineData(LightingMode.Monochrome, true, false, false, false, false)]
@@ -84,79 +117,107 @@ namespace KinesisEdit.Tests.ViewModels
         [InlineData(LightingMode.Loop, true, true, true, true, false)]
         [InlineData(LightingMode.Pulse, false, false, true, false, false)]
         [InlineData(LightingMode.Rain, true, true, true, false, false)]
-        public void Panels_ForEachMode_MatchTheSpecTable(
+        public void Parameters_ForEachMode_MatchTheSpecTable(
             LightingMode mode,
-            bool showsEffectColor,
-            bool showsBaseColor,
-            bool showsSpeed,
-            bool showsDirection,
-            bool showsPerKeyColors)
+            bool acceptsEffectColor,
+            bool acceptsBaseColor,
+            bool acceptsSpeed,
+            bool acceptsDirection,
+            bool hasPerKeyColors)
         {
             // The §3 "Which parameter panels each mode shows" table, with the Fireball row's
-            // "no direction UI on RGB" already applied.
-            var panels = LightingPanelVisibility.For(
-                DeviceId.FreestyleEdgeRgb,
-                mode,
-                isLayerCustomizationAvailable: true);
-
-            Assert.Equal(showsEffectColor, panels.ShowsEffectColor);
-            Assert.Equal(showsBaseColor, panels.ShowsBaseColor);
-            Assert.Equal(showsSpeed, panels.ShowsSpeed);
-            Assert.Equal(showsDirection, panels.ShowsDirection);
-            Assert.Equal(showsPerKeyColors, panels.ShowsPerKeyColors);
-            Assert.Equal(showsPerKeyColors, panels.ShowsZones);
-            Assert.Equal(showsPerKeyColors, panels.ShowsResetAll);
-        }
-
-        [Fact]
-        public void Panels_BelowTheLayerCustomizationGate_HideTheBaseColour()
-        {
-            var gated = LightingPanelVisibility.For(
-                DeviceId.FreestyleEdgeRgb,
-                LightingMode.Reactive,
-                isLayerCustomizationAvailable: false);
-
-            Assert.True(gated.ShowsEffectColor);
-            Assert.False(gated.ShowsBaseColor);
-        }
-
-        [Fact]
-        public void Directions_ForRebound_AreRelabelledHorizontalAndVertical()
-        {
+            // "no direction UI on RGB" already applied — asked of the tab, so that this asserts the
+            // panel routes through Core rather than that Core is right about itself.
             var tab = CreateAttachedTab();
 
-            SelectMode(tab, LightingMode.Rebound);
+            SelectMode(tab, mode);
 
-            Assert.Equal(
-                new[] { LightingDirection.Left, LightingDirection.Up },
-                tab.Directions.Select(direction => direction.Direction));
-            Assert.Equal(
-                new[] { LightingDirectionViewModel.HorizontalCaption, LightingDirectionViewModel.VerticalCaption },
-                tab.Directions.Select(direction => direction.Caption));
+            Assert.Equal(acceptsEffectColor, tab.Parameters.AcceptsEffectColor);
+            Assert.Equal(acceptsBaseColor, tab.Parameters.AcceptsBaseColor);
+            Assert.Equal(acceptsSpeed, tab.Parameters.AcceptsSpeed);
+            Assert.Equal(acceptsDirection, tab.Parameters.AcceptsDirection);
+            Assert.Equal(hasPerKeyColors, tab.Parameters.HasPerKeyColors);
+            Assert.Equal(acceptsEffectColor, tab.EffectColor.IsVisible);
+            Assert.Equal(acceptsBaseColor, tab.BaseColor.IsVisible);
+
+            // ...and the paint controls are NOT among the things the mode decides: the colours they
+            // manage are the layer's, so every one of them is reachable in every mode.
+            Assert.True(tab.ApplyZoneCommand.CanExecute(tab.Zones[0]));
+            Assert.True(tab.ResetAllCommand.CanExecute(null));
+            Assert.True(tab.PaintSelectionCommand.CanExecute(null));
+            Assert.True(tab.ClearKeyColorsCommand.CanExecute(null));
         }
 
-        [Fact]
-        public void Directions_ForWave_AreTheFourArrows()
+        [AvaloniaFact]
+        public void Parameters_BelowTheLayerCustomizationGate_HideTheBaseColour()
+        {
+            var tab = CreateAttachedTab(CreateSnapshot(ledFirmware: "1.0.43"));
+
+            SelectMode(tab, LightingMode.Reactive);
+
+            Assert.True(tab.Parameters.AcceptsEffectColor);
+            Assert.False(tab.Parameters.AcceptsBaseColor);
+            Assert.False(tab.BaseColor.IsVisible);
+        }
+
+        [AvaloniaFact]
+        public void Directions_AreAlwaysTheFourArrows_WithTheModesOwnMarkedAvailable()
         {
             var tab = CreateAttachedTab();
 
             SelectMode(tab, LightingMode.Wave);
 
-            Assert.Equal(new[] { "Down", "Left", "Up", "Right" }, tab.Directions.Select(entry => entry.Caption));
+            Assert.Equal(
+                new[] { "Down", "Left", "Up", "Right" },
+                tab.Directions.Select(entry => entry.Caption));
+            Assert.All(tab.Directions, entry => Assert.True(entry.IsAvailable));
+
+            SelectMode(tab, LightingMode.Loop);
+
+            Assert.Equal(4, tab.Directions.Count);
+            Assert.All(tab.Directions, entry => Assert.True(entry.IsAvailable));
         }
 
-        [Fact]
-        public void Directions_ForFireballOnTheRgb_AreEmpty()
+        [AvaloniaFact]
+        public void Directions_ForRebound_KeepFourSlotsAndRelabelTheTwoItOffers()
         {
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Rebound);
+
+            Assert.Equal(4, tab.Directions.Count);
+            Assert.Equal(
+                new[]
+                {
+                    LightingDirection.Down,
+                    LightingDirection.Left,
+                    LightingDirection.Up,
+                    LightingDirection.Right
+                },
+                tab.Directions.Select(entry => entry.Direction));
+            Assert.Equal(
+                new[] { "Down", LightingDirectionViewModel.HorizontalCaption, LightingDirectionViewModel.VerticalCaption, "Right" },
+                tab.Directions.Select(entry => entry.Caption));
+            Assert.Equal(
+                new[] { false, true, true, false },
+                tab.Directions.Select(entry => entry.IsAvailable));
+        }
+
+        [AvaloniaFact]
+        public void Directions_ForFireballOnTheRgb_AreAllFourAndNoneAvailable()
+        {
+            // The row never changes shape (mockup 2f); a mode with no direction at all is four
+            // struck-through arrows, not an empty gap.
             var tab = CreateAttachedTab(CreateSnapshot(keyboardFirmware: "1.0.121", ledFirmware: "1.0.58"));
 
             SelectMode(tab, LightingMode.Fireball);
 
-            Assert.Empty(tab.Directions);
-            Assert.False(tab.Panels.ShowsDirection);
+            Assert.Equal(4, tab.Directions.Count);
+            Assert.All(tab.Directions, entry => Assert.False(entry.IsAvailable));
+            Assert.False(tab.Parameters.AcceptsDirection);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectDirectionCommand_WritesThroughToTheLayer()
         {
             var lighting = new LightingModel();
@@ -169,7 +230,26 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(tab.Directions.Single(entry => entry.Direction == LightingDirection.Right).IsSelected);
         }
 
-        [Fact]
+        [AvaloniaFact]
+        public void SelectDirectionCommand_ForAnArrowTheModeCannotUse_IsANoOp()
+        {
+            var lighting = new LightingModel();
+            var tab = CreateAttachedTab(lighting: lighting);
+
+            SelectMode(tab, LightingMode.Rebound);
+
+            var struckThrough = tab.Directions.Single(entry => entry.Direction == LightingDirection.Right);
+            var changes = 0;
+
+            tab.ModelChanged += (_, _) => changes++;
+            tab.SelectDirectionCommand.Execute(struckThrough);
+
+            Assert.Equal(LightingDirection.Left, lighting.TopLayer.Direction);
+            Assert.False(struckThrough.IsSelected);
+            Assert.Equal(0, changes);
+        }
+
+        [AvaloniaFact]
         public void SelectMode_WithADirectionTheModeRejects_NormalisesItToTheDefault()
         {
             var lighting = new LightingModel();
@@ -185,7 +265,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(LightingDirection.Left, lighting.TopLayer.Direction);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Speed_IsClampedAndWrittenThrough()
         {
             var lighting = new LightingModel();
@@ -203,7 +283,42 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(LayerLightingState.MaximumSpeed, lighting.TopLayer.Speed);
         }
 
-        [Fact]
+        [AvaloniaFact]
+        public void SpeedControl_IsNineBarsFilledToTheChosenSpeed_WithAMonoReadout()
+        {
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Wave);
+
+            Assert.Equal(9, tab.SpeedControl.Segments.Count);
+            Assert.Equal(
+                Enumerable.Range(LayerLightingState.MinimumSpeed, 9),
+                tab.SpeedControl.Segments.Select(segment => segment.Speed));
+
+            tab.SetSpeedCommand.Execute(6);
+
+            Assert.Equal(6, tab.Speed);
+            Assert.Equal("Speed 6 / 9", tab.SpeedControl.Readout);
+            Assert.Equal(6, tab.SpeedControl.Segments.Count(segment => segment.IsFilled));
+
+            // The bars are the same clamp as the property, because they are the same property.
+            tab.SetSpeedCommand.Execute(99);
+
+            Assert.Equal(LayerLightingState.MaximumSpeed, tab.SpeedControl.Speed);
+            Assert.Equal("Speed 9 / 9", tab.SpeedControl.Readout);
+        }
+
+        [AvaloniaFact]
+        public void SpeedControl_InAModeWithoutASpeed_IsUnavailable()
+        {
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Monochrome);
+
+            Assert.False(tab.SetSpeedCommand.CanExecute(4));
+        }
+
+        [AvaloniaFact]
         public void Picker_WhileTheEffectSwatchIsSelected_WritesTheEffectColour()
         {
             var lighting = new LightingModel();
@@ -216,7 +331,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("#FF8000", tab.EffectColor.ColorHex);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectColorSlotCommand_ForTheBaseSwatch_PointsThePickerAtIt()
         {
             var lighting = new LightingModel();
@@ -237,7 +352,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(LedColor.DefaultEffectColor, lighting.TopLayer.EffectColor);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectColorSlotCommand_ForAHiddenSwatch_IsRefused()
         {
             var tab = CreateAttachedTab();
@@ -250,7 +365,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(tab.EffectColor.IsSelected);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectLayerCommand_ForTheFnLayer_ReReadsEveryControlFromIt()
         {
             // The two layers are fully independent (specs/07-lighting.md §4).
@@ -266,7 +381,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(tab.Layers[1], tab.SelectedLayer);
             Assert.Equal(LightingMode.Disabled, tab.SelectedMode);
             Assert.Equal(LayerLightingState.DefaultSpeed, tab.Speed);
-            Assert.Empty(tab.Directions);
+            Assert.False(tab.Parameters.AcceptsDirection);
 
             SelectMode(tab, LightingMode.Monochrome);
             tab.Picker.Color = new LedColor(1, 2, 3);
@@ -282,7 +397,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(3, tab.Speed);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Layers_BelowTheLayerCustomizationGate_LeaveTheFnLayerUnreachable()
         {
             var tab = CreateAttachedTab(CreateSnapshot(ledFirmware: "1.0.43"));
@@ -297,29 +412,87 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(tab.Layers[0], tab.SelectedLayer);
         }
 
-        [Fact]
-        public void AssignKeyColorCommand_PaintsTheKeyAndItsStrip()
+        [AvaloniaFact]
+        public void SelectKeyCommand_TogglesAKeyInAndOutOfThePaintSelection()
         {
-            var lighting = new LightingModel();
-            var boards = BuildBoards(lighting);
+            var boards = BuildBoards(new LightingModel());
             var tab = CreateTab();
 
-            tab.Attach(lighting, boards);
-            SelectMode(tab, LightingMode.Freestyle);
+            tab.Attach(new LightingModel(), boards);
 
-            tab.Picker.Color = new LedColor(0, 128, 255);
-            tab.AssignKeyColorCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
 
-            Assert.Equal(
-                new LedColor(0, 128, 255),
-                lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
-            Assert.Equal("#0080FF", boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ColorOverlayHex);
+            Assert.Equal(LightingPaintSelection.CaptionPrefix + LightingPaintSelection.EmptyCaptionSuffix, tab.Selection.Caption);
+
+            tab.SelectKeyCommand.Execute(key);
+
+            Assert.True(key.IsLightingSelected);
+            Assert.Equal(1, tab.Selection.Count);
+            Assert.Equal(LightingPaintSelection.CaptionPrefix + LightingPaintSelection.SingularCaptionSuffix, tab.Selection.Caption);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+
+            Assert.Equal("Paint · 2 keys selected", tab.Selection.Caption);
+
+            tab.SelectKeyCommand.Execute(key);
+
+            Assert.False(key.IsLightingSelected);
+            Assert.Equal(1, tab.Selection.Count);
         }
 
-        [Fact]
-        public void AssignKeyColorCommand_WithBlack_ErasesTheKeyRatherThanStoringIt()
+        [AvaloniaFact]
+        public void ExtendSelectionCommand_SelectsTheRunOfKeysBetweenTheAnchorAndTheTarget()
         {
-            // SetKeyColor's contract (specs/07-lighting.md §2.1): black is "no colour".
+            var boards = BuildBoards(new LightingModel());
+            var tab = CreateTab();
+
+            tab.Attach(new LightingModel(), boards);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[3]);
+            tab.ExtendSelectionCommand.Execute(boards[0].Keys[6]);
+
+            // "Between" is over the layer's key order, which is the order the caps are built in.
+            Assert.Equal(4, tab.Selection.Count);
+            Assert.All(
+                boards[0].Keys.Skip(3).Take(4),
+                key => Assert.True(key.IsLightingSelected));
+            Assert.False(boards[0].Keys[7].IsLightingSelected);
+
+            // Extending never removes: a mis-aimed shift-click costs one more click, not a restart.
+            tab.ExtendSelectionCommand.Execute(boards[0].Keys[8]);
+
+            Assert.Equal(6, tab.Selection.Count);
+        }
+
+        [AvaloniaFact]
+        public void ExtendSelectionCommand_WithNoAnchorYet_BehavesLikeAPlainClick()
+        {
+            var boards = BuildBoards(new LightingModel());
+            var tab = CreateTab();
+
+            tab.Attach(new LightingModel(), boards);
+            tab.ExtendSelectionCommand.Execute(boards[0].Keys[5]);
+
+            Assert.Equal(1, tab.Selection.Count);
+            Assert.True(boards[0].Keys[5].IsLightingSelected);
+        }
+
+        [AvaloniaFact]
+        public void SelectAllKeysCommand_SelectsEveryKeyOfTheShownLayer()
+        {
+            var boards = BuildBoards(new LightingModel());
+            var tab = CreateTab();
+
+            tab.Attach(new LightingModel(), boards);
+            tab.SelectAllKeysCommand.Execute(null);
+
+            Assert.Equal(boards[0].Keys.Count, tab.Selection.Count);
+            Assert.All(boards[0].Keys, key => Assert.True(key.IsLightingSelected));
+        }
+
+        [AvaloniaFact]
+        public void Picker_WithASelection_PaintsEverySelectedKeyAndAnnouncesItOnce()
+        {
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
@@ -327,19 +500,92 @@ namespace KinesisEdit.Tests.ViewModels
             tab.Attach(lighting, boards);
             SelectMode(tab, LightingMode.Freestyle);
 
-            tab.Picker.Color = new LedColor(255, 0, 0);
-            tab.AssignKeyColorCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
 
-            tab.Picker.Color = LedColor.Black;
-            tab.AssignKeyColorCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            var changes = 0;
+
+            tab.ModelChanged += (_, _) => changes++;
+            tab.Picker.Color = new LedColor(0, 128, 255);
+
+            Assert.Equal(2, lighting.TopLayer.KeyColors.Count);
+            Assert.Equal(new LedColor(0, 128, 255), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
+            Assert.Equal(new LedColor(0, 128, 255), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("2").Code]);
+            Assert.Equal("#0080FF", boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            Assert.Equal(1, changes);
+        }
+
+        [AvaloniaFact]
+        public void PaintSelectionCommand_ReAppliesThePickersColourToASelectionMadeAfterwards()
+        {
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab();
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Freestyle);
+
+            tab.Picker.Color = new LedColor(9, 9, 9);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.PaintSelectionCommand.Execute(null);
+
+            Assert.Equal(new LedColor(9, 9, 9), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
+        }
+
+        [AvaloniaFact]
+        public void ClearKeyColorsCommand_TurnsTheSelectedKeysOffRatherThanBlack()
+        {
+            // SetKeyColor's contract (specs/07-lighting.md §2.1): black is "no colour", so Clear
+            // goes through it rather than inventing a second erase path — and the cap goes hatched.
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab();
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Freestyle);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.Picker.Color = new LedColor(255, 0, 0);
+
+            Assert.NotEmpty(lighting.TopLayer.KeyColors);
+
+            tab.ClearKeyColorsCommand.Execute(null);
 
             Assert.Empty(lighting.TopLayer.KeyColors);
-            Assert.Null(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ColorOverlayHex);
+            Assert.False(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].HasPaintColor);
+            Assert.Null(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+
+            // The keys stay selected: Clear erases colour, it does not empty the selection.
+            Assert.Equal(1, tab.Selection.Count);
         }
 
-        [Fact]
-        public void AssignKeyColorCommand_InAModeWithoutPerKeyColours_IsUnavailable()
+        [AvaloniaFact]
+        public void Selection_SurvivesAModeChangeAndIsEmptiedByALayerChange()
         {
+            var tab = CreateAttachedTab();
+            var boards = tab.Board!;
+
+            tab.SelectKeyCommand.Execute(boards.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            SelectMode(tab, LightingMode.Wave);
+
+            // Picking a mode is how the user finds out what these keys look like under it.
+            Assert.Equal(1, tab.Selection.Count);
+            Assert.True(boards.Keys[TestLayouts.RgbDigitOneKeyIndex].IsLightingSelected);
+
+            tab.SelectLayerCommand.Execute(tab.Layers[1]);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.False(boards.Keys[TestLayouts.RgbDigitOneKeyIndex].IsLightingSelected);
+        }
+
+        [AvaloniaFact]
+        public void Painting_InAPaintIgnoringMode_IsReachableAndWritesTheColours()
+        {
+            // Mockup 2f draws "Paint · 2 keys selected", "Select all" and "Clear" on a board running
+            // WAVE — a mode that ignores paint — beside the sentence "the colors are still on file".
+            // The paint layer belongs to the layer, not to the effect over it, so the controls that
+            // manage it are reachable whatever is selected in the rail.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
@@ -347,14 +593,79 @@ namespace KinesisEdit.Tests.ViewModels
             tab.Attach(lighting, boards);
             SelectMode(tab, LightingMode.Wave);
 
-            Assert.False(tab.AssignKeyColorCommand.CanExecute(boards[0].Keys[0]));
+            Assert.False(tab.Parameters.HasPerKeyColors);
 
-            tab.AssignKeyColorCommand.Execute(boards[0].Keys[0]);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(1, tab.Selection.Count);
+            Assert.True(tab.PaintSelectionCommand.CanExecute(null));
+            Assert.True(tab.ClearKeyColorsCommand.CanExecute(null));
+
+            tab.Picker.Color = new LedColor(1, 2, 3);
+            tab.PaintSelectionCommand.Execute(null);
+
+            Assert.Equal(new LedColor(1, 2, 3), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
+
+            // ...and the mode still decides how that colour is DRAWN, which is the question the
+            // controls' reachability is not: Wave shows it at 40% under the travelling effect.
+            tab.AdvancePreview(0.1);
+
+            Assert.Equal("#010203", boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            Assert.Equal(
+                LightingEffectFrame.PaintOpacityDimmed,
+                boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintOpacity);
+
+            // Clear reaches it too, so a colour painted under a paint-ignoring mode is not stranded.
+            tab.ClearKeyColorsCommand.Execute(null);
 
             Assert.Empty(lighting.TopLayer.KeyColors);
         }
 
-        [Fact]
+        [AvaloniaFact]
+        public void ColoursPaintedUnderAPaintIgnoringMode_AreOnTheLayer_AndSurviveTheRoundTrip()
+        {
+            // "The colors are still on file", mechanically. The per-key map is the LAYER's state, so
+            // a colour painted while Wave is running is written to led<n>.txt as soon as the layer's
+            // mode is one whose grammar carries per-key lines (§2.2) — no repainting, no second
+            // gesture. Under Wave itself the file has nowhere to put them: its grammar is
+            // `[wave]>[spdN][dirX]` and nothing else, which is why this test crosses back.
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab(TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                VDriveConnectionStatus.NotDetected));
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Wave);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+            tab.Picker.Color = new LedColor(87, 196, 216);
+
+            var painted = new Dictionary<int, LedColor>(lighting.TopLayer.KeyColors);
+
+            Assert.Equal(2, painted.Count);
+
+            var underWave = LedFileParser.ParseRgb(LedFileSerializer.SerializeRgb(lighting));
+
+            Assert.Equal(LightingMode.Wave, underWave.TopLayer.Mode);
+            Assert.Empty(underWave.TopLayer.KeyColors);
+
+            // Back to a mode whose file body IS the per-key lines, without touching a colour: the
+            // two keys painted under Wave are what gets written.
+            SelectMode(tab, LightingMode.Freestyle);
+
+            var reloaded = LedFileParser.ParseRgb(LedFileSerializer.SerializeRgb(lighting));
+
+            Assert.Equal(LightingMode.Freestyle, reloaded.TopLayer.Mode);
+            Assert.Equal(painted.Count, reloaded.TopLayer.KeyColors.Count);
+            Assert.All(painted, entry => Assert.Equal(entry.Value, reloaded.TopLayer.KeyColors[entry.Key]));
+            Assert.Equal(
+                new LedColor(87, 196, 216),
+                reloaded.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
+        }
+
+        [AvaloniaFact]
         public void Zones_ForTheFreestyleEdgeRgb_AreTheEightOfTheSpec()
         {
             var tab = CreateAttachedTab();
@@ -364,7 +675,7 @@ namespace KinesisEdit.Tests.ViewModels
                 tab.Zones.Select(zone => zone.Caption));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ApplyZoneCommand_PaintsEveryKeyCodeOfTheZone()
         {
             var lighting = new LightingModel();
@@ -383,7 +694,7 @@ namespace KinesisEdit.Tests.ViewModels
                 keyCode => Assert.Equal(new LedColor(12, 34, 56), lighting.TopLayer.KeyColors[keyCode]));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ApplyZoneCommand_OnTheFnLayer_PaintsTheSamePhysicalPositions()
         {
             // Zone membership is authored against the top layer; on the Fn layer the same
@@ -417,7 +728,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(lighting.TopLayer.KeyColors);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task ResetAllCommand_WhenConfirmed_ErasesEveryKeyColour()
         {
             _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
@@ -439,7 +750,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(lighting.TopLayer.KeyColors);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task ResetAllCommand_WhenDeclined_ChangesNothing()
         {
             _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
@@ -455,21 +766,237 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(4, lighting.TopLayer.KeyColors.Count);
         }
 
-        [Fact]
-        public async Task ResetAllCommand_InAModeWithoutPerKeyColours_IsUnavailable()
+        [AvaloniaFact]
+        public async Task ResetAllCommand_InAPaintIgnoringMode_StillErasesTheLayersColours()
         {
-            var tab = CreateAttachedTab();
+            // "Reset All" manages the same per-key map the paint row does, so it is reachable under
+            // the same rule — and it has to be, because the colours it erases are exactly the ones
+            // still showing at 40% under an effect that does not read them.
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
+
+            var lighting = new LightingModel();
+            var tab = CreateAttachedTab(lighting: lighting);
+
+            SelectMode(tab, LightingMode.Freestyle);
+            tab.ApplyZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
 
             SelectMode(tab, LightingMode.Spectrum);
 
-            Assert.False(tab.ResetAllCommand.CanExecute(null));
+            Assert.True(tab.ResetAllCommand.CanExecute(null));
+            Assert.NotEmpty(lighting.TopLayer.KeyColors);
 
             await tab.ResetAllCommand.ExecuteAsync(null);
 
-            Assert.Empty(_notifications.MessageBoxes);
+            Assert.Single(_notifications.MessageBoxes);
+            Assert.Empty(lighting.TopLayer.KeyColors);
         }
 
-        [Fact]
+        [AvaloniaFact]
+        public void AdvancePreview_PushesTheSampledFrameOntoTheCaps()
+        {
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Wave);
+            tab.AdvancePreview(0.2);
+
+            var board = tab.Board!;
+
+            // Wave lights the board, so something is lit — and a key the effect does not reach
+            // this frame carries no colour at all rather than a black one.
+            Assert.Contains(board.Keys, key => key.HasEffectColor);
+            Assert.All(
+                board.Keys.Where(key => !key.HasEffectColor),
+                key => Assert.Null(key.EffectColorHex));
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_ForTheSameElapsedTime_DrawsTheSameFrame()
+        {
+            // The sampler is deterministic: no clock, no Random, no state carried between calls.
+            var first = CreateAttachedTab();
+            var second = CreateAttachedTab();
+
+            SelectMode(first, LightingMode.Starlight);
+            SelectMode(second, LightingMode.Starlight);
+
+            first.AdvancePreview(0.4);
+            first.AdvancePreview(0.4);
+            second.AdvancePreview(0.4);
+            second.AdvancePreview(0.4);
+
+            Assert.Equal(
+                first.Board!.Keys.Select(key => key.EffectColorHex),
+                second.Board!.Keys.Select(key => key.EffectColorHex));
+            Assert.Equal(
+                first.Board!.Keys.Select(key => key.EffectIntensity),
+                second.Board!.Keys.Select(key => key.EffectIntensity));
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_UnderAPaintIgnoringMode_DimsThePaintLayerToFortyPercent()
+        {
+            // Mockup 2f, verbatim: "Wave ignores painted colors, so the paint layer is shown at 40%
+            // under the effect — the colors are still on file."
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Wave);
+            tab.AdvancePreview(0.1);
+
+            Assert.All(
+                tab.Board!.Keys,
+                key => Assert.Equal(LightingEffectFrame.PaintOpacityDimmed, key.PaintOpacity));
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_UnderAPaintDirectMode_DrawsThePaintLayerInFull()
+        {
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Freestyle);
+            tab.AdvancePreview(0.1);
+
+            Assert.True(tab.Parameters.RendersPaintDirectly);
+            Assert.All(
+                tab.Board!.Keys,
+                key => Assert.Equal(LightingEffectFrame.PaintOpacityDirect, key.PaintOpacity));
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_UnderAPaintIgnoringMode_PutsThePaintOverTheEffectOnAPaintedKeyOnly()
+        {
+            // Which SIDE of the effect the paint is composited on is how the 40% survives a mode
+            // that lights every key at intensity 1.0 — Wave, Solid and Spectrum all do, and the
+            // paint drawn under them would be covered outright. It is a per-key answer: an
+            // unpainted cap has nothing to reveal, so its effect stays at full strength.
+            var tab = CreateAttachedTab();
+            var painted = tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            SelectMode(tab, LightingMode.Wave);
+
+            tab.SelectKeyCommand.Execute(painted);
+            tab.Picker.Color = new LedColor(0, 0, 255);
+            tab.AdvancePreview(0.1);
+
+            Assert.True(painted.ShowsPaintOverEffect);
+            Assert.False(painted.ShowsPaintUnderEffect);
+            Assert.All(
+                tab.Board!.Keys.Where(key => !key.HasPaintColor),
+                key =>
+                {
+                    Assert.False(key.ShowsPaintOverEffect);
+                    Assert.False(key.ShowsPaintUnderEffect);
+                });
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_UnderBreathe_KeepsThePaintUnderTheEffect_AndStillVariesOverTime()
+        {
+            // The paint-direct half, unchanged: Breathe's own pulse IS the effect layer modulating
+            // the painted colour, so the paint stays under it and the intensity keeps moving. A fix
+            // that dimmed the effect on every painted key would flatten this into a constant wash.
+            var tab = CreateAttachedTab();
+            var painted = tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            SelectMode(tab, LightingMode.Breathe);
+
+            tab.SelectKeyCommand.Execute(painted);
+            tab.Picker.Color = new LedColor(0, 0, 255);
+
+            var intensities = new List<double>();
+
+            for (var frame = 0; frame < 8; frame++)
+            {
+                tab.AdvancePreview(0.25);
+
+                intensities.Add(painted.EffectIntensity);
+            }
+
+            Assert.True(painted.ShowsPaintUnderEffect);
+            Assert.False(painted.ShowsPaintOverEffect);
+            Assert.Equal(LightingEffectFrame.PaintOpacityDirect, painted.PaintOpacity);
+            Assert.True(intensities.Distinct().Count() > 1, "Breathe stopped breathing on a painted key.");
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_UnderReduceMotion_HoldsTheBoardOnTheFirstFrame()
+        {
+            var motion = CreateMotionSettings(reduceMotion: true);
+            var tab = CreateAttachedTab(motionSettings: motion);
+            var atZero = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Wave);
+            SelectMode(atZero, LightingMode.Wave);
+
+            atZero.AdvancePreview(0.0);
+
+            tab.AdvancePreview(5.0);
+            tab.AdvancePreview(5.0);
+
+            Assert.False(tab.IsPreviewAnimating);
+
+            // Frozen is a held frame, not a dark board: the point of this screen is to show what
+            // the mode looks like, so an all-unlit board would pass this comparison vacuously.
+            Assert.Contains(tab.Board!.Keys, key => key.HasEffectColor);
+            Assert.Equal(
+                atZero.Board!.Keys.Select(key => key.EffectColorHex),
+                tab.Board!.Keys.Select(key => key.EffectColorHex));
+        }
+
+        [AvaloniaFact]
+        public void AdvancePreview_WhenReduceMotionIsTurnedOffMidRun_ResumesAnimating()
+        {
+            // Since issue #96 reduce-motion is a live preference with no change notification, so
+            // the tab re-reads it every frame; this is the case that proves it.
+            var motion = CreateMotionSettings(reduceMotion: true);
+            var tab = CreateAttachedTab(motionSettings: motion);
+
+            SelectMode(tab, LightingMode.Wave);
+            tab.AdvancePreview(5.0);
+
+            var frozen = tab.Board!.Keys.Select(key => key.EffectColorHex).ToList();
+
+            motion.ReduceMotion = false;
+
+            tab.AdvancePreview(0.5);
+
+            Assert.True(tab.IsPreviewAnimating);
+            Assert.NotEqual(frozen, tab.Board!.Keys.Select(key => key.EffectColorHex).ToList());
+        }
+
+        [AvaloniaFact]
+        public void BoardHeader_NamesTheModeAndWhetherItIsLive()
+        {
+            var motion = CreateMotionSettings(reduceMotion: false);
+            var tab = CreateAttachedTab(motionSettings: motion);
+
+            SelectMode(tab, LightingMode.Wave);
+            tab.AdvancePreview(0.1);
+
+            Assert.Equal(tab.ModeCaption + LightingTabViewModel.LivePreviewSuffix, tab.BoardHeader);
+            Assert.Equal(LightingModeCatalog.Find(LightingMode.Wave).DisplayName, tab.ModeCaption);
+
+            motion.ReduceMotion = true;
+
+            tab.AdvancePreview(0.1);
+
+            Assert.Equal(tab.ModeCaption + LightingTabViewModel.FrozenPreviewSuffix, tab.BoardHeader);
+        }
+
+        [AvaloniaFact]
+        public void TheAppLayer_HoldsNoSecondCopyOfThePerModeParameterTable()
+        {
+            // LightingPanelVisibility was that copy and is gone; LightingModeParameters subsumed
+            // it. Nothing in the app assembly may restate a lighting rule.
+            var appTypes = typeof(LightingTabViewModel).Assembly
+                .GetTypes()
+                .Select(type => type.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("LightingPanelVisibility", appTypes);
+            Assert.IsType<LightingModeParameters>(CreateAttachedTab().Parameters);
+        }
+
+        [AvaloniaFact]
         public void Attach_WithoutALightingModel_FallsBackToAnInMemoryOne()
         {
             var tab = CreateTab(TestDevices.CreateSnapshot(
@@ -486,7 +1013,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(LightingMode.Pulse, tab.Layers[0].State.Mode);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Attach_ForADeviceThePanelCannotEdit_DoesNothing()
         {
             var tab = new LightingTabViewModel(
@@ -499,9 +1026,12 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(tab.IsAvailable);
             Assert.Empty(tab.Layers);
             Assert.Null(tab.SelectedLayer);
+
+            // And its preview is inert rather than throwing at whatever the view's timer does.
+            tab.AdvancePreview(0.1);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void EveryEdit_SerialisedAndReparsed_SurvivesTheRoundTrip()
         {
             // The acceptance criterion: what the panel writes into the model has to be expressible
@@ -528,8 +1058,8 @@ namespace KinesisEdit.Tests.ViewModels
             tab.SelectLayerCommand.Execute(tab.Layers[1]);
             SelectMode(tab, LightingMode.Breathe);
             tab.Speed = 2;
+            tab.SelectKeyCommand.Execute(boards[1].Keys[TestLayouts.RgbDigitOneKeyIndex]);
             tab.Picker.Color = new LedColor(10, 200, 30);
-            tab.AssignKeyColorCommand.Execute(boards[1].Keys[TestLayouts.RgbDigitOneKeyIndex]);
 
             // The Function zone lands on the Fn layer's media keys, which are exactly the eight
             // save-token exceptions of specs/07-lighting.md §2.4 item 7 — the hardest thing in the
@@ -585,6 +1115,16 @@ namespace KinesisEdit.Tests.ViewModels
                     ledFirmware));
         }
 
+        /// <summary>
+        /// The app's real <see cref="IMotionSettings"/> over a fake OS detector — the live switch,
+        /// so a test can flip <see cref="IMotionSettings.ReduceMotion"/> mid-run the way the
+        /// Settings screen does.
+        /// </summary>
+        private static IMotionSettings CreateMotionSettings(bool reduceMotion)
+        {
+            return new MotionSettings(new FakeReduceMotionDetector(reduceMotion));
+        }
+
         private static IReadOnlyList<KeyboardLayerViewModel> BuildBoards(LightingModel lighting)
         {
             return KeyboardLayerViewModel.BuildAll(
@@ -593,20 +1133,24 @@ namespace KinesisEdit.Tests.ViewModels
                 lighting);
         }
 
-        private LightingTabViewModel CreateTab(DeviceSnapshot? snapshot = null)
+        private LightingTabViewModel CreateTab(
+            DeviceSnapshot? snapshot = null,
+            IMotionSettings? motionSettings = null)
         {
             return new LightingTabViewModel(
                 snapshot ?? CreateSnapshot(),
                 _notifications,
-                _preferences);
+                _preferences,
+                motionSettings);
         }
 
         private LightingTabViewModel CreateAttachedTab(
             DeviceSnapshot? snapshot = null,
-            LightingModel? lighting = null)
+            LightingModel? lighting = null,
+            IMotionSettings? motionSettings = null)
         {
             var model = lighting ?? new LightingModel();
-            var tab = CreateTab(snapshot);
+            var tab = CreateTab(snapshot, motionSettings);
 
             tab.Attach(model, BuildBoards(model));
 

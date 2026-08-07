@@ -50,6 +50,30 @@
        carries information is not in that category. -->
   <sys:TimeSpan x:Key="DurationSpinnerRotation">0:0:1.1</sys:TimeSpan>
 
+  <!-- THE LIGHTING PREVIEW'S FRAME INTERVAL, and the one entry in this table that is not a
+       transition and not an animation. The Lighting tab renders the selected mode ON THE BOARD
+       - "the board animates the selected mode at its real speed and direction"
+       (docs/design/mockups.md 2f) - which is a continuous per-frame repaint of ~95 key caps
+       driven by a timer in the tab's own view model, not a property Avalonia can interpolate.
+
+       33ms, i.e. ~30fps. It is a budget rather than a target: the effects this draws are slow
+       washes over a keyboard (a wave crosses the board in seconds), so 30fps is already past
+       the point where the motion reads as continuous, and every frame costs the whole board's
+       colours being recomputed and ~95 brushes rebuilt. 60fps would double that for a picture
+       nobody can tell apart from this one. The number is written out at the timer, for the same
+       reason the spinner's and the pulse's are: this key is the budget's record of it, and a
+       test holds the two together.
+
+       IT FREEZES UNDER REDUCE-MOTION, and that is the opposite of the spinner's answer three
+       lines up. The two are different kinds of thing: the spinner carries information the user
+       needs (the app is still working, and a frozen one reads as a hung app), while this is a
+       preview of what the KEYBOARD will do - the board still shows the mode's colours, the rail
+       still names it, and the user has lost nothing but the movement. Reduce-motion exists for
+       exactly this: a large, continuously moving surface. So it has no `...Full`/`...Reduced`
+       pair either - there is nothing to interpolate - and the tab reads
+       `IMotionSettings.ReduceMotion` directly and simply does not start its timer. -->
+  <sys:TimeSpan x:Key="DurationLightingPreviewFrame">0:0:0.033</sys:TimeSpan>
+
   <!-- ===== Full budget ================================================================= -->
 
   <!-- A status chip changing state cross-fades its fill; the text inside it swaps instantly. -->

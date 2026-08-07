@@ -1,6 +1,8 @@
 using System.Globalization;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
+using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 
 namespace KinesisEdit.ViewModels
@@ -60,7 +62,7 @@ namespace KinesisEdit.ViewModels
                     visual,
                     layout.Dialect,
                     LayerCaptions.ForLayer(layer, layout.Dialect),
-                    KeyColorOverlay.Build(layout.Device, lighting, layer)));
+                    KeyColorOverlay.BuildPaint(layout.Device, lighting, layer)));
             }
 
             return layers;
@@ -92,7 +94,7 @@ namespace KinesisEdit.ViewModels
         /// The board's drawn panels, ordered by <see cref="KeyboardSection.Index"/> — two of them on
         /// a split board. Every entry of <see cref="Keys"/> appears in exactly one section, as the
         /// <b>same instance</b>: the editor resolves a cap through the flat list and
-        /// <see cref="ApplyColorOverlays"/> writes through it, so a copy would leave the picture
+        /// <see cref="ApplyLighting"/> writes through it, so a copy would leave the picture
         /// showing state nothing updates. A section the layer has no key for is still listed, so the
         /// panel roster is the board's and not the layout file's.
         /// </summary>
@@ -173,7 +175,7 @@ namespace KinesisEdit.ViewModels
             KeyboardVisual visual,
             TokenDialect dialect,
             string caption,
-            IReadOnlyDictionary<int, string>? colorOverlays = null)
+            IReadOnlyDictionary<int, LedColor>? paintColors = null)
         {
             Layer = layer ?? throw new ArgumentNullException(nameof(layer));
 
@@ -184,7 +186,7 @@ namespace KinesisEdit.ViewModels
             ShortcutHint = BuildShortcutHint(layer.Index, KeyCaption.IsMacOs);
             BoardWidth = visual.Width;
             BoardHeight = visual.Height;
-            Keys = BuildKeys(layer, visual, dialect, colorOverlays);
+            Keys = BuildKeys(layer, visual, dialect, paintColors);
             Sections = BuildSections(visual, Keys);
 
             RefreshCounts();
@@ -258,27 +260,50 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-paints the layer's colours from a freshly built <see cref="KeyColorOverlay"/> map. A
-        /// key the map does not mention goes back to unlit, so this is the whole-layer form and not
-        /// a merge — erasing a colour has to be visible too.
+        /// Re-draws the whole layer's lighting in one pass: <paramref name="frame"/> is the
+        /// previewed effect at this instant and <paramref name="paintColors"/> the colours on file
+        /// (<see cref="KeyColorOverlay.BuildPaint"/>), both keyed by <b>memory key code</b>.
         /// <para>
-        /// The overlay cannot come from <see cref="RefreshFromModel"/>: it lives in the lighting
-        /// model, which no layout parser ever writes into <see cref="KeyboardKey.KeyColor"/>.
+        /// <b>Whole-layer, never a merge.</b> A key neither map mentions goes back to unpainted and
+        /// unlit — erasing a colour has to be as visible as assigning one — and the effect layer is
+        /// re-pushed in full every frame anyway. A key absent from
+        /// <see cref="Core.Lighting.Preview.LightingEffectFrame.Cells"/> is unlit rather than lit at
+        /// intensity 0, which is what makes the cap draw its hatch: off is hatched, never black.
         /// </para>
         /// <para>
-        /// This says nothing about whether an LED row is <b>drawn</b>. One layer view model is
+        /// It cannot come from <see cref="RefreshFromModel"/>: the colours live in the lighting
+        /// model, which no layout parser ever writes into <see cref="KeyboardKey.KeyColor"/>. It is
+        /// called ~30 times a second while the Lighting tab is open, so nothing here allocates and
+        /// each cap raises a change notification only for a value that actually moved
+        /// (<see cref="KeyboardKeyViewModel.ApplyEffect"/>).
+        /// </para>
+        /// <para>
+        /// This says nothing about whether the colours are <b>drawn</b>. One layer view model is
         /// rendered by two pictures — the editor's Keys tab and the Lighting tab's board — so
         /// "lighting is on screen" is not a fact this object could hold; it belongs to the picture
-        /// (<c>KeyboardView.ShowsLedStrips</c>). Here a key is either lit or not.
+        /// (<c>KeyboardView.ShowsLighting</c>).
         /// </para>
         /// </summary>
-        public void ApplyColorOverlays(IReadOnlyDictionary<int, string>? colorOverlays)
+        public void ApplyLighting(LightingEffectFrame frame, IReadOnlyDictionary<int, LedColor>? paintColors)
         {
+            ArgumentNullException.ThrowIfNull(frame);
+
             foreach (var key in Keys)
             {
-                key.ColorOverlayHex = colorOverlays is not null && colorOverlays.TryGetValue(key.Index, out var hex)
-                    ? hex
-                    : null;
+                var keyCode = key.Key.OriginalKey.Code;
+
+                key.ApplyPaint(
+                    paintColors is not null && paintColors.TryGetValue(keyCode, out var paint) ? paint : null,
+                    frame.PaintOpacity);
+
+                if (frame.Cells.TryGetValue(keyCode, out var cell))
+                {
+                    key.ApplyEffect(cell.Color, cell.Intensity);
+                }
+                else
+                {
+                    key.ApplyEffect(null, 0.0);
+                }
             }
         }
 
@@ -286,7 +311,7 @@ namespace KinesisEdit.ViewModels
             KeyboardLayer layer,
             KeyboardVisual visual,
             TokenDialect dialect,
-            IReadOnlyDictionary<int, string>? colorOverlays)
+            IReadOnlyDictionary<int, LedColor>? paintColors)
         {
             var keys = new List<KeyboardKeyViewModel>(layer.Keys.Count);
 
@@ -297,14 +322,14 @@ namespace KinesisEdit.ViewModels
                     continue;
                 }
 
-                string? overlay = null;
+                LedColor? paint = null;
 
-                if (colorOverlays is not null && colorOverlays.TryGetValue(key.Index, out var assignedColor))
+                if (paintColors is not null && paintColors.TryGetValue(key.OriginalKey.Code, out var assignedColor))
                 {
-                    overlay = assignedColor;
+                    paint = assignedColor;
                 }
 
-                keys.Add(new KeyboardKeyViewModel(key, keyVisual, dialect, overlay));
+                keys.Add(new KeyboardKeyViewModel(key, keyVisual, dialect, paint));
             }
 
             return keys;
