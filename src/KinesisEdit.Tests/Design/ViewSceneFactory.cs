@@ -670,7 +670,9 @@ namespace KinesisEdit.Tests.Design
                 return (await CreateEditorAsync().ConfigureAwait(true)).Settings.Preferences;
             }
 
-            if (viewType == typeof(LightingTabView))
+            // Both halves of the Lighting tab bind to the same view model: the rail is a column of
+            // that panel rather than a screen with a view model of its own, so it takes the tab's.
+            if (viewType == typeof(LightingTabView) || viewType == typeof(LightingModeRailView))
             {
                 return (await CreateEditorAsync().ConfigureAwait(true)).Lighting;
             }

@@ -6,32 +6,44 @@ using KinesisEdit.Core.Model;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// Projects a profile's lighting model onto the keyboard picture: which key index shows which
-    /// colour swatch. Two mismatches make this more than a lookup, and both are the reason it
-    /// lives in one tested place:
+    /// Projects a profile's lighting model onto the keyboard picture: which key carries which
+    /// painted colour. It is more than a field read for two reasons, and both are why it lives in
+    /// one tested place:
     /// <list type="bullet">
     /// <item><see cref="LayerLightingState.KeyColors"/> is keyed by <b>memory key code</b>
-    /// (specs/07-lighting.md §4), not by key index, so every entry is resolved through
-    /// <see cref="KeyboardLayer.FindByOriginalKeyCode"/>.</item>
+    /// (specs/07-lighting.md §4) — which is the key every cap answers with
+    /// (<c>KeyboardKeyViewModel.Key.OriginalKey.Code</c>) and the key
+    /// <see cref="Core.Lighting.Preview.LightingEffectFrame.Cells"/> uses, so the paint layer and
+    /// the effect layer address a cap the same way.</item>
     /// <item><see cref="KeyboardKey.KeyColor"/> exists but no parser ever fills it — the led file
     /// is parsed into the lighting model, never into the layout model — so reading the key would
-    /// always show nothing.</item>
+    /// always show nothing, which is why the map is <b>pushed</b> onto the caps
+    /// (<see cref="KeyboardLayerViewModel.ApplyLighting"/>) rather than read from them.</item>
     /// </list>
-    /// Colours are returned as <c>#RRGGBB</c> strings: view models expose values, never Avalonia
-    /// brushes (docs/app/app-shell.md, invariant 6).
+    /// <see cref="ToHex"/>/<see cref="TryParseHex"/> are the module's <see cref="LedColor"/> ↔
+    /// <c>#RRGGBB</c> pair: view models expose values, never Avalonia brushes
+    /// (docs/app/app-shell.md, invariant 6).
     /// </summary>
     public static class KeyColorOverlay
     {
-        private static readonly IReadOnlyDictionary<int, string> _empty = new Dictionary<int, string>();
+        private static readonly IReadOnlyDictionary<int, LedColor> _empty = new Dictionary<int, LedColor>();
 
         /// <summary>
-        /// Builds the key-index → <c>#RRGGBB</c> map for one layer. Empty unless the device has
+        /// The layer's painted colours by <b>memory key code</b>. Empty unless the device has
         /// per-key RGB hardware, the session carried a <see cref="LightingModel"/>, and the layer
         /// is one of the two that model describes (layout layer 0 ↔ its top layer, layer 1 ↔ its Fn
-        /// layer; specs/07-lighting.md §1.5). Black is the "no colour" value (§2.1) and yields no
-        /// entry.
+        /// layer; specs/07-lighting.md §1.5).
+        /// <para>
+        /// It returns <see cref="LayerLightingState.KeyColors"/> itself: the map is already keyed
+        /// the way the caps are addressed and already holds no black entry — black is "no colour"
+        /// and <see cref="LayerLightingState.SetKeyColor"/> removes it (§2.1) — so copying it would
+        /// only add a way for the two to disagree.
+        /// </para>
         /// </summary>
-        public static IReadOnlyDictionary<int, string> Build(DeviceDefinition device, object? lighting, KeyboardLayer layer)
+        public static IReadOnlyDictionary<int, LedColor> BuildPaint(
+            DeviceDefinition device,
+            object? lighting,
+            KeyboardLayer layer)
         {
             ArgumentNullException.ThrowIfNull(device);
             ArgumentNullException.ThrowIfNull(layer);
@@ -41,36 +53,12 @@ namespace KinesisEdit.ViewModels
                 return _empty;
             }
 
-            var state = layer.Index switch
+            return layer.Index switch
             {
-                0 => model.TopLayer,
-                1 => model.FnLayer,
-                _ => null
+                0 => model.TopLayer.KeyColors,
+                1 => model.FnLayer.KeyColors,
+                _ => _empty
             };
-
-            if (state is null || state.KeyColors.Count == 0)
-            {
-                return _empty;
-            }
-
-            var overlays = new Dictionary<int, string>(state.KeyColors.Count);
-
-            foreach (var (keyCode, color) in state.KeyColors)
-            {
-                if (color.IsBlack)
-                {
-                    continue;
-                }
-
-                var key = layer.FindByOriginalKeyCode(keyCode);
-
-                if (key is not null)
-                {
-                    overlays[key.Index] = ToHex(color);
-                }
-            }
-
-            return overlays;
         }
 
         /// <summary>Formats a colour as the <c>#RRGGBB</c> string the view turns into a brush.</summary>

@@ -1,0 +1,286 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="596"
+             x:Class="KinesisEdit.Views.LightingModeRailView"
+             x:DataType="vm:LightingTabViewModel">
+  <!--
+    The Lighting tab's mode rail (mockup 2f), beside the board rather than over it.
+
+    IT IS THE KEY INSPECTOR RAIL'S FRAME, DELIBERATELY. Same `inspectorRail` surface and hairline,
+    same `Auto,*,Auto` header/body/footer shape, same `inspectorSection` / `inspectorFooter` blocks
+    separated by hairlines rather than by gaps. The two rails are the same object in two tabs, and a
+    second rail vocabulary would say they were not.
+
+    IT IS 300 WIDE, NOT 268. `WidthInspectorRailWide` is set here, on the Border, because a local
+    value outranks the `inspectorRail` style's own `Width` — the class is paint, not a bridge, so
+    widening it at the call site costs the theme nothing. The extra 32 px is what lets the parameter
+    footer hold a swatch with its hex, nine speed bars and four direction arrows without wrapping,
+    and what lets the colour picker's ring open inside the column instead of over the board.
+
+    THREE THINGS SHARE THE BODY ROW, and only ever two of them are on screen:
+
+      the mode list      fourteen rows, scrolled — the rail is ~600 px tall at the 1000x680 floor
+                         and the list alone is taller than that, exactly as the key inspector's
+                         panels are.
+      the colour picker  DISCLOSED FROM THE SWATCH, in place of the mode list — the precedent is the
+                         Tap & hold panel opening §11.6's catalog in place of its two fields. Not a
+                         modal, not a flyout, not a third column: the rail nests nothing.
+      the parameters     pinned in the footer, never scrolled away. They are the controls this
+                         screen exists to drive, and a mode picked at the top of a 600 px list must
+                         not push its own speed off the bottom.
+
+    MONO IS THE FILE'S VOICE HERE TOO. `#57C4D8` and `Speed 6 / 9` are values the led file carries;
+    the mode names, the parameter summaries and the three section labels are the app talking about
+    them. (The section labels are `sectionLabel`, which is mono by role — the design's own 10/600
+    caption over a group of controls — and are authored uppercase because Avalonia has no
+    text-transform.)
+  -->
+  <Border Classes="inspectorRail" Width="{DynamicResource WidthInspectorRailWide}">
+    <Grid RowDefinitions="Auto,*,Auto">
+
+      <!-- ===== The rail's own header =========================================================
+           2f's heading, verbatim, and it is an instruction as much as a title: clicking a row does
+           not open a dialog about the mode, it puts the mode on the board. -->
+      <Border Grid.Row="0" Classes="inspectorSection">
+        <TextBlock Text="{x:Static vm:LightingTabViewModel.ModeRailCaption}"
+                   Classes="cardTitle"
+                   TextWrapping="Wrap" />
+      </Border>
+
+      <!-- ===== The modes =====================================================================
+           One `ModeOption` row per mode the device's firmware offers: the mark, the name, and the
+           parameter summary underneath. Both lines are the row's content rather than a template
+           part — a Button has one content slot — and `modeSummary` is the class Styles/Editor.axaml
+           gives the second line its muted role (and its flip to AccentText on the chosen row).
+
+           Nothing here knows a mode name or a parameter: the membership is
+           LightingAvailability's, the caption LightingModeCaptions', and the summary Core's
+           LightingModeParameters. -->
+      <ScrollViewer Grid.Row="1"
+                    HorizontalScrollBarVisibility="Disabled"
+                    IsVisible="{Binding !$parent[views:LightingModeRailView].IsPickerOpen}">
+        <ItemsControl ItemsSource="{Binding Modes}" Margin="8">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="2" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:LightingModeViewModel">
+              <Button Classes="modeOption"
+                      Classes.selected="{Binding IsSelected}"
+                      Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SelectModeCommand}"
+                      CommandParameter="{Binding}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <!-- The mode's mark, which "draws the motion rather than naming it twice"
+                       (docs/design/handoff.md). Two Icons in one cell because thirteen of the
+                       sixteen marks are outlines and three are solids, and those are different
+                       properties on an Icon: the converter answers only the half the mode is drawn
+                       in, so the other draws nothing. Stroking a ring *and* filling it would turn
+                       it into a disc, which is why they are never both answered. -->
+                  <Panel Grid.Column="0"
+                         Width="{DynamicResource IconSize}"
+                         Height="{DynamicResource IconSize}"
+                         VerticalAlignment="Center">
+                    <controls:Icon Classes="modeMark"
+                                   Classes.selected="{Binding IsSelected}"
+                                   Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Stroke}" />
+                    <controls:Icon Classes="modeMark filled"
+                                   Classes.selected="{Binding IsSelected}"
+                                   Data="{Binding Mode, Converter={StaticResource LightingModeMark}, ConverterParameter=Fill}" />
+                  </Panel>
+
+                  <!-- A Grid column rather than a StackPanel child: a StackPanel measures with
+                       infinite width, so a long summary would run off the rail instead of
+                       ellipsing inside it. -->
+                  <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Caption}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Summary}"
+                               Classes="modeSummary"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </Grid>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- ===== The colour picker, INSIDE the rail ============================================
+           Disclosed by a swatch in the footer below and shown in the body's own row, in place of
+           the mode list — the shape the Tap & hold panel already uses for §11.6's catalog. The
+           board keeps animating behind it, because nothing here is modal.
+
+           It is the very same ColorPickerViewModel the tab holds, so the ten premixed swatches and
+           the twelve `cust_color_N` slots are the ones the Settings tab's strip shares. -->
+      <Grid Grid.Row="1"
+            RowDefinitions="Auto,*"
+            Margin="{DynamicResource PaddingInspectorSection}"
+            IsVisible="{Binding $parent[views:LightingModeRailView].IsPickerOpen}">
+        <!-- The way out is PINNED, not the last thing in the scroll: the ring, twenty-two swatches
+             and the store button are taller than the rail, so a `Done` under them would be below
+             the fold every time the picker opened. -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+          <TextBlock Grid.Column="0"
+                     Text="{x:Static views:LightingModeRailView.PickerLabel}"
+                     Classes="sectionLabel"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="1"
+                  Classes="secondary"
+                  Content="{x:Static views:LightingModeRailView.ClosePickerCaption}"
+                  Click="OnClosePickerClicked" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <controls:ColorPickerView DataContext="{Binding Picker}" />
+        </ScrollViewer>
+      </Grid>
+
+      <!-- ===== The parameters ================================================================
+           2f's "Color `57C4D8`", "Speed 6 / 9" and "Direction ← → ↑ ↓", pinned under the list.
+           Each block asks Core what the mode accepts (LightingModeParameters) — except the
+           direction row, which is always drawn; see below. -->
+      <Border Grid.Row="2" Classes="inspectorFooter">
+        <StackPanel Spacing="10">
+
+          <!-- The effect and base swatches. Clicking one points the picker at it (the view model's
+               command) AND opens the picker in the body above (the view's own disclosure) — one
+               gesture, because a swatch that only re-targeted an invisible picker would look
+               dead. -->
+          <StackPanel Spacing="6" IsVisible="{Binding Parameters.AcceptsAnyColor}">
+            <TextBlock Text="{x:Static views:LightingModeRailView.ColorLabel}" Classes="sectionLabel" />
+
+            <StackPanel Spacing="4">
+              <Button Classes="colorSlot"
+                      Classes.selected="{Binding EffectColor.IsSelected}"
+                      IsVisible="{Binding EffectColor.IsVisible}"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      Command="{Binding SelectColorSlotCommand}"
+                      CommandParameter="{Binding EffectColor}"
+                      Click="OnColorSlotClicked">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                  <!-- The one place a colour legitimately arrives as data rather than as a token:
+                       it is the LED colour the file carries, converted by HexColorToBrush. -->
+                  <Border Grid.Column="0"
+                          Classes="colorSwatchFill"
+                          Background="{Binding EffectColor.ColorHex, Converter={StaticResource HexColorToBrush}}" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding EffectColor.Caption}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding EffectColor.ColorHex}"
+                             Classes="monoValue"
+                             VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button Classes="colorSlot"
+                      Classes.selected="{Binding BaseColor.IsSelected}"
+                      IsVisible="{Binding BaseColor.IsVisible}"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      Command="{Binding SelectColorSlotCommand}"
+                      CommandParameter="{Binding BaseColor}"
+                      Click="OnColorSlotClicked">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                  <Border Grid.Column="0"
+                          Classes="colorSwatchFill"
+                          Background="{Binding BaseColor.ColorHex, Converter={StaticResource HexColorToBrush}}" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding BaseColor.Caption}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding BaseColor.ColorHex}"
+                             Classes="monoValue"
+                             VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Speed as nine bars, not a slider: the file's speed is nine discrete values (§2.1) and
+               a slider would suggest a continuum. The readout is mono because `6` and `9` are what
+               `[spd6]` carries. -->
+          <StackPanel Spacing="6" IsVisible="{Binding Parameters.AcceptsSpeed}">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0"
+                         Text="{x:Static views:LightingModeRailView.SpeedLabel}"
+                         Classes="sectionLabel"
+                         VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding SpeedControl.Readout}"
+                         Classes="monoValue"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Center" />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding SpeedControl.Segments}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:LightingSpeedSegmentViewModel">
+                  <!-- No content at all: `SpeedBar` is a fixed 10x18 shape with no padding, and the
+                       level is read off how many of them are filled. -->
+                  <Button Classes="speedBar"
+                          Classes.filled="{Binding IsFilled}"
+                          Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SetSpeedCommand}"
+                          CommandParameter="{Binding Speed}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- ALL FOUR ARROWS, ALWAYS, AND THE ROW ITSELF IS NEVER HIDDEN. This is 2f overriding
+               the app's own "absent features are not shown, not disabled" law, in as many words:
+               "Directions a mode can't use stay in place, struck through — the row never changes
+               shape as you move down the list." The rail is a column the user scrubs, and a
+               parameter row that shrank and grew under the pointer would be worse than a struck
+               arrow. `.unavailable` is the DirectionSegment theme's own state — the strike, and
+               `Focusable`/`IsHitTestVisible` off — not a `:disabled`, because "this mode does not
+               run that way" is a fact about the mode rather than the app's willingness.
+
+               The arrow is geometry, never one of `← → ↑ ↓`: neither embedded IBM Plex family is
+               guaranteed to carry them, and the icon law is "geometry only". The name behind it
+               ("Left", or Rebound's "Horizontal") is the tooltip, so relabelling a mode's axes is
+               not lost to a picture. -->
+          <StackPanel Spacing="6">
+            <TextBlock Text="{x:Static views:LightingModeRailView.DirectionLabel}" Classes="sectionLabel" />
+
+            <ItemsControl ItemsSource="{Binding Directions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="6" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:LightingDirectionViewModel">
+                  <!-- The Icon carries no class: Styles/Editor.axaml colours it from the BUTTON's
+                       own classes, so the view writes the state once. -->
+                  <Button Classes="directionSegment"
+                          Classes.selected="{Binding IsSelected}"
+                          Classes.unavailable="{Binding !IsAvailable}"
+                          ToolTip.Tip="{Binding Caption}"
+                          Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SelectDirectionCommand}"
+                          CommandParameter="{Binding}">
+                    <controls:Icon Data="{Binding Direction, Converter={StaticResource LightingDirectionMark}}" />
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

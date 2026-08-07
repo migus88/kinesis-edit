@@ -80,13 +80,13 @@
                 </Style>
               </ItemsControl.Styles>
 
-              <!-- The LED row and the state badges are properties of the PICTURE, not of the key:
+              <!-- The lit face and the state badges are properties of the PICTURE, not of the key:
                    both tabs draw the same layer view model, so the surface is the only thing that
                    can say whether lighting, or the badge vocabulary, is on screen. They are handed
                    to each cap here, where the cap is still in the picture's logical tree. -->
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:KeyboardKeyViewModel">
-                  <controls:KeyCapView ShowsLedStrip="{Binding $parent[controls:KeyboardView].ShowsLedStrips}"
+                  <controls:KeyCapView ShowsLighting="{Binding $parent[controls:KeyboardView].ShowsLighting}"
                                        ShowsStateBadge="{Binding $parent[controls:KeyboardView].ShowsStateBadges}" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>

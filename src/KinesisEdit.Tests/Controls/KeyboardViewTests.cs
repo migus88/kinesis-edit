@@ -195,35 +195,35 @@ namespace KinesisEdit.Tests.Controls
         }
 
         [AvaloniaFact]
-        public void APicture_DrawsNoLedStripsUntilItAsksForThem()
+        public void APicture_DrawsNoLightingUntilItAsksForIt()
         {
             var board = CreateBoard();
 
             using var host = ThemedHost.Show(board, ThemeVariant.Dark, HostWidth, HostHeight);
 
-            Assert.False(board.ShowsLedStrips, "The LED row is opt-in; the Keys tab never asks.");
-            Assert.All(CapsOf(board), cap => Assert.False(cap.ShowsLedStrip));
+            Assert.False(board.ShowsLighting, "The lit face is opt-in; the Keys tab never asks.");
+            Assert.All(CapsOf(board), cap => Assert.False(cap.ShowsLighting));
         }
 
         [AvaloniaFact]
-        public void APictureThatAsksForLedStrips_HandsThatDownToEveryCapItBuilds()
+        public void APictureThatAsksForLighting_HandsThatDownToEveryCapItBuilds()
         {
             var board = CreateBoard();
 
-            board.ShowsLedStrips = true;
+            board.ShowsLighting = true;
 
             using var host = ThemedHost.Show(board, ThemeVariant.Dark, HostWidth, HostHeight);
 
             var caps = CapsOf(board);
 
             Assert.NotEmpty(caps);
-            Assert.All(caps, cap => Assert.True(cap.ShowsLedStrip));
+            Assert.All(caps, cap => Assert.True(cap.ShowsLighting));
         }
 
         [AvaloniaFact]
         public void APicture_DrawsTheStateBadgesUnlessItSaysOtherwise()
         {
-            // The mirror image of the LED row: the Layout tab is the surface the badge vocabulary
+            // The mirror image of the lit face: the Layout tab is the surface the badge vocabulary
             // belongs to, so a board opts out rather than in.
             var board = CreateBoard();
 
@@ -254,7 +254,7 @@ namespace KinesisEdit.Tests.Controls
         [AvaloniaFact]
         public void TwoPicturesOfTheSameLayer_DisagreeAboutTheStateBadges()
         {
-            // Same argument as the LED row, and the same fixture: one layer view model, one set of
+            // Same argument as the lit face, and the same fixture: one layer view model, one set of
             // cap view models, two pictures. A lighting board is a readout of colour and says
             // nothing about what a key is assigned.
             var layer = CreateLayer();
@@ -273,14 +273,14 @@ namespace KinesisEdit.Tests.Controls
         }
 
         [AvaloniaFact]
-        public void TwoPicturesOfTheSameLayer_DisagreeAboutTheLedRow()
+        public void TwoPicturesOfTheSameLayer_DisagreeAboutLighting()
         {
             // The whole reason the flag is on the picture. These are the editor's two tabs: one
-            // layer view model, one set of cap view models, two pictures — and the LED row is one of
-            // the two things they must not agree about.
+            // layer view model, one set of cap view models, two pictures — and whether the caps are
+            // painted with the mode is one of the two things they must not agree about.
             var layer = CreateLayer();
             var keys = new KeyboardView { DataContext = layer };
-            var lighting = new KeyboardView { DataContext = layer, ShowsLedStrips = true };
+            var lighting = new KeyboardView { DataContext = layer, ShowsLighting = true };
             var panel = new StackPanel { Children = { keys, lighting } };
 
             using var host = ThemedHost.Show(panel, ThemeVariant.Dark, HostWidth, HostHeight);
@@ -289,8 +289,8 @@ namespace KinesisEdit.Tests.Controls
             var lightingCap = CapsOf(lighting)[0];
 
             Assert.Same(keysCap.DataContext, lightingCap.DataContext);
-            Assert.False(keysCap.ShowsLedStrip);
-            Assert.True(lightingCap.ShowsLedStrip);
+            Assert.False(keysCap.ShowsLighting);
+            Assert.True(lightingCap.ShowsLighting);
         }
 
         [AvaloniaFact]

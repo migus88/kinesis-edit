@@ -364,7 +364,7 @@ namespace KinesisEdit.Tests.Design
             var board = Assert.Single(view.GetVisualDescendants().OfType<KeyboardView>());
 
             Assert.False(board.ShowsStateBadges);
-            Assert.True(board.ShowsLedStrips);
+            Assert.True(board.ShowsLighting);
             Assert.Empty(view.GetVisualDescendants().OfType<BoardLegendView>());
         }
 
@@ -382,7 +382,7 @@ namespace KinesisEdit.Tests.Design
             var board = view.GetVisualDescendants().OfType<KeyboardView>().Single(picture => picture.IsEffectivelyVisible);
 
             Assert.True(board.ShowsStateBadges);
-            Assert.False(board.ShowsLedStrips);
+            Assert.False(board.ShowsLighting);
         }
 
         /// <summary>Every brush the row's swatches paint with, whatever shape carries them.</summary>

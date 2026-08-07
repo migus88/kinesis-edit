@@ -10,7 +10,7 @@ namespace KinesisEdit.ViewModels
     /// (docs/app/keyboard-editor.md, "The Settings tab").
     /// <para>
     /// The picker edits whichever slot is <see cref="IsSelected"/>; visibility is
-    /// <see cref="LightingPanelVisibility"/>'s answer for the current mode.
+    /// <see cref="Core.Lighting.Preview.LightingModeParameters"/>'s answer for the current mode.
     /// </para>
     /// </summary>
     public sealed class LightingColorSlotViewModel : ViewModelBase

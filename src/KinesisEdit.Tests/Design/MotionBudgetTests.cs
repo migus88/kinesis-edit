@@ -60,6 +60,13 @@ namespace KinesisEdit.Tests.Design
         [InlineData("DurationToast", 180)]
         [InlineData("DurationToastDwell", 5000)]
         [InlineData("DurationRecordingPulse", 1400)]
+
+        // The lighting preview's FRAME INTERVAL — not a transition and not an animation, but a
+        // budget entry all the same: the Lighting board repaints ~95 caps on a timer, and
+        // "nothing may animate that is not in the table" cannot hold if the table has no row for
+        // the one thing in the app that animates every frame. ~30fps, which is past the point
+        // where a wash across a keyboard reads as continuous.
+        [InlineData("DurationLightingPreviewFrame", 33)]
         public void Duration_IsTheBudgetsExactValue(string key, double milliseconds)
         {
             foreach (var variant in DesignTokens.Variants)
@@ -133,6 +140,28 @@ namespace KinesisEdit.Tests.Design
                 .ToArray();
 
             Assert.True(offenders.Length == 0, $"Page transitions appear in: {string.Join(", ", offenders)}.");
+        }
+
+        [AvaloniaFact]
+        public void TheLightingPreviewsFrameInterval_HasNoTransitionsOfEitherFlavour()
+        {
+            // It is a repaint, not a property change, so there is nothing for a Transitions to
+            // interpolate and no MotionResourceBinder alias to point — the same shape as the
+            // spinner's rotation and the recording pulse. A `...Full`/`...Reduced` pair appearing
+            // here would mean somebody had turned the preview into a transition, which is not what
+            // a per-frame board repaint is.
+            //
+            // The freeze under reduce-motion is therefore NOT expressed as an empty reduced set:
+            // the tab reads IMotionSettings.ReduceMotion and does not start its timer at all. That
+            // half is the view model's and is asserted there.
+            foreach (var suffix in new[] { FullSuffix, ReducedSuffix })
+            {
+                Assert.False(
+                    DesignTokens.TryResolve("LightingPreviewTransitions" + suffix, ThemeVariant.Dark, out _),
+                    $"The lighting preview grew a {suffix} transition set; it is a frame interval, not a transition.");
+            }
+
+            Assert.False(DesignTokens.TryResolve("LightingPreviewTransitions", ThemeVariant.Dark, out _));
         }
 
         [AvaloniaFact]

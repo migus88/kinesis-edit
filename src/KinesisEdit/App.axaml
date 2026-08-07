@@ -23,12 +23,14 @@
       <converters:MenuItemToggleTypeConverter x:Key="MenuItemToggle" />
       <converters:HexColorToColorConverter x:Key="HexColorToColor" />
 
-      <!-- The two enum-to-geometry lookups. A mark whose pen changes with the state it reports —
+      <!-- The three enum-to-geometry lookups. A mark whose pen changes with the state it reports —
            the connection chips, the message box's dialog type — is enumerated in markup instead,
-           so each state names its own token brush; these two exist because a device and a
-           lighting mode are *data*, drawn under one pen, and cannot be enumerated in a template. -->
+           so each state names its own token brush; these exist because a device, a lighting mode
+           and the set of directions a mode accepts are *data*, drawn under one pen, and cannot be
+           enumerated in a template. -->
       <converters:DeviceArtConverter x:Key="DeviceArt" />
       <converters:LightingModeMarkConverter x:Key="LightingModeMark" />
+      <converters:LightingDirectionMarkConverter x:Key="LightingDirectionMark" />
 
       <!-- The design system (docs/design/). Tokens carries the colour roles in Dark and Light
            theme dictionaries; Geometry the radii, paddings and the spacing scale; Motion the

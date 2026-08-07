@@ -246,4 +246,38 @@
       <BoxShadows x:Key="ShadowKeyHalo">0 0 0 2 #4D5B9DF9</BoxShadows>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
+
+  <!--
+    ================================================================================
+    THE TWO LIT-KEYCAP LABEL ROLES — variant-INDEPENDENT, and therefore declared out
+    here rather than twice above.
+    ================================================================================
+
+    The Lighting board paints a key's colour on the cap's FACE, and that colour is
+    device data: a key can be lit near-white or near-black, and either one erases a
+    caption drawn in the theme's own text role. So the caption on a lit cap takes its
+    colour from the FILL rather than from the theme — the light label on a dark fill,
+    the dark label on a light one — which is a decision no theme variant can make,
+    because the fill is the same colour under both.
+
+    The two values are the app's two `TextPrimary` colours: the light theme's near-black
+    and the dark theme's near-white. A lit caption is therefore never a new colour in the
+    app, only one of the two primaries chosen by the fill instead of by the OS.
+
+    Which one is picked is `Converters/LitLabelBrushConverter`, at the sRGB relative
+    luminance where contrast against black equals contrast against white — see that file
+    for the arithmetic. An UNLIT cap (hatch only) keeps its ordinary token colour and
+    these two are not consulted at all.
+
+    They live outside the ThemeDictionaries deliberately: a role that is the same in both
+    variants declared twice is two places to change one colour, and `TokenCompletenessTests`
+    reads only the variant dictionaries — a key declared here is invisible to the
+    "both variants carry the same roles" guard because there is nothing for it to differ
+    about. The badge hues above are the counter-example and stay where they are: they DO
+    differ from their status neighbours on light, so they have to sit beside them.
+  -->
+  <Color x:Key="KeycapLitLabelDarkColor">#14181B</Color>
+  <SolidColorBrush x:Key="KeycapLitLabelDarkBrush" Color="{StaticResource KeycapLitLabelDarkColor}" />
+  <Color x:Key="KeycapLitLabelLightColor">#E8EBED</Color>
+  <SolidColorBrush x:Key="KeycapLitLabelLightBrush" Color="{StaticResource KeycapLitLabelLightColor}" />
 </ResourceDictionary>

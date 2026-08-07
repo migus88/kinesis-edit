@@ -23,6 +23,14 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         private static readonly string[] _stateAndActionMarks =
         [
+            // The four direction arrows share this file with the state and action marks rather than
+            // forming a family of their own: they are chrome, drawn under one pen at one size, and a
+            // fourth dictionary would buy nothing but a fourth prefix. Their coverage is driven by
+            // the LightingDirection enum in IconCoverageTests.
+            "IconArrowDown",
+            "IconArrowLeft",
+            "IconArrowRight",
+            "IconArrowUp",
             "IconCannotAccess",
             "IconClose",
             "IconConfirmation",
