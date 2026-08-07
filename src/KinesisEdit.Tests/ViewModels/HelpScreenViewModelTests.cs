@@ -11,8 +11,8 @@ namespace KinesisEdit.Tests.ViewModels
     /// The shell's Help screen: the link table and the about card.
     /// <para>
     /// The claim worth testing here is not "there are some links" but <b>where each one came
-    /// from</b> — every per-device row is a catalog value, the two web-tool rows are that board's
-    /// own two pages, and only one address in the whole screen is written down in this app.
+    /// from</b> — every per-device row is a catalog value, and only one address in the whole
+    /// screen is written down in this app.
     /// </para>
     /// </summary>
     public class HelpScreenViewModelTests
@@ -84,26 +84,35 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.All(programmable, url => Assert.Contains(url, viewModel.TroubleshootingLinks.Select(link => link.Url)));
         }
 
+        /// <summary>
+        /// Issue #118, item 4: a board this app cannot edit appears on no screen — not the
+        /// dashboard, not the empty state's picker, and not here. The Help screen used to carry a
+        /// whole section for the Advantage 360 Professional's web configurator; it is gone, and no
+        /// row names, captions or points at any unsupported board.
+        /// <para>
+        /// Driven off the catalog rather than off a name, so a future unsupported board is covered
+        /// without anyone remembering to add a case.
+        /// </para>
+        /// </summary>
         [Fact]
-        public void WebToolLinks_Always_AreTheWebConfiguredBoardsOwnTwoPages()
+        public void Links_ForAnUnprogrammableBoard_AreNotOfferedAtAll()
         {
+            var unsupported = DeviceCatalog.All.Where(device => !device.IsProgrammable).ToArray();
             var viewModel = CreateViewModel(out _);
-            var device = Assert.Single(WebToolCardViewModel.WebToolDevices());
+            var links = AllLinks(viewModel).ToArray();
 
-            Assert.Equal(
-                new[] { device.ConfigurationUrl, device.SupportUrl },
-                viewModel.WebToolLinks.Select(link => link.Url));
-            Assert.True(viewModel.HasWebToolLinks);
-        }
+            Assert.NotEmpty(unsupported);
+            Assert.All(unsupported, device =>
+            {
+                Assert.DoesNotContain(links, link => link.Caption.Contains(device.DisplayName, StringComparison.Ordinal));
+                Assert.DoesNotContain(links, link => link.Url == device.ConfigurationUrl);
+                Assert.DoesNotContain(links, link => link.Url == device.SupportUrl);
+            });
 
-        [Fact]
-        public void WebToolLinks_Always_AreTheAdvantage360ProfessionalsInTodaysCatalog()
-        {
-            // The membership above is derived; this pins what that derivation currently resolves to,
-            // so a catalog edit that silently moved the section is visible.
-            var device = Assert.Single(WebToolCardViewModel.WebToolDevices());
-
-            Assert.Equal(DeviceId.Advantage360Professional, device.Id);
+            // ...and the section that held them is gone from the type, not merely emptied.
+            Assert.DoesNotContain(
+                typeof(HelpScreenViewModel).GetMembers(),
+                member => member.Name.Contains("WebTool", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -209,9 +218,7 @@ namespace KinesisEdit.Tests.ViewModels
 
         private static IEnumerable<HelpLink> AllLinks(HelpScreenViewModel viewModel)
         {
-            return viewModel.GeneralLinks
-                .Concat(viewModel.WebToolLinks)
-                .Concat(viewModel.TroubleshootingLinks);
+            return viewModel.GeneralLinks.Concat(viewModel.TroubleshootingLinks);
         }
 
         private static HelpScreenViewModel CreateViewModel(out FakeUrlLauncher launcher)

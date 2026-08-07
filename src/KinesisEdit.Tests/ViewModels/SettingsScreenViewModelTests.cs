@@ -259,12 +259,23 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Contains("Settings tab", SettingsScreenViewModel.Subtitle, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Issue #118, item 7: the screen is its title, its subtitle and <b>one unlabelled card</b>
+        /// holding two rows. The per-setting section labels named a single row twice, and the
+        /// "Window" section narrated something with no switch behind it — the geometry is still
+        /// persisted, it simply is not a choice and so has no place on a screen of choices.
+        /// </summary>
         [Fact]
-        public void TheWindowNote_Always_SaysThereIsNothingToSwitchOn()
+        public void TheScreen_Declares_NoSectionLabelsAndNoWindowSection()
         {
-            // The geometry is restored silently and renders no control, so the copy is the only
-            // place the behaviour is stated at all.
-            Assert.Contains("nothing to switch on", SettingsScreenViewModel.WindowNote, StringComparison.Ordinal);
+            var declared = typeof(SettingsScreenViewModel)
+                .GetMembers()
+                .Select(member => member.Name)
+                .ToArray();
+
+            Assert.NotEmpty(declared);
+            Assert.DoesNotContain(declared, name => name.Contains("SectionLabel", StringComparison.Ordinal));
+            Assert.DoesNotContain(declared, name => name.Contains("Window", StringComparison.Ordinal));
         }
 
         private static SettingsScreenViewModel CreateViewModel(

@@ -1,4 +1,3 @@
-using System.Globalization;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
@@ -9,9 +8,8 @@ namespace KinesisEdit.ViewModels
     /// The single-window shell: it hosts the dashboard and swaps in an editor when a device is
     /// opened, exactly like the legacy dashboards embedded an editor form in their content panel
     /// (specs/10-apps-and-ui.md, "Opening a device" and "Home"). It also owns the app bar's
-    /// chrome — the window title, the nav-pill selection, the status indicator (green
-    /// 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode') and the mono "refreshed 0.4s ago"
-    /// readout of docs/design/mockups.md §1b.
+    /// chrome — the window title, the nav-pill selection and the status indicator (green
+    /// 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode').
     /// <para>
     /// <see cref="CurrentView"/> is one of <b>four</b> things: the dashboard, the open editor, the
     /// Settings screen or the Help screen. The three nav pills are the three screens; the editor
@@ -56,19 +54,6 @@ namespace KinesisEdit.ViewModels
         private const string WindowTitleSeparator = " — ";
         private const string DemoModeTitleSuffix = " (Demo)";
 
-        // "refreshed 0.4s ago" / "refreshed 1.2s ago" (docs/design/mockups.md §1b, §1c) — one
-        // decimal, invariant, and rendered in mono so the width never reflows the app bar.
-        private const string LastRefreshedTemplate = "refreshed {0:0.0}s ago";
-
-        /// <summary>
-        /// How often the "refreshed Ns ago" readout is re-evaluated. 200 ms, not the 100 ms the
-        /// one-decimal format could justify: the readout's job is to show the loop is alive, and at
-        /// 5 Hz the tenths digit steps by an even 2 each tick — visibly smooth, at half the
-        /// property-change traffic. A change notification is raised only when the formatted text
-        /// actually differs, so a still readout costs nothing at all.
-        /// </summary>
-        private static readonly TimeSpan _defaultLastRefreshedTickInterval = TimeSpan.FromMilliseconds(200);
-
         /// <summary>
         /// The window title for a device name and demo flag: <c>KinesisEdit</c> with no device,
         /// <c>‹Device› — KinesisEdit</c> while editing, <c>‹Device› (Demo) — KinesisEdit</c> in
@@ -84,29 +69,6 @@ namespace KinesisEdit.ViewModels
             var suffix = isDemoMode ? DemoModeTitleSuffix : string.Empty;
 
             return deviceName + suffix + WindowTitleSeparator + AppTitle;
-        }
-
-        /// <summary>
-        /// The "refreshed Ns ago" readout for a completed-pass timestamp and the current time.
-        /// Empty while no pass has completed — there is nothing to age, and the app bar shows
-        /// nothing rather than a zero that would claim a scan that never happened. A timestamp in
-        /// the future (a clock that stepped back) reads as 0.0s rather than negative.
-        /// </summary>
-        public static string FormatLastRefreshed(DateTimeOffset? lastRefreshedUtc, DateTimeOffset now)
-        {
-            if (lastRefreshedUtc is null)
-            {
-                return string.Empty;
-            }
-
-            var elapsedSeconds = (now - lastRefreshedUtc.Value).TotalSeconds;
-
-            if (elapsedSeconds < 0)
-            {
-                elapsedSeconds = 0;
-            }
-
-            return string.Format(CultureInfo.InvariantCulture, LastRefreshedTemplate, elapsedSeconds);
         }
 
         /// <summary>The dashboard; the screen the app opens on and the Home pill's destination.</summary>
@@ -204,12 +166,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>The window title: 'KinesisEdit', '‹Device› — KinesisEdit', or '‹Device› (Demo) — KinesisEdit'.</summary>
         public string WindowTitle => BuildWindowTitle(_editor?.DeviceName, _isDemoMode);
 
-        /// <summary>The mono "refreshed 0.4s ago" readout; empty until the first pass completes.</summary>
-        public string LastRefreshedText => FormatLastRefreshed(_monitor.LastRefreshedUtc, _clock.UtcNow);
-
-        /// <summary>Whether a completed detection pass exists to age against.</summary>
-        public bool HasLastRefreshed => _monitor.LastRefreshedUtc is not null;
-
         /// <summary>Whether the open session runs in demo mode.</summary>
         public bool IsDemoMode
         {
@@ -284,14 +240,10 @@ namespace KinesisEdit.ViewModels
         private readonly DeviceSessionManager _sessions;
         private readonly INotificationService _notifications;
         private readonly IEditorViewModelFactory _editors;
-        private readonly ISystemClock _clock;
-        private readonly IUiDispatcher _dispatcher;
-        private readonly Timer _lastRefreshedTicker;
         private ViewModelBase _currentView;
         private DeviceEditorViewModel? _editor;
         private string _statusIndicatorText = DemoModeIndicator;
         private StatusSeverity _statusIndicatorSeverity = StatusSeverity.Demo;
-        private string _lastRefreshedText = string.Empty;
         private bool _isDemoMode;
         private bool _isBusy;
         private bool _isDisposed;
@@ -299,11 +251,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Creates the shell over the dashboard, the detection loop, the session services and the
         /// two screens the app bar's other pills navigate to.
-        /// <paramref name="clock"/> ages the "refreshed Ns ago" readout and
-        /// <paramref name="dispatcher"/> marshals its ticker onto the UI thread — a
-        /// <c>DispatcherTimer</c> would put Avalonia inside a view model
-        /// (docs/app/app-shell.md, invariant 8). <paramref name="lastRefreshedTickInterval"/>
-        /// overrides the 200 ms default; tests park it.
         /// <para>
         /// <paramref name="settingsScreen"/> and <paramref name="helpScreen"/> are handed in built
         /// rather than constructed here, because the first of them needs two Avalonia-touching
@@ -325,10 +272,7 @@ namespace KinesisEdit.ViewModels
             INotificationService notifications,
             IEditorViewModelFactory editors,
             SettingsScreenViewModel settingsScreen,
-            HelpScreenViewModel helpScreen,
-            ISystemClock clock,
-            IUiDispatcher dispatcher,
-            TimeSpan? lastRefreshedTickInterval = null)
+            HelpScreenViewModel helpScreen)
         {
             Dashboard = dashboard ?? throw new ArgumentNullException(nameof(dashboard));
             SettingsScreen = settingsScreen ?? throw new ArgumentNullException(nameof(settingsScreen));
@@ -337,8 +281,6 @@ namespace KinesisEdit.ViewModels
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _editors = editors ?? throw new ArgumentNullException(nameof(editors));
-            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
-            _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             _currentView = dashboard;
 
             HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => !IsBusy);
@@ -347,13 +289,8 @@ namespace KinesisEdit.ViewModels
 
             Dashboard.ConfigureRequested += OpenDevice;
             _monitor.Updated += OnMonitorUpdated;
-            _monitor.RefreshActivityChanged += OnRefreshActivityChanged;
 
             UpdateStatusIndicator();
-
-            var tickInterval = lastRefreshedTickInterval ?? _defaultLastRefreshedTickInterval;
-
-            _lastRefreshedTicker = new Timer(OnLastRefreshedTick, null, tickInterval, tickInterval);
         }
 
         /// <summary>
@@ -430,10 +367,11 @@ namespace KinesisEdit.ViewModels
                         Editor = editor;
                         CurrentView = editor;
 
-                        // The detection loop keeps running: specs/10-apps-and-ui.md requires the
-                        // open editor to "re-verify the device's version file every tick" to drive
-                        // the v-Drive OK / v-Drive Error indicator, and here one loop serves both
-                        // the dashboard and the editor.
+                        // The indicator is recomputed from the newest snapshot the open session
+                        // carries. specs/10-apps-and-ui.md drove the v-Drive OK / v-Drive Error
+                        // indicator off a per-tick re-verification; scanning is manual here, so it
+                        // is re-verified whenever a scan happens and one detection service still
+                        // serves both the dashboard and the editor.
                         UpdateStatusIndicator();
                     }
                     finally
@@ -748,12 +686,14 @@ namespace KinesisEdit.ViewModels
 
         private VDriveHealth GetDashboardHealth()
         {
-            // Nothing has been looked at yet. The chip keeps the Demo Mode face its field
-            // initialisers give it rather than announcing a failure no scan has established —
-            // "gone" is a finding, and before the first pass there is none. In the shipped app
-            // this state is never on screen: the composition root runs one synchronous pass in
-            // Start() before the first frame.
-            if (_monitor.LastRefreshedUtc is null)
+            // Nothing has been looked at yet — an empty snapshot list is what "no pass has
+            // completed" means, since a completed pass publishes one snapshot per detectable
+            // catalog device whether or not anything was found. The chip keeps the Demo Mode face
+            // its field initialisers give it rather than announcing a failure no scan has
+            // established: "gone" is a finding, and before the first pass there is none. In the
+            // shipped app this state is never on screen — the composition root runs its one
+            // synchronous startup scan before the first frame.
+            if (_monitor.Snapshots.Count == 0)
             {
                 return VDriveHealth.Unknown;
             }
@@ -811,57 +751,8 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// A pass started or finished. Arrives already marshaled onto the UI thread
-        /// (docs/app/app-shell.md, invariant 7), and re-reads the readout immediately so a
-        /// completed pass snaps to "refreshed 0.0s ago" instead of waiting for the next tick.
-        /// </summary>
-        private void OnRefreshActivityChanged()
-        {
-            PublishLastRefreshedText();
-        }
-
-        /// <summary>
-        /// Ages the readout. A plain <see cref="Timer"/> marshaled through the
-        /// <see cref="IUiDispatcher"/>, not a <c>DispatcherTimer</c>: view models carry no Avalonia
-        /// types (docs/app/app-shell.md, invariant 8).
-        /// </summary>
-        private void OnLastRefreshedTick(object? state)
-        {
-            if (_isDisposed)
-            {
-                return;
-            }
-
-            _dispatcher.Post(PublishLastRefreshedText);
-        }
-
-        /// <summary>
-        /// Raises the readout's change notification, and only when the rendered text really
-        /// changed — a still readout must not cost a property change per tick.
-        /// </summary>
-        private void PublishLastRefreshedText()
-        {
-            if (_isDisposed)
-            {
-                return;
-            }
-
-            var text = LastRefreshedText;
-
-            if (string.Equals(text, _lastRefreshedText, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _lastRefreshedText = text;
-
-            OnPropertyChanged(nameof(LastRefreshedText));
-            OnPropertyChanged(nameof(HasLastRefreshed));
-        }
-
-        /// <summary>
-        /// Unsubscribes from the dashboard and the detection loop, stops the readout ticker,
-        /// disposes the Settings screen, and closes any open editor. Safe to call multiple times.
+        /// Unsubscribes from the dashboard and the detection loop, disposes the Settings screen,
+        /// and closes any open editor. Safe to call multiple times.
         /// <para>
         /// It still closes the editor even though <see cref="ConfirmShutdownAsync"/> now runs
         /// first, and deliberately <em>asks nothing</em>: <see cref="IDisposable"/> cannot await,
@@ -881,9 +772,6 @@ namespace KinesisEdit.ViewModels
 
             Dashboard.ConfigureRequested -= OpenDevice;
             _monitor.Updated -= OnMonitorUpdated;
-            _monitor.RefreshActivityChanged -= OnRefreshActivityChanged;
-
-            _lastRefreshedTicker.Dispose();
 
             // The Settings screen holds a subscription to the preferences store, which outlives
             // the shell. It is built once and lives as long as this shell does, so this is where

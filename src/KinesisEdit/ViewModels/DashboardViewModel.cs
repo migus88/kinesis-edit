@@ -11,17 +11,15 @@ namespace KinesisEdit.ViewModels
     /// docs/design/mockups.md §1b): a header, a grid of cards, and the troubleshoot empty state of
     /// specs/11-feature-dialogs.md §11.8 when there is nothing to show.
     /// <para>
-    /// <b>The roster is dynamic.</b> A card exists once its device has been detected at least once
-    /// this session, and stays — as <see cref="DeviceCardState.Resting"/> — if the drive later
-    /// goes away. So the dashboard starts empty (the empty state still renders), cards genuinely
-    /// insert mid-session, and Resting is the state a card <em>falls to</em> rather than the state
-    /// every catalog device is born in.
+    /// <b>The roster is what the last scan found.</b> A card exists for every detected,
+    /// programmable device and for nothing else: plug a board in and scan, and its card inserts at
+    /// the end of the list; unplug it and scan, and the card goes. When the last one goes
+    /// <see cref="HasDevices"/> turns false and the empty state renders again.
     /// </para>
     /// <para>
-    /// The card list is heterogeneous: <see cref="DeviceCardViewModel"/>s first, then at most one
-    /// <see cref="WebToolCardViewModel"/> pinned strictly last. <see cref="HasDevices"/> counts
-    /// device cards only — counting the web-tool card would make it permanently true and the empty
-    /// state unreachable.
+    /// The card list is homogeneous — one kind, <see cref="DeviceCardViewModel"/>. A board this app
+    /// cannot edit is not on this screen at all, which is the design's own rule that an absent
+    /// feature is not rendered rather than shown as a card with nothing to configure.
     /// </para>
     /// </summary>
     public sealed class DashboardViewModel : ViewModelBase, IDisposable
@@ -32,9 +30,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the header's rescan button (docs/design/mockups.md §1b).</summary>
         public const string ScanAllActionCaption = "Scan all";
 
-        // "3 of 7 known devices present · list updates itself" (docs/design/mockups.md §1b). The
-        // noun is pluralised on the detected count, not on the catalog total.
-        private const string SubtitleTemplate = "{0} of {1} known device{2} present · list updates itself";
+        // "3 of 7 known devices present" (docs/design/mockups.md §1b, minus its "list updates
+        // itself" clause — scanning is manual). The noun is pluralised on the detected count, not
+        // on the catalog total.
+        private const string SubtitleTemplate = "{0} of {1} known device{2} present";
 
         /// <summary>
         /// How many devices this app can serve — the denominator of the header subtitle. Every
@@ -76,35 +75,23 @@ namespace KinesisEdit.ViewModels
                 detectedCount == 1 ? string.Empty : "s");
         }
 
-        /// <summary>
-        /// Every card in render order: the device cards, then the web-tool card last. Typed to the
-        /// base because the two kinds have different anatomies and different templates.
-        /// </summary>
-        public ObservableCollection<DashboardCardViewModel> Devices { get; } = [];
+        /// <summary>Every card in render order — one kind, one collection, no pinned trailing item.</summary>
+        public ObservableCollection<DeviceCardViewModel> Devices { get; } = [];
 
-        /// <summary>The drive-backed cards alone, in render order.</summary>
-        public IReadOnlyList<DeviceCardViewModel> DeviceCards => [.. Devices.OfType<DeviceCardViewModel>()];
-
-        /// <summary>
-        /// How many drive-backed cards there are. The device cards occupy the front of
-        /// <see cref="Devices"/> and the web-tool card, when shown, is the single trailing item.
-        /// </summary>
-        public int DeviceCardCount => _isWebToolCardShown ? Devices.Count - 1 : Devices.Count;
-
-        /// <summary>The troubleshoot panel shown while no device has ever been detected.</summary>
+        /// <summary>The troubleshoot panel shown while nothing is detected.</summary>
         public NoDeviceViewModel EmptyState { get; }
 
         /// <summary>Heading over the card grid.</summary>
         public string HeaderTitle => HeaderTitleText;
 
-        /// <summary>"N of 7 known devices present · list updates itself".</summary>
+        /// <summary>"N of 7 known devices present".</summary>
         public string HeaderSubtitle => FormatSubtitle(_detectedCount, KnownDeviceCount);
 
         /// <summary>Caption of the header's rescan button.</summary>
         public string ScanAllCaption => ScanAllActionCaption;
 
-        /// <summary>Whether any device card exists — the web-tool card deliberately does not count.</summary>
-        public bool HasDevices => DeviceCardCount > 0;
+        /// <summary>Whether any device is present, and so whether there are cards to show.</summary>
+        public bool HasDevices => Devices.Count > 0;
 
         /// <summary>Whether the troubleshoot empty state should be shown instead of the cards.</summary>
         public bool IsEmpty => !HasDevices;
@@ -116,23 +103,14 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _isRefreshing, value);
         }
 
-        /// <summary>Whether incoming refreshes are being parked instead of applied.</summary>
-        public bool IsRefreshSuspended => _isRefreshSuspended;
-
         /// <summary>Re-runs v-Drive detection (the header's 'Scan all' and every card's scan button).</summary>
         public IAsyncRelayCommand ScanCommand { get; }
 
-        /// <summary>Raised when the user asks to open a device — Configure, Demo Mode, or the empty state's demo button.</summary>
+        /// <summary>Raised when the user asks to open a device — Configure, or the empty state's demo button.</summary>
         public event Action<DeviceSnapshot>? ConfigureRequested;
 
         private readonly DeviceMonitorService _monitor;
         private readonly VDriveEjectNotifier _ejectNotifier;
-        private readonly HashSet<DeviceId> _everDetected = [];
-        private readonly WebToolCardViewModel? _webToolCard;
-        private IReadOnlyList<DeviceSnapshot>? _pendingSnapshots;
-        private bool _hasPendingRefreshActivity;
-        private bool _isRefreshSuspended;
-        private bool _isWebToolCardShown;
         private bool _isRefreshing;
         private int _detectedCount;
         private bool _isDisposed;
@@ -148,19 +126,8 @@ namespace KinesisEdit.ViewModels
 
             ArgumentNullException.ThrowIfNull(urlLauncher);
 
-            // The loop's completed-pass count right now is the empty state's zero: the dashboard
-            // and its empty state are built once, at app start, so the delta against this baseline
-            // is exactly "since you opened this window".
-            EmptyState = new NoDeviceViewModel(
-                urlLauncher,
-                RequestConfigure,
-                ScanAsync,
-                _monitor.CompletedRefreshCount);
+            EmptyState = new NoDeviceViewModel(urlLauncher, RequestConfigure, ScanAsync);
             ScanCommand = new AsyncRelayCommand(ScanAsync);
-
-            var webToolDevice = WebToolCardViewModel.WebToolDevices().FirstOrDefault();
-
-            _webToolCard = webToolDevice is null ? null : new WebToolCardViewModel(webToolDevice, urlLauncher);
 
             _monitor.Updated += OnMonitorUpdated;
             _monitor.RefreshActivityChanged += OnRefreshActivityChanged;
@@ -180,135 +147,34 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Parks incoming refreshes instead of applying them. Called by the view while a card's own
-        /// button is under the pointer or holds keyboard focus, so a 2 s refresh can never move,
-        /// relabel or disable the control the user is about to click.
-        /// <para>
-        /// The view owns that detection because pointer and focus are Avalonia's business and view
-        /// models stay toolkit-free (docs/app/app-shell.md, invariant 8). Calling this while
-        /// already suspended is a no-op, deliberately: a single <see cref="ResumeRefresh"/> must
-        /// always be enough to un-stick the list, whatever the view's own bookkeeping did.
-        /// </para>
-        /// </summary>
-        public void SuspendRefresh()
-        {
-            if (_isRefreshSuspended)
-            {
-                return;
-            }
-
-            _isRefreshSuspended = true;
-
-            OnPropertyChanged(nameof(IsRefreshSuspended));
-        }
-
-        /// <summary>
-        /// Resumes applying refreshes and applies whatever arrived meanwhile. Only the newest
-        /// parked snapshot list is applied — earlier ones describe drives that have since been
-        /// re-scanned — and nothing is lost, because the newest list is a complete picture rather
-        /// than a delta. Resuming with nothing parked changes nothing.
-        /// <para>
-        /// The one thing a complete picture does <em>not</em> subsume is the set of devices ever
-        /// detected this session, which is why <see cref="Apply"/> accumulates that set even while
-        /// parked rather than leaving it to the list that finally lands here.
-        /// </para>
-        /// </summary>
-        public void ResumeRefresh()
-        {
-            if (!_isRefreshSuspended)
-            {
-                return;
-            }
-
-            _isRefreshSuspended = false;
-
-            OnPropertyChanged(nameof(IsRefreshSuspended));
-
-            var pendingSnapshots = _pendingSnapshots;
-            var hasPendingRefreshActivity = _hasPendingRefreshActivity;
-
-            _pendingSnapshots = null;
-            _hasPendingRefreshActivity = false;
-
-            if (pendingSnapshots is not null)
-            {
-                ApplySnapshots(pendingSnapshots);
-            }
-
-            if (hasPendingRefreshActivity)
-            {
-                UpdateRefreshActivity();
-            }
-        }
-
-        /// <summary>
         /// Reconciles the card list with <paramref name="snapshots"/>: a card exists for every
-        /// device that is detected now or was detected earlier this session, keyed by the scanned
-        /// catalog slot and updated in place so selection and scroll position survive a refresh.
-        /// While suspended the list is parked instead (see <see cref="SuspendRefresh"/>).
+        /// device detected <em>now</em>, keyed by the scanned catalog slot and updated in place so
+        /// selection and scroll position survive a scan. A device that has gone loses its card, and
+        /// losing the last one brings the empty state back.
         /// </summary>
         public void Apply(IReadOnlyList<DeviceSnapshot> snapshots)
         {
             ArgumentNullException.ThrowIfNull(snapshots);
 
-            // Recorded before the suspend check, and deliberately outside the parking that
-            // supersedes: "detected at least once this session" is an accumulation, and a newer
-            // list does not subsume its predecessors for it the way it does for every other field.
-            // A device plugged in and pulled out again entirely inside one suspend window would
-            // otherwise never enter the set, and would end up with no Resting card at all — while
-            // the same sequence with the pointer elsewhere leaves one.
-            RecordEverDetected(snapshots);
-
-            if (_isRefreshSuspended)
-            {
-                _pendingSnapshots = snapshots;
-
-                return;
-            }
-
-            ApplySnapshots(snapshots);
-        }
-
-        private void RecordEverDetected(IReadOnlyList<DeviceSnapshot> snapshots)
-        {
-            foreach (var snapshot in snapshots)
-            {
-                if (snapshot.IsDetected && IsDashboardDevice(snapshot.Device))
-                {
-                    _everDetected.Add(snapshot.ScannedDeviceId);
-                }
-            }
-        }
-
-        private void ApplySnapshots(IReadOnlyList<DeviceSnapshot> snapshots)
-        {
-            var detectedCount = snapshots.Count(
-                snapshot => snapshot.IsDetected && IsDashboardDevice(snapshot.Device));
-
             var roster = snapshots
-                .Where(snapshot => _everDetected.Contains(snapshot.ScannedDeviceId))
+                .Where(snapshot => snapshot.IsDetected && IsDashboardDevice(snapshot.Device))
                 .ToList();
 
             RemoveMissingCards(roster);
             MergeCards(roster);
-            UpdateWebToolCard();
 
-            _detectedCount = detectedCount;
+            _detectedCount = roster.Count;
 
             OnPropertyChanged(nameof(HeaderSubtitle));
-            OnPropertyChanged(nameof(DeviceCardCount));
-            OnPropertyChanged(nameof(DeviceCards));
             OnPropertyChanged(nameof(HasDevices));
             OnPropertyChanged(nameof(IsEmpty));
         }
 
         private void RemoveMissingCards(IReadOnlyList<DeviceSnapshot> roster)
         {
-            // Bounded by the device-card region: the web-tool card is not keyed by a scanned slot
-            // and is never a candidate for removal here.
-            for (var index = DeviceCardCount - 1; index >= 0; index--)
+            for (var index = Devices.Count - 1; index >= 0; index--)
             {
-                var card = (DeviceCardViewModel)Devices[index];
+                var card = Devices[index];
 
                 if (!roster.Any(snapshot => snapshot.ScannedDeviceId == card.ScannedDeviceId))
                 {
@@ -319,64 +185,30 @@ namespace KinesisEdit.ViewModels
 
         private void MergeCards(IReadOnlyList<DeviceSnapshot> roster)
         {
-            // New cards land at the end of the device-card region and existing cards never move:
-            // the design animates a device appearing mid-session as an insertion at the end of the
-            // list, and re-sorting into catalog order would shift every card below it instead.
-            // The first pass therefore fixes the order, and the snapshots arrive in catalog order.
+            // New cards land at the end of the list and existing cards never move: the design
+            // animates a device appearing as an insertion at the end, and re-sorting into catalog
+            // order would shift every card below it instead. The first pass therefore fixes the
+            // order, and the snapshots arrive in catalog order.
             foreach (var snapshot in roster)
             {
                 var existingIndex = IndexOf(snapshot.ScannedDeviceId);
 
                 if (existingIndex >= 0)
                 {
-                    ((DeviceCardViewModel)Devices[existingIndex]).Update(snapshot);
+                    Devices[existingIndex].Update(snapshot);
 
                     continue;
                 }
 
-                // Insert rather than Add: the web-tool card, when shown, is the trailing item and
-                // stays pinned there.
-                Devices.Insert(DeviceCardCount, CreateCard(snapshot));
+                Devices.Add(CreateCard(snapshot));
             }
-        }
-
-        private void UpdateWebToolCard()
-        {
-            if (_webToolCard is null)
-            {
-                return;
-            }
-
-            // Shown only alongside at least one device card: on its own it would fill a dashboard
-            // that has nothing to configure and hide the troubleshoot empty state behind it.
-            var shouldShow = DeviceCardCount > 0;
-
-            if (shouldShow == _isWebToolCardShown)
-            {
-                return;
-            }
-
-            if (shouldShow)
-            {
-                _isWebToolCardShown = true;
-
-                Devices.Add(_webToolCard);
-
-                return;
-            }
-
-            _isWebToolCardShown = false;
-
-            Devices.Remove(_webToolCard);
         }
 
         private int IndexOf(DeviceId scannedDeviceId)
         {
-            var deviceCardCount = DeviceCardCount;
-
-            for (var index = 0; index < deviceCardCount; index++)
+            for (var index = 0; index < Devices.Count; index++)
             {
-                if (((DeviceCardViewModel)Devices[index]).ScannedDeviceId == scannedDeviceId)
+                if (Devices[index].ScannedDeviceId == scannedDeviceId)
                 {
                     return index;
                 }
@@ -400,16 +232,6 @@ namespace KinesisEdit.ViewModels
 
         private void OnRefreshActivityChanged()
         {
-            // Deferred with the snapshots, and for the same reason: the Scanning state relabels and
-            // disables a card's own scan button, so letting it through while the pointer is on that
-            // button is exactly the stolen click deferral exists to prevent.
-            if (_isRefreshSuspended)
-            {
-                _hasPendingRefreshActivity = true;
-
-                return;
-            }
-
             UpdateRefreshActivity();
         }
 
@@ -417,14 +239,14 @@ namespace KinesisEdit.ViewModels
         {
             IsRefreshing = _monitor.IsRefreshing;
 
-            // The empty state renders the same two facts the cards do — a pass being in flight,
-            // and how many have completed — and is fed the same way, pushed down rather than
-            // subscribed, so there is one subscription to the loop on this screen.
-            EmptyState.SetRefreshActivity(_monitor.IsRefreshing, _monitor.CompletedRefreshCount);
+            // The empty state renders the same fact the cards do — a pass being in flight — and is
+            // fed the same way, pushed down rather than subscribed, so there is one subscription to
+            // the loop on this screen.
+            EmptyState.SetRefreshActivity(_monitor.IsRefreshing);
 
-            for (var index = 0; index < DeviceCardCount; index++)
+            foreach (var card in Devices)
             {
-                ((DeviceCardViewModel)Devices[index]).IsScanning = _isRefreshing;
+                card.IsScanning = _isRefreshing;
             }
         }
 

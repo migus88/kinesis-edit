@@ -314,9 +314,9 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains(
                 constants,
-                authored => authored.Site == "ViewModels/WebToolCardViewModel.cs"
-                    && authored.Member == nameof(WebToolCardViewModel.OpenWebToolActionCaption)
-                    && authored.Text.Contains('↗'));
+                authored => authored.Site == "ViewModels/DeviceCardViewModel.cs"
+                    && authored.Member == nameof(DeviceCardViewModel.ScanningStatusText)
+                    && authored.Text.Contains('…'));
 
             // Private, and deliberately so: display text is as often a private constant as a public
             // one, and a sweep that read only the public surface would miss half the chrome.
@@ -526,7 +526,7 @@ namespace KinesisEdit.Tests.Design
         {
             var texts = new List<AuthoredText>();
 
-            foreach (var type in typeof(WebToolCardViewModel).Assembly.GetTypes())
+            foreach (var type in typeof(DeviceCardViewModel).Assembly.GetTypes())
             {
                 const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

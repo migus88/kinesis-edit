@@ -6,20 +6,20 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The dashboard's empty state — mockup §1d, the screen the app shows while nothing has been
+    /// The dashboard's empty state — mockup §1d, the screen the app shows while nothing is
     /// detected. It is the troubleshoot dialog of specs/11-feature-dialogs.md §11.8 rebuilt as a
-    /// working surface: a headline, the reassurance that the app is already watching, a picker of
-    /// all seven programmable boards, the picked board's connection steps, and three actions —
-    /// launch it in demo mode, scan now, open its support page.
+    /// working surface: a headline, what to do about it, a picker of all seven programmable
+    /// boards, the picked board's connection steps, and three actions — launch it in demo mode,
+    /// scan now, open its support page.
     /// <para>
     /// The picker is this app's own addition: the legacy apps each served one device, so their
     /// text was fixed. Here the selection drives the title, the steps, the troubleshooting URL and
     /// which board demo mode opens.
     /// </para>
     /// <para>
-    /// Nothing here asks the user to press anything to make detection happen. The loop is already
-    /// running, so the screen says so and counts its own passes; it replaces itself with the
-    /// device card the moment a drive is seen.
+    /// <b>Scanning is manual, and this screen says so.</b> Nothing looks at the drives on its own,
+    /// so the copy asks the user to mount the drive and press <c>Scan now</c> rather than promising
+    /// that a drive will be picked up by itself.
     /// </para>
     /// </summary>
     public sealed class NoDeviceViewModel : ViewModelBase
@@ -33,11 +33,15 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string PedalTitle = "Pedal not detected";
 
-        /// <summary>The headline's body copy (mockup §1d, verbatim).</summary>
+        /// <summary>
+        /// The headline's body copy. Mockup §1d's sentence promised that the app was watching and
+        /// would pick a drive up on its own; scanning is manual, so this one says what to do
+        /// instead and keeps the mock's other two offers.
+        /// </summary>
         public const string BodyText =
-            "KinesisEdit is watching for a v-Drive and will pick one up the moment it appears — "
-            + "no need to press anything. Meanwhile, pick your device for connection steps, or "
-            + "work without hardware.";
+            "KinesisEdit checks for a v-Drive when you ask it to. Mount your device's drive, then "
+            + "press Scan now — or pick your device below for connection steps, and work without "
+            + "hardware in the meantime.";
 
         /// <summary>Title over the device picker (mockup §1d, verbatim).</summary>
         public const string PickerTitle = "Which device do you have?";
@@ -61,37 +65,38 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the support-link button (mockup §1d; the mock's ↗ is an icon here).</summary>
         public const string TroubleshootingButtonCaption = "Troubleshooting tips";
 
-        /// <summary>The board the screen starts on, and the one the picker tags "default".</summary>
-        public const DeviceId DefaultDevice = DeviceId.Advantage2;
+        /// <summary>
+        /// The board the screen starts on, and the one the picker tags "default". The Freestyle
+        /// Edge RGB, because it is the board this app edits most fully — it is the one with a
+        /// keyboard editor and the one <c>DemoVDriveFixtures</c> answers for, so the empty state's
+        /// Demo Mode button opens a populated editor rather than an empty one.
+        /// </summary>
+        public const DeviceId DefaultDevice = DeviceId.FreestyleEdgeRgb;
 
-        // "Get an Advantage2 into a detectable state - 3 steps" (mockup §1d). The article and the
-        // step count are both data: the Advantage 360 takes "an", the Freestyle boards take "a",
-        // and a device whose v-Drive needs Power User Mode first has one step more.
+        // "Get a Freestyle Edge RGB into a detectable state - 3 steps" (mockup §1d). The article
+        // and the step count are both data: the Advantage 360 takes "an", the Freestyle boards
+        // take "a", and a device whose v-Drive needs Power User Mode first has one step more.
         private const string StepsTitleTemplate = "Get {0} {1} into a detectable state — {2} step{3}";
 
-        // "Still watching · rescanned 8 times since you opened this window" (mockup §1d). U+00B7,
-        // spaced, as everywhere else in this app.
-        private const string RescanTemplate = "Still watching · rescanned {0} time{1} since you opened this window";
-
-        // "Launch Advantage2 in Demo Mode" (mockup §1d) - the primary action names the pick, so
-        // there is never a question about which board is about to open.
+        // "Launch Freestyle Edge RGB in Demo Mode" (mockup §1d) - the primary action names the
+        // pick, so there is never a question about which board is about to open.
         private const string DemoModeCaptionTemplate = "Launch {0} in Demo Mode";
 
         private const string VowelLetters = "AEIOU";
 
         /// <summary>
-        /// The picker's order, which is the mockup's rather than the catalog's: the two contoured
-        /// boards, then the three Freestyles, then the TKO, then the pedal.
+        /// The picker's order: the default board first, then the mockup's own order — the two
+        /// contoured boards, the remaining Freestyles, the TKO, the pedal.
         /// <see cref="DeviceCatalog.All"/> is in legacy-app-id order, which puts the pedal first
         /// and interleaves the families.
         /// </summary>
         private static readonly DeviceId[] _pickerOrder =
         [
+            DeviceId.FreestyleEdgeRgb,
             DeviceId.Advantage2,
             DeviceId.Advantage360,
             DeviceId.FreestyleEdge,
             DeviceId.FreestylePro,
-            DeviceId.FreestyleEdgeRgb,
             DeviceId.Tko,
             DeviceId.SavantElite2
         ];
@@ -127,16 +132,6 @@ namespace KinesisEdit.ViewModels
                 deviceName,
                 stepCount,
                 stepCount == 1 ? string.Empty : "s");
-        }
-
-        /// <summary>Formats the live reassurance line.</summary>
-        public static string FormatRescanText(int rescanCount)
-        {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                RescanTemplate,
-                rescanCount,
-                rescanCount == 1 ? string.Empty : "s");
         }
 
         /// <summary>Formats the primary action, which names the picked board.</summary>
@@ -218,22 +213,11 @@ namespace KinesisEdit.ViewModels
         /// <summary>The headline's body copy.</summary>
         public string Body => BodyText;
 
-        /// <summary>"Get an Advantage2 into a detectable state — 3 steps".</summary>
+        /// <summary>"Get a Freestyle Edge RGB into a detectable state — 3 steps".</summary>
         public string StepsTitle => FormatStepsTitle(SelectedDevice.DisplayName, _steps.Count);
 
         /// <summary>The picked board's numbered connection steps.</summary>
         public IReadOnlyList<ConnectionStep> Steps => _steps;
-
-        /// <summary>"Still watching · rescanned 8 times since you opened this window".</summary>
-        public string RescanText => FormatRescanText(RescanCount);
-
-        /// <summary>
-        /// How many detection passes have completed since this screen was built. It is a delta
-        /// against the baseline captured in the constructor, which is what makes "since you opened
-        /// this window" true: the screen and the window are built together and live as long as
-        /// each other.
-        /// </summary>
-        public int RescanCount => _completedRefreshCount - _completedRefreshBaseline;
 
         /// <summary>Whether a detection pass is in flight right now.</summary>
         public bool IsRefreshing => _isRefreshing;
@@ -260,27 +244,22 @@ namespace KinesisEdit.ViewModels
         private readonly Action<DeviceSnapshot> _demoModeRequested;
         private readonly Func<Task> _scanRequested;
         private readonly IDemoDeviceProvider? _demoDevices;
-        private readonly int _completedRefreshBaseline;
         private DevicePickerOption _selectedOption;
         private IReadOnlyList<ConnectionStep> _steps;
-        private int _completedRefreshCount;
         private bool _isRefreshing;
 
         /// <summary>
-        /// Creates the empty state. <paramref name="completedRefreshBaseline"/> is the detection
-        /// loop's completed-pass count at this moment — the zero the reassurance line counts up
-        /// from. <paramref name="initialDevice"/> selects the initially shown board; the default is
-        /// the Advantage2, which is also the row the picker tags "default".
-        /// <paramref name="demoDevices"/> is the gate the launched snapshot's drive comes from;
-        /// omit it for the real provider. <b>This screen never asks which board it is</b> — the
-        /// provider answers, and a board with no fixtures launches the empty demo editor it always
-        /// launched.
+        /// Creates the empty state. <paramref name="initialDevice"/> selects the initially shown
+        /// board; the default is the Freestyle Edge RGB, which is also the row the picker tags
+        /// "default". <paramref name="demoDevices"/> is the gate the launched snapshot's drive
+        /// comes from; omit it for the real provider. <b>This screen never asks which board it
+        /// is</b> — the provider answers, and a board with no fixtures launches the empty demo
+        /// editor it always launched.
         /// </summary>
         public NoDeviceViewModel(
             IUrlLauncher urlLauncher,
             Action<DeviceSnapshot> demoModeRequested,
             Func<Task> scanRequested,
-            int completedRefreshBaseline = 0,
             DeviceId initialDevice = DefaultDevice,
             IDemoDeviceProvider? demoDevices = null)
         {
@@ -288,8 +267,6 @@ namespace KinesisEdit.ViewModels
             _demoModeRequested = demoModeRequested ?? throw new ArgumentNullException(nameof(demoModeRequested));
             _scanRequested = scanRequested ?? throw new ArgumentNullException(nameof(scanRequested));
             _demoDevices = demoDevices;
-            _completedRefreshBaseline = completedRefreshBaseline;
-            _completedRefreshCount = completedRefreshBaseline;
 
             Devices = CreateOptions();
             _selectedOption = FindOption(initialDevice);
@@ -301,24 +278,20 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Pushes the detection loop's current state down from the dashboard, which is the one
-        /// object subscribed to it. <paramref name="completedRefreshCount"/> is the loop's absolute
-        /// count; the baseline captured at construction turns it into "since you opened this
-        /// window".
+        /// Pushes the detection loop's in-flight state down from the dashboard, which is the one
+        /// object subscribed to it — the same push-don't-subscribe rule the cards follow, so this
+        /// screen adds no second subscription.
         /// </summary>
-        public void SetRefreshActivity(bool isRefreshing, int completedRefreshCount)
+        public void SetRefreshActivity(bool isRefreshing)
         {
-            if (SetProperty(ref _isRefreshing, isRefreshing, nameof(IsRefreshing)))
+            if (!SetProperty(ref _isRefreshing, isRefreshing, nameof(IsRefreshing)))
             {
-                OnPropertyChanged(nameof(ScanCaption));
-
-                ScanCommand.NotifyCanExecuteChanged();
+                return;
             }
 
-            if (SetProperty(ref _completedRefreshCount, completedRefreshCount, nameof(RescanCount)))
-            {
-                OnPropertyChanged(nameof(RescanText));
-            }
+            OnPropertyChanged(nameof(ScanCaption));
+
+            ScanCommand.NotifyCanExecuteChanged();
         }
 
         private static IReadOnlyList<DevicePickerOption> CreateOptions()

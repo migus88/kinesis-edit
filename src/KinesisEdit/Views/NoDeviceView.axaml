@@ -11,14 +11,14 @@
     The dashboard's empty state (docs/design/mockups.md §1d), which is the troubleshoot panel of
     specs/11-feature-dialogs.md §11.8 rebuilt as a working screen.
 
-    The shape, top to bottom: the headline and the sentence that says the app is already watching;
-    two panels side by side - "which device do you have?" on the left, that device's connection
-    steps on the right; the live reassurance line; and the three actions in their design weights.
+    The shape, top to bottom: the headline and the sentence that says what to do about it; two
+    panels side by side - "which device do you have?" on the left, that device's connection steps on
+    the right; and the three actions in their design weights.
 
-    NOTHING HERE ASKS THE USER TO PRESS ANYTHING TO MAKE DETECTION HAPPEN. The 2s loop is already
-    running, the reassurance line counts its completed passes, and DashboardViewModel.IsEmpty drops
-    this whole surface for the device card the moment a drive is seen. "Scan now" exists because a
-    user who has just plugged something in wants to ask, not because the app needs asking.
+    SCANNING IS MANUAL, AND THIS SCREEN IS WHERE THE USER IS ASKED TO DO IT. Nothing looks at the
+    drives on its own, so the body copy says to mount the drive and press "Scan now", and that
+    button is the working half of the screen rather than a convenience. The mock's live
+    "still watching · rescanned N times" line went with the loop it reported on.
   -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <!-- STRETCH, not Center, with the MaxWidth doing the centring. A Center-aligned panel is
@@ -158,12 +158,8 @@
         </Border>
       </Grid>
 
-      <!-- The live half of "no need to press anything": the count is the detection loop's own
-           completed passes since this screen was built, not a timer tick or a button press. -->
-      <TextBlock Text="{Binding RescanText}" Classes="meta muted" />
-
       <!-- Three weights, three meanings: the primary names the board it will open, the secondary
-           asks the loop to look now, and the link leaves the app. -->
+           is the only thing in the app that starts a scan from here, and the link leaves the app. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space8}">
         <Button Classes="primaryAction"
                 Content="{Binding DemoModeCaption}"

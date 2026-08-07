@@ -23,7 +23,6 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeNotificationService _notifications = new();
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
-        private readonly FakeSystemClock _clock = new();
         private readonly FakeHostPreferencesStore _preferences = new();
         private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
@@ -41,9 +40,7 @@ namespace KinesisEdit.Tests.ViewModels
             _monitor = new DeviceMonitorService(
                 new VDriveMonitor(_scanner, _neverPolls),
                 _fileService,
-                new FakeUiDispatcher(),
-                _clock,
-                _neverPolls);
+                new FakeUiDispatcher());
 
             // The real factory over fake collaborators: which editor a device resolves to is part
             // of what OpenDevice has to get right.
@@ -991,7 +988,7 @@ namespace KinesisEdit.Tests.ViewModels
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
 
-            _dashboard.DeviceCards[0].ConfigureCommand.Execute(null);
+            _dashboard.Devices[0].ConfigureCommand.Execute(null);
 
             Assert.NotNull(_shell.Editor);
             Assert.Equal(DeviceId.Tko, _shell.Editor!.Device.DeviceId);
@@ -1040,32 +1037,33 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task HomeCommand_WhenTheEditorCloses_ShowsTheDashboardWithoutInterruptingPolling()
+        public async Task HomeCommand_WhenTheEditorCloses_ShowsTheDashboardOverTheLastScansRoster()
         {
             SetDrive(DeviceId.Tko);
-            _monitor.Start();
+            _monitor.Refresh();
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
 
             await _shell.HomeCommand.ExecuteAsync(null);
 
-            Assert.True(_monitor.IsPolling);
-            Assert.Single(_dashboard.DeviceCards);
+            Assert.Single(_dashboard.Devices);
             Assert.Equal("v-Drive OK", _shell.StatusIndicatorText);
             Assert.Equal(StatusSeverity.Ok, _shell.StatusIndicatorSeverity);
         }
 
         [Fact]
-        public void OpenDevice_WhileEditing_KeepsTheDetectionLoopRunning()
+        public void OpenDevice_WhileEditing_LeavesTheMonitorAvailableToRescan()
         {
+            // specs/10-apps-and-ui.md: the open editor re-verifies the device's version file to
+            // drive its status indicator. Scanning is manual now, so what the session must not do
+            // is tear the monitor down — a scan asked for while an editor is open still lands.
             SetDrive(DeviceId.Tko);
-            _monitor.Start();
 
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
 
-            // specs/10-apps-and-ui.md: the open editor "re-verifies the device's version file
-            // every tick" to drive its status indicator, so the loop cannot be stopped for the
-            // session.
-            Assert.True(_monitor.IsPolling);
+            _monitor.Refresh();
+
+            Assert.NotEmpty(_monitor.Snapshots);
+            Assert.Equal("v-Drive OK", _shell.StatusIndicatorText);
         }
 
         [Fact]
@@ -1073,7 +1071,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
+            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
             Assert.Equal("v-Drive OK", _shell.StatusIndicatorText);
 
             _fileService.SetUnreadable(TestDevices.CreateLocation(DeviceId.Tko).VersionFilePath);
@@ -1089,7 +1087,7 @@ namespace KinesisEdit.Tests.ViewModels
             SetDrive(DeviceId.Tko);
             _fileService.SetUnreadable(TestDevices.CreateLocation(DeviceId.Tko).VersionFilePath);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
+            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
             Assert.Equal("v-Drive Error", _shell.StatusIndicatorText);
 
             SetDrive(DeviceId.Tko);
@@ -1104,7 +1102,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
+            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
 
             _scanner.SetResult();
             _monitor.Refresh();
@@ -1118,7 +1116,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             SetDrive(DeviceId.Tko, isWritable: false);
             _monitor.Refresh();
-            _shell.OpenDevice(_dashboard.DeviceCards[0].Snapshot);
+            _shell.OpenDevice(_dashboard.Devices[0].Snapshot);
 
             SetDrive(DeviceId.Tko);
             _monitor.Refresh();
@@ -1194,8 +1192,8 @@ namespace KinesisEdit.Tests.ViewModels
             // is deliberately NOT the error the same empty snapshot list produces afterwards. The
             // field initialisers carry the same pair, so the chip never flickers through a fourth,
             // transient value. In the shipped app this state is never on screen: the composition
-            // root runs one synchronous pass in Start() before the first frame.
-            Assert.Null(_monitor.LastRefreshedUtc);
+            // root runs one synchronous Refresh() before the first frame.
+            Assert.Empty(_monitor.Snapshots);
             Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
             Assert.Equal(StatusSeverity.Demo, _shell.StatusIndicatorSeverity);
         }
@@ -1526,49 +1524,36 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(_shell.IsHomeSelected);
         }
 
+        /// <summary>
+        /// Issue #118: the app bar's mono "refreshed 0.4s ago" readout is gone, and with it the
+        /// 200 ms ticker that drove it. Scanning is manual, so an age against the last pass was a
+        /// number the app had no business volunteering — and a readout that ages on its own is the
+        /// one thing on a bar that keeps repainting a window nobody is touching.
+        /// </summary>
         [Fact]
-        public void LastRefreshedText_BeforeTheFirstCompletedPass_HasNothingToSay()
+        public void MainWindowViewModel_Exposes_NoLastRefreshedReadout()
         {
-            Assert.Null(_monitor.LastRefreshedUtc);
-            Assert.False(_shell.HasLastRefreshed);
-            Assert.Equal(string.Empty, _shell.LastRefreshedText);
+            Assert.DoesNotContain(
+                typeof(MainWindowViewModel).GetMembers(),
+                member => member.Name.Contains("Refreshed", StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// The other half of the same removal: a completed pass republishes what the chip is made
+        /// of, and nothing else. It used to also fire the two readout properties off
+        /// <c>RefreshActivityChanged</c>, which the shell no longer subscribes to at all.
+        /// </summary>
         [Fact]
-        public void LastRefreshedText_AfterAPass_AgesWithOneDecimal()
+        public void StatusIndicator_WhenAPassCompletes_IsRepublishedAndNothingElseIs()
         {
-            _monitor.Refresh();
-
-            Assert.True(_shell.HasLastRefreshed);
-            Assert.Equal("refreshed 0.0s ago", _shell.LastRefreshedText);
-
-            _clock.Advance(TimeSpan.FromMilliseconds(400));
-            Assert.Equal("refreshed 0.4s ago", _shell.LastRefreshedText);
-
-            _clock.Advance(TimeSpan.FromMilliseconds(800));
-            Assert.Equal("refreshed 1.2s ago", _shell.LastRefreshedText);
-        }
-
-        [Fact]
-        public void LastRefreshedText_WhenTheClockStepsBack_ReadsZeroRatherThanNegative()
-        {
-            _monitor.Refresh();
-
-            _clock.Advance(TimeSpan.FromSeconds(-5));
-
-            Assert.Equal("refreshed 0.0s ago", _shell.LastRefreshedText);
-        }
-
-        [Fact]
-        public void LastRefreshedText_WhenAPassCompletes_IsRepublishedWithoutWaitingForTheTicker()
-        {
+            SetDrive(DeviceId.Tko);
             var changed = new List<string?>();
             _shell.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
 
             _monitor.Refresh();
 
-            Assert.Contains(nameof(MainWindowViewModel.LastRefreshedText), changed);
-            Assert.Contains(nameof(MainWindowViewModel.HasLastRefreshed), changed);
+            Assert.Contains(nameof(MainWindowViewModel.StatusIndicatorText), changed);
+            Assert.DoesNotContain(changed, name => name?.Contains("Refreshed", StringComparison.Ordinal) == true);
         }
 
         [Theory]
@@ -1623,9 +1608,7 @@ namespace KinesisEdit.Tests.ViewModels
 
         /// <summary>
         /// A shell over the shared collaborators, with an editor factory of its own and — for the
-        /// one test that drives the real presenter — a notification service of its own. The readout
-        /// ticker is parked: every test that cares about "refreshed Ns ago" moves the fake clock
-        /// and reads the property, so a background timer would only add a race.
+        /// one test that drives the real presenter — a notification service of its own.
         /// </summary>
         private MainWindowViewModel CreateShell(
             IEditorViewModelFactory editors,
@@ -1638,10 +1621,7 @@ namespace KinesisEdit.Tests.ViewModels
                 notifications ?? _notifications,
                 editors,
                 new SettingsScreenViewModel(_preferences, _ => { }, _ => { }),
-                new HelpScreenViewModel(new FakeUrlLauncher()),
-                _clock,
-                new FakeUiDispatcher(),
-                _neverPolls);
+                new HelpScreenViewModel(new FakeUrlLauncher()));
         }
 
         private void SetPedalFile(DeviceSnapshot snapshot, params string[] lines)

@@ -157,11 +157,16 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public void TheSettingsScreen_Never_RendersAControlForTheWindowGeometry()
+        public void TheSettingsScreen_Draws_OneUnlabelledCardOfExactlyTwoRows()
         {
-            // The window's size and position are restored silently and there is no way to turn that
-            // off, so the screen states it in prose and renders no control. A disabled switch would
-            // claim a choice that does not exist.
+            // Issue #118, item 7. The screen is its title, its subtitle and ONE unlabelled card
+            // holding the Theme row, a hairline and the Animation row — no section label over a
+            // single row, and no prose about the window geometry, which is restored silently and
+            // is not a choice at all.
+            //
+            // The ToggleButton/CheckBox absences are kept from the guard this replaced: both
+            // switches are segmented controls, and a disabled toggle for the geometry would claim a
+            // choice that does not exist.
             using var screen = CreateSettingsScreen(out _, out _, out _);
 
             var view = new SettingsScreenView { DataContext = screen };
@@ -172,9 +177,21 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Empty(view.GetVisualDescendants().OfType<ToggleButton>());
             Assert.Empty(view.GetVisualDescendants().OfType<CheckBox>());
-            Assert.Contains(
-                SettingsScreenViewModel.WindowNote,
-                view.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text ?? string.Empty));
+
+            var blocks = view.GetVisualDescendants().OfType<TextBlock>().ToArray();
+
+            Assert.DoesNotContain(blocks, block => block.Classes.Contains("sectionLabel"));
+            Assert.Single(
+                view.GetVisualDescendants().OfType<Border>(),
+                border => border.Classes.Contains("card"));
+            Assert.Equal(
+                new[] { SettingsScreenViewModel.ThemeCaption, SettingsScreenViewModel.MotionCaption },
+                blocks.Where(block => block.Classes.Contains("rowCaption")).Select(block => block.Text));
+
+            // ...and nothing on the screen still narrates the window's size and position.
+            Assert.DoesNotContain(
+                blocks,
+                block => block.Text?.Contains("window", StringComparison.OrdinalIgnoreCase) == true);
         }
 
         [AvaloniaTheory]
@@ -193,7 +210,7 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            var expected = screen.GeneralLinks.Count + screen.WebToolLinks.Count + screen.TroubleshootingLinks.Count;
+            var expected = screen.GeneralLinks.Count + screen.TroubleshootingLinks.Count;
 
             Assert.Equal(expected, LinkButtons(view).Count);
         }

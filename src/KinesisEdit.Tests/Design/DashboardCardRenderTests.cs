@@ -76,28 +76,28 @@ namespace KinesisEdit.Tests.Design
             TimeSpan.FromMilliseconds(40)
         ];
 
-        /// <summary>Every card kind the grid holds, by the name of the face it wears.</summary>
+        /// <summary>
+        /// Every card kind the grid holds, by the name of the face it wears. There is one card kind
+        /// now — a board this app cannot edit gets no card at all — so the set is exactly the three
+        /// faces a mounted drive can wear.
+        /// </summary>
         public static TheoryData<string> CardKinds()
         {
             return new TheoryData<string>
             {
                 nameof(DeviceCardState.Connected),
-                nameof(DeviceCardState.Resting),
                 nameof(DeviceCardState.CannotAccess),
-                nameof(DeviceCardState.Scanning),
-                WebToolKind
+                nameof(DeviceCardState.Scanning)
             };
         }
-
-        private const string WebToolKind = "WebTool";
 
         [AvaloniaTheory]
         [MemberData(nameof(CardKinds))]
         public async Task EveryCardKind_RendersAtTheOneFixedHeight(string kind)
         {
             // The rail, the status line, the explanation and the button captions all change with the
-            // state; the card's height may not, because the button under the pointer during a 2s
-            // refresh has to still be there — and at the same place — when the refresh lands.
+            // state; the card's height may not, because the button under the pointer when a scan
+            // starts has to still be there — and at the same place — when the scan lands.
             using var scenes = new ViewSceneFactory();
 
             var view = CreateCard(scenes, kind);
@@ -153,6 +153,29 @@ namespace KinesisEdit.Tests.Design
             });
         }
 
+        /// <summary>
+        /// Issue #118, item 6, at the glass: a connected card draws <c>Configure</c> and
+        /// <c>Eject</c> and nothing between them. The Scanning row is the one that matters — the
+        /// card there is a <em>connected</em> drive mid-scan, and a secondary button appearing for
+        /// the duration would push Eject sideways under the cursor.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Connected", new[] { "Configure", "Eject" })]
+        [InlineData("Scanning", new[] { "Configure", "Eject" })]
+        [InlineData("CannotAccess", new[] { "Configure", "Retry access", "Eject" })]
+        public async Task ACardsButtons_AreChosenFromItsDriveAndNotFromItsState(string stateName, string[] expected)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = new DeviceCardView { DataContext = scenes.CreateDeviceCard(Enum.Parse<DeviceCardState>(stateName)) };
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark, 500, 300);
+
+            await SettleAsync(host).ConfigureAwait(true);
+
+            Assert.Equal(expected, Descendants<Button>(view).Where(button => button.IsVisible).Select(CaptionTextOf));
+        }
+
         [AvaloniaTheory]
         [InlineData("Connected", "StatusOkBrush")]
         [InlineData("CannotAccess", "StatusErrorBrush")]
@@ -180,21 +203,18 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(card.Bounds.Height - card.BorderThickness.Top - card.BorderThickness.Bottom, rail.Bounds.Height, 1);
         }
 
-        [AvaloniaTheory]
-        [InlineData("Resting")]
-        [InlineData("Scanning")]
-        public async Task TheTwoStatesWithNoStatusOfTheirOwn_PaintNoRail(string stateName)
+        [AvaloniaFact]
+        public async Task TheOneStateWithNoStatusOfItsOwn_PaintsNoRail()
         {
-            // Resting is "idle and quiet — no red, no spinner. This is the resting state, not an
-            // error" (mockup 2e); a scan in flight is transient and reports nothing about a drive.
-            // Neither may borrow a colour from the two states that do.
+            // A scan in flight is transient and reports nothing about a drive, so it may not borrow
+            // a colour from the two states that do.
             //
             // The rail is still *there*, and deliberately so: it is the thing the design
             // cross-fades, and IsVisible would collapse it with nothing left for the fade to run
             // on. Painting nothing is what "no rail" means here.
             using var scenes = new ViewSceneFactory();
 
-            var view = new DeviceCardView { DataContext = scenes.CreateDeviceCard(Enum.Parse<DeviceCardState>(stateName)) };
+            var view = new DeviceCardView { DataContext = scenes.CreateDeviceCard(DeviceCardState.Scanning) };
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark, 500, 300);
 
@@ -287,51 +307,6 @@ namespace KinesisEdit.Tests.Design
             await SettleAsync(host).ConfigureAwait(true);
 
             Assert.Equal(error, ColorOf(rail.Background));
-        }
-
-        [AvaloniaTheory]
-        [InlineData("Dark")]
-        [InlineData("Light")]
-        public async Task ARestingCard_DrawsNoRedAndNoSpinner(string variantName)
-        {
-            // The design says it twice, so it is asserted here rather than left to the rail test: a
-            // known device whose drive is simply not mounted is not broken and is not busy. The
-            // dashed state mark takes the muted text role, not the error one.
-            var variant = variantName == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
-
-            using var scenes = new ViewSceneFactory();
-
-            var view = new DeviceCardView { DataContext = scenes.CreateDeviceCard(DeviceCardState.Resting) };
-
-            using var host = ThemedHost.Show(view, variant, 500, 300);
-
-            await SettleAsync(host).ConfigureAwait(true);
-
-            var errorRoles = new[] { "StatusErrorBrush", "StatusErrorTextBrush", "StatusErrorTintBrush" }
-                .Select(key => DesignTokens.Resolve(key, variant))
-                .ToArray();
-
-            foreach (var icon in Descendants<Icon>(view).Where(icon => icon.IsVisible))
-            {
-                Assert.DoesNotContain(icon.Stroke, errorRoles);
-                Assert.DoesNotContain(icon.Fill, errorRoles);
-                Assert.DoesNotContain("spinner", icon.Classes);
-            }
-
-            foreach (var text in Descendants<TextBlock>(view).Where(text => text.IsVisible))
-            {
-                Assert.DoesNotContain("statusError", text.Classes);
-                Assert.DoesNotContain(text.Foreground, errorRoles);
-            }
-
-            Assert.All(
-                Descendants<Border>(view).Where(border => border.IsVisible),
-                border => Assert.DoesNotContain(border.Background, errorRoles));
-
-            // The busy affordance is the one thing a resting card must not have at all, and it is
-            // the state's whole point — so it is asserted as an absence rather than inferred from
-            // the icons above.
-            Assert.DoesNotContain(Descendants<ProgressBar>(view), bar => bar.IsVisible);
         }
 
         [AvaloniaFact]
@@ -516,7 +491,7 @@ namespace KinesisEdit.Tests.Design
 
             await SettleAsync(window).ConfigureAwait(true);
 
-            var arriving = new DeviceCardView { DataContext = scenes.CreateDeviceCard(DeviceCardState.Resting) };
+            var arriving = new DeviceCardView { DataContext = scenes.CreateDeviceCard(DeviceCardState.CannotAccess) };
 
             grid.Children.Add(arriving);
 
@@ -532,16 +507,15 @@ namespace KinesisEdit.Tests.Design
 
         [AvaloniaTheory]
         [InlineData("Connected", false)]
-        [InlineData("Resting", false)]
         [InlineData("CannotAccess", false)]
         [InlineData("Scanning", true)]
         public async Task TheScanBar_IsOnlyIndeterminateWhileTheCardIsScanning(string stateName, bool expected)
         {
             // Fluent drives the bar's endless slide off the `:indeterminate` pseudo-class, and
             // hiding a control does not tear its template down: every card goes through Scanning on
-            // every 2 s refresh, so a hardcoded IsIndeterminate leaves that animation running
-            // behind every card on the dashboard for the rest of the session. Bound, the
-            // pseudo-class drops with the state and the animation stops with it.
+            // every scan, so a hardcoded IsIndeterminate leaves that animation running behind every
+            // card on the dashboard for the rest of the session. Bound, the pseudo-class drops with
+            // the state and the animation stops with it.
             using var scenes = new ViewSceneFactory();
 
             var view = new DeviceCardView { DataContext = scenes.CreateDeviceCard(Enum.Parse<DeviceCardState>(stateName)) };
@@ -584,60 +558,31 @@ namespace KinesisEdit.Tests.Design
             Assert.True(stopped.Distinct().Count() == 1, $"The hidden bar kept animating: {string.Join(", ", stopped)}.");
         }
 
-        [AvaloniaFact]
-        public async Task ARefreshIsDeferredWhileTheKeyboardIsInsideACard()
-        {
-            // "A refresh that arrives while a card's own button is under the cursor or focused is
-            // deferred until focus leaves — the list never steals a click" (mockup 2b). The rule is
-            // the view model's; noticing is the view's, because pointer and focus are Avalonia's.
-            using var scenes = new ViewSceneFactory();
-
-            var view = await scenes.CreateAsync(typeof(DashboardView).FullName!).ConfigureAwait(true);
-            var dashboard = (DashboardViewModel)view.DataContext!;
-
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
-
-            await SettleAsync(host).ConfigureAwait(true);
-
-            Assert.False(dashboard.IsRefreshSuspended);
-
-            var scanAll = Descendants<Button>(view)
-                .First(button => Equals(button.Content, DashboardViewModel.ScanAllActionCaption));
-            var configure = Descendants<Button>(view).First(button => button.Classes.Contains("primaryAction"));
-
-            configure.Focus();
-            host.Capture();
-
-            Assert.True(dashboard.IsRefreshSuspended, "Focus inside a card did not park the refresh.");
-
-            // And it un-parks: the header's own button is outside the grid, so moving there is
-            // "focus left the list".
-            scanAll.Focus();
-            host.Capture();
-
-            Assert.False(dashboard.IsRefreshSuspended, "Focus leaving the cards did not resume the refresh.");
-        }
-
         private static Control CreateCard(ViewSceneFactory scenes, string kind)
         {
-            if (kind == WebToolKind)
-            {
-                return new WebToolCardView { DataContext = scenes.CreateWebToolCard() };
-            }
-
             return new DeviceCardView { DataContext = scenes.CreateDeviceCard(Enum.Parse<DeviceCardState>(kind)) };
         }
 
-        /// <summary>The card's own frame, whichever card kind drew it.</summary>
+        /// <summary>The card's own frame.</summary>
         private static Border CardBorderOf(Control view)
         {
-            return Descendants<Border>(view)
-                .First(border => border.Classes.Contains("deviceCard") || border.Classes.Contains("webToolCard"));
+            return Descendants<Border>(view).First(border => border.Classes.Contains("deviceCard"));
         }
 
         private static Border RailOf(Control view)
         {
             return Descendants<Border>(view).Single(border => border.Classes.Contains("cardStatusRail"));
+        }
+
+        /// <summary>
+        /// What a card button reads. Two of the three are plain string content; Eject is an icon
+        /// beside its own word, so its caption is the one <see cref="TextBlock"/> inside it.
+        /// </summary>
+        private static string CaptionTextOf(Button button)
+        {
+            return button.Content as string
+                ?? Descendants<TextBlock>(button).Select(text => text.Text).FirstOrDefault(text => !string.IsNullOrEmpty(text))
+                ?? string.Empty;
         }
 
         /// <summary>The card's status caption — the one the design swaps instantly while the rail fades.</summary>
@@ -703,9 +648,15 @@ namespace KinesisEdit.Tests.Design
             return variantName == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
         }
 
+        /// <summary>
+        /// The card grid. Found by what it is bound to rather than by an <c>x:Name</c>: nothing in
+        /// the view's code-behind reaches for it any more — the pointer and focus watching that
+        /// deferred a refresh is gone with the poll — so a name here would exist only for this test.
+        /// </summary>
         private static ItemsControl CardsOf(Control view)
         {
-            return Descendants<ItemsControl>(view).Single(items => items.Name == "Cards");
+            return Descendants<ItemsControl>(view)
+                .Single(items => items.ItemsSource is IEnumerable<DeviceCardViewModel>);
         }
 
         private static Control ContainerAt(ItemsControl items, int index)
