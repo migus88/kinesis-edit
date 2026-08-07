@@ -2,6 +2,7 @@ using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
 using KinesisEdit.ViewModels;
 
@@ -10,6 +11,14 @@ namespace KinesisEdit.Tests.ViewModels
     public class KeyboardLayerViewModelTests
     {
         private static DeviceDefinition RgbDevice => DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb);
+
+        /// <summary>
+        /// A frame that lights nothing, drawn over a paint layer at full opacity — the shape of
+        /// "just the paint, please", which is what the paint tests below are about.
+        /// </summary>
+        private static LightingEffectFrame EmptyFrame => new(
+            new Dictionary<int, LightingPreviewCell>(),
+            LightingEffectFrame.PaintOpacityDirect);
 
         [Fact]
         public void BuildAll_ForTheFreestyleEdgeRgb_JoinsEveryKeyToItsPlacement()
@@ -83,15 +92,15 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layers = BuildRgbLayers(lighting);
 
-            Assert.Equal("#FF0000", layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ColorOverlayHex);
-            Assert.True(layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].HasColorOverlay);
-            Assert.Null(layers[0].Keys[TestLayouts.RgbDigitTwoKeyIndex].ColorOverlayHex);
-            Assert.Equal("#0000FF", layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].ColorOverlayHex);
-            Assert.Null(layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ColorOverlayHex);
+            Assert.Equal("#FF0000", layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            Assert.True(layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].HasPaintColor);
+            Assert.Null(layers[0].Keys[TestLayouts.RgbDigitTwoKeyIndex].PaintColorHex);
+            Assert.Equal("#0000FF", layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].PaintColorHex);
+            Assert.Null(layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
         }
 
         [Fact]
-        public void BuildAll_WithABlackKeyColour_ProducesNoOverlay()
+        public void BuildAll_WithABlackKeyColour_ProducesNoPaint()
         {
             var lighting = new LightingModel();
 
@@ -99,19 +108,19 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layers = BuildRgbLayers(lighting);
 
-            Assert.All(layers[0].Keys, key => Assert.False(key.HasColorOverlay));
+            Assert.All(layers[0].Keys, key => Assert.False(key.HasPaintColor));
         }
 
         [Fact]
-        public void BuildAll_WithoutALightingModel_ProducesNoOverlay()
+        public void BuildAll_WithoutALightingModel_ProducesNoPaint()
         {
             var layers = BuildRgbLayers(lighting: null);
 
-            Assert.All(layers[0].Keys, key => Assert.Null(key.ColorOverlayHex));
+            Assert.All(layers[0].Keys, key => Assert.Null(key.PaintColorHex));
         }
 
         [Fact]
-        public void Build_ForADeviceWithoutPerKeyRgb_ProducesNoOverlay()
+        public void BuildPaint_ForADeviceWithoutPerKeyRgb_IsEmpty()
         {
             var lighting = new LightingModel();
 
@@ -119,34 +128,38 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layout = KeyboardLayout.Create(DeviceId.Advantage2);
 
-            Assert.Empty(KeyColorOverlay.Build(layout.Device, lighting, layout.Layers[0]));
+            Assert.Empty(KeyColorOverlay.BuildPaint(layout.Device, lighting, layout.Layers[0]));
         }
 
         [Fact]
-        public void Build_WithALightingModelOfAnotherShape_IsIgnored()
+        public void BuildPaint_WithALightingModelOfAnotherShape_IsIgnored()
         {
             var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
 
-            Assert.Empty(KeyColorOverlay.Build(layout.Device, new TkoLightingModel(), layout.Layers[0]));
+            Assert.Empty(KeyColorOverlay.BuildPaint(layout.Device, new TkoLightingModel(), layout.Layers[0]));
         }
 
         [Fact]
-        public void Build_ForAKeyCodeTheLayerDoesNotCarry_SkipsIt()
+        public void ApplyLighting_ForAKeyCodeTheLayerDoesNotCarry_PaintsNothing()
         {
+            // The map is the layer's own KeyColors, so it may hold a code this layer has no cap
+            // for; the cap looks itself up, so an unmatched code simply reaches nobody.
             var lighting = new LightingModel();
 
             lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("kp7").Code, new LedColor(1, 2, 3));
 
-            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layer = BuildRgbLayers(lighting)[0];
 
-            Assert.Empty(KeyColorOverlay.Build(layout.Device, lighting, layout.Layers[0]));
+            layer.ApplyLighting(EmptyFrame, KeyColorOverlay.BuildPaint(RgbDevice, lighting, layer.Layer));
+
+            Assert.All(layer.Keys, key => Assert.False(key.HasPaintColor));
         }
 
         [Fact]
-        public void ApplyColorOverlays_AfterALightingEdit_RepaintsEveryCap()
+        public void ApplyLighting_AfterALightingEdit_RepaintsEveryCap()
         {
             // The colour lives in the lighting model, which no layout parser writes into the key,
-            // so RefreshFromModel cannot reach it: the Lighting tab pushes a fresh map in.
+            // so RefreshFromModel cannot reach it: the Lighting tab pushes a fresh frame in.
             var lighting = new LightingModel();
             var layer = BuildRgbLayers(lighting)[0];
             var key = layer.Keys[TestLayouts.RgbDigitOneKeyIndex];
@@ -155,16 +168,42 @@ namespace KinesisEdit.Tests.ViewModels
             key.PropertyChanged += (_, arguments) => changed.Add(arguments.PropertyName!);
 
             lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(0, 128, 255));
-            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+            layer.ApplyLighting(EmptyFrame, KeyColorOverlay.BuildPaint(RgbDevice, lighting, layer.Layer));
 
-            Assert.Equal("#0080FF", key.ColorOverlayHex);
-            Assert.True(key.HasColorOverlay);
-            Assert.Contains(nameof(KeyboardKeyViewModel.ColorOverlayHex), changed);
-            Assert.Contains(nameof(KeyboardKeyViewModel.HasColorOverlay), changed);
+            Assert.Equal("#0080FF", key.PaintColorHex);
+            Assert.True(key.HasPaintColor);
+            Assert.Contains(nameof(KeyboardKeyViewModel.PaintColorHex), changed);
+            Assert.Contains(nameof(KeyboardKeyViewModel.HasPaintColor), changed);
         }
 
         [Fact]
-        public void ApplyColorOverlays_WithAKeyTheMapNoLongerMentions_ClearsItsStrip()
+        public void ApplyLighting_PushesTheFramesCellsOntoTheCapsAndLeavesTheRestUnlit()
+        {
+            var layer = BuildRgbLayers(lighting: null)[0];
+            var lit = layer.Keys[TestLayouts.RgbDigitOneKeyIndex];
+            var frame = new LightingEffectFrame(
+                new Dictionary<int, LightingPreviewCell>
+                {
+                    [lit.Key.OriginalKey.Code] = new(new LedColor(0, 128, 255), 0.5)
+                },
+                LightingEffectFrame.PaintOpacityDimmed);
+
+            layer.ApplyLighting(frame, null);
+
+            Assert.Equal("#0080FF", lit.EffectColorHex);
+            Assert.True(lit.HasEffectColor);
+            Assert.Equal(0.5, lit.EffectIntensity);
+
+            // A key the effect does not reach is absent from the frame, never present at
+            // intensity 0 — which is what makes the cap draw its hatch.
+            Assert.All(
+                layer.Keys.Where(key => !ReferenceEquals(key, lit)),
+                key => Assert.False(key.HasEffectColor));
+            Assert.All(layer.Keys, key => Assert.Equal(LightingEffectFrame.PaintOpacityDimmed, key.PaintOpacity));
+        }
+
+        [Fact]
+        public void ApplyLighting_WithAKeyTheMapNoLongerMentions_ClearsItsPaint()
         {
             var lighting = new LightingModel();
 
@@ -172,17 +211,17 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layer = BuildRgbLayers(lighting)[0];
 
-            Assert.True(layer.Keys[TestLayouts.RgbDigitOneKeyIndex].HasColorOverlay);
+            Assert.True(layer.Keys[TestLayouts.RgbDigitOneKeyIndex].HasPaintColor);
 
             // Black is "no colour" (specs/07-lighting.md §2.1): assigning it removes the entry.
             lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, LedColor.Black);
-            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+            layer.ApplyLighting(EmptyFrame, KeyColorOverlay.BuildPaint(RgbDevice, lighting, layer.Layer));
 
-            Assert.All(layer.Keys, key => Assert.False(key.HasColorOverlay));
+            Assert.All(layer.Keys, key => Assert.False(key.HasPaintColor));
         }
 
         [Fact]
-        public void ApplyColorOverlays_WithoutAMap_ClearsEveryStrip()
+        public void ApplyLighting_WithoutAMap_ClearsEveryCapsPaint()
         {
             var lighting = new LightingModel();
 
@@ -190,9 +229,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layer = BuildRgbLayers(lighting)[0];
 
-            layer.ApplyColorOverlays(null);
+            layer.ApplyLighting(EmptyFrame, null);
 
-            Assert.All(layer.Keys, key => Assert.Null(key.ColorOverlayHex));
+            Assert.All(layer.Keys, key => Assert.Null(key.PaintColorHex));
         }
 
         [Theory]
@@ -240,8 +279,8 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public void Sections_HoldTheVerySameCapInstancesAsTheFlatKeyList()
         {
-            // The editor resolves a cap through the flat list and ApplyColorOverlays writes through
-            // it; a copy in the sections would leave the drawn board showing state nothing updates.
+            // The editor resolves a cap through the flat list and ApplyLighting writes through it;
+            // a copy in the sections would leave the drawn board showing state nothing updates.
             var layer = BuildRgbLayers(lighting: null)[0];
             var fromSections = layer.Sections.SelectMany(section => section.Keys).ToList();
 
@@ -260,13 +299,13 @@ namespace KinesisEdit.Tests.ViewModels
             var layer = BuildRgbLayers(lighting)[0];
 
             lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(255, 0, 0));
-            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+            layer.ApplyLighting(EmptyFrame, KeyColorOverlay.BuildPaint(RgbDevice, lighting, layer.Layer));
 
             var fromSection = layer.Sections
                 .SelectMany(section => section.Keys)
                 .Single(key => key.Index == TestLayouts.RgbDigitOneKeyIndex);
 
-            Assert.Equal("#FF0000", fromSection.ColorOverlayHex);
+            Assert.Equal("#FF0000", fromSection.PaintColorHex);
         }
 
         [Fact]

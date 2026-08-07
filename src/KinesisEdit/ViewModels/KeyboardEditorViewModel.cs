@@ -25,7 +25,7 @@ namespace KinesisEdit.ViewModels
     /// <see cref="KeyboardKeyViewModel"/>/<see cref="KeyboardLayerViewModel"/>.
     /// </para>
     /// </summary>
-    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable
+    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable, IMacroLibraryHost
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -329,23 +329,15 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The macro editor of specs/10-apps-and-ui.md, built once the profile is loaded; null
-        /// while loading and after a load that produced no model at all.
+        /// The Macros tab — a <b>library</b> since issue #93, not an editor (mockup <c>2i</c>:
+        /// "the Macros tab is a library, not the editor"). Built once, eagerly, over device facts
+        /// alone, and pushed the editor's state by <see cref="RefreshMacroLibraryPanel"/>; it reaches
+        /// the editor's <b>one</b> <see cref="MacroLibrary"/> through a function, never a copy.
         /// </summary>
-        public MacroPanelViewModel? MacroPanel
-        {
-            get => _macroPanel;
-            private set
-            {
-                if (SetProperty(ref _macroPanel, value))
-                {
-                    OnPropertyChanged(nameof(IsMacroPanelVisible));
-                }
-            }
-        }
+        public MacroLibraryViewModel MacroLibraryPanel { get; }
 
-        /// <summary>Whether the macro panel is the open section. The Keys tab hides it again.</summary>
-        public bool IsMacroPanelVisible => _selectedTab == EditorTab.Macros && _macroPanel is not null;
+        /// <summary>Whether the Macros tab is the open section.</summary>
+        public bool IsMacroLibraryVisible => _selectedTab == EditorTab.Macros;
 
         /// <summary>
         /// The feature panel rendered over the editor — Tap and Hold, Macro Timing Delays, Search
@@ -388,7 +380,6 @@ namespace KinesisEdit.ViewModels
         public bool IsCaptureActive =>
             IsListening
             || IsOverlayAwaitingKeystroke
-            || _macroPanel?.IsRecording == true
             || Inspector.IsRecording;
 
         /// <summary>The device's layers, in model order.</summary>
@@ -479,9 +470,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
         public IAsyncRelayCommand SaveCommand { get; }
 
-        /// <summary>Opens the Macro Timing Delays panel and inserts its delay into the macro (11 §11.3).</summary>
-        public IAsyncRelayCommand InsertDelayCommand { get; }
-
         /// <summary>Opens Search Keys over the macro and inserts the picked action (11 §11.6).</summary>
         public IRelayCommand InsertSpecialActionCommand { get; }
 
@@ -522,10 +510,7 @@ namespace KinesisEdit.ViewModels
         private readonly KeyboardVisual? _visual;
         private readonly Action<CapturedKeystroke> _keystrokeCapturedHandler;
         private readonly EventHandler _activeOverlayChangedHandler;
-        private readonly EventHandler _macroRecordingChangedHandler;
-        private readonly EventHandler _macrosChangedHandler;
         private readonly EventHandler _lightingChangedHandler;
-        private readonly PropertyChangedEventHandler _macroPanelPropertyChangedHandler;
         private IProfileSession? _session;
         private IReadOnlyList<KeyboardLayerViewModel> _layers = [];
         private IReadOnlyList<string> _invalidLineMessages = [];
@@ -533,7 +518,6 @@ namespace KinesisEdit.ViewModels
         private KeyboardKeyViewModel? _selectedKey;
         private KeyboardKeyViewModel? _listeningKey;
         private KeyboardLayout? _layout;
-        private MacroPanelViewModel? _macroPanel;
         private EditorAdvisories _advisories = EditorAdvisories.Empty;
         private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
@@ -581,7 +565,8 @@ namespace KinesisEdit.ViewModels
             IFilePickerService filePicker,
             IVDriveFileService files,
             IUrlLauncher urlLauncher,
-            IDeviceSessionAccessor? sessions = null) : base(device)
+            IDeviceSessionAccessor? sessions = null,
+            IMotionSettings? motionSettings = null) : base(device)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _capture = capture ?? throw new ArgumentNullException(nameof(capture));
@@ -603,7 +588,12 @@ namespace KinesisEdit.ViewModels
             // (docs/app/settings.md). Neither parameter has a default, so an editor that forgot to
             // thread the store is a compile error rather than a screen that quietly reads nothing.
             Settings = new KeyboardSettingsViewModel(device, settings, notifications, _preferences, urlLauncher);
-            Lighting = new LightingTabViewModel(device, notifications, _preferences);
+            // The lighting tab is the app's one animated surface, so it is the one view model that
+            // needs the motion switch: its preview freezes at frame zero under reduce-motion. It is
+            // read per frame rather than once, because since issue #96 the setting is a live user
+            // preference (MotionPreferenceApplier) that the Settings screen can flip while this
+            // editor is open, and IMotionSettings raises nothing when it moves.
+            Lighting = new LightingTabViewModel(device, notifications, _preferences, motionSettings);
 
             // The strip owns the projection and the Review walk; selecting what a note is about is
             // this class's, because the board and the macro panel are. Built before SelectTab
@@ -633,7 +623,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
-            InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
             InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
             OpenSearchCommand = new RelayCommand(OpenSearch, () => CanOpenSearch());
             ExportCommand = new RelayCommand(OpenExport, () => CanExport());
@@ -650,12 +639,14 @@ namespace KinesisEdit.ViewModels
             // SelectLayer below already runs that.
             Inspector = CreateInspector();
 
+            // The Macros tab. Built here and never rebuilt: everything it needs at construction is a
+            // device fact, and it reaches the profile's ONE MacroLibrary through a function because
+            // the library arrives with the profile and is replaced by a load or an import.
+            MacroLibraryPanel = new MacroLibraryViewModel(device, this, () => MacroLibrary);
+
             SelectTab(EditorTab.Keys);
 
             _activeOverlayChangedHandler = (_, _) => OnActiveOverlayChanged();
-            _macroRecordingChangedHandler = (_, _) => OnMacroRecordingChanged();
-            _macrosChangedHandler = (_, _) => RefreshCounters();
-            _macroPanelPropertyChangedHandler = (_, e) => OnMacroPanelPropertyChanged(e);
 
             // A lighting edit moves no counter, but it does move the session: ProfileSession.Save
             // writes led<n>.txt from the very model the panel mutates, so the amber Save is the
@@ -808,12 +799,10 @@ namespace KinesisEdit.ViewModels
             // finished while a panel is up.
             CancelCopyKey();
 
-            // A recording underneath owns the capture service and would swallow every key aimed at
-            // the panel, Escape included; stopping it hands the service back before the panel asks
-            // the host for it. The rail is under the same scrim, so its armed record button stands
-            // down for the same reason — the rail itself stays open behind the panel.
-            _macroPanel?.StopRecording();
-
+            // An armed record button underneath owns the capture service and would swallow every
+            // key aimed at the panel, Escape included; standing it down hands the service back
+            // before the panel asks the host for it. The rail is under the same scrim, and the rail
+            // itself stays open behind the panel — only what it had armed stops.
             DeactivateInspector();
 
             _overlays.Show(overlay);
@@ -945,7 +934,11 @@ namespace KinesisEdit.ViewModels
                 ? KeyboardLayerViewModel.BuildAll(outcome.Layout, _visual, outcome.Session?.Lighting)
                 : [];
 
-            AttachMacroPanel(outcome.Layout);
+            // Before the panels: a freshly parsed layout carries no macro names at all (they ride
+            // app_settings.txt, not layoutN.txt), and the library groups by name — so the stored
+            // names have to be stamped on before anything reads the library
+            // (KeyboardEditorViewModel.MacroLibrary.cs).
+            AttachMacroLibrary(outcome.Layout);
 
             SelectLayer(Layers.Count > 0 ? Layers[0] : null);
             RefreshCounters();
@@ -956,80 +949,6 @@ namespace KinesisEdit.ViewModels
             // without the picture being rebuilt — on the lighting board, which is the only
             // picture that draws an LED strip (KeyboardView.ShowsLedStrips).
             Lighting.Attach(outcome.Session?.Lighting, Layers);
-        }
-
-        private void AttachMacroPanel(KeyboardLayout? layout)
-        {
-            DetachMacroPanel();
-
-            if (layout is null)
-            {
-                return;
-            }
-
-            var panel = new MacroPanelViewModel(Device, layout);
-
-            panel.RecordingChanged += _macroRecordingChangedHandler;
-            panel.MacrosChanged += _macrosChangedHandler;
-            panel.PropertyChanged += _macroPanelPropertyChangedHandler;
-
-            MacroPanel = panel;
-        }
-
-        private void DetachMacroPanel()
-        {
-            if (_macroPanel is null)
-            {
-                return;
-            }
-
-            _macroPanel.StopRecording();
-            _macroPanel.RecordingChanged -= _macroRecordingChangedHandler;
-            _macroPanel.MacrosChanged -= _macrosChangedHandler;
-            _macroPanel.PropertyChanged -= _macroPanelPropertyChangedHandler;
-
-            MacroPanel = null;
-        }
-
-        /// <summary>
-        /// Which macro the panel has open decides whether the two insertion commands of §11.3 and
-        /// §11.6 are available, and the panel moves it on its own — a slot click, a list-row
-        /// click — not only when the editor changes the trigger.
-        /// </summary>
-        private void OnMacroPanelPropertyChanged(PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName is nameof(MacroPanelViewModel.EditedMacro))
-            {
-                NotifyCommands();
-            }
-        }
-
-        /// <summary>
-        /// Capture belongs to the editor, not to the panel (docs/app/keyboard-editor.md,
-        /// invariant 4), so the panel only announces that it started or stopped recording and the
-        /// editor turns the service on and off around it. A key cannot be listening for a remap
-        /// while a macro records — the two consume the same keystrokes — so entering recording
-        /// cancels the listen.
-        /// </summary>
-        private void OnMacroRecordingChanged()
-        {
-            if (_macroPanel is null)
-            {
-                return;
-            }
-
-            if (_macroPanel.IsRecording)
-            {
-                CancelRemap();
-
-                _capture.Start();
-            }
-            else
-            {
-                _capture.Stop();
-            }
-
-            NotifyCommands();
         }
 
         private static IReadOnlyList<string> BuildInvalidLineMessages(IProfileSession? session)
@@ -1060,10 +979,10 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            // Both consumers of the app-wide capture service are ended here, or it keeps
-            // swallowing keystrokes behind the section the user moved to: listening belongs to the
-            // keyboard picture, and recording to the macro panel — which the Macros tab is allowed
-            // to keep, because that is the section it belongs to.
+            // Listening belongs to the keyboard picture, which only the Layout tab draws, so it is
+            // ended here or the capture service keeps swallowing keystrokes behind the section the
+            // user moved to. There is no second consumer to stand down any more: the Macros tab is a
+            // library and records nothing (issue #93), and the rail is deactivated just below.
             CancelRemap();
 
             // An armed copy is finished with a click on the board; a section that does not draw
@@ -1075,16 +994,11 @@ namespace KinesisEdit.ViewModels
             // closed: coming back to the Layout tab must find it as it was left.
             DeactivateInspector();
 
-            if (tab != EditorTab.Macros)
-            {
-                _macroPanel?.StopRecording();
-            }
-
             // The property name is passed explicitly: the caller-member default would name this
             // method rather than the property the view is bound to.
             SetProperty(ref _selectedTab, tab, nameof(SelectedTab));
 
-            OnPropertyChanged(nameof(IsMacroPanelVisible));
+            OnPropertyChanged(nameof(IsMacroLibraryVisible));
 
             foreach (var entry in Tabs)
             {
@@ -1132,7 +1046,6 @@ namespace KinesisEdit.ViewModels
         {
             CancelRemap();
             CancelCopyKey();
-            _macroPanel?.StopRecording();
             DeactivateInspector();
             ClearSelectedKey();
 
@@ -1148,14 +1061,6 @@ namespace KinesisEdit.ViewModels
             // so neither goes through RefreshCounters.
             RefreshAdvisorySummary();
             RefreshLegend();
-
-            UpdateMacroTrigger();
-        }
-
-        /// <summary>Both tabs share one board and one selection: the selected key is the trigger.</summary>
-        private void UpdateMacroTrigger()
-        {
-            _macroPanel?.SetTrigger(SelectedKey, SelectedLayer?.Layer);
         }
 
         /// <summary>
@@ -1200,12 +1105,13 @@ namespace KinesisEdit.ViewModels
             {
                 CancelRemap();
                 ClearSelectedKey();
-                UpdateMacroTrigger();
 
                 // Nothing is selected, so the rail has nothing to be about: it collapses and its
                 // Auto column measures zero. A selection change writes nothing, so it never reaches
-                // RefreshCounters — hence the explicit push here and in SelectKeyDirectly.
+                // RefreshCounters — hence the explicit push here and in SelectKeyDirectly. The
+                // Macros tab's slot branch is about the selection too, so it follows.
                 RefreshInspector();
+                RefreshMacroLibraryPanel();
 
                 return;
             }
@@ -1245,9 +1151,8 @@ namespace KinesisEdit.ViewModels
             key.IsSelected = true;
             SelectedKey = key;
 
-            UpdateMacroTrigger();
-
             RefreshInspector();
+            RefreshMacroLibraryPanel();
         }
 
         private void ClearSelectedKey()
@@ -1262,13 +1167,13 @@ namespace KinesisEdit.ViewModels
 
         private bool CanBeginRemap()
         {
-            // A macro recording and a listening key would fight over the same keystrokes, and an
+            // An armed rail panel and a listening key would fight over the same keystrokes, and an
             // open feature panel owns them outright, so neither may start a remap.
             return SelectedKey is not null
                    && SelectedKey.CanEdit
                    && !IsLoading
                    && !IsBusy
-                   && _macroPanel?.IsRecording != true
+                   && !Inspector.IsRecording
                    && ActiveOverlay is null;
         }
 
@@ -1363,13 +1268,6 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            if (_macroPanel is { WantsKeystrokes: true } panel)
-            {
-                panel.ReceiveKeystroke(keystroke);
-
-                return;
-            }
-
             ApplyRemap(keystroke);
         }
 
@@ -1429,9 +1327,9 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            // A lambda, not a method group: InsertKeystroke reports "no macro is being edited"
+            // A lambda, not a method group: InsertIntoOpenMacro reports "no macro is being edited"
             // with a bool this path has nothing to do with, and the panel may be gone by then.
-            var insert = new Action<KeyDefinition>(key => _macroPanel?.InsertKeystroke(key));
+            var insert = new Action<KeyDefinition>(key => InsertIntoOpenMacro(key));
 
             EventHandler? closed = null;
 
@@ -1445,30 +1343,6 @@ namespace KinesisEdit.ViewModels
             subscribe(insert);
 
             overlay.Closed += closed;
-        }
-
-        private async Task InsertDelayAsync()
-        {
-            if (!CanInsertIntoMacro())
-            {
-                return;
-            }
-
-            var isAvailable = await MacroDelayOverlayViewModel
-                .EnsureFirmwareAvailableAsync(Device.DeviceId, Device.Firmware, _notifications, _urlLauncher)
-                .ConfigureAwait(true);
-
-            if (!isAvailable || !CanInsertIntoMacro())
-            {
-                return;
-            }
-
-            var overlay = new MacroDelayOverlayViewModel(Layout!.Dialect);
-
-            ShowMacroInsertOverlay(
-                overlay,
-                handler => overlay.Accepted += handler,
-                handler => overlay.Accepted -= handler);
         }
 
         /// <summary>
@@ -1545,22 +1419,67 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Both insertion panels target the macro the macro panel currently has open, so two
-        /// things have to be true: there is one — <see cref="MacroPanelViewModel.EditedMacro"/> is
-        /// null on a device without macros, with nothing selected, and on a position that cannot
-        /// carry one (05 §5.3) — and that panel is <b>on screen</b>. Selecting any macro-capable
-        /// key opens an unassigned draft, so without the second test the two buttons stay live on
-        /// the Keys tab and the picked token is appended to a macro the user cannot see and never
-        /// assigns.
+        /// §11.6's insertion targets the macro the <b>key inspector</b> has open — since issue #93
+        /// that is the app's one macro editor — so three things have to be true: the rail is open,
+        /// it is showing its Macro panel, and the selected position really carries a macro. Without
+        /// the mode test the button would stay live beside a Remap panel and the picked token would
+        /// be appended to a macro the user cannot see.
         /// </summary>
         private bool CanInsertIntoMacro()
         {
             return Layout is not null
-                   && IsMacroPanelVisible
-                   && _macroPanel?.EditedMacro is not null
+                   && Inspector.IsOpen
+                   && Inspector.SelectedMode == KeyInspectorMode.Macro
+                   && FindOpenMacro() is not null
                    && !IsLoading
                    && !IsBusy
                    && ActiveOverlay is null;
+        }
+
+        /// <summary>
+        /// The macro the rail's Macro panel is editing, or null. It is read off the model rather than
+        /// asked of the panel: the panel holds it privately, and both stores answer the same two
+        /// questions the panel asks — the key's <b>active</b> slot on a slot device (which the panel
+        /// normalises to the first populated one when it reads), the layer-plus-trigger entry on a
+        /// flat-list one (06 §1).
+        /// </summary>
+        private Macro? FindOpenMacro()
+        {
+            if (SelectedKey is not { } key || Layout is not { } layout)
+            {
+                return null;
+            }
+
+            if (!layout.UsesFlatMacroList)
+            {
+                return key.Key.GetMacro(key.Key.ActiveMacroIndex);
+            }
+
+            var flat = layout.FindMacros(SelectedLayer?.Index ?? Macro.UnassignedIndex, key.Key.TriggerKey.Code);
+
+            return flat.Count > 0 ? flat[0] : null;
+        }
+
+        /// <summary>
+        /// Appends one key to the macro the rail has open — §11.6's <c>Search Keys (Macro)</c> hook.
+        /// The write lands on the model and then goes through the editor's one refresh funnel, which
+        /// is what re-reads the rail's step list, the counters, the advisories and the dirty flag;
+        /// Core announces nothing on its own. False when no macro is open.
+        /// </summary>
+        private bool InsertIntoOpenMacro(KeyDefinition key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+
+            if (FindOpenMacro() is not { } macro)
+            {
+                return false;
+            }
+
+            macro.AddKeystroke(new Keystroke(key));
+
+            RefreshCounters();
+
+            return true;
         }
 
         private void OpenExport()
@@ -1600,7 +1519,6 @@ namespace KinesisEdit.ViewModels
 
             CancelRemap();
             CancelCopyKey();
-            _macroPanel?.StopRecording();
             DeactivateInspector();
 
             var outcome = await _importer.ImportAsync(session, Device.DeviceId).ConfigureAwait(true);
@@ -1672,17 +1590,20 @@ namespace KinesisEdit.ViewModels
         /// Re-reads everything the chrome says about the model: the two spec-10 counters, the
         /// legend row's five layer-scoped counts, and the dirty flag behind the amber Save.
         /// <b>Every path that can write to the layout ends here</b> — a captured remap, the three
-        /// resets, a completed key copy, an accepted tap-and-hold, every
-        /// <see cref="MacroPanelViewModel.MacrosChanged"/>, and <see cref="Apply"/> after a load or
-        /// an import. Core announces nothing, so a path that skips it leaves every readout stale.
+        /// resets, a completed key copy, an accepted tap-and-hold, every write the key inspector's
+        /// Macro panel announces, every edit the Macros tab makes, and <see cref="Apply"/> after a
+        /// load or an import. Core announces nothing, so a path that skips it leaves everything
+        /// stale.
         /// </summary>
         private void RefreshCounters()
         {
             ModifiedKeyCount = Layout?.ModifiedKeyCount ?? 0;
             MacroCount = Layout?.MacroCount ?? 0;
 
-            // Order matters by one step: RebuildAdvisories pushes each layer's advisory count in,
-            // and the legend row reads it back off the layer.
+            // Order matters twice over: RebuildAdvisories pushes each layer's advisory count in and
+            // the legend row reads it back off the layer, and the library's snapshot has to be
+            // rebuilt before the legend pushes state into the rail, whose Macro panel reads it.
+            RefreshMacroLibrary();
             RebuildAdvisories();
             RefreshLegend();
             RefreshDirtyState();
@@ -1718,11 +1639,6 @@ namespace KinesisEdit.ViewModels
                 layer.AdvisoryCount = _advisories.CountForLayer(layer.Index);
             }
 
-            if (_macroPanel is not null)
-            {
-                _macroPanel.Advisories = _advisories;
-            }
-
             RefreshAdvisorySummary();
         }
 
@@ -1756,27 +1672,24 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// <c>Review N</c>'s macro half: opens the anchored row in the macro panel. The strip's
-        /// other callback, for the same reason — the panel is this class's.
+        /// <c>Review N</c>'s macro half: opens the anchored macro where it is edited — the board's
+        /// position, on the key inspector's Macro panel. The strip's other callback, for the same
+        /// reason the key half is one: the board and the rail are this class's.
+        /// <para>
+        /// An anchor names a <em>site</em> (layer, key, slot) and the Macros tab lists one row per
+        /// <em>name</em>, so a review that merely highlighted a row could be pointing at a macro
+        /// that fires from three places. Landing on the anchored position is the answer that is
+        /// always about the one the advisory is about.
+        /// </para>
         /// </summary>
         private void SelectAnchoredMacro(AdvisoryAnchor anchor)
         {
-            if (_macroPanel is null)
+            if (anchor.KeyIndex is not int keyIndex || anchor.LayerIndex is not int layerIndex)
             {
                 return;
             }
 
-            foreach (var row in _macroPanel.Macros)
-            {
-                if (row.Layer?.Index == anchor.LayerIndex
-                    && row.Key?.Index == anchor.KeyIndex
-                    && row.Slot == anchor.MacroIndex)
-                {
-                    _macroPanel.SelectMacroCommand.Execute(row);
-
-                    return;
-                }
-            }
+            EditMacroAt(layerIndex, keyIndex, anchor.MacroIndex ?? MacroLibrary.FlatListSlot, startRecording: false);
         }
 
         /// <summary>
@@ -1792,7 +1705,11 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RefreshDirtyState()
         {
-            IsDirty = _session?.IsDirty == true;
+            // A macro NAME is not in the layout file, so the session's own line comparison cannot
+            // see one move. It is still unsaved work the user would lose — hence the second term,
+            // the one deliberate exception to "app_settings.txt sits outside the dirty model"
+            // (KeyboardEditorViewModel.MacroLibrary.cs).
+            IsDirty = _session?.IsDirty == true || _hasUnsavedMacroNames;
         }
 
         /// <summary>
@@ -1830,15 +1747,14 @@ namespace KinesisEdit.ViewModels
             }
 
             CancelRemap();
-            _macroPanel?.StopRecording();
+            DeactivateInspector();
 
             layer.Layer.Reset();
             layer.RefreshFromModel();
 
-            // KeyboardLayer.Reset clears every rule including the macro slots, so the panel is
-            // sitting on macros that no longer exist.
-            _macroPanel?.RefreshFromModel();
-
+            // KeyboardLayer.Reset clears every rule including the macro slots, so the rail and the
+            // Macros tab are both sitting on macros that no longer exist. RefreshCounters rebuilds
+            // the library snapshot and pushes both.
             RefreshCounters();
         }
 
@@ -1876,7 +1792,7 @@ namespace KinesisEdit.ViewModels
             }
 
             CancelRemap();
-            _macroPanel?.StopRecording();
+            DeactivateInspector();
 
             layout.Reset();
 
@@ -1884,8 +1800,6 @@ namespace KinesisEdit.ViewModels
             {
                 layer.RefreshFromModel();
             }
-
-            _macroPanel?.RefreshFromModel();
 
             RefreshCounters();
         }
@@ -1962,7 +1876,6 @@ namespace KinesisEdit.ViewModels
 
             CancelRemap();
             CancelCopyKey();
-            _macroPanel?.StopRecording();
             DeactivateInspector();
 
             ProfileSaveResult? result = null;
@@ -2013,6 +1926,12 @@ namespace KinesisEdit.ViewModels
 
                 return false;
             }
+
+            // The macro names go to app_settings.txt now, and only now: a rename is part of this
+            // session's dirty model and reaches the drive when the profile does. It is written
+            // AFTER the layout landed, so a save that Core rejected cannot leave the file naming
+            // macros the drive does not have (KeyboardEditorViewModel.MacroLibrary.cs).
+            PersistMacroNames();
 
             // The profile is on the drive: Save goes back to accent. Set rather than re-read,
             // because the session's dirty baseline is the one captured at load and a save does not
@@ -2083,7 +2002,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand.NotifyCanExecuteChanged();
             CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
-            InsertDelayCommand.NotifyCanExecuteChanged();
             InsertSpecialActionCommand.NotifyCanExecuteChanged();
             OpenSearchCommand.NotifyCanExecuteChanged();
             ExportCommand.NotifyCanExecuteChanged();
@@ -2125,7 +2043,6 @@ namespace KinesisEdit.ViewModels
             _overlays.Close();
             _overlays.ActiveChanged -= _activeOverlayChangedHandler;
 
-            DetachMacroPanel();
             StopListening();
             CancelCopyKey();
         }

@@ -7,6 +7,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Controls;
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Lighting;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
@@ -82,9 +83,19 @@ namespace KinesisEdit.Tests.Design
                 (typeof(AppPreferencesView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(AppPreferencesView).FullName!, "monoValue", "MonoValueField"),
 
+                // The Lighting tab (issue #94). Every one of these is written by the mode rail,
+                // which is a child view of the tab — so the scan reaches them through the tab
+                // exactly as a user reaches them through the screen. `directionSegment` is one of
+                // the two themes #86 wrote for mockup 2f and that had no call site until now; it is
+                // here rather than in the speed bar's company because the direction row is drawn for
+                // every mode, and the speed row only for a mode that has one (see below).
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
-                (typeof(MacroDelayOverlayView).FullName!, "monoValue", "MonoValueField"),
+                (typeof(LightingTabView).FullName!, "directionSegment", "DirectionSegment"),
+                (typeof(LightingTabView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(LightingModeRailView).FullName!, "directionSegment", "DirectionSegment"),
+                // MacroDelayOverlayView's `monoValue` row went with the view in #93; the delay is
+                // edited on the step now, and the rail's own field is covered below.
 
                 // The key inspector rail (issue #92), which is where the two deleted overlays'
                 // roles now live — and where `FilterChip` finally got the call site #86 wrote it
@@ -99,7 +110,18 @@ namespace KinesisEdit.Tests.Design
                 (typeof(TokenPickerView).FullName!, "filterChip", "FilterChip"),
                 (typeof(KeyInspectorView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(KeyInspectorView).FullName!, "ghost", "GhostButton"),
-                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton")
+                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton"),
+
+                // The rail's Macro panel (issue #93). `monoValue` moved here from the deleted Macro
+                // Timing Delays modal — §11.3's millisecond field is the same typed value in the
+                // same mono face, now beside the step it belongs to — and `macroStepRow` is the
+                // step list's own row, which is a RowButton so hover, press and the selected face
+                // are the theme's rather than this panel's.
+                (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
+                (typeof(MacroInspectorPanelView).FullName!, "toggleSegment", "ToggleSegment"),
+                (typeof(MacroInspectorPanelView).FullName!, "ghost", "GhostButton")
             })
             {
                 cases.Add(viewTypeName, className, themeKey);
@@ -149,10 +171,10 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheMacroPanel_BridgesItsSlotPillsAndItsCoTriggerToggles()
+        public async Task TheMacrosTab_BridgesItsSearchFieldAndItsRowActions()
         {
-            // The panel is the Macros tab's, hosted in a ContentControl's template, so none of it
-            // exists until that section is open.
+            // The tab is hosted in a ContentControl's template, so none of it exists until that
+            // section is open.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -165,8 +187,8 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            AssertClassCarriesTheme(view, "navPill", "NavPill");
-            AssertClassCarriesTheme(view, "toggleSegment", "ToggleSegment");
+            AssertClassCarriesTheme(view, "searchField", "SearchField");
+            AssertClassCarriesTheme(view, "secondary", "SecondaryButton");
         }
 
         [AvaloniaFact]
@@ -387,6 +409,29 @@ namespace KinesisEdit.Tests.Design
                 // TabStripItem style that used to bind IsEnabled is gone.
                 Assert.True(container.IsEnabled, $"The {editor.Tabs[index].Caption} tab rendered disabled.");
             }
+        }
+
+        [AvaloniaFact]
+        public async Task TheLightingSpeedBars_BridgeTheirTheme()
+        {
+            // The speed row is drawn only for a mode that has a speed, and its bars are generated by
+            // an ItemsControl — so on a layer whose mode is Off there are no containers to assert
+            // on at all. The mode is therefore picked first, through the very command a rail row
+            // runs, which is also what proves the row appears when the mode gains a parameter.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var lighting = (LightingTabViewModel)view.DataContext!;
+            var wave = lighting.Modes.Single(mode => mode.Mode == LightingMode.Wave);
+
+            lighting.SelectModeCommand.Execute(wave);
+
+            host.Capture();
+
+            AssertClassCarriesTheme(view, "speedBar", "SpeedBar");
         }
 
         [AvaloniaFact]

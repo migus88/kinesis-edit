@@ -117,6 +117,28 @@ namespace KinesisEdit.Services
         /// </summary>
         public void Update(Func<AppSettings, AppSettings> mutate)
         {
+            Apply(mutate, settings => _settings.SaveAppSettings(_location, settings));
+        }
+
+        /// <summary>
+        /// Applies <paramref name="mutate"/> and writes <b>only</b> the macro names of
+        /// <paramref name="profileNumber"/>, through Core's own per-profile entry point. Flags,
+        /// colours and every other profile's names are untouched, and the same read-modify-write
+        /// merge keeps unknown lines verbatim (spec 08 §1).
+        /// </summary>
+        public void UpdateMacroNames(int profileNumber, Func<AppSettings, AppSettings> mutate)
+        {
+            Apply(mutate, settings => _settings.SaveMacroNames(_location, settings, profileNumber));
+        }
+
+        /// <summary>
+        /// The one write path: mutate in memory, try to persist through <paramref name="save"/>,
+        /// announce. I/O failures are swallowed — a preference that cannot be written must not
+        /// break a screen — but the in-memory value still moves, so the rest of the session agrees
+        /// with what the user just did.
+        /// </summary>
+        private void Apply(Func<AppSettings, AppSettings> mutate, Action<AppSettings> save)
+        {
             ArgumentNullException.ThrowIfNull(mutate);
 
             EnsureLoaded();
@@ -126,7 +148,7 @@ namespace KinesisEdit.Services
 
             try
             {
-                _settings.SaveAppSettings(_location, _current);
+                save(_current);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
             {

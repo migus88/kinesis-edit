@@ -64,7 +64,7 @@ namespace KinesisEdit.Tests.ViewModels
             // Which reach the board and the legend row, not only the model.
             Assert.Contains(editor.Layers[0].Keys, key => key.IsModified);
             Assert.True(editor.BoardLegend.RemappedCount > 0);
-            Assert.NotEmpty(editor.MacroPanel!.Macros);
+            Assert.NotEmpty(editor.MacroLibraryPanel.Rows);
         }
 
         [Fact]
@@ -76,7 +76,7 @@ namespace KinesisEdit.Tests.ViewModels
             // mode and colours rather than the in-memory default demo mode used to fall back to.
             Assert.True(editor.Lighting.IsAvailable);
             Assert.Equal(LightingMode.Breathe, editor.Lighting.SelectedMode);
-            Assert.Contains(editor.Layers[0].Keys, key => key.HasColorOverlay);
+            Assert.Contains(editor.Layers[0].Keys, key => key.HasPaintColor);
 
             // And the Settings tab really read kbd_settings.txt: spec 08 §3 bans saving in demo
             // mode, not loading, and DemoModeHint is the note that says exactly that.

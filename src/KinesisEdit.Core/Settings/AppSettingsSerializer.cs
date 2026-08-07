@@ -17,6 +17,14 @@ namespace KinesisEdit.Core.Settings
     /// nothing about meaning: for the sixteen hide flags <c>on</c> = hide, for
     /// <c>advisory_detail</c> <c>on</c> = expand. The polarity lives in the property names.
     /// </para>
+    /// <para>
+    /// The <c>macro_name_*</c> family has its own pair,
+    /// <see cref="SerializeMacroNames"/>/<see cref="SerializeMacroNameRemovals"/>, and both
+    /// <b>require the profile number being written</b>: one file holds every profile's names, and
+    /// a removal set that did not name its profile could delete another profile's. Keeping them out
+    /// of <see cref="Serialize"/>/<see cref="SerializeRemovals"/> is what makes that impossible to
+    /// get wrong by omission — those two have no profile, so they neither write nor remove a name.
+    /// </para>
     /// </summary>
     public static class AppSettingsSerializer
     {
@@ -94,12 +102,104 @@ namespace KinesisEdit.Core.Settings
             return keys;
         }
 
+        /// <summary>
+        /// Emits the <c>macro_name_*</c> pairs of <b>one profile</b>, in key order (profile, layer,
+        /// trigger, slot) so two saves of an unchanged model produce byte-identical output. Blank
+        /// entries are skipped — an unnamed macro derives its display name from its content and
+        /// never occupies a line — which is exactly why
+        /// <see cref="SerializeMacroNameRemovals"/> exists.
+        /// <para>
+        /// <b>The profile number is required, not optional.</b> One <c>app_settings.txt</c> holds
+        /// every profile's names, so a call that did not name one would have to guess, and guessing
+        /// wrong here deletes another profile's work. It is also why macro names are absent from
+        /// <see cref="Serialize"/>: that method has no profile to scope itself to, and the swatch
+        /// and preference writes that call it must not carry a rename to disk.
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<KeyValuePair<string, string>> SerializeMacroNames(
+            AppSettings settings,
+            int profileNumber)
+        {
+            var pairs = new List<KeyValuePair<string, string>>();
+
+            foreach (var key in EnumerateProfileKeys(settings, profileNumber))
+            {
+                var name = settings.MacroNames[key];
+
+                if (name.Length > 0)
+                {
+                    pairs.Add(KeyValuePair.Create(SettingsKeys.GetMacroNameKey(key), name));
+                }
+            }
+
+            return pairs;
+        }
+
+        /// <summary>
+        /// Emits the <c>macro_name_*</c> keys of <b>one profile</b> to <b>delete</b>: its tombstoned
+        /// entries, i.e. the places whose macro was renamed to nothing, unassigned or deleted
+        /// (<see cref="AppSettings.WithMacroNamesForProfile"/>). Without this half a deleted macro's
+        /// name would survive on the drive and reattach itself to whatever later occupied the same
+        /// layer/trigger/slot — the identical failure a cleared colour swatch had (issue #95).
+        /// <para>
+        /// <b>Scoped to <paramref name="profileNumber"/> and nothing else.</b> Keys belonging to
+        /// other profiles are never returned, whatever state they are in.
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<string> SerializeMacroNameRemovals(AppSettings settings, int profileNumber)
+        {
+            var keys = new List<string>();
+
+            foreach (var key in EnumerateProfileKeys(settings, profileNumber))
+            {
+                if (settings.MacroNames[key].Length == 0)
+                {
+                    keys.Add(SettingsKeys.GetMacroNameKey(key));
+                }
+            }
+
+            return keys;
+        }
+
         private static void AppendOnOffFlag(List<KeyValuePair<string, string>> pairs, string key, bool? value)
         {
             if (value is bool flag)
             {
                 pairs.Add(KeyValuePair.Create(key, flag ? OnValue : OffValue));
             }
+        }
+
+        // A dictionary has no order, and two saves of an unchanged model must produce the same file.
+        private static List<MacroNameKey> EnumerateProfileKeys(AppSettings settings, int profileNumber)
+        {
+            ArgumentNullException.ThrowIfNull(settings);
+            ArgumentOutOfRangeException.ThrowIfLessThan(profileNumber, 1);
+
+            var keys = new List<MacroNameKey>();
+
+            foreach (var pair in settings.MacroNames)
+            {
+                if (pair.Key.ProfileNumber == profileNumber)
+                {
+                    keys.Add(pair.Key);
+                }
+            }
+
+            keys.Sort(static (left, right) =>
+            {
+                var byLayer = left.LayerIndex.CompareTo(right.LayerIndex);
+
+                if (byLayer != 0)
+                {
+                    return byLayer;
+                }
+
+                var byTrigger = left.TriggerKeyCode.CompareTo(right.TriggerKeyCode);
+
+                return byTrigger != 0 ? byTrigger : left.SlotNumber.CompareTo(right.SlotNumber);
+            });
+
+            return keys;
         }
     }
 }

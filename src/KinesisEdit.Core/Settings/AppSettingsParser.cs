@@ -53,8 +53,32 @@ namespace KinesisEdit.Core.Settings
                 IsCaptureSummaryHidden = ParseOnFlag(lines, SettingsKeys.CaptureSummaryMessage),
                 IsSwitchVariantConfirmationHidden = ParseOnFlag(lines, SettingsKeys.SwitchVariantMessage),
                 IsAdvisoryDetailExpanded = ParseOnFlag(lines, SettingsKeys.AdvisoryDetail),
-                CustomColors = customColors
+                CustomColors = customColors,
+                MacroNames = ParseMacroNames(lines)
             };
+        }
+
+        /// <summary>
+        /// Reads the <c>macro_name_*</c> family by prefix scan (their full key names are dynamic,
+        /// see <see cref="MacroNameKey"/>). Keys that do not parse as the prefix plus four unsigned
+        /// decimals are ignored — a foreign line this app must not claim. Later lines win, matching
+        /// <see cref="SettingsLineReader.FindValue"/>'s last-one-wins rule (08 §1). Values are
+        /// trimmed; a blank one is kept as a <b>tombstone</b> so the next save deletes the key
+        /// rather than leaving a name-less line behind.
+        /// </summary>
+        private static Dictionary<MacroNameKey, string> ParseMacroNames(IReadOnlyList<string> lines)
+        {
+            var names = new Dictionary<MacroNameKey, string>();
+
+            foreach (var pair in SettingsLineReader.FindPrefixedValues(lines, SettingsKeys.MacroNamePrefix))
+            {
+                if (MacroNameKey.TryParseSuffix(pair.Key, out var key))
+                {
+                    names[key] = pair.Value.Trim();
+                }
+            }
+
+            return names;
         }
 
         // Reports whether the stored value is literally "on", nothing more: the hide flags read it

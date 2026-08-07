@@ -30,8 +30,9 @@ namespace KinesisEdit.Controls
 
         /// <summary>
         /// Whether this picture is a <b>lighting</b> surface, and its caps should therefore draw
-        /// their LED strip. Off by default, so a board asks for the row rather than opting out of
-        /// it: the Keys tab edits assignments and shows no LED row at all.
+        /// the mode on their own faces — the hatch that means "off", the paint on file and the
+        /// previewed effect's colour for this frame. Off by default, so a board asks for the
+        /// colour rather than opting out of it: the Keys tab edits assignments and shows none.
         /// <para>
         /// It has to be asked of the picture rather than of the layer view model, because the two
         /// tabs render the <b>same</b> <see cref="ViewModels.KeyboardLayerViewModel"/> — see the
@@ -40,14 +41,14 @@ namespace KinesisEdit.Controls
         /// two surfaces can be told apart.
         /// </para>
         /// </summary>
-        public static readonly StyledProperty<bool> ShowsLedStripsProperty =
-            AvaloniaProperty.Register<KeyboardView, bool>(nameof(ShowsLedStrips));
+        public static readonly StyledProperty<bool> ShowsLightingProperty =
+            AvaloniaProperty.Register<KeyboardView, bool>(nameof(ShowsLighting));
 
         /// <summary>
         /// Whether this picture draws the <b>key-state badge vocabulary</b> — the remap bar, the
         /// macro dot, the tap-and-hold triangle and the advisory bar of
         /// <c>docs/design/handoff.md</c> § "Focus, selection, key badges". On by default, the
-        /// mirror image of <see cref="ShowsLedStripsProperty"/>: the Layout tab is the surface those
+        /// mirror image of <see cref="ShowsLightingProperty"/>: the Layout tab is the surface those
         /// states belong to, so a board opts <i>out</i> rather than in.
         /// <para>
         /// It is a property of the picture for exactly the reason the LED row is — the Keys tab and
@@ -66,11 +67,11 @@ namespace KinesisEdit.Controls
             set => SetValue(KeySelectedCommandProperty, value);
         }
 
-        /// <inheritdoc cref="ShowsLedStripsProperty" />
-        public bool ShowsLedStrips
+        /// <inheritdoc cref="ShowsLightingProperty" />
+        public bool ShowsLighting
         {
-            get => GetValue(ShowsLedStripsProperty);
-            set => SetValue(ShowsLedStripsProperty, value);
+            get => GetValue(ShowsLightingProperty);
+            set => SetValue(ShowsLightingProperty, value);
         }
 
         /// <inheritdoc cref="ShowsStateBadgesProperty" />

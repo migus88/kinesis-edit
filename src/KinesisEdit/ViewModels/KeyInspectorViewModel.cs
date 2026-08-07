@@ -37,9 +37,11 @@ namespace KinesisEdit.ViewModels
     /// handed to <see cref="Refresh"/>; nothing here rescans, because <c>DuplicateKeyScan</c> walks
     /// every key of every layer and two derivations of one finding are two things to disagree.</para>
     ///
-    /// <para><b>The Macro tab bridges out.</b> In-place macro editing is issue #93's; here the tab
-    /// is drawn, takes part in the exclusivity warning, and raises <see cref="MacroRequested"/> so
-    /// the editor can open the Macros tab with this key selected.</para>
+    /// <para><b>The Macro tab is a panel like the others (issue #93).</b> It hosts
+    /// <see cref="MacroInspectorPanelViewModel"/> — mockup <c>2i</c>'s "selecting a key edits its
+    /// macro right here" — and the rail <b>widens to 300 px</b> while it is showing
+    /// (<see cref="IsWide"/>). It used to bridge out to the Macros tab; navigating away from the
+    /// board when a mode tab is pressed was the placeholder, not the design.</para>
     ///
     /// <para><b><c>Multi-mod</c> is not drawn on this board.</b> The tab is built only where
     /// <c>KeyboardKey.SupportsMultiModifiers</c> is true; elsewhere it is absent, not disabled
@@ -282,15 +284,16 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool IsRecording => _activePanel?.IsRecording == true;
 
+        /// <summary>
+        /// Whether the showing panel wants the wide rail — 300 px instead of 268
+        /// (docs/design/handoff.md § Geometry). Today that is the Macro panel and nothing else
+        /// (mockup <c>2i</c>); the view binds a class off it, so the width follows the mode rather
+        /// than being decided anywhere outside the panel that needs it.
+        /// </summary>
+        public bool IsWide => _activePanel?.WantsWideRail == true;
+
         /// <summary>Raised whenever <see cref="IsRecording"/> moves, in either direction.</summary>
         public event EventHandler? RecordingChanged;
-
-        /// <summary>
-        /// Raised when the user picks the <see cref="KeyInspectorMode.Macro"/> tab. The editor
-        /// answers by opening the Macros tab with the selected key — the rail hosts no macro
-        /// editor, which is issue #93's (mockup <c>2i</c>).
-        /// </summary>
-        public event EventHandler? MacroRequested;
 
         /// <summary>Chooses a mode. A dead tab (a locked position) is refused silently.</summary>
         public IRelayCommand<KeyInspectorTabViewModel> SelectModeCommand { get; }
@@ -499,11 +502,6 @@ namespace KinesisEdit.ViewModels
             MoveTo(tab.Mode);
 
             RefreshModeSwitchWarning();
-
-            if (tab.Mode == KeyInspectorMode.Macro)
-            {
-                MacroRequested?.Invoke(this, EventArgs.Empty);
-            }
         }
 
         /// <summary>
@@ -526,6 +524,10 @@ namespace KinesisEdit.ViewModels
             }
 
             ActivePanel = _panels.GetValueOrDefault(mode);
+
+            // The rail's width follows the panel (268 / 300, docs/design/handoff.md § Geometry), and
+            // a mode switch is the only thing that moves it.
+            OnPropertyChanged(nameof(IsWide));
 
             RaiseRecordingChanged();
         }

@@ -173,7 +173,11 @@ namespace KinesisEdit
                 new AvaloniaFilePickerService(() => FindOwnerWindow(desktop)),
                 fileService,
                 urlLauncher,
-                sessions);
+                sessions,
+                // Threaded so the Lighting tab's preview can freeze under reduce-motion. This is
+                // the same instance the Settings screen writes through MotionPreferenceApplier, so
+                // flipping the preference reaches an editor that is already open.
+                _motionSettings);
 
             // The shell's own two screens, built once and owned by the shell — the Settings screen
             // subscribes to the preferences store, so one per navigation would leave a listener

@@ -240,13 +240,22 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-
             Select(editor, CapsRowKey);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            // The app's one recording surface since issue #93: the key inspector's Macro panel.
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
 
-            Assert.True(editor.MacroPanel.IsRecording);
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+
+            panel.RecordCommand.Execute(null);
+
+            Assert.True(panel.IsRecording);
             Assert.True(editor.IsCaptureActive);
 
             Press(host, PhysicalKey.ArrowRight);
@@ -254,7 +263,7 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(CapsRowKey, editor.SelectedKey!.Index);
             Assert.Equal(0, chrome.HomeCallCount);
-            Assert.True(editor.MacroPanel.IsRecording);
+            Assert.True(panel.IsRecording);
         }
 
         [AvaloniaFact]
@@ -286,8 +295,10 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public async Task Arrows_AreLeftAlone_WhenFocusSitsInATextInput()
         {
-            // Gate 2. The macro panel's speed field is a NumericUpDown, whose caret is in a TextBox
-            // — arrows there step the value and move the caret, and the board must not steal them.
+            // Gate 2. The Macros tab's search field is a real TextBox — arrows there move the
+            // caret, and the board must not steal them. (It used to be the old macro panel's
+            // NumericUpDown; issue #93 replaced that panel with the macro library, whose search box
+            // is the text input this tab now carries.)
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -302,15 +313,14 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             var field = view.GetVisualDescendants()
-                .OfType<NumericUpDown>()
-                .SelectMany(numeric => numeric.GetVisualDescendants().OfType<TextBox>())
-                .First();
+                .OfType<TextBox>()
+                .First(box => box.Classes.Contains("searchField"));
 
             field.Focus();
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(field.IsFocused, "The macro panel's number field did not take focus.");
+            Assert.True(field.IsFocused, "The macro library's search field did not take focus.");
 
             Press(host, PhysicalKey.ArrowRight);
             Press(host, PhysicalKey.ArrowLeft);
@@ -741,15 +751,14 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             var field = view.GetVisualDescendants()
-                .OfType<NumericUpDown>()
-                .SelectMany(numeric => numeric.GetVisualDescendants().OfType<TextBox>())
-                .First();
+                .OfType<TextBox>()
+                .First(box => box.Classes.Contains("searchField"));
 
             field.Focus();
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(field.IsFocused, "The macro panel's number field did not take focus.");
+            Assert.True(field.IsFocused, "The macro library's search field did not take focus.");
 
             Press(host, PhysicalKey.Digit2, RawInputModifiers.Alt);
 

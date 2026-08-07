@@ -39,18 +39,10 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         private static readonly IReadOnlyList<GlyphDeferral> ChromeGlyphDeferrals =
         [
-            new GlyphDeferral(
-                "Views/KeyboardEditorView.axaml",
-                0x2715,
-                "✕ on the macro step's remove button; the view is rebuilt by a later redesign issue."),
-            new GlyphDeferral(
-                "Views/MacroDelayOverlayView.axaml",
-                0x25B2,
-                "▲ on the delay stepper; the overlay is rebuilt by a later redesign issue."),
-            new GlyphDeferral(
-                "Views/MacroDelayOverlayView.axaml",
-                0x25BC,
-                "▼ on the delay stepper; the overlay is rebuilt by a later redesign issue."),
+            // Issue #93 retired three of the four: the macro step's remove button left
+            // KeyboardEditorView for the rail and spells its `×` U+00D7, which both families
+            // carry, and MacroDelayOverlayView is gone entirely — its steppers were absorbed into
+            // the step row and caption `+`/`-`. One deferral is left.
             new GlyphDeferral(
                 "Views/SavantElitePedalView.axaml",
                 0x25BE,
@@ -334,9 +326,13 @@ namespace KinesisEdit.Tests.Design
                     && authored.Member == "MissingToken"
                     && authored.Text.Contains('—'));
 
+            // Anchored on the pedal view rather than the editor: issue #93 moved the editor's
+            // macro markup into three views of its own, taking its non-ASCII display attributes
+            // with it. `…` is covered by both families, so this proves the sweep reads a real
+            // non-ASCII attribute — which the allowlisted `▾` in the same file could not.
             Assert.Contains(
                 attributes,
-                authored => authored.Site == "Views/KeyboardEditorView.axaml" && authored.Text.Contains('—'));
+                authored => authored.Site == "Views/SavantElitePedalView.axaml" && authored.Text.Contains('…'));
 
             Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
         }
@@ -358,13 +354,13 @@ namespace KinesisEdit.Tests.Design
             CollectUncoveredChromeRunes(new AuthoredText("Views/Planted.axaml", "Text", "Save — now"), covered);
             Assert.Empty(covered);
 
-            // The deferred `✕` is forgiven in its own view and nowhere else.
+            // The deferred `▾` is forgiven in its own view and nowhere else.
             var deferred = new SortedSet<string>(StringComparer.Ordinal);
-            CollectUncoveredChromeRunes(new AuthoredText("Views/KeyboardEditorView.axaml", "Content", "✕"), deferred);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/SavantElitePedalView.axaml", "Content", "▾"), deferred);
             Assert.Empty(deferred);
 
             var elsewhere = new SortedSet<string>(StringComparer.Ordinal);
-            CollectUncoveredChromeRunes(new AuthoredText("Views/Elsewhere.axaml", "Content", "✕"), elsewhere);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/Elsewhere.axaml", "Content", "▾"), elsewhere);
             Assert.Single(elsewhere);
         }
 

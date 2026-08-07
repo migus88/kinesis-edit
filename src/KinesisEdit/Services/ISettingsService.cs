@@ -36,5 +36,15 @@ namespace KinesisEdit.Services
 
         /// <summary>Writes the set flags and colors of <paramref name="settings"/>, creating the file when absent.</summary>
         void SaveAppSettings(VDriveLocation location, AppSettings settings);
+
+        /// <summary>
+        /// Writes <b>one profile's</b> <c>macro_name_*</c> keys into the same file (issue #93): the
+        /// profile's named places are written and its tombstoned ones deleted, and every other
+        /// profile's names are left alone. It is a second entry point rather than a flag on
+        /// <see cref="SaveAppSettings"/> because Core's writer is one — one
+        /// <c>app_settings.txt</c> carries nine profiles' names, so the deletion has to be scoped by
+        /// the profile number and <c>SaveAppSettings</c> cannot reach a name at all.
+        /// </summary>
+        void SaveMacroNames(VDriveLocation location, AppSettings settings, int profileNumber);
     }
 }

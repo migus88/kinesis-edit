@@ -36,6 +36,54 @@ namespace KinesisEdit.Core.Settings
             return value;
         }
 
+        /// <summary>
+        /// Returns every line whose key starts with <paramref name="keyPrefix"/>, as (key remainder
+        /// after the prefix, value) pairs <b>in file order</b>. For a key family whose full names
+        /// are not known in advance — today only the macro names of
+        /// <see cref="SettingsKeys.MacroNamePrefix"/>, whose key carries the profile, layer, trigger
+        /// and slot (<see cref="MacroNameKey"/>).
+        /// <para>
+        /// The <c>=</c> rule of spec 08 §1 still holds, applied to the whole key: a line qualifies
+        /// only when it contains a <c>=</c> <b>after</b> the prefix, and the key is everything
+        /// before that first <c>=</c>. A line with nothing between the prefix and the separator is
+        /// not a member of the family and is skipped, so no foreign line is ever claimed.
+        /// </para>
+        /// <para>
+        /// Duplicates are returned, not collapsed: file order is preserved so a caller applying them
+        /// in sequence lands on the same "last one wins" answer <see cref="FindValue"/> gives.
+        /// </para>
+        /// </summary>
+        public static IReadOnlyList<KeyValuePair<string, string>> FindPrefixedValues(
+            IReadOnlyList<string> lines,
+            string keyPrefix)
+        {
+            ArgumentNullException.ThrowIfNull(lines);
+            ArgumentException.ThrowIfNullOrEmpty(keyPrefix);
+
+            var matches = new List<KeyValuePair<string, string>>();
+
+            foreach (var line in lines)
+            {
+                if (!line.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var separatorIndex = line.IndexOf(KeyValueSeparator, keyPrefix.Length);
+
+                if (separatorIndex <= keyPrefix.Length)
+                {
+                    continue;
+                }
+
+                matches.Add(KeyValuePair.Create(
+                    line[keyPrefix.Length..separatorIndex],
+                    line[(separatorIndex + 1)..]));
+            }
+
+            return matches;
+        }
+
         private static bool IsKeyLine(string line, string key)
         {
             return line.Length > key.Length

@@ -11,14 +11,14 @@
     no pill class left to style.
   -->
 
-  <!-- The board the picture sits on: an inset surface, so the caps read as raised out of it. -->
-  <Style Selector="Border.keyboardBoard">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
-    <Setter Property="Padding" Value="{DynamicResource PaddingInspectorSection}" />
-  </Style>
+  <!--
+    `Border.keyboardBoard` — the inset surround the picture used to sit on — is GONE, and its last
+    call site went with issue #94. The Layout canvas dropped it in #91, when KeyboardView started
+    drawing its own bordered section panels and the two together read as a double frame; the
+    Lighting tab kept it only because its board still sat in a column of controls. #94 gave that
+    board a canvas of its own, so the surround was the same double frame in the same place, and the
+    class has no consumer left. Do not reintroduce it: a board's frame is the section panels'.
+  -->
 
   <!--
     One key cap. Nothing but the bridge: `KeyCapButton` carries the geometry, the 9/400 legend step,

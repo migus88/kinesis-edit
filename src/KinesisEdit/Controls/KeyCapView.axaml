@@ -4,26 +4,46 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:converters="clr-namespace:KinesisEdit.Converters"
              mc:Ignorable="d" d:DesignWidth="44" d:DesignHeight="44"
              x:Class="KinesisEdit.Controls.KeyCapView"
              x:DataType="vm:KeyboardKeyViewModel"
              ClipToBounds="False">
   <!-- One key cap. The cap is a Button so it is focusable and clickable without code-behind; all
        of its chrome comes from the KeyCapButton control theme in Themes/ControlThemes/Keycap.axaml,
-       which owns the template, the face ladder (selected / listening / locked) and the four state
-       badges (remap bar, macro dot, tap-and-hold corner, advisory bar). The click goes to the
-       editor through the containing KeyboardView, so nothing here knows what a remap is
-       (specs/10-apps-and-ui.md, "Remap workflow").
+       which owns the template, the face ladder (selected / listening / locked), the four state
+       badges (remap bar, macro dot, tap-and-hold corner, advisory bar) and the two selection rings.
+       The click goes to the editor through the containing KeyboardView, so nothing here knows what
+       a remap is (specs/10-apps-and-ui.md, "Remap workflow").
 
-       The classes below say what the KEY is; `stateBadges` says whether this SURFACE draws it, and
-       comes from ShowsStateBadge for the same reason the LED strip's row comes from ShowsLedStrip
-       — see the property's own summary. Both are read off this control rather than off the data.
+       The classes below say what the KEY is; `stateBadges` and `lighting` say what this SURFACE
+       draws, and come from ShowsStateBadge and ShowsLighting — see those properties' summaries.
+       Both are read off this control rather than off the data.
 
        ClipToBounds is off on the way out as well as in: a focused cap casts a 3px halo past its own
        bounds into a grid whose caps are 4px apart, and a clip anywhere along the chain erases it. -->
+  <UserControl.Resources>
+    <!--
+      THE LIT CAPTION'S COLOUR. Declared here rather than in App.axaml because it is CONFIGURED:
+      the converter is handed the two label roles instead of resolving them by key, so the colours
+      stay named in markup where the guards can see them, and the whole arrangement belongs to the
+      one control that has a lit face.
+
+      `{StaticResource}` is correct and must not be "fixed" to `{DynamicResource}`: a converter is
+      not a StyledElement, so it has no resource host to walk and a DynamicResource on it would
+      resolve to nothing at all. It is safe here for the reason the hatch tile records — both roles
+      are variant-INDEPENDENT (Themes/Tokens.axaml declares them outside the ThemeDictionaries), so
+      there is no second value for a snapshot to miss.
+    -->
+    <converters:LitLabelBrushConverter x:Key="LitLabel"
+                                       DarkLabel="{StaticResource KeycapLitLabelDarkBrush}"
+                                       LightLabel="{StaticResource KeycapLitLabelLightBrush}" />
+  </UserControl.Resources>
+
   <Button Classes="keyCap"
           ClipToBounds="False"
           Classes.selected="{Binding IsSelected}"
+          Classes.paintSelected="{Binding IsLightingSelected}"
           Classes.listening="{Binding IsListening}"
           Classes.modified="{Binding IsModified}"
           Classes.macro="{Binding IsMacro}"
@@ -31,6 +51,7 @@
           Classes.advisory="{Binding HasAdvisory}"
           Classes.locked="{Binding !CanEdit}"
           Classes.stateBadges="{Binding $parent[controls:KeyCapView].ShowsStateBadge}"
+          Classes.lighting="{Binding $parent[controls:KeyCapView].ShowsLighting}"
           Command="{Binding $parent[controls:KeyboardView].KeySelectedCommand}"
           CommandParameter="{Binding}"
           ToolTip.Tip="{Binding Caption}">
@@ -50,23 +71,88 @@
           caption, one 9px line ......................... 12
           caption, two 8px lines (stacked) .............. 21
           silkscreen sub-legend, 7px .................... 10  − 2px of shared leading
-          LED strip ......................................  3  + 0px gap
 
-      which leaves the three boards this cap is ever drawn on:
+      which leaves the boards this cap is ever drawn on:
 
           Layout board .................. 12                 of 24   (12 spare)
           Layout board, sub-legend ...... 12 − 2 + 10 = 20   of 24   ( 4 spare)
           Layout board, stacked ......... 21                 of 24   ( 3 spare)
-          Lighting board ................ 12 + 3      = 15   of 24   ( 9 spare)
-          Lighting board, stacked ....... 21 + 3      = 24   of 24   ( 0 spare)
+          Lighting board ................ 12                 of 24   (12 spare)
+          Lighting board, stacked ....... 21                 of 24   ( 3 spare)
 
-      Two of those five needed a decision rather than an arrangement, and both are taken here: the
-      sub-legend is NOT DRAWN on a lighting board (it and the strip want the same band), and a
-      caption carrying its own line break steps down to `FontSizeKeycapLabelStacked`. The last row
-      is exact rather than comfortable, and the suite holds it: KeycapThemeTests asserts that no
-      legend on any of the three boards is arranged shorter than the text it holds actually needs.
+      THE LIGHTING BOARD USED TO COST 3px MORE THAN THE LAYOUT ONE, and does not any more: the LED
+      colour was a 3px strip in a row of its own, and it is now the cap's whole FACE (see the fill
+      panel below). The stacked-caption-on-a-lighting-board row was the one that fitted exactly,
+      with nothing to spare; it now has the same 3px of room as everywhere else.
+
+      One decision is still taken here rather than arranged: the sub-legend is NOT DRAWN on a
+      lighting board. It is not a room problem any more — it is that the face under it is the key's
+      own colour, a 7px silkscreen legend over an arbitrary lit colour is not readable, and a
+      lighting board is about colour (the same call, for the same reason, that hides the four state
+      badges there). The suite holds the rest: KeycapThemeTests asserts that no legend on either
+      board is arranged shorter than the text it holds actually needs.
     -->
-    <Grid RowDefinitions="*,Auto,Auto" Margin="0,-2">
+    <Grid RowDefinitions="*,Auto" Margin="0,-2">
+      <!--
+        THE LIT FACE — the Lighting board's whole picture, and the reason that board exists.
+
+        Three layers — the hatch, the paint on file and this frame of the previewed effect — drawn
+        BEHIND the caption and filling the cap's inner area. There are FOUR Borders because the paint
+        is drawn on whichever SIDE of the effect its mode puts it; exactly one of the two is ever
+        visible, and neither is on an unpainted key:
+
+          1. THE HATCH, always. "Off is hatched, never black" (docs/design/handoff.md:105 and :151,
+             mockups.md:176 and :333) — black is a colour a key can legitimately be lit, so an unlit
+             or unpainted key has to be a texture rather than a dark fill. It is the tile's second
+             documented meaning, the first being a locked cap.
+          2. THE PAINT LAYER, UNDER the effect, at PaintOpacity 1.0: the case of a mode that RENDERS
+             the paint (Freestyle, Breathe, Frozen Wave). The paint is the cap's whole face and the
+             effect above modulates it — which is exactly what makes Breathe pulse.
+          3. THE EFFECT LAYER: the colour this key is lit by in THIS FRAME of the previewed mode, at
+             the alpha the effect is at. A key the effect does not reach carries none.
+          4. THE PAINT LAYER, OVER the effect, at PaintOpacity 0.4: the case of a mode that IGNORES
+             the paint. "Wave ignores painted colors, so the paint layer is shown at 40% under the
+             effect — the colors are still on file" (mockup 2f, verbatim) — and drawn literally
+             under, that sentence renders as nothing at all, because Wave, Solid and Spectrum light
+             every key at intensity 1.0 and the effect covers the paint outright. The same layer at
+             the same 40%, composited OVER the effect, is the blend the sentence describes:
+             effect·0.6 + paint·0.4, with the effect still reading and travelling. The two shares
+             are one number — see KeyboardKeyViewModel.ShowsPaintUnderEffect, which is where the
+             side is decided and why.
+
+        WHY THE FACE AND NOT A STRIP. Until this issue the colour was a 3px bar under the caption.
+        A 3px bar cannot read as a travelling wave — the thing the design asks this board to show is
+        the mode itself, "the board animates the selected mode at its real speed and direction" —
+        and 95 of them read as a row of ticks rather than as a lit keyboard. The deviation this
+        reverses is recorded in docs/app/keyboard-editor.md.
+
+        `Margin="-2,0"` is the horizontal half of the step-back the grid already takes vertically, so
+        the layers reach the inside of the cap's 1px border. The radius is RadiusChip (3) and not the
+        cap's own RadiusKeycap (4) for the same reason `Rectangle#Locked` uses 3: this is the box
+        INSIDE a 1px border, whose own curve is one step tighter than the border's — and the two
+        occupy exactly the same box, so they must round the same way.
+      -->
+      <Panel Grid.Row="0"
+             Grid.RowSpan="2"
+             Margin="-2,0"
+             IsHitTestVisible="False"
+             IsVisible="{Binding $parent[controls:KeyCapView].ShowsLighting}">
+        <Border CornerRadius="{DynamicResource RadiusChip}"
+                Background="{DynamicResource HatchBrush}" />
+        <Border CornerRadius="{DynamicResource RadiusChip}"
+                IsVisible="{Binding ShowsPaintUnderEffect}"
+                Opacity="{Binding PaintOpacity}"
+                Background="{Binding PaintColorHex, Converter={StaticResource HexColorToBrush}}" />
+        <Border CornerRadius="{DynamicResource RadiusChip}"
+                IsVisible="{Binding HasEffectColor}"
+                Opacity="{Binding EffectIntensity}"
+                Background="{Binding EffectColorHex, Converter={StaticResource HexColorToBrush}}" />
+        <Border CornerRadius="{DynamicResource RadiusChip}"
+                IsVisible="{Binding ShowsPaintOverEffect}"
+                Opacity="{Binding PaintOpacity}"
+                Background="{Binding PaintColorHex, Converter={StaticResource HexColorToBrush}}" />
+      </Panel>
+
       <!-- A '\n' in the caption is a two-line cap (specs/05-key-model.md §1.1); wrapping is on so
            long captions on a 1U cap break instead of being clipped mid-word. `stacked` is that same
            fact as a class — see Styles/Keyboard.axaml for the step it takes and why.
@@ -81,7 +167,25 @@
            that actually fixed it: a non-stretched child is arranged at `min(available, desired)`,
            so a caption that measures 24 is arranged at 24 however much room the negative margin
            won it — and the wrap comes back on the fraction of a pixel. Stretch hands the line the
-           whole 28, and `TextAlignment` does the centring the alignment used to. -->
+           whole 28, and `TextAlignment` does the centring the alignment used to.
+
+           THE FOREGROUND IS THE ONE THING THE FILL DECIDES. Its style names TextPrimary (TextMuted
+           when the position is locked), and on the Layout board that is the whole story. On a lit
+           cap it is not: the face is device data and can be near-white or near-black, and either
+           one erases a caption drawn in a fixed role. The MultiBinding below composites the two
+           fill layers and hands the caption whichever of the two variant-independent label roles
+           has more contrast with the result; an UNLIT cap converts to UnsetValue, the binding
+           produces nothing, and the style's own token is what paints. See
+           Converters/LitLabelBrushConverter for the threshold and why it is that number.
+
+           It is handed the two layers in the converter's own order — paint under effect — which is
+           the order they are drawn in for every mode that RENDERS the paint. A mode that ignores it
+           draws the same paint over the effect instead (see the fill panel above), so the caption
+           is then decided by the effect alone rather than by the 60/40 blend the eye sees. That is
+           deliberate and it costs nothing worth a fifth value: the effect is 60% of that face, so
+           it is what the luminance follows, and the two answers differ only in a narrow band around
+           the flip where either label is legible anyway. -->
+
       <TextBlock Grid.Row="0"
                  Classes="keyCapText"
                  Classes.locked="{Binding !CanEdit}"
@@ -91,7 +195,16 @@
                  TextWrapping="Wrap"
                  TextAlignment="Center"
                  HorizontalAlignment="Stretch"
-                 VerticalAlignment="Center" />
+                 VerticalAlignment="Center">
+        <TextBlock.Foreground>
+          <MultiBinding Converter="{StaticResource LitLabel}">
+            <Binding Path="PaintColorHex" />
+            <Binding Path="PaintOpacity" />
+            <Binding Path="EffectColorHex" />
+            <Binding Path="EffectIntensity" />
+          </MultiBinding>
+        </TextBlock.Foreground>
+      </TextBlock>
 
       <!-- THE SECONDARY LEGEND — the shifted character or the device hotkey the board PRINTS under
            the main one ('!', 'mute', 'scr lk'). It is silkscreen, so it never changes with a remap
@@ -103,57 +216,16 @@
            what the key does now is the thing being read, and what the board printed on it is the
            context. It used to be drawn above the caption, which inverted that.
 
-           NOT DRAWN AT ALL ON A LIGHTING BOARD. The strip below wants this same band, a 26px cap
-           has one band to give, and a lighting board is about colour — the same call, for the same
-           reason, that already hides the four state badges there (KeyCapView.ShowsStateBadge). The
-           `Panel` is what carries that half of the answer: an invisible panel takes no row, and the
-           legend's own emptiness check stays a plain binding rather than a converter over two. -->
-      <Panel Grid.Row="1" IsVisible="{Binding !$parent[controls:KeyCapView].ShowsLedStrip}">
+           NOT DRAWN AT ALL ON A LIGHTING BOARD — see the budget above for why. The `Panel` is what
+           carries that half of the answer: an invisible panel takes no row, and the legend's own
+           emptiness check stays a plain binding rather than a converter over two. -->
+      <Panel Grid.Row="1" IsVisible="{Binding !$parent[controls:KeyCapView].ShowsLighting}">
         <TextBlock Classes="keyCapSubText"
                    Text="{Binding SecondaryLegend}"
                    IsVisible="{Binding SecondaryLegend, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Top" />
       </Panel>
-
-      <!-- The key's LED colour (ledN.txt), shown as a strip rather than as the cap background so
-           the cap's own state stays readable next to it. Three states, and they need two answers
-           from two different places:
-
-             1. LIGHTING IS NOT ON SCREEN — no strip at all. The Keys tab edits assignments; a row
-                of LED bars under every cap on it is a readout of something nobody asked about, and
-                the mockups draw no such row (docs/design/mockups.md, 1e and 2a).
-             2. LIGHTING IS ON SCREEN AND THIS LED IS OFF — the hatch. "Off is hatched, never black"
-                (docs/design/handoff.md:105 and :151, and again at mockups.md:176 and :333), because
-                black is a colour a key can legitimately be lit.
-             3. LIGHTING IS ON SCREEN AND THIS LED IS LIT — the colour, covering the hatch.
-
-           HasColorOverlay is the second answer and means exactly "this key is lit". The first is
-           ShowsLedStrip, and it is a property of the PICTURE rather than of the key: the Keys tab
-           and the Lighting tab render the same KeyboardKeyViewModel instances (see
-           KeyboardLayerViewModel.ApplyColorOverlays), so no state on the cap's DataContext could
-           ever separate them. KeyboardView owns it and hands it to each cap it builds.
-
-           The cap does not change size either way — KeyboardPanel lays every cap out from its unit
-           rectangle — but the caption's box inside it is 3px shorter on a lighting board, which is
-           the row this strip occupies.
-
-           NO TOP MARGIN, unlike the sub-legend above it: those 3px are the last three of the cap's
-           24 (see the budget at the top of this file), and a stacked caption needs the other 21
-           exactly. It reads as a gap anyway, because the caption's box ends below its last line's
-           ink by the font's own descent — about 1px at the stacked step, 2.5 at the full one — and
-           a one-line caption is centred in the 21 that are left, which puts 4px of air over it. -->
-      <Border Grid.Row="2"
-              Height="3"
-              CornerRadius="{DynamicResource RadiusChip}"
-              Margin="1,0"
-              ClipToBounds="True"
-              IsVisible="{Binding $parent[controls:KeyCapView].ShowsLedStrip}"
-              Background="{DynamicResource HatchBrush}">
-        <Border CornerRadius="{DynamicResource RadiusChip}"
-                IsVisible="{Binding HasColorOverlay}"
-                Background="{Binding ColorOverlayHex, Converter={StaticResource HexColorToBrush}}" />
-      </Border>
     </Grid>
   </Button>
 </UserControl>

@@ -1,89 +1,99 @@
 using System.Globalization;
-using KinesisEdit.Core.Keys;
-using KinesisEdit.Core.Model;
 
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One of the trigger key's macro slots (specs/05-key-model.md §1.3, specs/06-macros.md §1):
-    /// the radio button of the legacy macro panel. How many exist comes from the device — never
-    /// from a literal — and it is the count the dialect <b>persists</b>
-    /// (<see cref="Core.Devices.MacroCapability.PersistedSlotsPerKey"/>: 3 on the Advantage2 and
-    /// Freestyle Edge/Pro, 5 on the RGB family), not the five the model owns; the flat-list
-    /// families (Advantage360) have none at all.
+    /// One card of the Macros tab's <b>slot</b> branch (mockup <c>1i</c>, left): "Slot 1 — Sign-off
+    /// block" with its keystrokes, badged <c>ACTIVE</c> or offering <c>Make active</c>, and "Slot 4 —
+    /// empty" offering <c>＋ Record a macro</c>.
+    /// <para>
+    /// <b>Which slots exist comes from the device</b>, never from a literal, and it is the count the
+    /// dialect <em>persists</em> (<see cref="Core.Devices.MacroCapability.PersistedSlotsPerKey"/>: 3
+    /// on the Advantage2 and Freestyle Edge/Pro, 5 on the RGB family), not the five the model owns —
+    /// a macro put in slot 4 of a Freestyle Edge is gone at the very next save (06 §1). The
+    /// flat-list families have no slots at all and draw the other branch instead.
+    /// </para>
+    /// <para>
+    /// <b>The card names a library entry, not a macro.</b> Its name, its length and its budget come
+    /// from <see cref="MacroLibraryRowViewModel"/> — the same row the profile's list shows — so the
+    /// two views of one macro cannot disagree about what it is called.
+    /// </para>
     /// </summary>
     public sealed class MacroSlotViewModel : ViewModelBase
     {
-        /// <summary>Builds <paramref name="slotCount"/> empty slots, numbered from 1 (§1.3).</summary>
-        public static IReadOnlyList<MacroSlotViewModel> CreateAll(int slotCount)
+        /// <summary>The card's heading, verbatim in shape from mockup <c>1i</c>.</summary>
+        public const string TitleFormat = "Slot {0} — {1}";
+
+        /// <summary>What an unoccupied card is called (<c>1i</c>: "Slot 4 — empty").</summary>
+        public const string EmptyCaption = "empty";
+
+        /// <summary>The badge on the slot the key actually fires (05 §1.3's <c>MacroIdx</c>).</summary>
+        public const string ActiveBadge = "ACTIVE";
+
+        /// <summary>What every other occupied card offers instead.</summary>
+        public const string MakeActiveCaption = "Make active";
+
+        /// <summary>The empty card's action. The <c>＋</c> is geometry, so only the words are here.</summary>
+        public const string RecordCaption = "Record a macro";
+
+        /// <summary>Builds the heading for <paramref name="slot"/> holding <paramref name="name"/>.</summary>
+        public static string BuildTitle(int slot, string name)
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(slotCount);
-
-            var slots = new List<MacroSlotViewModel>(slotCount);
-
-            for (var slot = 1; slot <= slotCount; slot++)
-            {
-                slots.Add(new MacroSlotViewModel(slot));
-            }
-
-            return slots;
+            return string.Format(CultureInfo.InvariantCulture, TitleFormat, slot, name);
         }
 
-        /// <summary>The slot number 1..N this entry writes (§1.3 <c>MacroIdx</c>).</summary>
+        /// <summary>The slot number 1..N this card writes (06 §1's <c>MacroIdx</c>).</summary>
         public int Slot { get; }
 
-        /// <summary>The slot number as the button caption.</summary>
-        public string Caption { get; }
+        /// <summary>The library row of the macro sitting here, or null when the slot is empty.</summary>
+        public MacroLibraryRowViewModel? Row { get; }
 
-        /// <summary>The macro sitting in the slot, or null when it is empty.</summary>
-        public Macro? Macro
-        {
-            get => _macro;
-            private set
-            {
-                if (SetProperty(ref _macro, value))
-                {
-                    OnPropertyChanged(nameof(IsOccupied));
-                }
-            }
-        }
+        /// <summary>Whether the slot holds a macro at all.</summary>
+        public bool IsOccupied => Row is not null;
 
-        /// <summary>Whether the slot holds a macro.</summary>
-        public bool IsOccupied => _macro is not null;
+        /// <summary>Whether it is empty — bound directly, because a view cannot negate in a template.</summary>
+        public bool IsEmpty => Row is null;
 
-        /// <summary>The slot's macro as the file would carry it, or an empty string (06 §3).</summary>
-        public string Preview
-        {
-            get => _preview;
-            private set => SetProperty(ref _preview, value);
-        }
+        /// <summary>"Slot 1 — Sign-off block", or "Slot 4 — empty".</summary>
+        public string Title { get; }
 
-        /// <summary>Whether this is the slot the panel is editing.</summary>
+        /// <summary>The macro's keystrokes as the layout file carries them (06 §3), or empty.</summary>
+        public string KeystrokesText => Row?.ContentsText ?? string.Empty;
+
+        /// <summary>Whether this is the slot the key fires (<c>KeyboardKey.ActiveMacroIndex</c>).</summary>
+        public bool IsActive { get; }
+
+        /// <summary>Whether the card offers <c>Make active</c> — occupied, and not already it.</summary>
+        public bool CanMakeActive => IsOccupied && !IsActive;
+
+        /// <summary>Whether the macro here is past the device's per-macro cap. Amber; it still saves.</summary>
+        public bool IsOverBudget => Row?.IsOverBudget == true;
+
+        /// <summary>Mockup <c>1i</c>'s budget sentence, or an empty string.</summary>
+        public string BudgetAdvisory => Row?.BudgetAdvisory ?? string.Empty;
+
+        /// <summary>
+        /// Whether this is the card the <c>this macro</c> meter is reading. The tab's own selection,
+        /// deliberately not a <c>SelectingItemsControl</c>'s — the editor's keyboard grammar leaves
+        /// the arrow keys to any selecting list in the focused ancestry.
+        /// </summary>
         public bool IsSelected
         {
             get => _isSelected;
             set => SetProperty(ref _isSelected, value);
         }
 
-        private Macro? _macro;
-        private string _preview = string.Empty;
         private bool _isSelected;
 
-        /// <summary>Creates the entry for slot <paramref name="slot"/> (1..5).</summary>
-        public MacroSlotViewModel(int slot)
+        /// <summary>Creates the card for <paramref name="slot"/> (1..N).</summary>
+        public MacroSlotViewModel(int slot, MacroLibraryRowViewModel? row, bool isActive)
         {
-            // Fully qualified: the Macro property shadows the type name inside this class.
-            ArgumentOutOfRangeException.ThrowIfLessThan(slot, KinesisEdit.Core.Model.Macro.MinMacroIndex);
+            ArgumentOutOfRangeException.ThrowIfLessThan(slot, Core.Model.Macro.MinMacroIndex);
 
             Slot = slot;
-            Caption = slot.ToString(CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>Re-reads the slot's content, rendering it in <paramref name="dialect"/>.</summary>
-        public void RefreshFromModel(Macro? macro, TokenDialect dialect)
-        {
-            Macro = macro;
-            Preview = macro is null ? string.Empty : MacroKeystrokeRenderer.RenderKeystrokes(macro, dialect);
+            Row = row;
+            IsActive = isActive && row is not null;
+            Title = BuildTitle(slot, row?.Name ?? EmptyCaption);
         }
     }
 }

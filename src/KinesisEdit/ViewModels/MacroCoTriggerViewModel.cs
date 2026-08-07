@@ -11,7 +11,7 @@ namespace KinesisEdit.ViewModels
     /// <para>
     /// The toggle owns no rules: how many may be on at once is
     /// <see cref="Core.Devices.MacroCapability.MaxCoTriggersPerMacro"/> and is enforced by
-    /// <see cref="MacroPanelViewModel"/>, because <see cref="Macro.AddCoTrigger"/> deliberately
+    /// <see cref="MacroInspectorPanelViewModel"/>, because <see cref="Macro.AddCoTrigger"/> deliberately
     /// neither de-duplicates nor refuses (06 §5 counts populated slots, and a repeated token in a
     /// field file must survive a round trip).
     /// </para>

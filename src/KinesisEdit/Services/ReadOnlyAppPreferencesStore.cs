@@ -56,5 +56,15 @@ namespace KinesisEdit.Services
         {
             ArgumentNullException.ThrowIfNull(mutate);
         }
+
+        /// <summary>
+        /// Discards the names, for the same reason: spec 08 §3 bans <b>saving</b> app settings in
+        /// demo mode. The names still live on <c>Macro.Name</c> for the session, so the library and
+        /// the inspector's dropdown work exactly as they do on a writable drive.
+        /// </summary>
+        public void UpdateMacroNames(int profileNumber, Func<AppSettings, AppSettings> mutate)
+        {
+            ArgumentNullException.ThrowIfNull(mutate);
+        }
     }
 }

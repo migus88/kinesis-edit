@@ -9,8 +9,15 @@ namespace KinesisEdit.Core.Tests.Settings
         {
             var settings = AppSettingsParser.Parse([]);
 
-            Assert.Equal(AppSettings.Empty, settings with { CustomColors = AppSettings.Empty.CustomColors });
+            Assert.Equal(
+                AppSettings.Empty,
+                settings with
+                {
+                    CustomColors = AppSettings.Empty.CustomColors,
+                    MacroNames = AppSettings.Empty.MacroNames,
+                });
             Assert.All(settings.CustomColors, color => Assert.Null(color));
+            Assert.Empty(settings.MacroNames);
         }
 
         [Theory]
