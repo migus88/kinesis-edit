@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using KinesisEdit.Services;
 
@@ -123,13 +124,19 @@ namespace KinesisEdit.Tests.Services
         public void Parse_MatchesPropertyNames_CaseInsensitively()
         {
             var preferences = HostPreferencesParser.Parse("""
-                { "Theme": "Dark", "MOTION": "AlwaysReduce", "Window": { "Width": 900, "HEIGHT": 600 } }
+                {
+                  "Theme": "Dark",
+                  "MOTION": "AlwaysReduce",
+                  "Window": { "Width": 900, "HEIGHT": 600 },
+                  "InspectorRailWIDTH": 320
+                }
                 """);
 
             Assert.Equal(AppThemePreference.Dark, preferences.Theme);
             Assert.Equal(MotionPreference.AlwaysReduce, preferences.Motion);
             Assert.Equal(900, preferences.Window?.Width);
             Assert.Equal(600, preferences.Window?.Height);
+            Assert.Equal(320, preferences.InspectorRailWidth);
         }
 
         [Theory]
@@ -171,6 +178,59 @@ namespace KinesisEdit.Tests.Services
             Assert.False(preferences.Window.IsMaximized);
         }
 
+        [Theory]
+        [InlineData("{}")]
+        [InlineData("{\"inspectorRailWidth\": \"320\"}")]
+        [InlineData("{\"inspectorRailWidth\": true}")]
+        [InlineData("{\"inspectorRailWidth\": null}")]
+        [InlineData("{\"inspectorRailWidth\": []}")]
+        [InlineData("{\"inspectorRailWidth\": {\"width\": 320}}")]
+        [InlineData("{\"inspectorRailWidth\": 0}")]
+        [InlineData("{\"inspectorRailWidth\": -320}")]
+        [InlineData("{\"inspectorRailWidth\": 1e30}")]
+        [InlineData("{\"inspectorRailWidth\": 1e309}")]
+        [InlineData("{\"inspectorRailWidth\": 32001}")]
+        public void Parse_StoresNoInspectorRailWidth_WhenItIsNotAWidth(string json)
+        {
+            // Missing, wrong-typed, and every number that is not a width: zero, negative, and past
+            // the boundary this module already draws between "a size" and garbage
+            // (WindowGeometry.MaximumExtent). Those are not clamped — clamping nonsense would turn
+            // it into a preference the user never expressed — they are simply not stored, and the
+            // rail opens at its authored width.
+            var exception = Record.Exception(() => HostPreferencesParser.Parse(json));
+
+            Assert.Null(exception);
+            Assert.Null(HostPreferencesParser.Parse(json).InspectorRailWidth);
+        }
+
+        [Theory]
+        [InlineData(320, 320)]
+        [InlineData(HostPreferences.MinimumInspectorRailWidth, HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData(HostPreferences.MaximumInspectorRailWidth, HostPreferences.MaximumInspectorRailWidth)]
+        [InlineData(9999, HostPreferences.MaximumInspectorRailWidth)]
+        [InlineData(100, HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData(1, HostPreferences.MinimumInspectorRailWidth)]
+        public void Parse_ClampsAStoredInspectorRailWidth_IntoTheRailsBand(double stored, double expected)
+        {
+            // A hand-edited 9999 is a request for the widest rail, not a reason to strand it off
+            // screen — the clamp on load is what makes the file safe to edit by hand.
+            var json = $"{{\"inspectorRailWidth\": {stored.ToString(CultureInfo.InvariantCulture)}}}";
+
+            Assert.Equal(expected, HostPreferencesParser.Parse(json).InspectorRailWidth);
+        }
+
+        [Fact]
+        public void Parse_KeepsTheOtherFields_WhenTheRailWidthIsRubbish()
+        {
+            // Field by field, here as everywhere: a hand-edited rail width costs the rail width.
+            var preferences = HostPreferencesParser.Parse("""
+                { "theme": "Dark", "inspectorRailWidth": "wide please" }
+                """);
+
+            Assert.Equal(AppThemePreference.Dark, preferences.Theme);
+            Assert.Null(preferences.InspectorRailWidth);
+        }
+
         [Fact]
         public void RoundTrip_PreservesEveryField()
         {
@@ -178,7 +238,8 @@ namespace KinesisEdit.Tests.Services
             {
                 Theme = AppThemePreference.Light,
                 Motion = MotionPreference.NeverReduce,
-                Window = new WindowGeometry(1234.5, 678.25, -900, 42, true)
+                Window = new WindowGeometry(1234.5, 678.25, -900, 42, true),
+                InspectorRailWidth = 412.5
             };
 
             var restored = HostPreferencesParser.Parse(HostPreferencesSerializer.Serialize(preferences));
@@ -251,6 +312,28 @@ namespace KinesisEdit.Tests.Services
 
             Assert.DoesNotContain("window", json, StringComparison.OrdinalIgnoreCase);
             Assert.Null(HostPreferencesParser.Parse(json).Window);
+        }
+
+        [Fact]
+        public void Serialize_OmitsTheInspectorRailWidth_WhenNothingIsStored()
+        {
+            var json = HostPreferencesSerializer.Serialize(HostPreferences.Default);
+
+            Assert.DoesNotContain("inspectorRailWidth", json, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        public void Serialize_OmitsAnInspectorRailWidthThatIsNotANumber(double width)
+        {
+            // Only a hand-built record can carry one, and Utf8JsonWriter throws on both — a
+            // preference save may not throw, so the value is dropped exactly as an unusable
+            // geometry is.
+            var json = HostPreferencesSerializer.Serialize(new HostPreferences { InspectorRailWidth = width });
+
+            Assert.DoesNotContain("inspectorRailWidth", json, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(HostPreferencesParser.Parse(json).InspectorRailWidth);
         }
 
         [Fact]

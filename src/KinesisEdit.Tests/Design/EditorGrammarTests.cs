@@ -587,12 +587,17 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// Escape's fourth and last stage. The rail is not modal, so it is not covered by the
-        /// panel branch — and it is the widest thing Escape can plausibly mean, so it goes behind
-        /// everything narrower: a listening key first, then an armed copy, then this.
+        /// Escape's fourth and last stage — <b>deliberately changed by issue #119</b>. It used to
+        /// close the key inspector rail and leave the selection alone; the rail cannot be closed any
+        /// more, because it is a permanent column of the Layout tab and dismissing it would collapse
+        /// that column and shove the board sideways, which is the defect the issue exists to remove.
+        /// So the stage clears the <em>selection</em> instead: the cap loses its ring and the rail
+        /// falls to its empty state, which is the same "back out of what I am in" the grammar always
+        /// meant. The three stages ahead of it — overlay, cancel remap, cancel copy — are untouched
+        /// in order and in meaning.
         /// </summary>
         [AvaloniaFact]
-        public async Task Escape_WithNothingNarrowerToCancel_ClosesTheKeyInspector()
+        public async Task Escape_WithNothingNarrowerToCancel_ClearsTheKeySelection()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -605,27 +610,36 @@ namespace KinesisEdit.Tests.Design
 
             editor.SelectKeyCommand.Execute(key);
 
-            Assert.True(editor.Inspector.IsOpen);
+            Assert.Same(key, editor.SelectedKey);
+            Assert.True(editor.Inspector.HasSelection);
 
             Press(host, PhysicalKey.Escape);
 
-            Assert.False(editor.Inspector.IsOpen);
+            Assert.Null(editor.SelectedKey);
+            Assert.False(key.IsSelected, "The cap kept its selection ring.");
+            Assert.False(editor.Inspector.HasSelection);
 
-            // The selection is untouched — Escape dismissed the rail, it did not deselect the cap —
-            // and clicking the same cap again brings the rail back rather than starting a remap
-            // only.
-            Assert.Same(key, editor.SelectedKey);
+            // The rail is still on screen — it fell to its empty state rather than collapsing.
+            host.Capture();
 
+            var rail = Assert.Single(view.GetVisualDescendants().OfType<KeyInspectorView>());
+
+            Assert.True(rail.IsEffectivelyVisible);
+            Assert.True(rail.Bounds.Width > 0);
+
+            // ...and clicking the cap again selects it as it always did.
             editor.SelectKeyCommand.Execute(key);
 
-            Assert.True(editor.Inspector.IsOpen);
+            Assert.Same(key, editor.SelectedKey);
+            Assert.True(editor.Inspector.HasSelection);
         }
 
         [AvaloniaFact]
-        public async Task Escape_WithAKeyListeningAndTheRailOpen_CancelsTheListenFirst()
+        public async Task Escape_WithNothingSelectedAtAll_IsNotHandled()
         {
-            // The stated order, not a lucky one: capture is narrower than the rail, so the first
-            // Escape leaves listening and the rail is still there for the second.
+            // The last stage does nothing when there is nothing to deselect, so the key falls
+            // through untouched rather than being swallowed by an editor the user has not clicked
+            // into.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -633,20 +647,42 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+            Assert.Null(editor.SelectedKey);
+
+            Press(host, PhysicalKey.Escape);
+
+            Assert.Null(editor.SelectedKey);
+            Assert.False(editor.Inspector.HasSelection);
+        }
+
+        [AvaloniaFact]
+        public async Task Escape_WithAKeyListeningAndAKeySelected_CancelsTheListenFirst()
+        {
+            // The stated order, not a lucky one: capture is narrower than the selection, so the
+            // first Escape leaves listening and the cap is still selected for the second.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var key = editor.SelectedLayer!.Keys[0];
+
+            editor.SelectKeyCommand.Execute(key);
             editor.BeginRemapCommand.Execute(null);
 
             Assert.True(editor.IsListening);
-            Assert.True(editor.Inspector.IsOpen);
+            Assert.Same(key, editor.SelectedKey);
 
             Press(host, PhysicalKey.Escape);
 
             Assert.False(editor.IsListening);
-            Assert.True(editor.Inspector.IsOpen);
+            Assert.Same(key, editor.SelectedKey);
 
             Press(host, PhysicalKey.Escape);
 
-            Assert.False(editor.Inspector.IsOpen);
+            Assert.Null(editor.SelectedKey);
         }
 
         [AvaloniaTheory]

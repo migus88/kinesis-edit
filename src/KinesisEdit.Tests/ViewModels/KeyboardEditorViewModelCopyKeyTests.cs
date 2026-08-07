@@ -107,8 +107,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.False(locked.CanEdit);
 
-            // The target carries a remap, so the copy has something visible to overwrite: a locked
-            // position can never be remapped, so what it copies across is "nothing assigned".
+            // The target carries a remap, so the copy has something visible to overwrite.
             Remap(editor, target, TestLayouts.Gen1Key("F5"));
 
             Assert.True(target.Key.IsModified);
@@ -126,7 +125,14 @@ namespace KinesisEdit.Tests.ViewModels
             editor.SelectKeyCommand.Execute(target);
 
             Assert.False(editor.IsCopyArmed);
-            Assert.False(target.Key.IsModified);
+
+            // What crosses is the locked position's *factory action* — a copy transfers what the
+            // source does, and a locked key does its original and nothing else. Do not "fix" this
+            // back to asserting the target ends unmodified: the whole asymmetry of the locked-key
+            // panel is "a locked key can still be a copy source, never a target", and a source that
+            // transferred nothing would make that offer meaningless (issue #119, item 4).
+            Assert.True(target.Key.IsModified);
+            Assert.Equal(locked.Key.OriginalKey.Code, target.Key.ModifiedKey!.Code);
         }
 
         [AvaloniaFact]
@@ -149,6 +155,101 @@ namespace KinesisEdit.Tests.ViewModels
             // Invariant 3: the cap re-read the model, so the picture is not showing the old legend.
             Assert.Equal(source.Caption, target.Caption);
             Assert.True(target.IsModified);
+        }
+
+        /// <summary>
+        /// The reported sequence of issue #119, item 4, verbatim: pick a key nobody has touched,
+        /// arm <c>Copy to…</c>, click a second cap. It landed nothing, because the copy carried the
+        /// source's <c>IsModified</c> flag instead of the action the source performs — and an
+        /// untouched source's flag says "no remap". Every other copy test here arms from a key that
+        /// was remapped first, which is the one case where the two readings agree.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task AnArmedCopy_FromAnUntouchedKey_StillLandsWhatThatKeyDoes()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var source = KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex);
+            var target = KeyAt(editor, TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.False(source.Key.IsModified);
+
+            var targetCaptionBefore = target.Caption;
+
+            editor.SelectKeyCommand.Execute(source);
+            editor.CopyKeyCommand.Execute(null);
+            editor.SelectKeyCommand.Execute(target);
+
+            Assert.True(target.Key.IsModified);
+            Assert.Equal(source.Key.OriginalKey.Code, target.Key.ModifiedKey!.Code);
+            Assert.Equal(source.Key.ModifiedOrOriginalKey.Code, target.Key.ModifiedOrOriginalKey.Code);
+
+            // Invariant 3 again: the cap re-read the model, so the board shows the copy too. The
+            // two captions are not compared to each other — an untouched cap reads its silkscreen
+            // legend and a remapped one reads its key's own caption, so they differ by design.
+            Assert.True(target.IsModified);
+            Assert.NotEqual(targetCaptionBefore, target.Caption);
+        }
+
+        [AvaloniaFact]
+        public async Task AnArmedCopy_FromAnUntouchedKey_ReplacesTheTargetsRemapRatherThanWipingIt()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var source = KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex);
+            var target = KeyAt(editor, TestLayouts.RgbDigitTwoKeyIndex);
+
+            Remap(editor, target, TestLayouts.Gen1Key("F5"));
+
+            editor.SelectKeyCommand.Execute(source);
+            editor.CopyKeyCommand.Execute(null);
+            editor.SelectKeyCommand.Execute(target);
+
+            // The corollary defect: copying the flag across erased the target's remap and left it on
+            // its own default — a third state neither key was ever in.
+            Assert.True(target.Key.IsModified);
+            Assert.Equal(source.Key.OriginalKey.Code, target.Key.ModifiedKey!.Code);
+            Assert.Equal(1, editor.BoardLegend.RemappedCount);
+        }
+
+        [AvaloniaFact]
+        public async Task AnArmedCopy_OfWhatTheTargetAlreadyDoes_LeavesTheTargetClean()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var source = KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex);
+            var target = KeyAt(editor, TestLayouts.RgbDigitTwoKeyIndex);
+
+            Remap(editor, source, target.Key.OriginalKey);
+
+            editor.SelectKeyCommand.Execute(source);
+            editor.CopyKeyCommand.Execute(null);
+            editor.SelectKeyCommand.Execute(target);
+
+            // 04 §2.1: a remap onto the position's own original is no remap. Storing it would count
+            // the target in the row's Remap (n) and write a layout line that changes nothing.
+            Assert.False(target.Key.IsModified);
+            Assert.False(target.IsModified);
+            Assert.Equal(1, editor.BoardLegend.RemappedCount);
+        }
+
+        [AvaloniaFact]
+        public async Task AnArmedCopy_FromATapAndHoldKey_CarriesItWithoutPlantingARemapBesideIt()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var source = KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex);
+            var target = KeyAt(editor, TestLayouts.RgbDigitTwoKeyIndex);
+
+            source.Key.SetTapAndHold(TestLayouts.Gen1Key("F5"), TestLayouts.Gen1Key("F6"), 250);
+
+            editor.SelectKeyCommand.Execute(source);
+            editor.CopyKeyCommand.Execute(null);
+            editor.SelectKeyCommand.Execute(target);
+
+            // The tap-and-hold is the source's assignment; a remap alongside it would be a second
+            // single-key rule on one position, which 04 §4.3 cannot write.
+            Assert.True(target.Key.IsTapAndHold);
+            Assert.False(target.Key.IsModified);
+            Assert.DoesNotContain(
+                editor.Layout!.Validate(),
+                violation => violation.Kind == ModelViolationKind.ConflictingSingleKeyRules);
         }
 
         [AvaloniaFact]

@@ -34,6 +34,7 @@ namespace KinesisEdit.Services
         private readonly IUrlLauncher _urlLauncher;
         private readonly IDeviceSessionAccessor? _sessions;
         private readonly IMotionSettings? _motionSettings;
+        private readonly IHostPreferencesStore? _hostPreferences;
 
         /// <summary>
         /// Creates the factory. The capture service is resolved through a delegate rather than
@@ -57,6 +58,15 @@ namespace KinesisEdit.Services
         /// reduced. It is optional for the same reason as <paramref name="sessions"/> — a test or a
         /// design scene that passes none animates, which is the state the app was designed in.
         /// </para>
+        /// <para>
+        /// <paramref name="hostPreferences"/> is the per-user store
+        /// (docs/app/host-preferences.md) and reaches exactly one thing: the keyboard editor's key
+        /// inspector rail, whose dragged width is remembered for this person on this machine. It is
+        /// threaded through here rather than reached for as a singleton, for the same reason
+        /// everything else on this list is — the composition root owns the one instance, and a
+        /// second reader would show a stale copy. Optional like the two above: an editor built
+        /// without one opens the rail at its authored width and forgets a drag.
+        /// </para>
         /// </summary>
         public EditorViewModelFactory(
             IProfileSessionFactory profileSessions,
@@ -69,7 +79,8 @@ namespace KinesisEdit.Services
             IVDriveFileService files,
             IUrlLauncher urlLauncher,
             IDeviceSessionAccessor? sessions = null,
-            IMotionSettings? motionSettings = null)
+            IMotionSettings? motionSettings = null,
+            IHostPreferencesStore? hostPreferences = null)
         {
             _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -82,6 +93,7 @@ namespace KinesisEdit.Services
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _sessions = sessions;
             _motionSettings = motionSettings;
+            _hostPreferences = hostPreferences;
         }
 
         /// <inheritdoc />
@@ -115,7 +127,8 @@ namespace KinesisEdit.Services
                 _files,
                 _urlLauncher,
                 _sessions,
-                _motionSettings);
+                _motionSettings,
+                _hostPreferences);
         }
 
         private static bool CanRender(DeviceSnapshot device)

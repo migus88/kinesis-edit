@@ -646,6 +646,88 @@ namespace KinesisEdit.Core.Tests.Model
         }
 
         [Fact]
+        public void CopyFrom_FromAnUntouchedSource_StillLandsWhatThatPositionDoes()
+        {
+            var source = ModelTokens.CreateKey("a", TokenDialect.Gen2);
+            var target = ModelTokens.CreateKey("b", TokenDialect.Gen2, index: 1);
+
+            target.CopyFrom(source, KeyCopyScopes.KeyData);
+
+            // What is copied is the action the source *performs*, not its IsModified flag. An
+            // untouched source performs its factory action, so the target must end up doing that —
+            // copying the flag across left the target on its own default, a silent no-op.
+            Assert.True(target.IsModified);
+            Assert.Equal(source.OriginalKey, target.ModifiedKey);
+            Assert.Equal(source.ModifiedOrOriginalKey, target.ModifiedOrOriginalKey);
+        }
+
+        [Fact]
+        public void CopyFrom_FromAnUntouchedSourceOntoARemappedTarget_ReplacesTheRemapRatherThanWipingIt()
+        {
+            var source = ModelTokens.CreateKey("a", TokenDialect.Gen2);
+            var target = ModelTokens.CreateKey("b", TokenDialect.Gen2, index: 1);
+
+            target.Remap(ModelTokens.Key("z", TokenDialect.Gen2));
+            target.CopyFrom(source, KeyCopyScopes.KeyData);
+
+            // Not "no remap" (which is what the source's own flag says) and not the target's old
+            // one either: the target now does what the source does.
+            Assert.True(target.IsModified);
+            Assert.Equal(source.OriginalKey, target.ModifiedKey);
+        }
+
+        [Fact]
+        public void CopyFrom_WhenTheSourceDoesWhatTheTargetAlreadyDoes_LeavesTheTargetClean()
+        {
+            var source = ModelTokens.CreateKey("a", TokenDialect.Gen2);
+            var target = ModelTokens.CreateKey("b", TokenDialect.Gen2, index: 1);
+
+            source.Remap(ModelTokens.Key("b", TokenDialect.Gen2));
+            target.CopyFrom(source, KeyCopyScopes.KeyData);
+
+            // 04 §2.1's rule, which Remap applies and a raw field copy skipped: a remap equal to the
+            // position's own original is no remap. Storing it would inflate the modified count and
+            // write a layout line that changes nothing.
+            Assert.False(target.IsModified);
+            Assert.Null(target.ModifiedKey);
+            Assert.Equal(target.OriginalKey, target.ModifiedOrOriginalKey);
+        }
+
+        [Fact]
+        public void CopyFrom_FromATapAndHoldSource_PlantsNoRemapBesideIt()
+        {
+            var source = Advantage360Key("caps");
+            var target = Advantage360Key("b", index: 1);
+
+            source.SetTapAndHold(
+                ModelTokens.Key("a", TokenDialect.Gen2),
+                ModelTokens.Key("lctr", TokenDialect.Gen2),
+                250);
+            target.CopyFrom(source, KeyCopyScopes.KeyData);
+
+            // The tap-and-hold *is* the source's assignment, so the resolved action is only its
+            // untouched original. Copying that as a remap too would leave two single-key rules on
+            // one position — ConflictingSingleKeyRules, which 04 §4.3 makes unwritable anyway.
+            Assert.True(target.IsTapAndHold);
+            Assert.False(target.IsModified);
+            Assert.Null(target.ModifiedKey);
+        }
+
+        [Fact]
+        public void CopyFrom_FromAMultiModifierSource_PlantsNoRemapBesideItEither()
+        {
+            var source = Advantage360Key("caps");
+            var target = Advantage360Key("b", index: 1);
+
+            source.TrySetMultiModifiers("caws");
+            target.CopyFrom(source, KeyCopyScopes.KeyData);
+
+            Assert.Equal("caws", target.MultiModifiers);
+            Assert.False(target.IsModified);
+            Assert.Null(target.ModifiedKey);
+        }
+
+        [Fact]
         public void CopyFrom_WithKeyDataScope_NeverLeavesMoreRulesThanTheSourceHad()
         {
             var source = ModelTokens.CreateKey("a", TokenDialect.Gen2);

@@ -40,32 +40,51 @@
   </Style>
 
   <!-- ===== The key inspector rail ============================================================
-       The Layout tab's third column (mockups 1e/2a): 268 wide on the inset surface, hairlined off
-       the canvas beside it. Every number here is a token — the width is `WidthInspectorRail`,
-       declared in Themes/Geometry.axaml since issue #86 and reached by nothing until now.
+       The Layout tab's third column (mockups 1e/2a): the inset surface, hairlined off the canvas
+       beside it.
+
+       IT CARRIES NO WIDTH ANY MORE (issue #119). The rail is drag-adjustable, and a GridSplitter
+       resizes a grid COLUMN — so the width moved onto the column in KeyboardEditorView.axaml, where
+       the splitter can reach it. It had to MOVE rather than be layered over: a local Width on the
+       Border would have beaten whatever the column said, and the two would have disagreed the
+       moment the seam was dragged. The `.wide` companion went with it; the 300px macro variant is a
+       FLOOR the editor folds into EffectiveInspectorRailWidth now, not an override, so a user who
+       dragged the rail past 300 is never yanked back to it.
+
+       LightingModeRailView is the class's second consumer and sets its own local Width, which is
+       still correct: that rail is not resizable and is not in this grid at all.
 
        The rail is NOT a modal surface and carries none of the overlay roles: the board stays
-       clickable while it is open, which is the whole reason it replaces the feature panels it
-       replaces. It is a column of the content grid, nothing more. -->
+       clickable, which is the whole reason it replaces the feature panels it replaces. It is a
+       column of the content grid, nothing more. -->
   <Style Selector="Border.inspectorRail">
-    <Setter Property="Width" Value="{DynamicResource WidthInspectorRail}" />
     <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
     <Setter Property="BorderThickness" Value="1,0,0,0" />
   </Style>
 
-  <!-- 300 instead of 268 while the Macro panel is showing — the handoff states both widths
-       ("inspector rail: 268px wide on Layout, 300px on the macro-editing variant", mockup 2i) and
-       `WidthInspectorRailWide` has carried the second since issue #86 with nothing reaching it.
+  <!-- The seam between the board and the rail (issue #119) — the app's one resizable edge. A
+       one-setter bridge and nothing else: the template, the hit width, the hover ramp and the focus
+       ring are all the `RailSplitter` ControlTheme's, and anything set here would outrank it. -->
+  <Style Selector="GridSplitter.railSplitter">
+    <Setter Property="Theme" Value="{StaticResource RailSplitter}" />
+  </Style>
 
-       The class is written by the rail off ITS ACTIVE PANEL (KeyInspectorViewModel.IsWide ->
-       KeyInspectorPanelViewModel.WantsWideRail), not by the view: which modes are wide is a fact
-       about the panels, and a view that decided it would be a second place to keep in step.
+  <!-- ===== The hint block ====================================================================
+       A neutral frame for a sentence the app says about how something works — today the rail's
+       exclusivity line (issue #119), which as bare prose between the mode tabs and the amber
+       mode-switch warning read as stray text and merged with the warning below it.
 
-       It is a WIDTH change, not a transition. The motion budget lists no rail resize, and a tab
-       swap is 0 ms on purpose. -->
-  <Style Selector="Border.inspectorRail.wide">
-    <Setter Property="Width" Value="{DynamicResource WidthInspectorRailWide}" />
+       DELIBERATELY NOT AMBER. Amber is the advisory colour in the design's four-status vocabulary,
+       and this block warns of nothing; it is the inset surface with the same hairline every other
+       block of the rail is separated by. The amber warning that can appear directly beneath it is
+       unchanged, so the two are visibly different things. -->
+  <Style Selector="Border.hintBlock">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="9,7" />
   </Style>
 
   <!-- One block of the rail, separated from the next by a hairline rather than by a gap: the rail

@@ -1,10 +1,10 @@
 # Host preferences (per-user, per-machine)
 
-The app's **host-side** preference layer: the things that belong to the person at this computer rather than to any keyboard — the theme, the motion budget, and the shell window's last size and position. A toolkit-free model and store, a tolerant JSON file engine, a platform path seam, and two thin bridging services that make a preference visible in the running app.
+The app's **host-side** preference layer: the things that belong to the person at this computer rather than to any keyboard — the theme, the motion budget, the shell window's last size and position, and how wide they dragged the editor's key inspector rail. A toolkit-free model and store, a tolerant JSON file engine, a platform path seam, and two thin bridging services that make a preference visible in the running app.
 
 | Namespace | Entry point(s) | Encodes / Does |
 |---|---|---|
-| `KinesisEdit.Services` | `HostPreferences`, `WindowGeometry`, `AppThemePreference`, `MotionPreference` | The model. Toolkit-free, value-equal, defaults = "follow the OS, remember no window" |
+| `KinesisEdit.Services` | `HostPreferences`, `WindowGeometry`, `AppThemePreference`, `MotionPreference` | The model. Toolkit-free, value-equal, defaults = "follow the OS, remember no window, leave the rail as authored" |
 | `KinesisEdit.Services` | `IHostPreferencesStore`, `JsonHostPreferencesStore` | The one in-memory copy: `Current`, `Update(Func<…>)`, `Changed` |
 | `KinesisEdit.Services` | `HostPreferencesParser`, `HostPreferencesSerializer`, `HostPreferencesJsonNames` | Tolerant read / canonical write of the JSON file |
 | `KinesisEdit.Services` | `IHostPreferencesPathProvider`, `HostPreferencesPathProvider` | Where the file lives, per platform — and the seam that keeps tests out of it |
@@ -22,7 +22,7 @@ The app has **two** preference stores and they are easy to confuse. They are not
 | File | `<per-user config>/KinesisEdit/preferences.json` | `settings/app_settings.txt` **on the keyboard's v-Drive** |
 | Scope | **Per user, per machine** | **Per device** — travels with the board |
 | Format | JSON | The spec 08 §3 `key=value` text format, shared with the legacy Pascal app |
-| Carries | Theme, motion, window geometry | The 17 notification/display preferences and the 12 `cust_color_N` swatches |
+| Carries | Theme, motion, window geometry, inspector-rail width | The 17 notification/display preferences and the 12 `cust_color_N` swatches |
 | Written in demo mode | Yes | **No** (spec 08 §3) |
 | Docs | here | [settings.md](settings.md) |
 | Spec | none — net-new, issue [#96](https://github.com/migus88/kinesis-edit/issues/96) | specs/08-settings.md §3 |
@@ -36,13 +36,17 @@ The Settings screen's own section label says it: *"App & notifications — store
 - **`AppThemePreference`** — `FollowSystem` (0) / `Light` / `Dark`.
 - **`MotionPreference`** — `FollowSystem` (0) / `AlwaysReduce` / `NeverReduce`.
 - **`WindowGeometry`** — `Width`, `Height` (DIPs, matching `Window.Width`/`Height`), optional `X`, `Y` (screen pixels, matching `Window.Position`), `IsMaximized`.
-- **`HostPreferences`** — `Theme`, `Motion`, `Window` (nullable). `HostPreferences.Default` is `FollowSystem`, `FollowSystem`, no geometry — i.e. exactly the app as it behaved before there was a choice.
+- **`HostPreferences`** — `Theme`, `Motion`, `Window` (nullable), `InspectorRailWidth` (nullable `double`). `HostPreferences.Default` is `FollowSystem`, `FollowSystem`, no geometry, no rail width — i.e. exactly the app as it behaved before there was a choice.
 
 `FollowSystem` is the **zero value of both enums** on purpose: a `default(T)`, an unset field and a fresh record all have to land on the option that changes nothing.
 
 `HostPreferences` is a `record` and equality is by value, including the geometry. That is not decoration — it is what lets the store detect a no-op write (below).
 
 **Negative `X`/`Y` are legal.** A monitor placed left of or above the primary one has negative coordinates; rejecting them would drag the window back onto the main screen at every launch.
+
+**`InspectorRailWidth` is the keyboard editor's key inspector rail, in DIPs, and `null` means "as authored".** Issue [#119](https://github.com/migus88/kinesis-edit/issues/119) made the rail drag-adjustable; the width it is dragged to is a fact about this person's screen and their taste, not about any board, so it is stored here rather than in `app_settings.txt` — and it has to be right on the first frame of an editor opened over a keyboard that has never been plugged into this machine.
+
+**The rail's band lives on `HostPreferences` and is written twice, on purpose.** `MinimumInspectorRailWidth` (240), `DefaultInspectorRailWidth` (268) and `MaximumInspectorRailWidth` (520) are plain C# constants, and `ClampInspectorRailWidth(width)` is the one rule that applies them — a non-finite width is not a width at all and yields the default, because `Math.Clamp` propagates NaN and a NaN on a column definition takes the whole tab's measure pass with it. The **same** three numbers are geometry tokens (`WidthInspectorRailMin` / `WidthInspectorRail` / `WidthInspectorRailMax`) so the splitter can bound the drag, but a view model may not read Avalonia resources ([app-shell.md](app-shell.md) invariant 8) — hence two copies, pinned to each other by `KeyboardEditorViewModelTests.TheRailsWidths_AreWrittenTwice_AndMustAgree`.
 
 **The size range lives in `WindowGeometry` and nowhere else.** `WindowGeometry.TryCreate` returns `null` for a width or height that is non-finite, ≤ 0 or beyond `MaximumExtent` (32000) — and null means *no stored geometry*, which is the fresh-install state, not a window that cannot be shown. `MinimumExtent` is 1, deliberately **not** the shell's 720×480 floor: this rejects garbage, it does not restate a minimum size that belongs to the window.
 
@@ -65,7 +69,8 @@ Same shape as `IAppPreferencesStore`, because it solves the same problem: severa
 {
   "theme": "Dark",
   "motion": "AlwaysReduce",
-  "window": { "width": 1000, "height": 680, "x": -1440, "y": 25, "maximized": false }
+  "window": { "width": 1000, "height": 680, "x": -1440, "y": 25, "maximized": false },
+  "inspectorRailWidth": 412
 }
 ```
 
@@ -83,6 +88,13 @@ Same shape as `IAppPreferencesStore`, because it solves the same problem: severa
 | width/height out of range or non-finite | no stored geometry |
 | one bad coordinate | that coordinate is dropped, the geometry survives |
 | non-boolean `maximized` | false |
+| `inspectorRailWidth` missing, or not a number (`"320"`, `true`, `null`, `[]`, `{}`) | no stored width — the rail opens as authored |
+| `inspectorRailWidth` non-finite, ≤ 0, or > `WindowGeometry.MaximumExtent` | no stored width |
+| `inspectorRailWidth` outside 240…520 (`9999`, `100`) | **clamped** into the band |
+
+**A rail width is clamped on load; a nonsensical one is not stored.** The distinction is the point: `9999` is a legible request for the widest rail, so it becomes 520 rather than stranding the rail off screen, while `-320`, `0` and `1e30` are not widths at all and clamping them would invent a preference the user never expressed. The upper cut-off is `WindowGeometry.MaximumExtent`, which is already this module's line between "a size" and garbage.
+
+A null `InspectorRailWidth` writes **no** key, exactly as a null `Window` writes no object; a non-finite one — only a hand-built record can carry it — is dropped rather than thrown over, for the same `Utf8JsonWriter` reason.
 
 **It reads field by field rather than calling `JsonSerializer.Deserialize<T>`** — the serializer throws on a wrong-typed value and takes the whole file with it, so one hand-edited line would cost the user their theme *and* their window position. Property names and enum names both match case-insensitively.
 
@@ -148,7 +160,7 @@ Nothing re-reads the OS to answer this, which matters because the macOS detector
 
 ## Deliberately not here
 
-- **No composition-root wiring, no Settings screen, no window-geometry capture — *in this module*.** All three now exist; they simply are not here, because this module is the store, the file and the two appliers. Who builds them is `App.axaml.cs` (inside the desktop-lifetime branch, before any window: it reads `Current` once and runs both appliers, so the first frame already wears them), who binds to them is `SettingsScreenViewModel`, and who reads the live window's size is `MainWindow.RestoreGeometry`/`PersistGeometry` — all three described in [app-shell.md](app-shell.md).
+- **No composition-root wiring, no Settings screen, no window-geometry capture, no rail — *in this module*.** All four now exist; they simply are not here, because this module is the store, the file and the two appliers. Who builds them is `App.axaml.cs` (inside the desktop-lifetime branch, before any window: it reads `Current` once and runs both appliers, so the first frame already wears them), who binds to them is `SettingsScreenViewModel`, and who reads the live window's size is `MainWindow.RestoreGeometry`/`PersistGeometry` — all three described in [app-shell.md](app-shell.md). **`InspectorRailWidth`'s one reader and one writer is `KeyboardEditorViewModel`**, which the composition root reaches through `EditorViewModelFactory`'s optional `IHostPreferencesStore`: it reads `Current` once in its constructor (nothing else writes the width, so a `Changed` subscription could only tell it what it just did) and writes through `Update` on every real change of `InspectorRailWidth`. It is **not** debounced and does not need to be — an unchanged width returns before it writes, which is what turns a continuous drag into one write at its commit. The rail itself is [keyboard-editor.md](keyboard-editor.md)'s.
 - **No migration or schema version.** The file is net-new and the tolerant read is the migration strategy: an unknown key is ignored and a missing one is a default, so an older or newer file is always readable.
 - **No file watching.** One process owns this file; the store does not notice a hand edit made while the app is running, and picks it up on the next launch.
 - **No atomic write.** `File.WriteAllText`, not write-temp-then-rename. A truncated preferences file degrades to defaults on the next read rather than corrupting anything, which is the same cost as the failure the rename would have prevented.

@@ -70,6 +70,7 @@
         <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Tabs.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Fields.axaml" />
         <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Keycap.axaml" />
+        <ResourceInclude Source="avares://KinesisEdit/Themes/ControlThemes/Splitter.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

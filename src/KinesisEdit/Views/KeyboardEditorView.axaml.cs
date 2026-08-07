@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
@@ -20,12 +21,27 @@ namespace KinesisEdit.Views
     /// The keyboard editor view, resolved from <see cref="KeyboardEditorViewModel"/> by
     /// <see cref="ViewLocator"/>. Everything it shows is bound; the only code here is the editor's
     /// keyboard grammar — the Escape route out of an open feature panel, out of the remap's
-    /// listening state and out of an armed <c>Copy key…</c>, the arrow/⌥n/⌘F/⌘S/⌘W table of
-    /// docs/design/mockups.md <c>2b</c> — plus the two selection handlers that turn a segment or a
-    /// tab being chosen back into the command the buttons they replaced used to run.
+    /// listening state, out of an armed <c>Copy key…</c> and finally out of the selection itself,
+    /// the arrow/⌥n/⌘F/⌘S/⌘W table of docs/design/mockups.md <c>2b</c> — plus the two selection
+    /// handlers that turn a segment or a tab being chosen back into the command the buttons they
+    /// replaced used to run, and the one thing a binding cannot do: the key inspector rail's
+    /// column width (see <see cref="SyncRailColumn"/>).
     /// </summary>
     public partial class KeyboardEditorView : UserControl
     {
+        /// <summary>
+        /// Which column of the Layout tab's grid the rail sits in — board, seam, rail. The width is
+        /// carried by the <b>column</b> since issue #119, because that is what a
+        /// <see cref="GridSplitter"/> resizes.
+        /// </summary>
+        private const int RailColumnIndex = 2;
+
+        /// <summary>
+        /// The view model the rail column is currently following, so its notification can be dropped
+        /// again when the editor is replaced.
+        /// </summary>
+        private KeyboardEditorViewModel? _railWidthSource;
+
         /// <summary>Creates the editor view.</summary>
         public KeyboardEditorView()
         {
@@ -54,6 +70,34 @@ namespace KinesisEdit.Views
         }
 
         /// <summary>
+        /// Follows whichever editor the shell hands this view, so the rail column keeps the width
+        /// that editor stores. The subscription is dropped from the outgoing one first: the shell
+        /// reuses views, and an editor left subscribed would go on moving a column it no longer
+        /// owns.
+        /// </summary>
+        protected override void OnDataContextChanged(EventArgs e)
+        {
+            base.OnDataContextChanged(e);
+
+            if (_railWidthSource is not null)
+            {
+                _railWidthSource.PropertyChanged -= OnEditorPropertyChanged;
+                _railWidthSource = null;
+            }
+
+            if (DataContext is not KeyboardEditorViewModel viewModel)
+            {
+                return;
+            }
+
+            _railWidthSource = viewModel;
+
+            viewModel.PropertyChanged += OnEditorPropertyChanged;
+
+            SyncRailColumn(viewModel);
+        }
+
+        /// <summary>
         /// Takes focus unless something inside the editor already has it, so the grammar works from
         /// the moment the editor opens rather than only after the first click. Anything the user
         /// then focuses — a cap, a tab, a field — is a descendant of this view, so the tunnel route
@@ -62,6 +106,14 @@ namespace KinesisEdit.Views
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);
+
+            if (DataContext is KeyboardEditorViewModel editor)
+            {
+                // The column definitions do not exist until the XAML has been loaded and this view
+                // has been attached to something, so a DataContext that arrived before either is
+                // applied here instead.
+                SyncRailColumn(editor);
+            }
 
             if (IsKeyboardFocusWithin || Focus())
             {
@@ -163,20 +215,30 @@ namespace KinesisEdit.Views
         /// panel.
         /// </para>
         /// <para>
-        /// <b>The order is explicit: panel, then capture, then an armed copy, then the key
-        /// inspector.</b> `2b`'s grammar says Escape "leaves capture mode first", so the listening
-        /// key is cancelled before the armed <c>Copy key…</c> pick — even though the editor never
-        /// lets both be live at once (arming a copy ends a listen, and starting a remap ends a
-        /// copy), which is what keeps this a stated order rather than a lucky one. A copy is armed
-        /// by a click and finished by a click, so nothing swallows the Escape that cancels it.
+        /// <b>The order is explicit: panel, then capture, then an armed copy, then the selection.</b>
+        /// `2b`'s grammar says Escape "leaves capture mode first", so the listening key is cancelled
+        /// before the armed <c>Copy key…</c> pick — even though the editor never lets both be live at
+        /// once (arming a copy ends a listen, and starting a remap ends a copy), which is what keeps
+        /// this a stated order rather than a lucky one. A copy is armed by a click and finished by a
+        /// click, so nothing swallows the Escape that cancels it. <b>The first three stages are
+        /// unchanged by issue #119; only the fourth is.</b>
         /// </para>
         /// <para>
-        /// <b>The rail is last, and that is the point of putting it in this list at all.</b> It is
-        /// not modal, so nothing about it belongs in gate 2 — but it is the widest thing on screen
-        /// that Escape can plausibly mean, so it goes behind everything narrower. The latch covers
-        /// it exactly as it covers a panel: a rail record button disarms as it takes the Escape it
-        /// was recording, and without the latch that one keypress would both fill the field and
-        /// dismiss the rail.
+        /// <b>The last stage clears the key selection (issue #119).</b> It used to close the rail —
+        /// which was the widest thing on screen Escape could plausibly mean, back when the rail was
+        /// a thing that could be closed. It cannot be any more: it is a permanent column, so
+        /// dismissing it would have to collapse a column and shove the board sideways, which is the
+        /// very defect this stage now avoids. Deselecting reaches the same end from the other side
+        /// — the cap loses its ring, the rail falls to its empty state, and Escape still means
+        /// "back out of the narrowest thing I am in". It is still last, and still behind everything
+        /// narrower. The latch covers it exactly as it covers a panel: a rail record button disarms
+        /// as it takes the Escape it was recording, and without the latch that one keypress would
+        /// both fill the field and drop the selection.
+        /// </para>
+        /// <para>
+        /// Nothing is handled when there is no selection, so Escape falls through untouched on an
+        /// editor the user has not clicked into — an accelerator that swallows a key it does nothing
+        /// with is worse than one that does not fire.
         /// </para>
         /// </summary>
         private static void HandleEscape(KeyboardEditorViewModel viewModel, KeyEventArgs e, bool takenByOverlay)
@@ -210,14 +272,18 @@ namespace KinesisEdit.Views
                 return;
             }
 
-            if (!viewModel.Inspector.IsOpen)
+            if (viewModel.SelectedKey is null)
             {
                 return;
             }
 
             e.Handled = true;
 
-            viewModel.Inspector.Close();
+            // The editor's own "nothing is selected" path: it cancels a listen, drops the cap's
+            // ring and pushes the rail — and the Macros tab's slot branch — through the same funnel
+            // a click on empty board space does. Reimplementing any of that here would be a second
+            // set of rules to keep in step.
+            viewModel.SelectKeyCommand.Execute(null);
         }
 
         /// <summary>
@@ -430,6 +496,104 @@ namespace KinesisEdit.Views
             {
                 strip.SelectedValue = viewModel.SelectedTab;
             }
+        }
+
+        /// <summary>
+        /// The rail's width moved: either the user dragged the seam and the store clamped what they
+        /// asked for, or the showing panel raised the macro floor.
+        /// </summary>
+        private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (sender is not KeyboardEditorViewModel viewModel)
+            {
+                return;
+            }
+
+            // An empty name is "everything changed", which a view model is entitled to raise.
+            if (e.PropertyName is not (null
+                or ""
+                or nameof(KeyboardEditorViewModel.InspectorRailWidth)
+                or nameof(KeyboardEditorViewModel.EffectiveInspectorRailWidth)))
+            {
+                return;
+            }
+
+            SyncRailColumn(viewModel);
+        }
+
+        /// <summary>
+        /// Puts the editor's width onto the rail's column.
+        /// <para>
+        /// <b>Why this is not a binding.</b> A <see cref="ColumnDefinition"/> is a bare
+        /// <c>AvaloniaObject</c>: it is in neither the logical nor the visual tree, so it inherits no
+        /// <c>DataContext</c> and a <c>{Binding}</c> written on it in XAML has nothing to resolve a
+        /// path against. The alternatives are worse — a local <c>Width</c> on the rail control would
+        /// be read by the layout pass but not by the <see cref="GridSplitter"/>, which resizes
+        /// columns, so the two would disagree the moment the seam was dragged.
+        /// </para>
+        /// <para>
+        /// The column's own minimum and maximum are the geometry tokens, which is what bounds the
+        /// drag itself. The Macro panel's 300px floor is <em>not</em> spelled here: it is folded into
+        /// <c>EffectiveInspectorRailWidth</c> by the editor, so a drag that ends below it is pushed
+        /// back up by the very next notification — one owner for the floor, not two.
+        /// </para>
+        /// </summary>
+        private void SyncRailColumn(KeyboardEditorViewModel viewModel)
+        {
+            if (LayoutColumns.ColumnDefinitions.Count <= RailColumnIndex)
+            {
+                return;
+            }
+
+            var column = LayoutColumns.ColumnDefinitions[RailColumnIndex];
+
+            column.MinWidth = Measure("WidthInspectorRailMin", column.MinWidth);
+            column.MaxWidth = Measure("WidthInspectorRailMax", column.MaxWidth);
+            column.Width = new GridLength(viewModel.EffectiveInspectorRailWidth, GridUnitType.Pixel);
+        }
+
+        /// <summary>
+        /// The seam is being dragged. The splitter has already moved the column, so all that is left
+        /// is to tell the editor — which clamps it, applies the showing panel's floor and pushes the
+        /// result back through <see cref="SyncRailColumn"/>.
+        /// </summary>
+        private void OnRailSplitterDragged(object? sender, VectorEventArgs e)
+        {
+            StoreRailWidth();
+        }
+
+        /// <summary>
+        /// The seam was let go. The same write as the drag's, because a drag that is a single flick
+        /// can end without a delta ever being raised.
+        /// </summary>
+        private void OnRailSplitterReleased(object? sender, VectorEventArgs e)
+        {
+            StoreRailWidth();
+        }
+
+        /// <summary>Reads the rail column back off the grid and stores it as the user's width.</summary>
+        private void StoreRailWidth()
+        {
+            if (DataContext is not KeyboardEditorViewModel viewModel
+                || LayoutColumns.ColumnDefinitions.Count <= RailColumnIndex)
+            {
+                return;
+            }
+
+            var column = LayoutColumns.ColumnDefinitions[RailColumnIndex];
+
+            // The splitter always writes an absolute length; ActualWidth is the fallback for the one
+            // frame before the grid has re-measured.
+            viewModel.InspectorRailWidth = column.Width.IsAbsolute ? column.Width.Value : column.ActualWidth;
+        }
+
+        /// <summary>
+        /// Resolves a geometry token, or keeps <paramref name="fallback"/> where the view is hosted
+        /// without the app's resources — which is every design-time preview.
+        /// </summary>
+        private double Measure(string key, double fallback)
+        {
+            return this.TryFindResource(key, out var value) && value is double measure ? measure : fallback;
         }
     }
 }

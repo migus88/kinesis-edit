@@ -39,9 +39,17 @@
   <x:Double x:Key="HeightAdvisoryStrip">30</x:Double>
 
   <!-- Rails and gutters. The inspector widens only on the macro-editing variant, where the
-       recorded step list needs the room. -->
+       recorded step list needs the room.
+
+       Since issue #119 the rail is DRAG-ADJUSTABLE, so 268 is the width it starts at rather than
+       the width it keeps, and 300 is a FLOOR the Macro panel raises it to rather than a value that
+       replaces the user's. Min and Max bound the drag: 240 is the narrowest the header's tile,
+       token and assignment line still fit on one line; 520 is where the rail stops being a rail
+       and starts being half the window on the 1000px default. -->
   <x:Double x:Key="WidthInspectorRail">268</x:Double>
   <x:Double x:Key="WidthInspectorRailWide">300</x:Double>
+  <x:Double x:Key="WidthInspectorRailMin">240</x:Double>
+  <x:Double x:Key="WidthInspectorRailMax">520</x:Double>
   <x:Double x:Key="GutterSplit">26</x:Double>
 
   <!-- The dashboard card grid: two columns, and a 2px status rail flush against the left edge

@@ -56,7 +56,8 @@ namespace KinesisEdit.Services
                 {
                     Theme = ReadEnum(root, HostPreferencesJsonNames.Theme, HostPreferences.Default.Theme),
                     Motion = ReadEnum(root, HostPreferencesJsonNames.Motion, HostPreferences.Default.Motion),
-                    Window = ReadWindow(root)
+                    Window = ReadWindow(root),
+                    InspectorRailWidth = ReadInspectorRailWidth(root)
                 };
             }
         }
@@ -85,6 +86,31 @@ namespace KinesisEdit.Services
                 ReadCoordinate(window, HostPreferencesJsonNames.X),
                 ReadCoordinate(window, HostPreferencesJsonNames.Y),
                 ReadBoolean(window, HostPreferencesJsonNames.Maximized));
+        }
+
+        /// <summary>
+        /// The stored key-inspector rail width, <b>clamped</b> into the band
+        /// <see cref="HostPreferences.ClampInspectorRailWidth"/> owns — a hand-edited <c>9999</c> is
+        /// a request for the widest rail, not a reason to strand it off screen.
+        /// <para>
+        /// Null — "nothing stored", i.e. the authored width — for everything that is not a width at
+        /// all: an absent key, a value of the wrong type, a non-finite number, zero or a negative
+        /// one, and anything past <see cref="WindowGeometry.MaximumExtent"/>, which is already this
+        /// module's boundary between "a size" and "garbage". Clamping those would turn nonsense into
+        /// a preference the user never expressed.
+        /// </para>
+        /// </summary>
+        private static double? ReadInspectorRailWidth(JsonElement root)
+        {
+            if (ReadNumber(root, HostPreferencesJsonNames.InspectorRailWidth) is not { } width
+                || !double.IsFinite(width)
+                || width <= 0
+                || width > WindowGeometry.MaximumExtent)
+            {
+                return null;
+            }
+
+            return HostPreferences.ClampInspectorRailWidth(width);
         }
 
         private static TEnum ReadEnum<TEnum>(JsonElement parent, string name, TEnum fallback)

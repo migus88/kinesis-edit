@@ -686,8 +686,10 @@ namespace KinesisEdit.Tests.Design
                 return await CreateEditorAsync().ConfigureAwait(true);
             }
 
-            // The strip binds to its own view model, and it is hidden when the section has nothing
-            // to say — so its scene is the strip of an editor that actually has something to say.
+            // The strip binds to its own view model, and since #119 it holds its row in both states
+            // — reserved when there is nothing to say, painted when there is. The scene is the strip
+            // of an editor that actually has something to say, so the rendered face is the painted
+            // one; the reserved face is asserted directly by AdvisoryStripTests.
             if (viewType == typeof(AdvisoryStripView))
             {
                 return (await CreateEditorWithAdvisoriesAsync().ConfigureAwait(true)).AdvisoryStrip;

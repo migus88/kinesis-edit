@@ -46,6 +46,14 @@ namespace KinesisEdit.Services
                     WriteWindow(writer, window);
                 }
 
+                // Same rule, same reason: nothing stored writes no key at all, and a non-finite
+                // width — which only a hand-built record can carry — is dropped rather than thrown
+                // over, because Utf8JsonWriter refuses NaN and a preference save may not throw.
+                if (preferences.InspectorRailWidth is { } railWidth && double.IsFinite(railWidth))
+                {
+                    writer.WriteNumber(HostPreferencesJsonNames.InspectorRailWidth, railWidth);
+                }
+
                 writer.WriteEndObject();
             }
 
