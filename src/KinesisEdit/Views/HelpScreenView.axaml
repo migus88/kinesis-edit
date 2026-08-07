@@ -72,30 +72,10 @@
         </Border>
       </StackPanel>
 
-      <!-- ===== The board this app does not edit ============================================= -->
-      <!-- Absent, not empty, when the catalog holds no web-configured board: a feature a device
-           does not have is not rendered at all. -->
-      <StackPanel Spacing="{DynamicResource Space8}" IsVisible="{Binding HasWebToolLinks}">
-        <TextBlock Text="{x:Static vm:HelpScreenViewModel.WebToolSectionLabel}" Classes="sectionLabel" />
-
-        <Border Classes="card">
-          <StackPanel Spacing="{DynamicResource Space8}">
-            <TextBlock Text="{x:Static vm:HelpScreenViewModel.WebToolSectionNote}"
-                       Classes="body muted"
-                       TextWrapping="Wrap" />
-
-            <ItemsControl ItemsSource="{Binding WebToolLinks}" ItemTemplate="{StaticResource HelpLinkRow}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-            </ItemsControl>
-          </StackPanel>
-        </Border>
-      </StackPanel>
-
-      <!-- ===== Troubleshooting, by device =================================================== -->
+      <!-- ===== Troubleshooting, by device ===================================================
+           One row per board the app knows about that has a support page. A board this app cannot
+           edit is not mentioned here any more than it is on the dashboard: the catalog carries no
+           troubleshooting page for either non-programmable entry, so neither reaches this list. -->
       <StackPanel Spacing="{DynamicResource Space8}">
         <TextBlock Text="{x:Static vm:HelpScreenViewModel.TroubleshootingSectionLabel}" Classes="sectionLabel" />
 

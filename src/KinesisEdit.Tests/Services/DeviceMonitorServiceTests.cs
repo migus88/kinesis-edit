@@ -1,3 +1,4 @@
+using System.Reflection;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Discovery;
@@ -8,6 +9,60 @@ namespace KinesisEdit.Tests.Services
     public class DeviceMonitorServiceTests
     {
         private static readonly TimeSpan _neverPolls = TimeSpan.FromHours(1);
+
+        /// <summary>
+        /// Issue #118: <b>scanning is manual</b>. The service holds no timer, so a constructed one
+        /// never looks at the drives — the underlying <see cref="VDriveMonitor"/> here is given a
+        /// 10 ms interval, so anything that armed it would have fired many times over by the end of
+        /// the wait. Only the explicit <see cref="DeviceMonitorService.Refresh"/> scans, and it
+        /// still runs a whole pass.
+        /// </summary>
+        [Fact]
+        public void Refresh_IsTheOnlyThingThatScans_AndNothingArmsItselfOnConstruction()
+        {
+            var scanner = new CallbackScanner();
+
+            using var service = new DeviceMonitorService(
+                new VDriveMonitor(scanner, TimeSpan.FromMilliseconds(10)),
+                new FakeVDriveFileService(),
+                new FakeUiDispatcher());
+            var updates = CollectUpdates(service);
+
+            Thread.Sleep(TimeSpan.FromMilliseconds(250));
+
+            Assert.Equal(0, scanner.ScanCount);
+            Assert.Empty(service.Snapshots);
+            Assert.Empty(updates);
+            Assert.False(service.IsRefreshing);
+
+            service.Refresh();
+
+            Assert.Equal(1, scanner.ScanCount);
+            Assert.NotEmpty(service.Snapshots);
+            Assert.Single(updates);
+        }
+
+        /// <summary>
+        /// The same fact stated about the type rather than about one instance: there is no timer to
+        /// arm and no start/stop pair to call, so no future caller can put the app back on a poll
+        /// without deleting this test first.
+        /// </summary>
+        [Fact]
+        public void DeviceMonitorService_Exposes_NoTimerAndNoStartOrStop()
+        {
+            const BindingFlags everything =
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+
+            var type = typeof(DeviceMonitorService);
+
+            Assert.DoesNotContain(
+                type.GetMembers(everything),
+                member => member.Name is "Start" or "Stop" or "IsPolling");
+            Assert.DoesNotContain(
+                type.GetFields(everything),
+                field => typeof(Timer).IsAssignableFrom(field.FieldType)
+                    || typeof(ITimer).IsAssignableFrom(field.FieldType));
+        }
 
         [Fact]
         public void Refresh_WithWritableDrive_ReportsConnectedAndNotDemoMode()
@@ -268,9 +323,7 @@ namespace KinesisEdit.Tests.Services
             using var service = new DeviceMonitorService(
                 new VDriveMonitor(scanner, _neverPolls),
                 new FakeVDriveFileService(),
-                new FakeUiDispatcher(),
-                new FakeSystemClock(),
-                _neverPolls);
+                new FakeUiDispatcher());
             var poll = new Thread(service.Refresh);
 
             poll.Start();
@@ -293,9 +346,7 @@ namespace KinesisEdit.Tests.Services
             using var service = new DeviceMonitorService(
                 new VDriveMonitor(scanner, _neverPolls),
                 new FakeVDriveFileService(),
-                new FakeUiDispatcher(),
-                new FakeSystemClock(),
-                _neverPolls);
+                new FakeUiDispatcher());
             var poll = new Thread(service.Refresh);
 
             poll.Start();
@@ -317,7 +368,7 @@ namespace KinesisEdit.Tests.Services
             var scanner = new FakeVDriveScanner();
             var fileService = new FakeVDriveFileService();
             var monitor = new VDriveMonitor(scanner, _neverPolls);
-            using var service = new DeviceMonitorService(monitor, fileService, new FakeUiDispatcher(), new FakeSystemClock(), _neverPolls);
+            using var service = new DeviceMonitorService(monitor, fileService, new FakeUiDispatcher());
             var location = TestDevices.CreateLocation(DeviceId.Tko);
             fileService.SetFile(location.VersionFilePath, TestDevices.CreateVersionFileLines(DeviceId.Tko));
             scanner.SetResult(location);
@@ -346,20 +397,6 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
-        public void Start_WhenCalled_PublishesSnapshotsSynchronously()
-        {
-            using var service = CreateService(out var scanner, out var fileService, out _);
-            var location = TestDevices.CreateLocation(DeviceId.Advantage2);
-            fileService.SetFile(location.VersionFilePath, TestDevices.CreateVersionFileLines(DeviceId.Advantage2));
-            scanner.SetResult(location);
-
-            service.Start();
-            service.Stop();
-
-            Assert.Equal(VDriveConnectionStatus.Connected, GetSnapshot(service, DeviceId.Advantage2).Status);
-        }
-
-        [Fact]
         public void Refresh_AfterDispose_DoesNothing()
         {
             var service = CreateService(out _, out _, out var dispatcher);
@@ -375,108 +412,18 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
-        public void IsPolling_FollowsStartAndStop()
+        public void IsRefreshing_BeforeTheFirstRefresh_IsFalse()
         {
             using var service = CreateService(out _, out _, out _);
 
-            Assert.False(service.IsPolling);
-
-            service.Start();
-
-            Assert.True(service.IsPolling);
-
-            service.Stop();
-
-            Assert.False(service.IsPolling);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_BeforeTheFirstRefresh_IsNull()
-        {
-            using var service = CreateService(out _, out _, out _);
-
-            Assert.Null(service.LastRefreshedUtc);
             Assert.False(service.IsRefreshing);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_AfterARefresh_CarriesTheClock()
-        {
-            using var service = CreateService(out var scanner, out var fileService, out _, out _);
-            var location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb);
-            fileService.SetFile(location.VersionFilePath, TestDevices.CreateVersionFileLines(DeviceId.FreestyleEdgeRgb));
-            scanner.SetResult(location);
-
-            service.Refresh();
-
-            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_AfterASecondRefresh_Advances()
-        {
-            using var service = CreateService(out _, out _, out _, out var clock);
-
-            service.Refresh();
-            clock.Advance(TimeSpan.FromSeconds(2));
-            service.Refresh();
-
-            Assert.Equal(FakeSystemClock.Start + TimeSpan.FromSeconds(2), service.LastRefreshedUtc);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_WhenTheRefreshFindsNothing_IsStillStamped()
-        {
-            // "Refreshed" means the loop looked, not that it found something: an empty scan is the
-            // complete, correct answer of a healthy pass, and the dashboard's readout must reset
-            // for it — otherwise unplugging the only keyboard freezes the readout forever.
-            using var service = CreateService(out _, out _, out _);
-
-            service.Refresh();
-
-            Assert.All(service.Snapshots, snapshot => Assert.False(snapshot.IsDetected));
-            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_WhenAVersionFileCannotBeRead_IsStillStamped()
-        {
-            // Same rule one level down: an unreadable version file is a device-level fault the
-            // snapshot already reports as v-Drive Error, not a failure of the pass.
-            using var service = CreateService(out var scanner, out var fileService, out _);
-            var location = TestDevices.CreateLocation(DeviceId.Tko);
-            fileService.SetUnreadable(location.VersionFilePath);
-            scanner.SetResult(location);
-
-            service.Refresh();
-
-            Assert.Equal(VDriveHealth.Error, GetSnapshot(service, DeviceId.Tko).Health);
-            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
-        }
-
-        [Fact]
-        public void LastRefreshedUtc_WhenTheScanThrows_KeepsThePreviousValue()
-        {
-            var scanner = new CallbackScanner();
-            var clock = new FakeSystemClock();
-            using var service = CreateService(scanner, clock);
-
-            service.Refresh();
-            clock.Advance(TimeSpan.FromSeconds(5));
-            scanner.Failure = new InvalidOperationException("the volume enumerator fell over");
-
-            Assert.Throws<InvalidOperationException>(service.Refresh);
-
-            // The readout keeps ageing while the loop is broken instead of claiming a scan that
-            // never completed.
-            Assert.Equal(FakeSystemClock.Start, service.LastRefreshedUtc);
         }
 
         [Fact]
         public void IsRefreshing_WhileARefreshRuns_IsTrueAndClearsAfterwards()
         {
             var scanner = new CallbackScanner();
-            using var service = CreateService(scanner, new FakeSystemClock());
+            using var service = CreateService(scanner);
             var isRefreshingDuringScan = false;
             scanner.OnScan = () => isRefreshingDuringScan = service.IsRefreshing;
 
@@ -493,7 +440,7 @@ namespace KinesisEdit.Tests.Services
             {
                 Failure = new InvalidOperationException("the volume enumerator fell over")
             };
-            using var service = CreateService(scanner, new FakeSystemClock());
+            using var service = CreateService(scanner);
 
             Assert.Throws<InvalidOperationException>(service.Refresh);
 
@@ -505,7 +452,7 @@ namespace KinesisEdit.Tests.Services
         public void IsRefreshing_WhenARefreshCoalescesIntoARepeat_NeverReportsIdleInBetween()
         {
             var scanner = new CallbackScanner();
-            using var service = CreateService(scanner, new FakeSystemClock());
+            using var service = CreateService(scanner);
             var states = new List<bool>();
             service.RefreshActivityChanged += () => states.Add(service.IsRefreshing);
             scanner.OnScan = () =>
@@ -524,107 +471,17 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
-        public void CompletedRefreshCount_BeforeTheFirstRefresh_IsZero()
+        public void RefreshActivityChanged_AroundARefresh_ReportsTheStartAndTheEnd()
         {
+            // Two transitions and no third: the service records nothing about past passes any more,
+            // so there is no "stamped" edge between them.
             using var service = CreateService(out _, out _, out _);
-
-            Assert.Equal(0, service.CompletedRefreshCount);
-        }
-
-        [Fact]
-        public void CompletedRefreshCount_PerCompletedPass_AdvancesByOne()
-        {
-            // This is what the empty state's "rescanned N times" counts, so it has to mean passes
-            // rather than anything that merely looks like one.
-            using var service = CreateService(out _, out _, out _);
+            var states = new List<bool>();
+            service.RefreshActivityChanged += () => states.Add(service.IsRefreshing);
 
             service.Refresh();
 
-            Assert.Equal(1, service.CompletedRefreshCount);
-
-            service.Refresh();
-
-            Assert.Equal(2, service.CompletedRefreshCount);
-        }
-
-        [Fact]
-        public void CompletedRefreshCount_WhenARefreshCoalescesIntoARepeat_CountsBothPasses()
-        {
-            // A call arriving while a pass runs marks the running one to repeat rather than
-            // starting a second one, so the two callers share one gate — but the repeat is a real
-            // second scan of the drives and completes on its own, so it is a second count.
-            var scanner = new CallbackScanner();
-            using var service = CreateService(scanner, new FakeSystemClock());
-            scanner.OnScan = () =>
-            {
-                if (scanner.ScanCount == 1)
-                {
-                    service.Refresh();
-                }
-            };
-
-            service.Refresh();
-
-            Assert.Equal(2, scanner.ScanCount);
-            Assert.Equal(2, service.CompletedRefreshCount);
-        }
-
-        [Fact]
-        public void CompletedRefreshCount_WhenTheRefreshThatCoalescedNeverRanTwice_CountsOnce()
-        {
-            // The other half of the same rule: a refresh call that is dropped outright — one made
-            // after Dispose — never becomes a pass and never counts.
-            var service = CreateService(out _, out _, out _);
-
-            service.Refresh();
-            service.Dispose();
-            service.Refresh();
-
-            Assert.Equal(1, service.CompletedRefreshCount);
-        }
-
-        [Fact]
-        public void CompletedRefreshCount_WhenTheScanThrows_DoesNotCountThatPass()
-        {
-            var scanner = new CallbackScanner { Failure = new IOException("the volume went away") };
-            using var service = CreateService(scanner, new FakeSystemClock());
-
-            Assert.Throws<IOException>(service.Refresh);
-
-            Assert.Equal(0, service.CompletedRefreshCount);
-            Assert.Null(service.LastRefreshedUtc);
-        }
-
-        [Fact]
-        public void CompletedRefreshCount_AndLastRefreshedUtc_MoveTogether()
-        {
-            // Two views of one fact — "a pass finished" — so an observer can never see one without
-            // the other.
-            using var service = CreateService(out _, out _, out _);
-            var observed = new List<(int Count, DateTimeOffset? Stamp)>();
-            service.RefreshActivityChanged += () => observed.Add((service.CompletedRefreshCount, service.LastRefreshedUtc));
-
-            service.Refresh();
-
-            Assert.All(observed, entry => Assert.Equal(entry.Stamp is null, entry.Count == 0));
-        }
-
-        [Fact]
-        public void RefreshActivityChanged_AroundARefresh_ReportsTheStartTheStampAndTheEnd()
-        {
-            using var service = CreateService(out _, out _, out _);
-            var states = new List<(bool IsRefreshing, DateTimeOffset? LastRefreshedUtc)>();
-            var expected = new List<(bool IsRefreshing, DateTimeOffset? LastRefreshedUtc)>
-            {
-                (true, null),
-                (true, FakeSystemClock.Start),
-                (false, FakeSystemClock.Start)
-            };
-            service.RefreshActivityChanged += () => states.Add((service.IsRefreshing, service.LastRefreshedUtc));
-
-            service.Refresh();
-
-            Assert.Equal(expected, states);
+            Assert.Equal(new[] { true, false }, states);
         }
 
         [Fact]
@@ -641,7 +498,7 @@ namespace KinesisEdit.Tests.Services
 
             dispatcher.DrainPending();
 
-            Assert.Equal(3, changeCount);
+            Assert.Equal(2, changeCount);
         }
 
         [Fact]
@@ -655,18 +512,15 @@ namespace KinesisEdit.Tests.Services
             service.Refresh();
 
             Assert.Equal(0, changeCount);
-            Assert.Null(service.LastRefreshedUtc);
             Assert.False(service.IsRefreshing);
         }
 
-        private static DeviceMonitorService CreateService(CallbackScanner scanner, FakeSystemClock clock)
+        private static DeviceMonitorService CreateService(CallbackScanner scanner)
         {
             return new DeviceMonitorService(
                 new VDriveMonitor(scanner, _neverPolls),
                 new FakeVDriveFileService(),
-                new FakeUiDispatcher(),
-                clock,
-                _neverPolls);
+                new FakeUiDispatcher());
         }
 
         private static DeviceMonitorService CreateService(IDemoDeviceProvider demoDevices)
@@ -675,8 +529,6 @@ namespace KinesisEdit.Tests.Services
                 new VDriveMonitor(new FakeVDriveScanner(), _neverPolls),
                 new FakeVDriveFileService(),
                 new FakeUiDispatcher(),
-                new FakeSystemClock(),
-                _neverPolls,
                 demoDevices);
         }
 
@@ -685,21 +537,11 @@ namespace KinesisEdit.Tests.Services
             out FakeVDriveFileService fileService,
             out FakeUiDispatcher dispatcher)
         {
-            return CreateService(out scanner, out fileService, out dispatcher, out _);
-        }
-
-        private static DeviceMonitorService CreateService(
-            out FakeVDriveScanner scanner,
-            out FakeVDriveFileService fileService,
-            out FakeUiDispatcher dispatcher,
-            out FakeSystemClock clock)
-        {
             scanner = new FakeVDriveScanner();
             fileService = new FakeVDriveFileService();
             dispatcher = new FakeUiDispatcher();
-            clock = new FakeSystemClock();
 
-            return new DeviceMonitorService(new VDriveMonitor(scanner, _neverPolls), fileService, dispatcher, clock, _neverPolls);
+            return new DeviceMonitorService(new VDriveMonitor(scanner, _neverPolls), fileService, dispatcher);
         }
 
         private static List<DeviceMonitorUpdate> CollectUpdates(DeviceMonitorService service)

@@ -328,10 +328,6 @@ namespace KinesisEdit.Tests.Design
                 _files,
                 _urlLauncher);
 
-            // The readout ticker is parked and the clock stands still: a scene renders one frame,
-            // and a ticker firing behind it would be a property change from a thread-pool thread
-            // for a string that cannot have changed.
-            //
             // The Settings screen's appliers are recorded rather than run, exactly as the
             // standalone Settings scene builds them: a scene must not repaint the session it is
             // being rendered in, and ThemeApplier writes to the one Application every other scene
@@ -343,10 +339,7 @@ namespace KinesisEdit.Tests.Design
                 _notifications,
                 editors,
                 new SettingsScreenViewModel(new FakeHostPreferencesStore(), _ => { }, _ => { }),
-                new HelpScreenViewModel(_urlLauncher),
-                new FakeSystemClock(),
-                new FakeUiDispatcher(),
-                _neverPolls);
+                new HelpScreenViewModel(_urlLauncher));
 
             _disposables.Add(shell);
 
@@ -355,7 +348,7 @@ namespace KinesisEdit.Tests.Design
             return shell;
         }
 
-        /// <summary>The dashboard, populated with the two devices the frame captures show.</summary>
+        /// <summary>The dashboard, populated with the three devices the frame captures show.</summary>
         public DashboardViewModel CreateDashboard(bool withDevices = true)
         {
             var monitor = CreateMonitor(withDevices);
@@ -371,20 +364,11 @@ namespace KinesisEdit.Tests.Design
         /// <summary>The troubleshoot panel the dashboard shows while nothing is detected.</summary>
         public NoDeviceViewModel CreateNoDevice()
         {
-            // A non-default pick on purpose: the "default" tag belongs to the Advantage2 whatever
-            // the screen currently shows, and a scene that started on it could not tell the two
-            // apart. The baseline is 0 and the count below it is what a screen that has been open
-            // for a few passes reads.
-            var emptyState = new NoDeviceViewModel(
-                _urlLauncher,
-                _ => { },
-                () => Task.CompletedTask,
-                completedRefreshBaseline: 0,
-                initialDevice: DeviceId.FreestyleEdgeRgb);
-
-            emptyState.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 8);
-
-            return emptyState;
+            // The pick the screen opens on, which is also the row it tags "default": scanning is
+            // manual, so this screen is exactly what the user is looking at while nothing is
+            // mounted, and a scene that started somewhere else would be a state no one ever sees
+            // without clicking first.
+            return new NoDeviceViewModel(_urlLauncher, _ => { }, () => Task.CompletedTask);
         }
 
         /// <summary>A card for one connected Freestyle Edge RGB.</summary>
@@ -394,7 +378,7 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// A Freestyle Edge RGB card wearing <paramref name="state"/>. Every one of the four faces
+        /// A Freestyle Edge RGB card wearing <paramref name="state"/>. Every one of the three faces
         /// is buildable, because the design's claim about them is a claim about the set — they are
         /// one fixed height and differ only in their rail, their status line and their buttons — and
         /// a state no scene can build is a state nobody ever looks at.
@@ -405,12 +389,9 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         public DeviceCardViewModel CreateDeviceCard(DeviceCardState state)
         {
-            var status = state switch
-            {
-                DeviceCardState.Resting => VDriveConnectionStatus.NotDetected,
-                DeviceCardState.CannotAccess => VDriveConnectionStatus.CannotAccess,
-                _ => VDriveConnectionStatus.Connected
-            };
+            var status = state == DeviceCardState.CannotAccess
+                ? VDriveConnectionStatus.CannotAccess
+                : VDriveConnectionStatus.Connected;
 
             return new DeviceCardViewModel(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, status),
@@ -420,19 +401,6 @@ namespace KinesisEdit.Tests.Design
             {
                 IsScanning = state == DeviceCardState.Scanning
             };
-        }
-
-        /// <summary>
-        /// The card for the one board the app does not edit — the Advantage 360 Professional, which
-        /// is configured in Kinesis' web tool. Taken from the catalog rather than named, on the same
-        /// rule the view model itself follows.
-        /// </summary>
-        public WebToolCardViewModel CreateWebToolCard()
-        {
-            var device = WebToolCardViewModel.WebToolDevices().FirstOrDefault()
-                ?? throw new InvalidOperationException("The catalog holds no web-configured device.");
-
-            return new WebToolCardViewModel(device, _urlLauncher);
         }
 
         /// <summary>
@@ -639,11 +607,6 @@ namespace KinesisEdit.Tests.Design
             if (viewType == typeof(StatusChipView))
             {
                 return CreateShell();
-            }
-
-            if (viewType == typeof(WebToolCardView))
-            {
-                return CreateWebToolCard();
             }
 
             if (viewType == typeof(NoDeviceView))
@@ -973,9 +936,13 @@ namespace KinesisEdit.Tests.Design
         {
             if (withDevices)
             {
+                // Three, not two: the grid wraps at two per row, and a scene that never wraps
+                // cannot show that the third card starts a new row rather than a third column.
+                // One of them is unwritable, so the roster carries both drive faces.
                 _scanner.SetResult(
                     TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb),
-                    TestDevices.CreateLocation(DeviceId.Advantage2, isWritable: false));
+                    TestDevices.CreateLocation(DeviceId.Advantage2, isWritable: false),
+                    TestDevices.CreateLocation(DeviceId.Tko));
             }
             else
             {
@@ -985,9 +952,7 @@ namespace KinesisEdit.Tests.Design
             var monitor = new DeviceMonitorService(
                 new VDriveMonitor(_scanner, _neverPolls),
                 _files,
-                new FakeUiDispatcher(),
-                new FakeSystemClock(),
-                _neverPolls);
+                new FakeUiDispatcher());
 
             _disposables.Add(monitor);
 

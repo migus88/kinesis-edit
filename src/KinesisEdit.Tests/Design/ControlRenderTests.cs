@@ -313,7 +313,7 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(window, ThemeVariant.Dark);
 
-            shell.OpenDevice(shell.Dashboard.DeviceCards[0].Snapshot);
+            shell.OpenDevice(shell.Dashboard.Devices[0].Snapshot);
 
             host.Capture();
 

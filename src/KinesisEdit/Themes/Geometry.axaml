@@ -59,9 +59,9 @@
   <Thickness x:Key="CardGridPanelBleed">0,0,-12,-12</Thickness>
   <x:Double x:Key="WidthCardStatusRail">2</x:Double>
 
-  <!-- Every dashboard card is exactly this tall, whichever state it is in: "the card keeps its
-       size and its buttons keep their positions - only the status line and a 3px indeterminate
-       bar change, so a 2s refresh can't shift the layout under the cursor" (mockup 2e).
+  <!-- Every dashboard card is exactly this tall, whichever state it is in: the card keeps its size
+       and its buttons keep their positions, so only the status line and a 3px indeterminate bar
+       change between states and a scan can never shift the layout under the cursor (mockup 2e).
 
        Derived from the mockup canvas' own box model for the tallest state, the unwritable card
        with its two-line explanation: 2 border + 28 padding + 70 art frame (56 + 6 padding + 1

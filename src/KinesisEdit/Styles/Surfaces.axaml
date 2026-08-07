@@ -35,14 +35,15 @@
     <Setter Property="Padding" Value="{DynamicResource PaddingCard}" />
   </Style>
 
-  <!-- A dashboard card. Cards are keyed by drive identity and never reordered by a refresh; a
-       newly detected device animates in at the end of the list, height only, 160 ms ease-out.
-       The transition lives here so the dashboard has exactly one place that decides it.
+  <!-- A dashboard card. Cards are keyed by drive identity and never reordered by a scan; a newly
+       found device animates in at the end of the list, height only, 160 ms ease-out. The
+       transition lives here so the dashboard has exactly one place that decides it. Scanning is
+       manual, but a scan still inserts cards, so the insert is still earned.
 
        Three things it adds to `card`:
 
-       - A FIXED HEIGHT. Every state renders at `HeightDeviceCard`, so a refresh that flips a card
-         to Scanning - or back - cannot move the button the pointer is already on (mockup 2e).
+       - A FIXED HEIGHT. Every state renders at `HeightDeviceCard`, so a scan that flips a card to
+         Scanning - or back - cannot move the button the pointer is already on (mockup 2e).
        - PADDING 0. The 2px status rail is flush against the card's left edge, which means inside
          the border but *outside* the padding, so the padding moves inward onto the content and off
          the Border that draws the frame.
@@ -75,8 +76,8 @@
 
        It is card composition rather than a control shape, so it is a style here and not a
        ControlTheme: nothing clicks it, it has no states of its own, and the only thing it varies
-       is which of two roles fills it. Resting and Scanning have no rail at all - the resting card
-       is "idle and quiet, no red, no spinner" (mockup 2e) and a scan in flight is transient.
+       is which of two roles fills it. Scanning has no rail at all - a scan in flight is transient,
+       and "no red, no spinner" (mockup 2e) is what the absence of a colour says.
 
        THE ABSENCE IS A TRANSPARENT FILL, NOT A HIDDEN CONTROL. "Status changes cross-fade the
        status pill and the card status fill over 220ms; text swaps are instant" (mockup 2b) is a
@@ -104,9 +105,8 @@
     <Setter Property="Background" Value="{DynamicResource StatusErrorBrush}" />
   </Style>
 
-  <!-- The per-state sentence under a card's status line. Quiet by default: the resting copy is a
-       statement of fact about a device nobody has plugged in, and giving it a face would make the
-       calmest state the loudest thing on the dashboard.
+  <!-- The per-state sentence under a card's status line. Quiet by default, so a card that has
+       something to say is not automatically the loudest thing on the dashboard.
 
        `.error` is the one that is drawn as a box, because there the sentence is the remedy: an
        error tint inside a stronger error border, the same two-strength reading of a status hue the
@@ -121,18 +121,6 @@
   <Style Selector="Border.cardExplanation.error">
     <Setter Property="Background" Value="{DynamicResource StatusErrorTintBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource StatusErrorTintBorderBrush}" />
-  </Style>
-
-  <!-- The card for a board this app does not edit: the Advantage 360 Professional, configured in
-       Kinesis' web tool. It sits in the same grid at the same height so the two columns stay even,
-       and recedes onto the inset surface - it is the one card with nothing to configure here.
-
-       The mock draws its border dashed. A Border cannot dash in Avalonia 11 (only a Shape can), and
-       the card is a Border because it is a panel rather than a drawing, so the quieter *face* is
-       what carries "this one is different" instead. -->
-  <Style Selector="Border.webToolCard">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
-    <Setter Property="Height" Value="{StaticResource HeightDeviceCard}" />
   </Style>
 
   <!-- The well a card's device silhouette is drawn in (docs/design/handoff.md:117, "92x56 device

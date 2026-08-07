@@ -39,7 +39,7 @@ namespace KinesisEdit.Views
         /// </para>
         /// <para>
         /// <b>Only the first time this card is shown.</b> The insert animation belongs to a newly
-        /// detected device, and a card view is rebuilt from scratch whenever the shell swaps the
+        /// found device, and a card view is rebuilt from scratch whenever the shell swaps the
         /// dashboard back in — <c>ViewLocator</c> constructs a fresh view per
         /// <c>CurrentView</c> change — so returning Home would otherwise grow the entire grid in
         /// from zero. A card that has been presented before is released <em>synchronously</em>,
@@ -51,7 +51,7 @@ namespace KinesisEdit.Views
         {
             base.OnAttachedToVisualTree(e);
 
-            if (DataContext is DashboardCardViewModel card)
+            if (DataContext is DeviceCardViewModel card)
             {
                 var hasBeenPresented = card.HasBeenPresented;
 

@@ -12,10 +12,8 @@ namespace KinesisEdit.ViewModels
     /// app, and a card saying which app this is.
     /// <para>
     /// <b>Nothing here is invented.</b> Every per-device row is a
-    /// <see cref="DeviceDefinition.TroubleshootingUrl"/> out of <see cref="DeviceCatalog"/>, and the
-    /// two Advantage 360 Professional rows are its <see cref="DeviceDefinition.ConfigurationUrl"/>
-    /// and <see cref="DeviceDefinition.SupportUrl"/>. A board the catalog carries no page for gets
-    /// no row, rather than a dead one.
+    /// <see cref="DeviceDefinition.TroubleshootingUrl"/> out of <see cref="DeviceCatalog"/>. A
+    /// board the catalog carries no page for gets no row, rather than a dead one.
     /// </para>
     /// <para>
     /// Every row is drawn with <c>Button.link</c> plus the <c>IconExternalLink</c> mark and opened
@@ -51,22 +49,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>What is on the other end of the support index.</summary>
         public const string KinesisSupportDescription =
             "Kinesis' support index — every board it sells, with its manual, its firmware and its FAQs.";
-
-        /// <summary>Caption over the web-tool board's links.</summary>
-        public const string WebToolSectionLabel = "Configured somewhere else";
-
-        /// <summary>Why that board has its own section rather than an editor.</summary>
-        public const string WebToolSectionNote =
-            "One catalogued board is configured in Kinesis' web tool rather than through a v-Drive, "
-            + "so KinesisEdit does not edit it.";
-
-        /// <summary>Caption of the row that opens the web configurator.</summary>
-        public const string WebToolLinkCaption = "Open the web tool";
-
-        // "Kinesis' own configurator for the Advantage 360 Professional" - the board is named in the
-        // row rather than in the section note, because the note is derived from the catalog and
-        // must stay true of a second such board.
-        private const string WebToolLinkTemplate = "Kinesis' own configurator for the {0}";
 
         /// <summary>Caption over the per-board troubleshooting rows.</summary>
         public const string TroubleshootingSectionLabel = "Troubleshooting, by device";
@@ -140,17 +122,8 @@ namespace KinesisEdit.ViewModels
         /// <summary>The links that are about the app rather than about one board.</summary>
         public IReadOnlyList<HelpLink> GeneralLinks { get; }
 
-        /// <summary>
-        /// The web-configured board's own two pages. Empty when the catalog holds no such board,
-        /// which is what hides the section rather than leaving an empty card.
-        /// </summary>
-        public IReadOnlyList<HelpLink> WebToolLinks { get; }
-
         /// <summary>One row per catalogued board that has a troubleshooting page, in catalog order.</summary>
         public IReadOnlyList<HelpLink> TroubleshootingLinks { get; }
-
-        /// <summary>Whether the web-tool section has anything to show.</summary>
-        public bool HasWebToolLinks => WebToolLinks.Count > 0;
 
         /// <summary>The product name shown on the about card.</summary>
         public string ProductName => AppName;
@@ -172,7 +145,6 @@ namespace KinesisEdit.ViewModels
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
 
             GeneralLinks = CreateGeneralLinks();
-            WebToolLinks = CreateWebToolLinks();
             TroubleshootingLinks = CreateTroubleshootingLinks();
             VersionLine = FormatVersionLine(ReadVersion(assembly ?? typeof(HelpScreenViewModel).Assembly));
 
@@ -193,41 +165,6 @@ namespace KinesisEdit.ViewModels
                     Description = KinesisSupportDescription
                 }
             ];
-        }
-
-        private static IReadOnlyList<HelpLink> CreateWebToolLinks()
-        {
-            // The same derivation the dashboard's web-tool card uses - a board the app cannot
-            // configure that is configurable somewhere else - so a second such board would appear
-            // here without this method knowing its name.
-            var links = new List<HelpLink>();
-
-            foreach (var device in WebToolCardViewModel.WebToolDevices())
-            {
-                if (device.ConfigurationUrl is { } configurationUrl)
-                {
-                    links.Add(new HelpLink
-                    {
-                        Caption = WebToolLinkCaption,
-                        Url = configurationUrl,
-                        Description = string.Format(
-                            CultureInfo.InvariantCulture,
-                            WebToolLinkTemplate,
-                            device.DisplayName)
-                    });
-                }
-
-                if (device.SupportUrl is { } supportUrl)
-                {
-                    links.Add(new HelpLink
-                    {
-                        Caption = FormatDeviceSupportCaption(device.DisplayName),
-                        Url = supportUrl
-                    });
-                }
-            }
-
-            return links;
         }
 
         private static IReadOnlyList<HelpLink> CreateTroubleshootingLinks()
