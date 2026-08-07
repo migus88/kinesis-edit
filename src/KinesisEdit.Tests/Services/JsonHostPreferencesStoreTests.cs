@@ -28,7 +28,8 @@ namespace KinesisEdit.Tests.Services
             {
                 Theme = AppThemePreference.Dark,
                 Motion = MotionPreference.AlwaysReduce,
-                Window = geometry
+                Window = geometry,
+                InspectorRailWidth = 412
             });
 
             // A second store over the same file is the only honest read-back: it shares no state
@@ -38,6 +39,25 @@ namespace KinesisEdit.Tests.Services
             Assert.Equal(AppThemePreference.Dark, reloaded.Theme);
             Assert.Equal(MotionPreference.AlwaysReduce, reloaded.Motion);
             Assert.Equal(geometry, reloaded.Window);
+            Assert.Equal(412, reloaded.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void Update_KeepsTheRailWidth_WhenAnotherWriterMovesTheTheme()
+        {
+            // The acceptance criterion "the chosen width survives an app restart", through the real
+            // file — and through the mutation function, which is what keeps the editor's write and
+            // the Settings screen's from clobbering each other.
+            using var temporary = new TemporaryHostPreferences();
+            var store = temporary.CreateStore();
+
+            store.Update(preferences => preferences with { InspectorRailWidth = 380 });
+            store.Update(preferences => preferences with { Theme = AppThemePreference.Light });
+
+            var reloaded = temporary.CreateStore().Current;
+
+            Assert.Equal(380, reloaded.InspectorRailWidth);
+            Assert.Equal(AppThemePreference.Light, reloaded.Theme);
         }
 
         [Fact]

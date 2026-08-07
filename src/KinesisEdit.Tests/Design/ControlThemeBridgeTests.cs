@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Controls;
@@ -67,8 +68,14 @@ namespace KinesisEdit.Tests.Design
                 (typeof(KeyboardEditorView).FullName!, "kbd", "KbdChip"),
                 (typeof(KeyboardEditorView).FullName!, "primaryAction", "PrimaryActionButton"),
                 (typeof(KeyboardEditorView).FullName!, "secondary", "SecondaryButton"),
+
+                // The rail's drag seam (issue #119) — the app's one resizable edge, and its one
+                // GridSplitter. Without the bridge it keeps Fluent's own splitter template, which
+                // paints a grey band the width of the whole hit target: visible, plausible, and
+                // nothing else in the suite would notice.
+                (typeof(KeyboardEditorView).FullName!, "railSplitter", "RailSplitter"),
                 (typeof(AdvisoryStripView).FullName!, "secondary", "SecondaryButton"),
-                // The Settings tab. `settingSwitch` is the 27th control theme and the only bridge
+                // The Settings tab. `settingSwitch` was the 27th control theme and is the only bridge
                 // in the app that goes onto a ToggleButton — the switch cannot be a ToggleSwitch
                 // (Themes/ControlThemes/Fields.axaml says why), so nothing but this row would
                 // notice the bridge going missing.
@@ -107,8 +114,11 @@ namespace KinesisEdit.Tests.Design
                 (typeof(RemapPanelView).FullName!, "recordAction", "DiscardButton"),
                 (typeof(TokenPickerView).FullName!, "searchField", "SearchField"),
                 (typeof(TokenPickerView).FullName!, "filterChip", "FilterChip"),
+                // `ghost` left this list with issue #119: the rail's only ghost button was the
+                // header's close mark, and a permanent column has nothing to close. The class still
+                // has call sites — MacroInspectorPanelView's, below — so the bridge itself is not
+                // orphaned.
                 (typeof(KeyInspectorView).FullName!, "secondary", "SecondaryButton"),
-                (typeof(KeyInspectorView).FullName!, "ghost", "GhostButton"),
                 (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton"),
 
                 // The rail's Macro panel (issue #93). `monoValue` moved here from the deleted Macro
@@ -552,6 +562,92 @@ namespace KinesisEdit.Tests.Design
             Assert.Same(lighting.Layers[0], switcher.SelectedItem);
         }
 
+        /// <summary>
+        /// The rail's drag seam, at the glass (issue #119): what it draws at rest, what it lifts to
+        /// under the pointer, and the fact that the 6px hit target is not the 1px it paints.
+        /// <para>
+        /// The states are raised <b>after</b> the host has shown, never before: a pseudo-class set
+        /// on a control that has not had its first layout pass is wiped by it.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheRailSplitter_DrawsAHairlineAndLiftsItUnderThePointer(string variantName)
+        {
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+
+            using var host = ThemedHost.Show(view, variant);
+
+            host.Capture();
+
+            var splitter = Assert.Single(Descendants<GridSplitter>(view));
+
+            // The hairline rides Foreground, not BorderBrush: the focus ring owns BorderBrush
+            // (contract 3), so a hover ramp written on the same property would fight it.
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), splitter.Foreground);
+
+            var line = Descendants<Border>(splitter).Single(border => border.Width == 1);
+
+            Assert.Same(splitter.Foreground, line.Background);
+            Assert.Equal(6, splitter.Bounds.Width);
+            Assert.Equal(1, line.Bounds.Width);
+
+            SetPseudoClasses(splitter, ":pointerover");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineHighBrush", variant), splitter.Foreground);
+
+            // A seam being dragged stays lit: Avalonia raises :pointerover AND :pressed while the
+            // pointer is down, and the two are spelled separately rather than left to file order.
+            SetPseudoClasses(splitter, ":pressed");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineHighBrush", variant), splitter.Foreground);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheRailSplitter_CarriesTheStandardFocusRing(string variantName)
+        {
+            // It is a real tab stop — the arrows move it by KeyboardIncrement — so it has to say
+            // where it is, with the same 1px accent border plus 3px halo every other control uses.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+
+            using var host = ThemedHost.Show(view, variant);
+
+            host.Capture();
+
+            var splitter = Assert.Single(Descendants<GridSplitter>(view));
+
+            Assert.Null(splitter.FocusAdorner);
+            Assert.True(splitter.Focus(NavigationMethod.Tab), "The seam refused keyboard focus.");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), splitter.BorderBrush);
+
+            var root = Descendants<Border>(splitter).First();
+
+            Assert.Equal(1, root.BoxShadow.Count);
+            Assert.False(root.ClipToBounds, "A clip anywhere on the seam erases the halo.");
+        }
+
+        private static void SetPseudoClasses(StyledElement element, params string[] pseudoClasses)
+        {
+            var classes = (IPseudoClasses)element.Classes;
+
+            foreach (var pseudoClass in pseudoClasses)
+            {
+                classes.Set(pseudoClass, true);
+            }
+        }
+
         [AvaloniaFact]
         public void NoMarkupOutsideTheControlThemeLayer_NamesATemplatePart()
         {
@@ -621,8 +717,8 @@ namespace KinesisEdit.Tests.Design
             // outside it, and a control theme is where the temptation is strongest: an inset
             // selection ring and a focus halo both read naturally as literals.
             //
-            // Over the directory rather than over a list of the seven files it currently holds, so
-            // the eighth is covered the day it is written.
+            // Over the directory rather than over a list of the eight files it currently holds, so
+            // the ninth is covered the day it is written.
             var offenders = new List<string>();
 
             foreach (var (path, xaml) in AuthoredXaml.Files().Where(file => IsControlThemeLayer(file.Key)))
@@ -655,7 +751,7 @@ namespace KinesisEdit.Tests.Design
                 .ToArray();
 
             Assert.Contains($"{ControlThemeDirectory}Shared.axaml", scanned);
-            Assert.True(scanned.Length >= 7, $"Only {scanned.Length} control-theme files were scanned.");
+            Assert.True(scanned.Length >= 8, $"Only {scanned.Length} control-theme files were scanned.");
         }
 
         private static bool IsControlThemeLayer(string path)
@@ -722,6 +818,11 @@ namespace KinesisEdit.Tests.Design
         private static IEnumerable<T> Descendants<T>(Control view) where T : Visual
         {
             return view.GetVisualDescendants().OfType<T>();
+        }
+
+        private static ThemeVariant ToVariant(string name)
+        {
+            return name == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
         }
 
         private static Control ContainerAt(ItemsControl items, int index)

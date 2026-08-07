@@ -1,3 +1,5 @@
+using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Layouts;
@@ -7,6 +9,7 @@ using KinesisEdit.Core.Profiles;
 using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
+using KinesisEdit.Tests.Design;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 
@@ -1552,6 +1555,230 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
         }
 
+        [AvaloniaTheory]
+        [InlineData("WidthInspectorRail", HostPreferences.DefaultInspectorRailWidth)]
+        [InlineData("WidthInspectorRailMin", HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData("WidthInspectorRailMax", HostPreferences.MaximumInspectorRailWidth)]
+        [InlineData("WidthInspectorRailWide", KeyboardEditorViewModel.MacroInspectorRailWidth)]
+        public void TheRailsWidths_AreWrittenTwice_AndMustAgree(string token, double expected)
+        {
+            // The splitter bounds the drag with the geometry tokens and the view model clamps with
+            // plain C# constants, because a view model may not read Avalonia resources (app-shell.md
+            // invariant 8). Two copies of four numbers is the price of that rule; this is what stops
+            // them drifting apart in silence.
+            Assert.Equal(expected, (double)DesignTokens.Resolve(token, ThemeVariant.Dark));
+        }
+
+        [Fact]
+        public void InspectorRailWidth_WithNothingStored_IsTheAuthoredWidth()
+        {
+            var editor = CreateEditor();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, editor.InspectorRailWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, editor.EffectiveInspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_WithAStoredWidth_OpensAtIt()
+        {
+            // The acceptance criterion "the chosen width survives an app restart": a new editor over
+            // a store that already carries one starts there rather than at the authored width.
+            var editor = CreateEditor(new FakeHostPreferencesStore(
+                HostPreferences.Default with { InspectorRailWidth = 396 }));
+
+            Assert.Equal(396, editor.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_WithAStoredWidthOutsideTheBand_OpensClamped()
+        {
+            // Belt to the parser's brace: a store handed a hand-built record has never been through
+            // the tolerant read at all.
+            var editor = CreateEditor(new FakeHostPreferencesStore(
+                HostPreferences.Default with { InspectorRailWidth = 9999 }));
+
+            Assert.Equal(HostPreferences.MaximumInspectorRailWidth, editor.InspectorRailWidth);
+        }
+
+        [Theory]
+        [InlineData(396, 396)]
+        [InlineData(9999, HostPreferences.MaximumInspectorRailWidth)]
+        [InlineData(10, HostPreferences.MinimumInspectorRailWidth)]
+        public void InspectorRailWidth_WhenSet_IsClampedAndPersisted(double dragged, double expected)
+        {
+            var preferences = new FakeHostPreferencesStore();
+            var editor = CreateEditor(preferences);
+
+            editor.InspectorRailWidth = dragged;
+
+            Assert.Equal(expected, editor.InspectorRailWidth);
+            Assert.Equal(expected, preferences.Current.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_SetToANumberThatIsNotOne_FallsBackToTheAuthoredWidth()
+        {
+            // Math.Clamp would propagate the NaN onto a column definition and take the Layout tab's
+            // whole measure pass with it. Started from a stored width so the fallback is a real
+            // move rather than a no-op.
+            var preferences = new FakeHostPreferencesStore(
+                HostPreferences.Default with { InspectorRailWidth = 400 });
+
+            var editor = CreateEditor(preferences);
+
+            editor.InspectorRailWidth = double.NaN;
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, editor.InspectorRailWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, preferences.Current.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_SetToTheWidthItAlreadyHas_WritesNothing()
+        {
+            // The "do not debounce" rule, from the other end: the store writes synchronously on
+            // every real change, so a drag that reports continuously must cost one write at its
+            // commit rather than one per pointer move.
+            var preferences = new FakeHostPreferencesStore();
+            var editor = CreateEditor(preferences);
+            var notifications = 0;
+
+            editor.InspectorRailWidth = 360;
+
+            editor.PropertyChanged += (_, _) => notifications++;
+
+            editor.InspectorRailWidth = 360;
+            editor.InspectorRailWidth = 360;
+
+            Assert.Equal(1, preferences.UpdateCount);
+            Assert.Equal(0, notifications);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_SetRepeatedlyPastTheMaximum_WritesOnce()
+        {
+            // The same guard where it matters most: a drag held against the edge reports a new
+            // number every frame and every one of them clamps to the same width.
+            var preferences = new FakeHostPreferencesStore();
+            var editor = CreateEditor(preferences);
+
+            editor.InspectorRailWidth = 700;
+            editor.InspectorRailWidth = 800;
+            editor.InspectorRailWidth = 900;
+
+            Assert.Equal(1, preferences.UpdateCount);
+            Assert.Equal(HostPreferences.MaximumInspectorRailWidth, preferences.Current.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_WithNoHostStore_StillMovesAndClamps()
+        {
+            // An editor built without the store — a design scene, most of this suite — is a rail
+            // that drags and forgets, never one that refuses to drag.
+            var editor = CreateEditor();
+
+            editor.InspectorRailWidth = 9999;
+
+            Assert.Equal(HostPreferences.MaximumInspectorRailWidth, editor.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_WhenItMoves_AnnouncesTheEffectiveWidthToo()
+        {
+            var editor = CreateEditor();
+            var announced = new List<string?>();
+
+            editor.PropertyChanged += (_, e) => announced.Add(e.PropertyName);
+
+            editor.InspectorRailWidth = 400;
+
+            Assert.Contains(nameof(KeyboardEditorViewModel.InspectorRailWidth), announced);
+            Assert.Contains(nameof(KeyboardEditorViewModel.EffectiveInspectorRailWidth), announced);
+        }
+
+        [Fact]
+        public void InspectorRailWidth_SetOutsideTheBand_IsPushedBackAtTheBinding()
+        {
+            // The column is bound two-way. A width the clamp moved has to be announced even when
+            // the field did not change, or the splitter would go on drawing a width the model
+            // refused while the model says otherwise.
+            var editor = CreateEditor();
+
+            editor.InspectorRailWidth = 9999;
+
+            var announced = new List<string?>();
+
+            editor.PropertyChanged += (_, e) => announced.Add(e.PropertyName);
+
+            editor.InspectorRailWidth = 10000;
+
+            Assert.Contains(nameof(KeyboardEditorViewModel.InspectorRailWidth), announced);
+        }
+
+        [Fact]
+        public async Task EffectiveInspectorRailWidth_WhileTheMacroPanelShows_NeverGoesBelowTheMacroWidth()
+        {
+            // The handoff's 300 is honoured as a FLOOR: a rail dragged narrow still gives macro
+            // editing the room its step list needs.
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.InspectorRailWidth = HostPreferences.MinimumInspectorRailWidth;
+
+            SelectMacroMode(editor);
+
+            Assert.True(editor.Inspector.IsWide);
+            Assert.Equal(KeyboardEditorViewModel.MacroInspectorRailWidth, editor.EffectiveInspectorRailWidth);
+            Assert.Equal(HostPreferences.MinimumInspectorRailWidth, editor.InspectorRailWidth);
+        }
+
+        [Fact]
+        public async Task EffectiveInspectorRailWidth_WhenTheUserDraggedWider_KeepsTheDraggedWidth()
+        {
+            // ...and it is a floor rather than an override, which is the deviation issue #119
+            // recorded: a user who dragged to 460 is not yanked back to 300 by opening a macro.
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.InspectorRailWidth = 460;
+
+            SelectMacroMode(editor);
+
+            Assert.Equal(460, editor.EffectiveInspectorRailWidth);
+        }
+
+        [Fact]
+        public async Task EffectiveInspectorRailWidth_IsAnnounced_WhenTheRailChangesMode()
+        {
+            // Its second input is the rail's, and the rail announces it — so the editor subscribes.
+            var editor = await CreateLoadedEditorAsync();
+            var announced = new List<string?>();
+
+            SelectKey(editor);
+
+            editor.PropertyChanged += (_, e) => announced.Add(e.PropertyName);
+
+            SelectMode(editor, KeyInspectorMode.Macro);
+
+            Assert.Contains(nameof(KeyboardEditorViewModel.EffectiveInspectorRailWidth), announced);
+        }
+
+        [Fact]
+        public async Task Dispose_StopsListeningToTheRailsWidthInputs()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            SelectKey(editor);
+            SelectMode(editor, KeyInspectorMode.Remap);
+
+            editor.Dispose();
+
+            var announced = new List<string?>();
+
+            editor.PropertyChanged += (_, e) => announced.Add(e.PropertyName);
+
+            SelectMode(editor, KeyInspectorMode.Macro);
+
+            Assert.DoesNotContain(nameof(KeyboardEditorViewModel.EffectiveInspectorRailWidth), announced);
+        }
+
         [Fact]
         public async Task Dispose_StopsCaptureAndDetachesFromIt()
         {
@@ -1578,6 +1805,60 @@ namespace KinesisEdit.Tests.ViewModels
         private KeyboardEditorViewModel CreateEditor(DeviceSnapshot? snapshot = null)
         {
             return CreateEditor(snapshot, _notifications, sessions: null);
+        }
+
+        /// <summary>An editor over a per-user store — the one that remembers the rail's width.</summary>
+        private KeyboardEditorViewModel CreateEditor(IHostPreferencesStore hostPreferences)
+        {
+            var editor = new KeyboardEditorViewModel(
+                TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
+                _profiles,
+                _settings,
+                _capture,
+                _notifications,
+                _folderPicker,
+                _filePicker,
+                _files,
+                _urlLauncher,
+                sessions: null,
+                motionSettings: null,
+                hostPreferences: hostPreferences);
+
+            _editors.Add(editor);
+
+            return editor;
+        }
+
+        /// <summary>Selects an editable position, which is what opens the rail on its tabs.</summary>
+        private static void SelectKey(KeyboardEditorViewModel editor)
+        {
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor rendered no layer.");
+
+            editor.SelectKeyCommand.Execute(layer.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+        }
+
+        /// <summary>Puts the open rail on <paramref name="mode"/> through its own tab command.</summary>
+        private static void SelectMode(KeyboardEditorViewModel editor, KeyInspectorMode mode)
+        {
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == mode)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException($"The key inspector has no {mode} tab.");
+        }
+
+        /// <summary>Selects a position and puts the rail on the one mode that wants a wide rail.</summary>
+        private static void SelectMacroMode(KeyboardEditorViewModel editor)
+        {
+            SelectKey(editor);
+            SelectMode(editor, KeyInspectorMode.Macro);
         }
 
         private KeyboardEditorViewModel CreateEditor(

@@ -170,6 +170,51 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public void Create_ForAnEditorOverAStoredRailWidth_OpensTheRailAtIt()
+        {
+            // The second store the factory threads, and the other defect a green suite would hide:
+            // every test on KeyboardEditorViewModel passes with the host store dropped here — the
+            // rail just silently forgets every drag. So this walks the composition root's path and
+            // asserts the editor really opened at the stored width.
+            var preferences = new FakeHostPreferencesStore(
+                HostPreferences.Default with { InspectorRailWidth = 404 });
+
+            var factory = new EditorViewModelFactory(
+                _profiles,
+                _settings,
+                () => _capture,
+                _notifications,
+                _pedalFiles,
+                _folderPicker,
+                _filePicker,
+                _fileService,
+                _urlLauncher,
+                sessions: null,
+                motionSettings: null,
+                hostPreferences: preferences);
+
+            using var editor = Assert.IsType<KeyboardEditorViewModel>(
+                factory.Create(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb)));
+
+            Assert.Equal(404, editor.InspectorRailWidth);
+
+            editor.InspectorRailWidth = 300;
+
+            Assert.Equal(300, preferences.Current.InspectorRailWidth);
+        }
+
+        [Fact]
+        public void Create_WithNoHostStoreAtAll_OpensTheRailAtItsAuthoredWidth()
+        {
+            // A design scene or a unit test builds a factory with none; the rail then sits where it
+            // was authored and a drag is forgotten when the editor closes.
+            using var editor = Assert.IsType<KeyboardEditorViewModel>(
+                _factory.Create(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb)));
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, editor.InspectorRailWidth);
+        }
+
+        [Fact]
         public void Create_WithoutADevice_Throws()
         {
             Assert.Throws<ArgumentNullException>(() => _factory.Create(null!));

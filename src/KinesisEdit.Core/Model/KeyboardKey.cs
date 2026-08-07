@@ -353,6 +353,11 @@ namespace KinesisEdit.Core.Model
         /// <see cref="ModelViolationKind.MacroOnRestrictedKey"/> for it — whereas an unchecked
         /// key-data copy onto a locked position would have been silent.
         /// </para>
+        /// <para>
+        /// The key-data half transfers the action the source <em>performs</em>, not its stored remap
+        /// fields, and re-derives the target's remap from it — see <see cref="CopyAssignmentFrom"/>
+        /// for why the distinction matters and why a tap-and-hold or multi-modifier source is exempt.
+        /// </para>
         /// </summary>
         public void CopyFrom(KeyboardKey other, KeyCopyScopes scope)
         {
@@ -408,6 +413,51 @@ namespace KinesisEdit.Core.Model
             // the conflict the others prevent (see ClearSingleKeyRules), and clearing loses nothing
             // unreported: such a code already raises MultiModifiersNotSupported.
             MultiModifiers = SupportsMultiModifiers ? other.MultiModifiers : null;
+
+            CopyAssignmentFrom(other);
+        }
+
+        /// <summary>
+        /// Re-derives the remap of a plain copy through <see cref="Remap"/>'s two rules instead of
+        /// taking <see cref="ModifiedKey"/>/<see cref="IsModified"/> at face value.
+        /// <para>
+        /// What the user asked to copy is the action the source <em>performs</em> —
+        /// <see cref="ModifiedOrOriginalKey"/>, the readout every cap caption and inspector line is
+        /// drawn from — not the source's modified flag. The two coincide only when the source
+        /// happens to carry a remap, so copying the raw pair writes "no remap" whenever the source
+        /// is untouched and leaves the target on its own factory action: a silent no-op, or a silent
+        /// erasure when the target was remapped. The same action is also a different remap relative
+        /// to <em>this</em> position — none at all when the two positions share a default, which is
+        /// what <see cref="Remap"/> clears and a raw copy would leave as a redundant rule inflating
+        /// the modified count and writing a pointless layout line (04 §2.1).
+        /// </para>
+        /// <para>
+        /// A source holding a tap-and-hold or a multi-modifier is left alone: that rule has just
+        /// been copied above, and its resolved action is only the key's untouched original, so
+        /// storing it as a remap would plant a second single-key rule beside the copied one — the
+        /// <see cref="ModelViolationKind.ConflictingSingleKeyRules"/> that "one rule per position"
+        /// exists to prevent (see <see cref="ClearSingleKeyRules"/>; 04 §4.3 writes one line per
+        /// key).
+        /// </para>
+        /// </summary>
+        private void CopyAssignmentFrom(KeyboardKey other)
+        {
+            if (other.IsTapAndHold || other.HasMultiModifiers)
+            {
+                return;
+            }
+
+            var assignment = other.ModifiedOrOriginalKey;
+
+            if (assignment.Code == OriginalKey.Code)
+            {
+                ClearRemap();
+
+                return;
+            }
+
+            ModifiedKey = assignment;
+            IsModified = true;
         }
     }
 }

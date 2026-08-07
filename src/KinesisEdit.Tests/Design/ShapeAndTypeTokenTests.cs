@@ -79,6 +79,12 @@ namespace KinesisEdit.Tests.Design
         [InlineData("HeightAdvisoryStrip", 30)]
         [InlineData("WidthInspectorRail", 268)]
         [InlineData("WidthInspectorRailWide", 300)]
+        // The band the rail's drag seam moves between (issue #119). They are what the grid column's
+        // own MinWidth/MaxWidth are set from, and KeyboardEditorViewModelTests pins each to the
+        // HostPreferences constant that clamps the stored width — so a token moved here without its
+        // sibling fails there rather than drifting.
+        [InlineData("WidthInspectorRailMin", 240)]
+        [InlineData("WidthInspectorRailMax", 520)]
         [InlineData("GutterSplit", 26)]
         [InlineData("CardGridGap", 12)]
         [InlineData("WidthCardStatusRail", 2)]

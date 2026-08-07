@@ -37,9 +37,15 @@ namespace KinesisEdit.ViewModels
     /// handed to <see cref="Refresh"/>; nothing here rescans, because <c>DuplicateKeyScan</c> walks
     /// every key of every layer and two derivations of one finding are two things to disagree.</para>
     ///
+    /// <para><b>It is always on screen (issue #119).</b> The rail is a permanent column of the
+    /// Layout tab: it has no close button, no selection state collapses it, and with nothing
+    /// selected it draws <see cref="NoSelectionMessage"/> in place of the header, the modes and the
+    /// footer. The board therefore never jumps sideways to re-centre, which is what a rail that
+    /// appeared and vanished under the pointer used to do.</para>
+    ///
     /// <para><b>The Macro tab is a panel like the others (issue #93).</b> It hosts
     /// <see cref="MacroInspectorPanelViewModel"/> — mockup <c>2i</c>'s "selecting a key edits its
-    /// macro right here" — and the rail <b>widens to 300 px</b> while it is showing
+    /// macro right here" — and the rail is <b>never narrower than 300 px</b> while it is showing
     /// (<see cref="IsWide"/>). It used to bridge out to the Macros tab; navigating away from the
     /// board when a mode tab is pressed was the placeholder, not the design.</para>
     ///
@@ -55,6 +61,20 @@ namespace KinesisEdit.ViewModels
         /// <c>1e</c>'s shorter "This key does one thing" and supersedes it.
         /// </summary>
         public const string ExclusivitySentence = "This key does one thing — picking another replaces it.";
+
+        /// <summary>
+        /// What the rail says while nothing is selected (issue #119). The rail is a permanent column
+        /// of the Layout tab now, so it needs a state for "there is no position to be about"; one
+        /// short muted line, centred, in place of the header, the modes and the footer.
+        /// <para>
+        /// Its own sentence rather than a borrowed one: <c>TapAndHoldPanelViewModel</c> and
+        /// <c>MacroInspectorPanelViewModel</c> each carry a <c>NoSelectionMessage</c>, but those
+        /// answer "this panel has nothing to edit" from inside a rail that is already explaining
+        /// itself — and neither is reachable any more, because the empty state replaces the panels
+        /// wholesale.
+        /// </para>
+        /// </summary>
+        public const string NoSelectionMessage = "Select a key on the board to edit it.";
 
         /// <summary>The word after the token in the header: "Left half · [d] position".</summary>
         public const string PositionSuffix = "position";
@@ -119,13 +139,37 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Whether the rail is on screen: a key is selected and the user has not pressed Escape on
-        /// it. Selecting another cap opens it again — see <see cref="Close"/>.
+        /// Whether the rail is showing a position — a key is selected and the rail has not been
+        /// stood down.
+        /// <para>
+        /// <b>It no longer decides whether the rail is on screen (issue #119).</b> The rail is a
+        /// permanent column of the Layout tab: nothing binds visibility to this, and with no
+        /// selection the frame stays exactly where it is and draws
+        /// <see cref="NoSelectionMessage"/> instead. What is left is the question the editor
+        /// actually asks — "is there a position in the rail to act on" — which is what gates
+        /// <c>InsertSpecialActionCommand</c>.
+        /// </para>
         /// </summary>
         public bool IsOpen
         {
             get => _isOpen;
             private set => SetProperty(ref _isOpen, value);
+        }
+
+        /// <summary>
+        /// Whether a key is selected at all. The rail's own switch since issue #119: everything the
+        /// inspector draws — the header, the modes, the footer — is drawn only when this is true,
+        /// and the empty state takes the whole frame when it is not.
+        /// <para>
+        /// Deliberately <em>not</em> <see cref="IsOpen"/>. That one also answers "…and the rail has
+        /// not been stood down", which <see cref="Close"/> still does on the way out of an editor;
+        /// a view driven by it would blank the rail while the editor is being disposed.
+        /// </para>
+        /// </summary>
+        public bool HasSelection
+        {
+            get => _hasSelection;
+            private set => SetProperty(ref _hasSelection, value);
         }
 
         /// <summary>
@@ -285,10 +329,16 @@ namespace KinesisEdit.ViewModels
         public bool IsRecording => _activePanel?.IsRecording == true;
 
         /// <summary>
-        /// Whether the showing panel wants the wide rail — 300 px instead of 268
-        /// (docs/design/handoff.md § Geometry). Today that is the Macro panel and nothing else
-        /// (mockup <c>2i</c>); the view binds a class off it, so the width follows the mode rather
-        /// than being decided anywhere outside the panel that needs it.
+        /// Whether the showing panel wants the wide rail (docs/design/handoff.md § Geometry). Today
+        /// that is the Macro panel and nothing else (mockup <c>2i</c>) — the width follows the mode
+        /// rather than being decided anywhere outside the panel that needs it.
+        /// <para>
+        /// <b>Since issue #119 it raises a floor rather than setting a width.</b> The rail is
+        /// drag-adjustable, so the editor computes
+        /// <c>KeyboardEditorViewModel.EffectiveInspectorRailWidth</c> as the larger of the user's
+        /// own width and the handoff's 300: the macro variant is never violated, and a user who
+        /// dragged the rail wider is never yanked back to 300.
+        /// </para>
         /// </summary>
         public bool IsWide => _activePanel?.WantsWideRail == true;
 
@@ -311,7 +361,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>Disarms that pick: the editor's own <c>CancelCopyKeyCommand</c>.</summary>
         public IRelayCommand CancelCopyKeyCommand { get; }
 
-        /// <summary>Closes the rail — Escape's new last stage, and the header's own dismiss.</summary>
+        /// <summary>
+        /// Stands the rail down. <b>It is no longer reachable from the screen (issue #119)</b>: the
+        /// header's ghost close button is gone and Escape's last stage clears the <em>selection</em>
+        /// instead, which drops the rail to its empty state without collapsing anything. What is
+        /// left is the programmatic stand-down the editor performs on the way out — see
+        /// <see cref="Close"/>.
+        /// </summary>
         public IRelayCommand CloseCommand { get; }
 
         private readonly Dictionary<KeyInspectorMode, KeyInspectorPanelViewModel> _panels = [];
@@ -331,6 +387,7 @@ namespace KinesisEdit.ViewModels
         private string _modeSwitchWarning = string.Empty;
         private string _advisoryNote = string.Empty;
         private bool _isOpen;
+        private bool _hasSelection;
         private bool _isLocked;
 
         /// <summary>Whether the user dismissed the rail for the key it is currently holding.</summary>
@@ -419,6 +476,7 @@ namespace KinesisEdit.ViewModels
             FactoryAssignmentText = key?.FactoryAssignmentText ?? string.Empty;
             CurrentAssignmentText = key?.CurrentAssignmentText ?? string.Empty;
             IsLocked = key is not null && !key.CanEdit;
+            HasSelection = key is not null;
             IsOpen = key is not null && !_isDismissed;
 
             RebuildTabs(key?.Key.SupportsMultiModifiers == true);
@@ -468,9 +526,16 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Closes the rail without touching the selection — Escape's new last stage, after an open
-        /// feature panel, after capture and after an armed copy. Whatever the showing panel had
-        /// armed stands down with it.
+        /// Stands the rail down without touching the selection: whatever the showing panel had armed
+        /// stops, and <see cref="IsOpen"/> goes false so nothing downstream still thinks there is a
+        /// position to act on.
+        /// <para>
+        /// <b>It does not collapse anything (issue #119).</b> The rail is a permanent column; this
+        /// is the editor's own teardown path (<c>DetachInspector</c>), which runs when the editor is
+        /// disposed and the whole view goes with it. Escape reaches the same visual result the other
+        /// way round — by clearing the selection, which drops the rail to
+        /// <see cref="NoSelectionMessage"/>.
+        /// </para>
         /// </summary>
         public void Close()
         {
@@ -525,8 +590,9 @@ namespace KinesisEdit.ViewModels
 
             ActivePanel = _panels.GetValueOrDefault(mode);
 
-            // The rail's width follows the panel (268 / 300, docs/design/handoff.md § Geometry), and
-            // a mode switch is the only thing that moves it.
+            // The rail's macro floor follows the panel (docs/design/handoff.md § Geometry), and a
+            // mode switch is the only thing that moves it. The editor listens to this to recompute
+            // EffectiveInspectorRailWidth.
             OnPropertyChanged(nameof(IsWide));
 
             RaiseRecordingChanged();

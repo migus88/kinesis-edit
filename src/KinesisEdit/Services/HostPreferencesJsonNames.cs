@@ -33,5 +33,11 @@ namespace KinesisEdit.Services
 
         /// <summary><see cref="WindowGeometry.IsMaximized"/>.</summary>
         public const string Maximized = "maximized";
+
+        /// <summary>
+        /// <see cref="HostPreferences.InspectorRailWidth"/>, in DIPs. A root key, not one of the
+        /// window's — the rail belongs to the editor, not to the window it is drawn in.
+        /// </summary>
+        public const string InspectorRailWidth = "inspectorRailWidth";
     }
 }

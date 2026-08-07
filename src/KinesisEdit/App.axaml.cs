@@ -177,7 +177,12 @@ namespace KinesisEdit
                 // Threaded so the Lighting tab's preview can freeze under reduce-motion. This is
                 // the same instance the Settings screen writes through MotionPreferenceApplier, so
                 // flipping the preference reaches an editor that is already open.
-                _motionSettings);
+                _motionSettings,
+                // The same per-user store the window's geometry and the Settings screen write
+                // through — one instance, or the editor's rail width and the theme would clobber
+                // each other on the way to the file. It carries the key inspector rail's dragged
+                // width (docs/app/host-preferences.md).
+                _preferences);
 
             // The shell's own two screens, built once and owned by the shell — the Settings screen
             // subscribes to the preferences store, so one per navigation would leave a listener

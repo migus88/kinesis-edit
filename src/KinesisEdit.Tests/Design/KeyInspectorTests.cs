@@ -189,15 +189,20 @@ namespace KinesisEdit.Tests.Design
             Assert.NotEqual(DesignTokens.Resolve("StatusErrorBrush", ThemeVariant.Dark), warning.Foreground);
         }
 
-        [AvaloniaFact]
-        public void WithNothingSelected_TheRailIsNotOnScreenAtAll()
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void WithNothingSelected_TheRailStaysOnScreenAndSaysWhyItIsEmpty(string variantName)
         {
+            // Issue #119 inverts what this used to assert. The rail collapsed itself when nothing
+            // was selected, so its Auto column measured zero and the board jumped sideways to
+            // re-centre — the very defect the issue is about. It is a permanent column now.
             var scene = new Scene();
             var view = scene.CreateView();
 
             scene.Inspector.Refresh(null, scene.Layer, scene.Layout, EditorAdvisories.Empty);
 
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
 
             host.Capture();
 
@@ -205,14 +210,47 @@ namespace KinesisEdit.Tests.Design
                 view.GetVisualDescendants().OfType<Border>(),
                 border => border.Classes.Contains("inspectorRail"));
 
-            Assert.False(frame.IsEffectivelyVisible);
+            Assert.True(frame.IsEffectivelyVisible);
+            Assert.True(frame.Bounds.Width > 0);
+
+            // One sentence, and nothing the rail says about a position it does not have.
+            var texts = VisibleTextsOf(view);
+
+            Assert.Contains(KeyInspectorViewModel.NoSelectionMessage, texts);
+            Assert.DoesNotContain(KeyInspectorViewModel.PositionSuffix, texts);
+            Assert.DoesNotContain(KeyInspectorViewModel.ExclusivitySentence, texts);
+            Assert.DoesNotContain(KeyInspectorViewModel.RevertKeyCaption, texts);
+            Assert.DoesNotContain(KeyInspectorViewModel.CopyToCaption, texts);
+            Assert.DoesNotContain(view.GetVisualDescendants().OfType<TabStripItem>(), item => item.IsEffectivelyVisible);
+        }
+
+        [AvaloniaFact]
+        public void TheRail_HasNoCloseButtonAnyMore()
+        {
+            // The header's ghost close mark went with issue #119: a permanent column has nothing to
+            // dismiss, and the button was one of the two ways the board could be made to jump.
+            var scene = new Scene();
+            var view = scene.CreateView();
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => button.Classes.Contains("ghost"));
+            Assert.DoesNotContain(
+                view.GetVisualDescendants().OfType<Button>(),
+                button => ReferenceEquals(button.Command, scene.Inspector.CloseCommand));
         }
 
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public void TheRail_IsTheDesignsOwn268PixelColumnOnTheInsetSurface(string variantName)
+        public void TheRail_RestsOnTheInsetSurfaceAndCarriesNoWidthOfItsOwn(string variantName)
         {
+            // The 268 this used to assert lives on the grid COLUMN now (issue #119): the rail is
+            // drag-adjustable, a GridSplitter resizes columns, and a Width here would have outranked
+            // whatever the column said. EditorChromeTests measures the column on the real editor;
+            // what is left to this file is the surface and the hairline.
             var variant = ToVariant(variantName);
             var scene = new Scene();
             var view = scene.CreateView();
@@ -225,8 +263,61 @@ namespace KinesisEdit.Tests.Design
                 view.GetVisualDescendants().OfType<Border>(),
                 border => border.Classes.Contains("inspectorRail"));
 
-            Assert.Equal(268, frame.Bounds.Width);
             Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), frame.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), frame.BorderBrush);
+            Assert.Equal(new Thickness(1, 0, 0, 0), frame.BorderThickness);
+            Assert.True(double.IsNaN(frame.Width), "The rail still carries a Width; the column owns it now.");
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheExclusivitySentence_IsAHintBlockAndDeliberatelyNotAmber(string variantName)
+        {
+            // Issue #119. The sentence read as stray prose between the mode tabs and the amber
+            // mode-switch warning; framed, the two stop reading as one block. Neutral, because amber
+            // is the advisory colour in the four-status vocabulary and this sentence warns of
+            // nothing.
+            var variant = ToVariant(variantName);
+            var scene = new Scene();
+
+            scene.Remap();
+
+            var view = scene.CreateView();
+
+            using var host = ThemedHost.Show(view, variant);
+
+            // Put the rail on a mode the position is not carrying, so the amber warning is drawn
+            // directly beneath the hint and the two can actually be compared.
+            scene.Inspector.SelectModeCommand.Execute(
+                scene.Inspector.Tabs.Single(tab => tab.Mode == KeyInspectorMode.TapAndHold));
+
+            host.Capture();
+
+            var hint = Assert.Single(
+                view.GetVisualDescendants().OfType<Border>(),
+                border => border.Classes.Contains("hintBlock"));
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), hint.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), hint.BorderBrush);
+            Assert.Equal(new Thickness(1), hint.BorderThickness);
+            Assert.Equal(DesignTokens.Resolve("RadiusControl", variant), hint.CornerRadius);
+
+            // Not amber, and the amber block below it still is — so the two are visibly different
+            // things rather than one undifferentiated column of prose.
+            Assert.NotEqual(DesignTokens.Resolve("StatusAdvisoryTintBrush", variant), hint.Background);
+            Assert.NotEqual(DesignTokens.Resolve("StatusAdvisoryTintBorderBrush", variant), hint.BorderBrush);
+
+            var warning = Assert.Single(
+                view.GetVisualDescendants().OfType<TextBlock>(),
+                block => block.Text == KeyInspectorViewModel.BuildModeSwitchWarning(KeyInspectorMode.Remap));
+
+            Assert.True(warning.IsEffectivelyVisible);
+
+            // The sentence itself is inside the block, not beside it.
+            Assert.Contains(
+                hint.GetVisualDescendants().OfType<TextBlock>(),
+                block => block.Text == KeyInspectorViewModel.ExclusivitySentence);
         }
 
         [AvaloniaTheory]

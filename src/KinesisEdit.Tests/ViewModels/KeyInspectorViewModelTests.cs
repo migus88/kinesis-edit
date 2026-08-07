@@ -338,9 +338,39 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void Close_ShutsTheRailWithoutMovingTheSelection_AndANewKeyOpensItAgain()
+        public void HasSelection_FollowsTheKeyAndNothingElse()
         {
-            // Escape's new last stage. Closing is about the rail, not about what is selected.
+            // The rail's own switch since issue #119: it is a permanent column, so what the view
+            // asks is "is there a position to be about", never "is the rail open".
+            var scene = new Scene();
+
+            Assert.False(scene.Inspector.HasSelection);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.True(scene.Inspector.HasSelection);
+
+            scene.Refresh(key: null);
+
+            Assert.False(scene.Inspector.HasSelection);
+        }
+
+        [Fact]
+        public void TheEmptyStateSentence_IsOneShortLineOfItsOwn()
+        {
+            // It is the rail's, not a panel's: the two panel NoSelectionMessages answer a different
+            // question from inside a rail that is already explaining itself, and neither is
+            // reachable now that the empty state replaces the panels wholesale.
+            Assert.NotEmpty(KeyInspectorViewModel.NoSelectionMessage);
+            Assert.NotEqual(KeyInspectorViewModel.NoSelectionMessage, TapAndHoldPanelViewModel.NoSelectionMessage);
+            Assert.NotEqual(KeyInspectorViewModel.NoSelectionMessage, MacroInspectorPanelViewModel.NoSelectionMessage);
+        }
+
+        [Fact]
+        public void Close_StandsTheRailDownWithoutMovingTheSelection_AndANewKeyOpensItAgain()
+        {
+            // No longer Escape's last stage — issue #119 gave that to the selection — but still the
+            // editor's teardown path, and still about the rail rather than about what is selected.
             var scene = new Scene();
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
@@ -373,13 +403,14 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void WithNothingSelected_TheRailIsClosedAndEmpty()
+        public void WithNothingSelected_TheRailHasNothingToSayAboutAPosition()
         {
             var scene = new Scene();
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Refresh(key: null);
 
+            Assert.False(scene.Inspector.HasSelection);
             Assert.False(scene.Inspector.IsOpen);
             Assert.Equal(string.Empty, scene.Inspector.PositionToken);
             Assert.Equal(string.Empty, scene.Inspector.CurrentAssignmentText);

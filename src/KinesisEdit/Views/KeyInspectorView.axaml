@@ -20,207 +20,231 @@
     Mockup 1e draws the header line entirely in sans; issue #92 tightens the token to mono, and
     that is the one deliberate departure from the mock's own typography here.
 
-    THE RAIL COLLAPSES WHEN NOTHING IS SELECTED. IsVisible on the frame, not IsVisible on a column
-    of the parent grid: the parent's Auto column then measures nothing and the board takes the
-    width back.
-  -->
-  <!--
-    THE WIDTH FOLLOWS THE MODE. 268px everywhere except the Macro panel, which gets the handoff's
-    300px macro-editing variant (mockup 2i). The class is bound off `IsWide`, which the rail reads
-    from whichever panel is active — the panel owns that fact, not this file.
-  -->
-  <Border Classes="inspectorRail" Classes.wide="{Binding IsWide}" IsVisible="{Binding IsOpen}">
-    <Grid RowDefinitions="Auto,*,Auto">
+    THE RAIL NEVER COLLAPSES (issue #119). It used to hide its own frame when nothing was selected,
+    so the parent's Auto column measured zero and the board jumped sideways to re-centre. It is a
+    permanent column now: with no selection the frame stays exactly where it is and draws one muted
+    sentence in place of the header, the modes and the footer. There is no close button either —
+    Escape's last stage clears the selection, which lands in that same empty state.
 
-      <!-- ===== The header ====================================================================
-           The accent tile carrying the cap's own legend, then the position named in mono and the
-           assignment line under it. The token is the FACTORY assignment on purpose: it is what
-           identifies the position on the board however often it is remapped, which is exactly why
-           the line below it can then say what the position does now. -->
-      <Border Grid.Row="0" Classes="inspectorSection">
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-          <Border Grid.Column="0" Classes="inspectorKeyTile" VerticalAlignment="Center">
-            <!-- TextPrimary, NOT AccentText. `AccentText` is the colour that sits on a solid
-                 accent *fill* — white on the light variant — and this tile is a 14% tint over a
-                 light surface, where white is invisible. The mock's own value here is the
-                 near-white it calls body text, which is what TextPrimary is in both variants. -->
-            <TextBlock Text="{Binding CapCaption}"
-                       Classes="monoValue"
-                       Foreground="{DynamicResource TextPrimaryBrush}"
-                       TextTrimming="CharacterEllipsis"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center" />
-          </Border>
+    THE WIDTH IS NOT THIS FILE'S. It lives on the parent grid's third column
+    (KeyboardEditorView.axaml), because a GridSplitter resizes columns and a local Width here would
+    outrank whatever the column said. `IsWide` still travels — the editor folds it into the 300px
+    macro floor — but nothing in this file reads it.
+  -->
+  <Border Classes="inspectorRail">
+    <Panel>
+      <!-- Nothing is selected: one line, muted, centred in the whole frame. It replaces the three
+           rows below rather than joining them, so an empty rail is empty rather than a header with
+           no content under it. -->
+      <TextBlock Text="{x:Static vm:KeyInspectorViewModel.NoSelectionMessage}"
+                 Classes="body muted"
+                 TextWrapping="Wrap"
+                 TextAlignment="Center"
+                 Margin="{DynamicResource PaddingInspectorSection}"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 IsVisible="{Binding !HasSelection}" />
 
-          <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-            <StackPanel Orientation="Horizontal" Spacing="5">
-              <TextBlock Text="{Binding PositionDescription}"
-                         Classes="cardTitle"
-                         IsVisible="{Binding HasPositionDescription}"
-                         VerticalAlignment="Center" />
-              <TextBlock Text="{x:Static vm:KeyInspectorViewModel.Separator}"
-                         Classes="cardTitle muted"
-                         IsVisible="{Binding HasPositionDescription}"
-                         VerticalAlignment="Center" />
-              <TextBlock Text="{Binding PositionToken}"
+      <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding HasSelection}">
+
+        <!-- ===== The header ====================================================================
+             The accent tile carrying the cap's own legend, then the position named in mono and the
+             assignment line under it. The token is the FACTORY assignment on purpose: it is what
+             identifies the position on the board however often it is remapped, which is exactly why
+             the line below it can then say what the position does now. -->
+        <Border Grid.Row="0" Classes="inspectorSection">
+          <!-- TWO COLUMNS, not three. The third used to carry a ghost close button; the rail cannot
+               be closed any more (issue #119), so there is nothing for it to hold. -->
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <Border Grid.Column="0" Classes="inspectorKeyTile" VerticalAlignment="Center">
+              <!-- TextPrimary, NOT AccentText. `AccentText` is the colour that sits on a solid
+                   accent *fill* — white on the light variant — and this tile is a 14% tint over a
+                   light surface, where white is invisible. The mock's own value here is the
+                   near-white it calls body text, which is what TextPrimary is in both variants. -->
+              <TextBlock Text="{Binding CapCaption}"
                          Classes="monoValue"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
                          TextTrimming="CharacterEllipsis"
+                         HorizontalAlignment="Center"
                          VerticalAlignment="Center" />
-              <TextBlock Text="{x:Static vm:KeyInspectorViewModel.PositionSuffix}"
-                         Classes="cardTitle"
-                         VerticalAlignment="Center" />
-            </StackPanel>
-
-            <!-- `factory [d] · now [esc]`, mono end to end: every part of it is either a value in
-                 the layout file or the punctuation between two of them. -->
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <TextBlock Text="{x:Static vm:KeyInspectorViewModel.FactoryLabel}" Classes="monoValueSmall muted" />
-              <TextBlock Text="{Binding FactoryAssignmentText}" Classes="monoValueSmall muted" />
-              <TextBlock Text="{x:Static vm:KeyInspectorViewModel.Separator}" Classes="monoValueSmall muted" />
-              <TextBlock Text="{x:Static vm:KeyInspectorViewModel.CurrentLabel}" Classes="monoValueSmall muted" />
-              <TextBlock Text="{Binding CurrentAssignmentText}"
-                         Classes="monoValueSmall"
-                         TextTrimming="CharacterEllipsis" />
-            </StackPanel>
-          </StackPanel>
-
-          <!-- Escape closes the rail too; the button is what says so with a pointer. Chromeless,
-               because a bordered button here would read as the rail's primary action. The mark is
-               geometry, not a glyph: the embedded IBM Plex families are the gate on what may be
-               authored as text, and the icon system exists so a close mark never has to be. -->
-          <Button Grid.Column="2"
-                  Classes="ghost"
-                  Command="{Binding CloseCommand}"
-                  VerticalAlignment="Top">
-            <controls:Icon Data="{DynamicResource IconClose}" Stroke="{DynamicResource TextMutedBrush}" />
-          </Button>
-        </Grid>
-      </Border>
-
-      <!-- ===== The body ======================================================================
-           Either the mode machinery or, for a position that can never be remapped, the locked-key
-           panel in place of all of it. Scrolled, because a panel is free to be taller than 268
-           px of rail. -->
-      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-        <Panel>
-          <!-- Resolved by ViewLocator, like every other view model the app hosts by content:
-               a DataContext-swapping child would have to reach back up the visual tree for the
-               `IsLocked` it is switched by, and a view gets its data from its own DataContext. -->
-          <ContentControl Content="{Binding LockedPanel}" IsVisible="{Binding IsLocked}" />
-
-          <StackPanel IsVisible="{Binding !IsLocked}">
-
-            <!-- ===== The modes ==============================================================
-                 A 2x2 grid on the section strip's own TabStrip / TabStripItem control themes
-                 (docs/design/handoff.md § "Key inspector panels"). Two rows, so the strip is
-                 twice the theme's own one-row height; the grid itself is the ItemsPanel.
-
-                 `Multi-mod` is not in this list on a board whose firmware lacks it — the tab is
-                 absent, not dim (KeyInspectorViewModel builds the set). -->
-            <Border Classes="inspectorSection" Padding="0">
-              <StackPanel>
-                <TabStrip Theme="{StaticResource TabStrip}"
-                          Height="76"
-                          ItemsSource="{Binding Tabs}"
-                          SelectedValueBinding="{Binding Mode, DataType=vm:KeyInspectorTabViewModel}"
-                          SelectedValue="{Binding SelectedMode, Mode=OneWay}"
-                          SelectionChanged="OnModeSelectionChanged">
-                  <TabStrip.Styles>
-                    <Style Selector="TabStripItem">
-                      <Setter Property="IsEnabled" Value="{Binding IsEnabled, DataType=vm:KeyInspectorTabViewModel}" />
-                    </Style>
-                  </TabStrip.Styles>
-                  <TabStrip.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <UniformGrid Columns="2" />
-                    </ItemsPanelTemplate>
-                  </TabStrip.ItemsPanel>
-                  <TabStrip.ItemTemplate>
-                    <DataTemplate DataType="vm:KeyInspectorTabViewModel">
-                      <TextBlock Text="{Binding DisplayCaption}" TextTrimming="CharacterEllipsis" />
-                    </DataTemplate>
-                  </TabStrip.ItemTemplate>
-                </TabStrip>
-
-                <StackPanel Margin="{DynamicResource PaddingInspectorSection}" Spacing="8">
-                  <!-- 2a's tightened wording, which supersedes 1e's shorter "This key does one
-                       thing". The app in its own voice, so sans. -->
-                  <TextBlock Text="{x:Static vm:KeyInspectorViewModel.ExclusivitySentence}"
-                             Classes="body muted"
-                             TextWrapping="Wrap" />
-
-                  <!-- Stated at the point of switching rather than after (mockup 2h). Amber and
-                       non-blocking: it says what the assignment will replace, it does not ask. -->
-                  <Border Background="{DynamicResource StatusAdvisoryTintBrush}"
-                          BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{DynamicResource RadiusControl}"
-                          Padding="9,7"
-                          IsVisible="{Binding HasModeSwitchWarning}">
-                    <TextBlock Text="{Binding ModeSwitchWarning}"
-                               Classes="body statusWarning"
-                               TextWrapping="Wrap" />
-                  </Border>
-                </StackPanel>
-              </StackPanel>
             </Border>
 
-            <!-- The showing mode's own panel, resolved by ViewLocator from whichever
-                 KeyInspectorPanelViewModel the editor handed the rail. Empty for a mode with no
-                 panel — which since issue #93 is only Multi-mod, on the boards that have it. -->
-            <ContentControl Content="{Binding ActivePanel}" />
-          </StackPanel>
-        </Panel>
-      </ScrollViewer>
+            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="{Binding PositionDescription}"
+                           Classes="cardTitle"
+                           IsVisible="{Binding HasPositionDescription}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="{x:Static vm:KeyInspectorViewModel.Separator}"
+                           Classes="cardTitle muted"
+                           IsVisible="{Binding HasPositionDescription}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="{Binding PositionToken}"
+                           Classes="monoValue"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="{x:Static vm:KeyInspectorViewModel.PositionSuffix}"
+                           Classes="cardTitle"
+                           VerticalAlignment="Center" />
+              </StackPanel>
 
-      <!-- ===== The footer ====================================================================
-           Always present (docs/design/handoff.md § "Layout tab"): the key's advisory note, then
-           the two actions. Both actions are the EDITOR's commands — `Revert key` is its
-           ResetKeyCommand, which calls ClearRemap() and deliberately not Remap(OriginalKey), and
-           `Copy to…` is its CopyKeyCommand, the arm-then-click-a-target pick issue #91 built.
-           Nothing is reimplemented here.
+              <!-- `factory [d] · now [esc]`, mono end to end: every part of it is either a value in
+                   the layout file or the punctuation between two of them. -->
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="{x:Static vm:KeyInspectorViewModel.FactoryLabel}" Classes="monoValueSmall muted" />
+                <TextBlock Text="{Binding FactoryAssignmentText}" Classes="monoValueSmall muted" />
+                <TextBlock Text="{x:Static vm:KeyInspectorViewModel.Separator}" Classes="monoValueSmall muted" />
+                <TextBlock Text="{x:Static vm:KeyInspectorViewModel.CurrentLabel}" Classes="monoValueSmall muted" />
+                <TextBlock Text="{Binding CurrentAssignmentText}"
+                           Classes="monoValueSmall"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </StackPanel>
 
-           Hidden for a locked position: the locked panel carries its own copy actions and there
-           is no remap to revert. -->
-      <Border Grid.Row="2" Classes="inspectorFooter" IsVisible="{Binding !IsLocked}">
-        <StackPanel Spacing="8">
-          <!-- The note is READ off the editor's advisory set, never rescanned. Amber, never red,
-               and it blocks nothing. -->
-          <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its children with
-               infinite width, so TextWrapping would never fire and a long note would run off the
-               268px rail. -->
-          <Grid ColumnDefinitions="Auto,*"
-                ColumnSpacing="6"
-                IsVisible="{Binding HasAdvisory}">
-            <Ellipse Grid.Column="0"
-                     Width="6"
-                     Height="6"
-                     Fill="{DynamicResource StatusAdvisoryStrongBrush}"
-                     VerticalAlignment="Top"
-                     Margin="0,4,0,0" />
-            <TextBlock Grid.Column="1"
-                       Text="{Binding AdvisoryNote}"
-                       Classes="body statusWarning"
-                       TextWrapping="Wrap" />
           </Grid>
+        </Border>
 
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="secondary"
-                    Content="{x:Static vm:KeyInspectorViewModel.RevertKeyCaption}"
-                    Command="{Binding ResetKeyCommand}" />
-            <Button Classes="secondary"
-                    Content="{x:Static vm:KeyInspectorViewModel.CopyToCaption}"
-                    Command="{Binding CopyKeyCommand}"
-                    IsVisible="{Binding !IsCopyArmed}" />
-            <!-- The same slot, once the pick is armed: the button that started it is what ends
-                 it, so the rail never grows a dead control it only sometimes needs. -->
-            <Button Classes="secondary"
-                    Content="{x:Static vm:KeyInspectorViewModel.CancelCopyCaption}"
-                    Command="{Binding CancelCopyKeyCommand}"
-                    IsVisible="{Binding IsCopyArmed}" />
+        <!-- ===== The body ======================================================================
+             Either the mode machinery or, for a position that can never be remapped, the locked-key
+             panel in place of all of it. Scrolled, because a panel is free to be taller than 268
+             px of rail. -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <Panel>
+            <!-- Resolved by ViewLocator, like every other view model the app hosts by content:
+                 a DataContext-swapping child would have to reach back up the visual tree for the
+                 `IsLocked` it is switched by, and a view gets its data from its own DataContext. -->
+            <ContentControl Content="{Binding LockedPanel}" IsVisible="{Binding IsLocked}" />
+
+            <StackPanel IsVisible="{Binding !IsLocked}">
+
+              <!-- ===== The modes ==============================================================
+                   A 2x2 grid on the section strip's own TabStrip / TabStripItem control themes
+                   (docs/design/handoff.md § "Key inspector panels"). Two rows, so the strip is
+                   twice the theme's own one-row height; the grid itself is the ItemsPanel.
+
+                   `Multi-mod` is not in this list on a board whose firmware lacks it — the tab is
+                   absent, not dim (KeyInspectorViewModel builds the set). -->
+              <Border Classes="inspectorSection" Padding="0">
+                <StackPanel>
+                  <TabStrip Theme="{StaticResource TabStrip}"
+                            Height="76"
+                            ItemsSource="{Binding Tabs}"
+                            SelectedValueBinding="{Binding Mode, DataType=vm:KeyInspectorTabViewModel}"
+                            SelectedValue="{Binding SelectedMode, Mode=OneWay}"
+                            SelectionChanged="OnModeSelectionChanged">
+                    <TabStrip.Styles>
+                      <Style Selector="TabStripItem">
+                        <Setter Property="IsEnabled" Value="{Binding IsEnabled, DataType=vm:KeyInspectorTabViewModel}" />
+                      </Style>
+                    </TabStrip.Styles>
+                    <TabStrip.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid Columns="2" />
+                      </ItemsPanelTemplate>
+                    </TabStrip.ItemsPanel>
+                    <TabStrip.ItemTemplate>
+                      <DataTemplate DataType="vm:KeyInspectorTabViewModel">
+                        <TextBlock Text="{Binding DisplayCaption}" TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </TabStrip.ItemTemplate>
+                  </TabStrip>
+
+                  <StackPanel Margin="{DynamicResource PaddingInspectorSection}" Spacing="8">
+                    <!-- 2a's tightened wording, which supersedes 1e's shorter "This key does one
+                         thing". The app in its own voice, so sans.
+
+                         IT IS A HINT BLOCK AND DELIBERATELY NOT AMBER (issue #119). As a bare line
+                         of prose it read as stray text between the tabs and the warning below it;
+                         framed, the two stop reading as one block. Neutral, because amber is
+                         reserved for advisories in the four-status vocabulary and this sentence
+                         warns of nothing — it states how the one slot works. The `i` mark is the
+                         icon system's own IconInformation, at the icon law's 16px. -->
+                    <Border Classes="hintBlock">
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <controls:Icon Grid.Column="0"
+                                       Data="{DynamicResource IconInformation}"
+                                       Stroke="{DynamicResource TextMutedBrush}"
+                                       VerticalAlignment="Top" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Static vm:KeyInspectorViewModel.ExclusivitySentence}"
+                                   Classes="body muted"
+                                   TextWrapping="Wrap" />
+                      </Grid>
+                    </Border>
+
+                    <!-- Stated at the point of switching rather than after (mockup 2h). Amber and
+                         non-blocking: it says what the assignment will replace, it does not ask. -->
+                    <Border Background="{DynamicResource StatusAdvisoryTintBrush}"
+                            BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource RadiusControl}"
+                            Padding="9,7"
+                            IsVisible="{Binding HasModeSwitchWarning}">
+                      <TextBlock Text="{Binding ModeSwitchWarning}"
+                                 Classes="body statusWarning"
+                                 TextWrapping="Wrap" />
+                    </Border>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <!-- The showing mode's own panel, resolved by ViewLocator from whichever
+                   KeyInspectorPanelViewModel the editor handed the rail. Empty for a mode with no
+                   panel — which since issue #93 is only Multi-mod, on the boards that have it. -->
+              <ContentControl Content="{Binding ActivePanel}" />
+            </StackPanel>
+          </Panel>
+        </ScrollViewer>
+
+        <!-- ===== The footer ====================================================================
+             Always present (docs/design/handoff.md § "Layout tab"): the key's advisory note, then
+             the two actions. Both actions are the EDITOR's commands — `Revert key` is its
+             ResetKeyCommand, which calls ClearRemap() and deliberately not Remap(OriginalKey), and
+             `Copy to…` is its CopyKeyCommand, the arm-then-click-a-target pick issue #91 built.
+             Nothing is reimplemented here.
+
+             Hidden for a locked position: the locked panel carries its own copy actions and there
+             is no remap to revert. -->
+        <Border Grid.Row="2" Classes="inspectorFooter" IsVisible="{Binding !IsLocked}">
+          <StackPanel Spacing="8">
+            <!-- The note is READ off the editor's advisory set, never rescanned. Amber, never red,
+                 and it blocks nothing. -->
+            <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its children with
+                 infinite width, so TextWrapping would never fire and a long note would run off the
+                 268px rail. -->
+            <Grid ColumnDefinitions="Auto,*"
+                  ColumnSpacing="6"
+                  IsVisible="{Binding HasAdvisory}">
+              <Ellipse Grid.Column="0"
+                       Width="6"
+                       Height="6"
+                       Fill="{DynamicResource StatusAdvisoryStrongBrush}"
+                       VerticalAlignment="Top"
+                       Margin="0,4,0,0" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding AdvisoryNote}"
+                         Classes="body statusWarning"
+                         TextWrapping="Wrap" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="secondary"
+                      Content="{x:Static vm:KeyInspectorViewModel.RevertKeyCaption}"
+                      Command="{Binding ResetKeyCommand}" />
+              <Button Classes="secondary"
+                      Content="{x:Static vm:KeyInspectorViewModel.CopyToCaption}"
+                      Command="{Binding CopyKeyCommand}"
+                      IsVisible="{Binding !IsCopyArmed}" />
+              <!-- The same slot, once the pick is armed: the button that started it is what ends
+                   it, so the rail never grows a dead control it only sometimes needs. -->
+              <Button Classes="secondary"
+                      Content="{x:Static vm:KeyInspectorViewModel.CancelCopyCaption}"
+                      Command="{Binding CancelCopyKeyCommand}"
+                      IsVisible="{Binding IsCopyArmed}" />
+            </StackPanel>
           </StackPanel>
-        </StackPanel>
-      </Border>
-    </Grid>
+        </Border>
+      </Grid>
+    </Panel>
   </Border>
 </UserControl>

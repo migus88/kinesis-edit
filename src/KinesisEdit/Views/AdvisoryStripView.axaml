@@ -16,10 +16,22 @@
     layer) by the editor, which projects the set onto it. Four copies would be four things to keep
     in step.
 
-    IT NEVER BLOCKS AND IT NEVER MOVES THE BOARD. The whole strip is inside one Border that is
-    hidden when the section has nothing to say, so the row it sits in collapses to zero and the
-    picture below does not shift as the user edits; and nothing here is a gate — `Review` selects
-    what the note is about and changes nothing.
+    IT NEVER BLOCKS AND IT NEVER MOVES THE BOARD. The row's space is RESERVED, not collapsed
+    (issue #119): the Border is always on screen and always at least HeightAdvisoryStrip tall, and
+    only its contents — the dot, the sentence and `Review N` — come and go with HasAdvisories. The
+    strip used to hide itself whole, so an advisory arriving grew the row from 0 to 30 and pushed
+    the board, the inspector rail and the legend row down a bar's worth mid-edit; holding the floor
+    costs 30px of a screen that already budgeted them and moves nothing, ever. A bottom status bar
+    would have freed the row, and was rejected: the handoff draws no bottom bar anywhere, and it
+    would have parked the note far from the board it annotates. Nothing here is a gate either —
+    `Review` selects what the note is about and changes nothing.
+
+    RESERVED IS NOT THE SAME AS DRAWN. With nothing to say the strip paints nothing at all: no
+    tint, no hairline, just the ground behind it. A permanently amber bar over a clean profile
+    would be a standing false alarm — worse than the reflow it fixes. Both faces are class setters
+    (`Border.advisoryStrip` and its `.hasAdvisories` state) rather than values on the element,
+    because a local value beats a class setter and the clean face would never take — the same trap
+    the sentence styles below already document.
 
     AMBER, NEVER RED. The fill, the border, the dot and the sentence are all on the StatusAdvisory
     ramp. An advisory is never painted on the StatusError ramp anywhere in the app.
@@ -33,6 +45,21 @@
     value on the element would win over the class and the expanded state would never take.
   -->
   <UserControl.Styles>
+    <!-- The reserved, unpainted face: what the user sees on a clean profile is the ground the
+         strip sits on. Transparent rather than unset so the claim is one the styles state
+         outright, and so a future setter cannot leave the bar half-painted. -->
+    <Style Selector="Border.advisoryStrip">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- The advisory face. The hairline is inside the 30px floor, so turning it on does not grow
+         the bar by the pixel it draws. -->
+    <Style Selector="Border.advisoryStrip.hasAdvisories">
+      <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
     <Style Selector="TextBlock.advisorySentence">
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="Margin" Value="8,0,12,0" />
@@ -47,15 +74,17 @@
   </UserControl.Styles>
 
   <!-- Top, not stretched: MinHeight is a floor and the strip's height is otherwise its content's,
-       so a host that hands it more room than it asked for must not inflate the bar. -->
-  <Border MinHeight="{DynamicResource HeightAdvisoryStrip}"
+       so a host that hands it more room than it asked for must not inflate the bar. It carries no
+       IsVisible: the bar holds its row whether or not there is anything in it. -->
+  <Border Classes="advisoryStrip"
+          Classes.hasAdvisories="{Binding HasAdvisories}"
+          MinHeight="{DynamicResource HeightAdvisoryStrip}"
           VerticalAlignment="Top"
-          Background="{DynamicResource StatusAdvisoryTintBrush}"
-          BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
-          BorderThickness="0,0,0,1"
-          Padding="24,0"
+          Padding="24,0">
+    <!-- The contents are what appears and disappears. Hidden, they measure nothing, so the empty
+         bar is exactly its 30px floor. -->
+    <Grid ColumnDefinitions="Auto,*,Auto"
           IsVisible="{Binding HasAdvisories}">
-    <Grid ColumnDefinitions="Auto,*,Auto">
       <!-- The dot is the strip's own mark: a filled disc rather than one of the three icon
            families, because it says "there is something here", not what kind of thing it is —
            the sentence beside it does that. -->

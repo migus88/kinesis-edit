@@ -245,16 +245,29 @@
 
           <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
           <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
-            <!-- TWO COLUMNS: the board, and the 268px key inspector rail beside it. The rail is
-                 Auto and collapses itself on the selection, so a column with nothing in it measures
-                 zero and the board takes the width back. There is deliberately NO clipping container
-                 between the rail and the board: ClipToBounds is false the whole way down the board
-                 chain (Controls/KeyboardView.axaml), and a Border here would start cutting caps off.
+            <!-- THREE COLUMNS: the board, the drag seam, and the key inspector rail beside it.
+                 There is deliberately NO clipping container between the rail and the board:
+                 ClipToBounds is false the whole way down the board chain
+                 (Controls/KeyboardView.axaml), and a Border here would start cutting caps off.
+
+                 THE RAIL'S COLUMN IS WHERE ITS WIDTH LIVES (issue #119). It used to be a style
+                 setter on `Border.inspectorRail`, and the rail used to collapse itself when nothing
+                 was selected so this column measured zero — which is what made the board jump
+                 sideways to re-centre. The rail is permanent now, and the width had to MOVE onto the
+                 column rather than be layered over the setter: a GridSplitter resizes columns, and a
+                 local Width on the rail would have outranked whatever the column said.
+
+                 The column is driven from code-behind (SyncRailColumn) rather than by a binding,
+                 because a ColumnDefinition is a bare AvaloniaObject: it is in neither the logical
+                 nor the visual tree, so it inherits no DataContext and a {Binding} on it has
+                 nothing to resolve against. The handler is the whole of what the code-behind does
+                 here besides the keyboard grammar, and it is two lines in each direction.
 
                  THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to dock its
                  editor beside this picture; it is a library now (mockup 1i) and takes the whole
                  content area for itself, below. -->
-            <Grid ColumnDefinitions="*,Auto"
+            <Grid x:Name="LayoutColumns"
+                  ColumnDefinitions="*,Auto,Auto"
                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
               <Grid Grid.Column="0" RowDefinitions="Auto,*">
                 <!--
@@ -304,20 +317,28 @@
                 </StackPanel>
               </Grid>
 
+              <!-- The seam. 6px of hit target over a 1px hairline, all of it the `RailSplitter`
+                   control theme's; this file names a class and nothing else. It sits in its own
+                   Auto column so the board's `*` and the rail's fixed width are the only two things
+                   sharing the row, which is what makes the splitter's "the right column is fixed, so
+                   resize only the right column" behaviour the one that fires. -->
+              <GridSplitter Grid.Column="1"
+                            Classes="railSplitter"
+                            DragDelta="OnRailSplitterDragged"
+                            DragCompleted="OnRailSplitterReleased" />
+
               <!-- The key inspector rail (mockups 1e/2a). It is NOT modal: no scrim, no overlay
-                   host, and the board to its left stays clickable the whole time it is open.
+                   host, and the board to its left stays clickable the whole time.
 
                    NO GUTTER. The rail carries its own inset surface and a hairline down its left
                    edge (`inspectorRail`), which is how mockup 1e separates it — and every pixel
                    spent on a margin here comes out of the board's column, where the legend row under
                    the picture is already exactly as wide as its own counts and actions.
 
-                   IsVisible is bound HERE as well as inside the rail: the rail collapses its own
-                   frame, which is what makes it usable on its own, but only an invisible element
-                   lets this Auto column measure zero. -->
-              <views:KeyInspectorView Grid.Column="1"
-                                      DataContext="{Binding Inspector}"
-                                      IsVisible="{Binding IsOpen}" />
+                   NO IsVisible EITHER (issue #119). The rail is permanent: with nothing selected it
+                   draws its empty state rather than vanishing, so this column never measures zero
+                   and the board never shifts under the pointer. -->
+              <views:KeyInspectorView Grid.Column="2" DataContext="{Binding Inspector}" />
             </Grid>
 
             <!-- The Macros tab (mockup 1i) — a library, not an editor, and since issue #93 it takes

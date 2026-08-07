@@ -24,6 +24,14 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public void Default_StoresNoInspectorRailWidth()
+        {
+            // Null is "nothing stored", which the editor reads as the authored width — the rail as
+            // it was before it could be dragged at all.
+            Assert.Null(HostPreferences.Default.InspectorRailWidth);
+        }
+
+        [Fact]
         public void NewInstance_MatchesDefault()
         {
             Assert.Equal(HostPreferences.Default, new HostPreferences());
@@ -60,6 +68,41 @@ namespace KinesisEdit.Tests.Services
             Assert.NotEqual(baseline, baseline with { Theme = AppThemePreference.Light });
             Assert.NotEqual(baseline, baseline with { Motion = MotionPreference.AlwaysReduce });
             Assert.NotEqual(baseline, baseline with { Window = new WindowGeometry(800, 600, null, null, false) });
+            Assert.NotEqual(baseline, baseline with { InspectorRailWidth = 320 });
+        }
+
+        [Theory]
+        [InlineData(HostPreferences.MinimumInspectorRailWidth, HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData(HostPreferences.MaximumInspectorRailWidth, HostPreferences.MaximumInspectorRailWidth)]
+        [InlineData(HostPreferences.DefaultInspectorRailWidth, HostPreferences.DefaultInspectorRailWidth)]
+        [InlineData(320, 320)]
+        [InlineData(0, HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData(-4000, HostPreferences.MinimumInspectorRailWidth)]
+        [InlineData(9999, HostPreferences.MaximumInspectorRailWidth)]
+        public void ClampInspectorRailWidth_BringsAWidthIntoTheBand(double width, double expected)
+        {
+            Assert.Equal(expected, HostPreferences.ClampInspectorRailWidth(width));
+        }
+
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        [InlineData(double.NegativeInfinity)]
+        public void ClampInspectorRailWidth_YieldsTheAuthoredWidth_ForANumberThatIsNotOne(double width)
+        {
+            // Math.Clamp propagates NaN, which would put a NaN on a column definition and take the
+            // whole Layout tab's measure pass with it. A width that is not a number is not a
+            // preference at all.
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, HostPreferences.ClampInspectorRailWidth(width));
+        }
+
+        [Fact]
+        public void TheInspectorRailBand_ContainsTheAuthoredWidth()
+        {
+            // The default has to be a width the user could also have dragged to, or the first drag
+            // would jump.
+            Assert.True(HostPreferences.MinimumInspectorRailWidth < HostPreferences.DefaultInspectorRailWidth);
+            Assert.True(HostPreferences.DefaultInspectorRailWidth < HostPreferences.MaximumInspectorRailWidth);
         }
 
         [Fact]

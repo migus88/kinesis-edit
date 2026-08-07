@@ -1,0 +1,85 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The drag handle between the board and the key inspector rail (issue #119). Read Shared.axaml's
+    header first — it carries the authoring contract, and everything below obeys it.
+
+    IT IS THE APP'S ONLY RESIZABLE SEAM, and the design has no drawing of one: the handoff never
+    contemplated a resizable rail, so the mark is derived from the vocabulary that IS specified —
+    the same `SurfaceLine` hairline the rail already draws down its own left edge, raised to
+    `SurfaceLineHigh` under the pointer, exactly as every other hoverable hairline in the app moves.
+    Recorded as a deliberate addition in docs/app/design-system.md.
+
+    A HIT TARGET IS NOT A LINE. The handle is 6px wide so a pointer can find it; what it *draws* is
+    the 1px line at its centre. The two are separate elements — the transparent Root takes the hit
+    (a null Background does not hit-test at all, which is why it is spelled `Transparent` rather
+    than left unset), the `Line` inside it is the pixel the user sees. Painting a 6px line instead
+    would put a visible gutter between the board and a rail whose whole separation is a hairline.
+
+    THE LINE IS PAINTED FROM `Foreground`, NOT FROM `BorderBrush`, and that split is load-bearing:
+    contract 3's focus ring owns `BorderBrush`, so a hover ramp written on the same property would
+    be fighting the ring for it. The control's `Foreground` carries the hairline colour and the
+    template binding hands it to the inner Border; `BorderBrush` is left to the ring alone.
+
+    NOTHING HERE ANIMATES (contract 8): the hover move is a straight brush swap, and the motion
+    budget lists no resize and no handle transition.
+  -->
+
+  <ControlTheme x:Key="RailSplitter" TargetType="GridSplitter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Width" Value="6" />
+    <Setter Property="MinWidth" Value="6" />
+    <Setter Property="Cursor" Value="SizeWestEast" />
+    <Setter Property="ResizeDirection" Value="Columns" />
+    <Setter Property="Focusable" Value="True" />
+
+    <!-- Contract 3: our ring replaces Fluent's adorner rather than doubling up with it — and
+         contract 6: the halo is painted outside Root's own bounds, so nothing may clip it. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border x:Name="Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}"
+                ClipToBounds="False">
+          <Border x:Name="Line"
+                  Width="1"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Stretch"
+                  Background="{TemplateBinding Foreground}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- The pointer ramp. `:not(:focus-visible)` is not needed here — the hover setter moves
+         `Foreground` and the ring owns `BorderBrush`, so the two cannot collide (contract 5 is
+         satisfied by the properties being disjoint rather than by a qualifier). `:pressed` is
+         spelled separately because Avalonia raises `:pointerover` AND `:pressed` while the pointer
+         is down, and a seam being dragged should stay lit rather than fall back to rest. -->
+    <Style Selector="^:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed">
+      <Setter Property="Foreground" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- Contract 3, verbatim. The seam is a real tab stop: ← and → move it by
+         GridSplitter.KeyboardIncrement, so it has to say where it is. -->
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="^:focus-visible /template/ Border#Root">
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowFocusHalo}" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

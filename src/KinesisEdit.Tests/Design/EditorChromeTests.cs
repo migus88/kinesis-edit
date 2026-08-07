@@ -2,9 +2,12 @@ using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using KinesisEdit.Controls;
 using KinesisEdit.Core.Devices;
@@ -79,6 +82,140 @@ namespace KinesisEdit.Tests.Design
             Assert.True(
                 strip.Bounds.Width > ThemedHost.DefaultWidth / 2,
                 $"The tab strip only spanned {strip.Bounds.Width} of the window.");
+        }
+
+        /// <summary>
+        /// The Layout tab's content row, after issue #119: board, seam, rail — and the rail is a
+        /// <b>permanent</b> column. It used to collapse itself when nothing was selected, so its
+        /// Auto column measured zero and the board jumped sideways to re-centre the moment a cap was
+        /// clicked. Both states are measured here, on one editor, because the defect is the
+        /// difference between them and no single-state assertion can see it.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheKeyInspectorRail_HoldsItsColumnWhetherOrNotAKeyIsSelected(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            var rail = RailOf(view);
+            var board = BoardColumnOf(view);
+
+            Assert.False(editor.Inspector.HasSelection);
+            Assert.True(rail.IsEffectivelyVisible);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
+
+            var boardWidth = board.Bounds.Width;
+
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(editor.Inspector.HasSelection);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
+            Assert.Equal(boardWidth, board.Bounds.Width);
+        }
+
+        [AvaloniaFact]
+        public async Task TheRailsColumn_IsBoundedByTheGeometryTokens()
+        {
+            // The drag's own band. The column carries it, so the seam cannot be pulled outside it in
+            // the first place; the view model clamps the stored number to the same two, and
+            // ShapeAndTypeTokenTests pins the tokens to the values.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var column = RailColumnOf(view);
+
+            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMin", ThemeVariant.Dark), column.MinWidth);
+            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMax", ThemeVariant.Dark), column.MaxWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, column.Width.Value);
+            Assert.True(column.Width.IsAbsolute, "The rail's column is not a fixed width; the splitter has nothing to resize.");
+        }
+
+        [AvaloniaFact]
+        public async Task DraggingTheSeam_WidensTheRailAndStoresWhatTheUserChose()
+        {
+            // The whole mechanism end to end, through Avalonia's own input pipeline: a real press on
+            // the seam, a real move, a real release. Nothing here pokes the view model — that is the
+            // point, because the failure this catches is a splitter that resizes a column the rail
+            // does not live in, which every property-level assertion would miss.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var rail = RailOf(view);
+            var seam = Descendants<GridSplitter>(view).Single();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
+
+            const double pull = 60;
+
+            var grip = seam.TranslatePoint(new Point(seam.Bounds.Width / 2, seam.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The seam is not in the window's visual tree.");
+
+            host.Window.MouseMove(grip);
+            host.Window.MouseDown(grip, MouseButton.Left);
+            host.Window.MouseMove(grip - new Point(pull, 0), RawInputModifiers.LeftMouseButton);
+            host.Window.MouseUp(grip - new Point(pull, 0), MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // Left widens it: the rail is the right-hand column, so the seam moving left gives it
+            // room and the board's star column gives the room up.
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, editor.InspectorRailWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, editor.EffectiveInspectorRailWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, rail.Bounds.Width);
+        }
+
+        [AvaloniaFact]
+        public async Task AStoredWidth_ReachesTheRailsColumn()
+        {
+            // The other direction, and the half a drag cannot prove: a width that arrives from the
+            // preference store has to land on the column, or a remembered rail would open at 268
+            // every time.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            editor.InspectorRailWidth = 420;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(420, RailOf(view).Bounds.Width);
+
+            // ...and a width outside the band is pushed back at the column too, not merely inside
+            // the view model.
+            editor.InspectorRailWidth = 9999;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(HostPreferences.MaximumInspectorRailWidth, RailOf(view).Bounds.Width);
         }
 
         [AvaloniaTheory]
@@ -771,6 +908,35 @@ namespace KinesisEdit.Tests.Design
         private static ThemeVariant ToVariant(string name)
         {
             return name == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        }
+
+        /// <summary>The key inspector rail's own frame, wherever it is on screen.</summary>
+        private static Control RailOf(Control view)
+        {
+            return Descendants<KeyInspectorView>(view).Single();
+        }
+
+        /// <summary>The board's column of the Layout tab — the seam's left-hand neighbour.</summary>
+        private static Control BoardColumnOf(Control view)
+        {
+            var seam = Descendants<GridSplitter>(view).Single();
+            var grid = (Grid)seam.GetVisualParent()!;
+
+            return grid.Children.OfType<Control>().Single(child => Grid.GetColumn(child) == 0);
+        }
+
+        /// <summary>The rail's <see cref="ColumnDefinition"/> — where its width lives since #119.</summary>
+        private static ColumnDefinition RailColumnOf(Control view)
+        {
+            var seam = Descendants<GridSplitter>(view).Single();
+            var grid = (Grid)seam.GetVisualParent()!;
+
+            return grid.ColumnDefinitions[Grid.GetColumn(RailOf(view))];
+        }
+
+        private static IEnumerable<T> Descendants<T>(Control view) where T : Visual
+        {
+            return view.GetVisualDescendants().OfType<T>();
         }
     }
 }
