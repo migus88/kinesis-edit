@@ -96,14 +96,23 @@
                        VerticalAlignment="Center" />
 
             <!-- `drag ⠿ · ⌥↑↓` — the word, the grip drawn as geometry, and the keyboard spelling
-                 for this platform (⌥ on macOS, Alt+ elsewhere, exactly as the layer chips spell
-                 the same modifier). -->
+                 for this platform.
+
+                 BOTH marks are DRAWN, not typed: U+283F (the grip) and U+2325 (Option) are in
+                 neither embedded IBM Plex family, so either character would be tofu. The ⌥ follows
+                 the layer chips exactly (issue #109) — `IconOption` beside the text, hidden off
+                 macOS where the text itself reads `Alt+`. An Icon paints from Stroke and cannot
+                 inherit Foreground, which is what `Icon.kbdMark` is for. -->
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         Spacing="3"
                         VerticalAlignment="Center">
               <TextBlock Text="{x:Static vm:MacroInspectorStepsViewModel.ReorderHintPrefix}" Classes="meta muted" />
               <controls:Icon Classes="dragHandle" Data="{DynamicResource IconDragHandle}" VerticalAlignment="Center" />
+              <controls:Icon Classes="kbdMark"
+                             Data="{DynamicResource IconOption}"
+                             IsVisible="{Binding Steps.ShowsOptionMark}"
+                             VerticalAlignment="Center" />
               <TextBlock Text="{Binding Steps.ReorderShortcut}" Classes="meta muted" />
             </StackPanel>
 

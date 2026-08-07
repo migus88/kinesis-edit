@@ -39,8 +39,13 @@ namespace KinesisEdit.Tests.ViewModels
         public void ReorderShortcut_SpellsTheSameModifierOnBothPlatforms()
         {
             // ⌥ is Alt everywhere — only the spelling changes, exactly as the layer chips do it.
-            Assert.Equal("· ⌥↑↓", MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: true));
+            // The macOS spelling carries NO ⌥: U+2325 is in neither embedded family, so the mark
+            // is drawn beside this text (IconOption, gated by ShowsOptionMark) rather than typed —
+            // the same resolution issue #109 made for the layer chips.
+            Assert.Equal("· ↑↓", MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: true));
             Assert.Equal("· Alt+↑↓", MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: false));
+            Assert.DoesNotContain('⌥', MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: true));
+            Assert.DoesNotContain('⌥', MacroInspectorStepsViewModel.ReorderHandleHint);
         }
 
         [Fact]

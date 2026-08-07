@@ -47,11 +47,12 @@ namespace KinesisEdit.ViewModels
         public const string ReorderHintPrefix = "drag";
 
         /// <summary>
-        /// The keyboard half of it on macOS. <c>⌥</c> is the same Option glyph the layer chips
-        /// already print (<see cref="KeyboardLayerViewModel.MacShortcutPrefix"/>), and the two
-        /// arrows are U+2191/U+2193, both of which the embedded families carry.
+        /// The keyboard half of it on macOS, <b>without the Option glyph</b>: U+2325 is in neither
+        /// embedded IBM Plex family, so it is <em>drawn</em> as <c>IconOption</c> beside this text
+        /// rather than typed — exactly as the layer chips do it since issue #109. The two arrows
+        /// are U+2191/U+2193, which both families carry.
         /// </summary>
-        public const string MacReorderShortcut = "· ⌥↑↓";
+        public const string MacReorderShortcut = "· ↑↓";
 
         /// <summary>How the same gesture is spelled everywhere else — ⌥ is Alt on every platform.</summary>
         public const string PlainReorderShortcut = "· Alt+↑↓";
@@ -62,8 +63,15 @@ namespace KinesisEdit.ViewModels
         /// <summary>What the per-row <c>×</c> is for, as a tooltip. This app's wording.</summary>
         public const string RemoveStepHint = "Remove this step";
 
-        /// <summary>What the drag handle is for, as a tooltip. This app's wording.</summary>
-        public const string ReorderHandleHint = "Drag to reorder, or press ⌥↑ / ⌥↓";
+        /// <summary>
+        /// What the drag handle is for, as a tooltip. This app's wording. The modifier is spelled
+        /// in <b>words</b>, not as <c>⌥</c>: a tooltip is a bare string with nowhere to hang a
+        /// drawn mark, and U+2325 is in neither embedded family.
+        /// </summary>
+        public const string MacReorderHandleHint = "Drag to reorder, or press Option+↑ / Option+↓";
+
+        /// <summary>The same tooltip everywhere else.</summary>
+        public const string PlainReorderHandleHint = "Drag to reorder, or press Alt+↑ / Alt+↓";
 
         /// <summary>The delay editor's own heading. This app's wording.</summary>
         public const string DelaySectionTitle = "DELAY AFTER THIS STEP";
@@ -98,6 +106,14 @@ namespace KinesisEdit.ViewModels
         /// <summary>What the delay affordance on a row without one reads. This app's wording.</summary>
         public const string AddDelayCaption = "delay…";
 
+        /// <summary>
+        /// The drag handle's tooltip as this platform spells the modifier. Static because the
+        /// handle sits on a <see cref="MacroInspectorStepViewModel"/> row, which has no path back
+        /// to this object — the view reaches it with <c>x:Static</c>.
+        /// </summary>
+        public static string ReorderHandleHint { get; } =
+            KeyCaption.IsMacOs ? MacReorderHandleHint : PlainReorderHandleHint;
+
         /// <summary>The keyboard spelling of the reorder gesture for this platform.</summary>
         public static string BuildReorderShortcut(bool isMacOs)
         {
@@ -110,6 +126,12 @@ namespace KinesisEdit.ViewModels
         /// promises is kept by <c>Input/EditorShortcuts</c>, which maps ⌥ to <c>Alt</c> everywhere.
         /// </summary>
         public string ReorderShortcut { get; } = BuildReorderShortcut(KeyCaption.IsMacOs);
+
+        /// <summary>
+        /// Whether the drawn <c>⌥</c> shows beside <see cref="ReorderShortcut"/>. macOS only: every
+        /// other platform reads <c>Alt+</c> in the text itself and must not draw a second modifier.
+        /// </summary>
+        public bool ShowsOptionMark { get; } = KeyCaption.IsMacOs;
 
         /// <summary>The rows, in playback order.</summary>
         public IReadOnlyList<MacroInspectorStepViewModel> Items

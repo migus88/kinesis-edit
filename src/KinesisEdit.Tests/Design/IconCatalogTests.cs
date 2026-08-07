@@ -35,6 +35,7 @@ namespace KinesisEdit.Tests.Design
             "IconInformation",
             "IconInsert",
             "IconNotDetected",
+            "IconOption",
             "IconRefresh",
             "IconScanning",
             "IconWarning"

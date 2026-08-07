@@ -21,6 +21,24 @@
        transition in the first place; Avalonia 11's TabStrip and TabControl carry no PageTransition
        property either — Carousel is the only container that does, and the app uses none. -->
 
+  <!-- The `⌥` of the layer segments' `⌥1`–`⌥5` legends (mockup 1f). It is an `Icon` and not the
+       character, for the same reason the picker's `↵` below is one: U+2325 is in neither embedded
+       IBM Plex family, so typing it would fall through to a platform substitute and to tofu where
+       there is none.
+
+       The class is not optional. `KbdChip` sets `Foreground` — and a second one under `:disabled` —
+       but an `Icon` paints from `Stroke`/`Fill` and not from `TextElement.Foreground`, so neither
+       of them reaches the mark. `TextSecondary` is the chip's own rest foreground, re-spelled here
+       because that is the only way it arrives.
+
+       `Size` 12 rather than the icon law's 16: the chip's type is 10 px mono inside 6,3 of padding,
+       and a 16 px mark beside it would be the tallest thing in a 38 px tab bar. `Icon.assignHint`
+       set that precedent at the same number; both are recorded in docs/app/design-system.md. -->
+  <Style Selector="controls|Icon.kbdMark">
+    <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Size" Value="12" />
+  </Style>
+
   <!-- ===== The key inspector rail ============================================================
        The Layout tab's third column (mockups 1e/2a): 268 wide on the inset surface, hairlined off
        the canvas beside it. Every number here is a token — the width is `WidthInspectorRail`,

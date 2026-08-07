@@ -1,9 +1,12 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry.Visual;
+using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Tests.Design
 {
@@ -12,9 +15,37 @@ namespace KinesisEdit.Tests.Design
     /// <c>Themes/Typography.axaml</c>. Neither lives in a theme dictionary — a corner radius does
     /// not change when the OS flips — so the guard here is that they resolve in <b>both</b>
     /// variants anyway, which is what a view relying on them needs.
+    /// <para>
+    /// It also guards <b>what the embedded families can actually print</b>: every authored keycap
+    /// legend, and every display string the chrome authors as text — a constant in the app
+    /// assembly or a literal <c>Text=</c>/<c>Content=</c> in its markup.
+    /// </para>
     /// </summary>
-    public class ShapeAndTypeTokenTests
+    public partial class ShapeAndTypeTokenTests
     {
+        /// <summary>The app assembly's root namespace, which its folders mirror.</summary>
+        private const string AppNamespacePrefix = "KinesisEdit.";
+
+        /// <summary>
+        /// The three call sites that still print a chrome glyph as text on purpose
+        /// (docs/app/design-system.md § "Known gaps handed to later issues"). Each is scoped to the
+        /// one file it was deferred in: the same character anywhere else, or a new uncovered
+        /// character in these files, still fails the gate — and
+        /// <see cref="EveryDeferredChromeGlyph_IsStillNeededByItsView"/> fails when a site is fixed
+        /// and its entry left behind.
+        /// </summary>
+        private static readonly IReadOnlyList<GlyphDeferral> ChromeGlyphDeferrals =
+        [
+            // Issue #93 retired three of the four: the macro step's remove button left
+            // KeyboardEditorView for the rail and spells its `×` U+00D7, which both families
+            // carry, and MacroDelayOverlayView is gone entirely — its steppers were absorbed into
+            // the step row and caption `+`/`-`. One deferral is left.
+            new GlyphDeferral(
+                "Views/SavantElitePedalView.axaml",
+                0x25BE,
+                "▾ on the Special Actions button; the pedal view is rebuilt by a later redesign issue.")
+        ];
+
         [AvaloniaTheory]
         // Radii: panels and cards 8, controls 5, keycaps 4, kbd chips 3, pills round.
         [InlineData("RadiusPanel", 8)]
@@ -251,6 +282,240 @@ namespace KinesisEdit.Tests.Design
             Assert.True(IsCovered(new System.Text.Rune('1')), "U+0031 did not resolve — the probe reads nothing at all.");
         }
 
+        [AvaloniaFact]
+        public void EveryAuthoredChromeString_HasAGlyphInBothEmbeddedFamilies()
+        {
+            // The same gate as the keycap one above, over the other half of the app's text: the
+            // chrome. A legend is domain data; a chrome caption is ours, and we pick its characters
+            // — which is exactly why an uncovered one slips in unnoticed. `⌥` in the layer
+            // switcher's `⌥1` legend and `␣` in the pedal entry box both reached main this way,
+            // and no rendering assertion could see either: Avalonia substitutes silently and the
+            // control still measures, still lays out, still passes.
+            var constants = AuthoredConstants();
+            var attributes = AuthoredDisplayAttributes();
+            var missing = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var authored in constants.Concat(attributes))
+            {
+                CollectUncoveredChromeRunes(authored, missing);
+            }
+
+            // Anti-vacuity. A sweep that silently finds nothing — a reflection filter that matches
+            // no field, a regex that matches no attribute — passes this test while guarding
+            // nothing at all, which this repo has been bitten by before. So the walk has to prove
+            // it walked: a floor on each source (the app has ~400 constants and ~80 literal display
+            // attributes today), and one named string of each kind that carries a non-ASCII
+            // character, so the sweep cannot be quietly reduced to ASCII.
+            Assert.True(constants.Count >= 250, $"Only {constants.Count} constants were reflected; the sweep found next to nothing.");
+            Assert.True(attributes.Count >= 50, $"Only {attributes.Count} literal display attributes were read; the sweep found next to nothing.");
+
+            Assert.Contains(
+                constants,
+                authored => authored.Site == "ViewModels/WebToolCardViewModel.cs"
+                    && authored.Member == nameof(WebToolCardViewModel.OpenWebToolActionCaption)
+                    && authored.Text.Contains('↗'));
+
+            // Private, and deliberately so: display text is as often a private constant as a public
+            // one, and a sweep that read only the public surface would miss half the chrome.
+            Assert.Contains(
+                constants,
+                authored => authored.Site == "Input/CapturedKeystrokeView.cs"
+                    && authored.Member == "MissingToken"
+                    && authored.Text.Contains('—'));
+
+            // Anchored on the pedal view rather than the editor: issue #93 moved the editor's
+            // macro markup into three views of its own, taking its non-ASCII display attributes
+            // with it. `…` is covered by both families, so this proves the sweep reads a real
+            // non-ASCII attribute — which the allowlisted `▾` in the same file could not.
+            Assert.Contains(
+                attributes,
+                authored => authored.Site == "Views/SavantElitePedalView.axaml" && authored.Text.Contains('…'));
+
+            Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
+        }
+
+        [AvaloniaFact]
+        public void TheChromeGlyphWalk_ActuallyReportsAMissingGlyph()
+        {
+            // `TheGlyphCoverageGuard_ActuallySeesAMissingGlyph` proves the *probe*; this proves the
+            // *walk* — that a string carrying an uncovered rune is reported by the collector the
+            // sweep runs, and that the allowlist forgives one file rather than the whole app.
+            var reported = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/Planted.axaml", "Text", "moon ☾"), reported);
+
+            var line = Assert.Single(reported);
+            Assert.Contains("U+263E", line, StringComparison.Ordinal);
+            Assert.Contains("Views/Planted.axaml", line, StringComparison.Ordinal);
+
+            var covered = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/Planted.axaml", "Text", "Save — now"), covered);
+            Assert.Empty(covered);
+
+            // The deferred `▾` is forgiven in its own view and nowhere else.
+            var deferred = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/SavantElitePedalView.axaml", "Content", "▾"), deferred);
+            Assert.Empty(deferred);
+
+            var elsewhere = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/Elsewhere.axaml", "Content", "▾"), elsewhere);
+            Assert.Single(elsewhere);
+        }
+
+        [AvaloniaFact]
+        public void EveryDeferredChromeGlyph_IsStillNeededByItsView()
+        {
+            // An allowlist entry outlives the thing it excuses. Each of the three is a deferral,
+            // not a permission: when its view is rebuilt and the glyph becomes a drawn mark, this
+            // fails and the entry goes with it.
+            var attributes = AuthoredDisplayAttributes();
+
+            foreach (var deferral in ChromeGlyphDeferrals)
+            {
+                var rune = new System.Text.Rune(deferral.Codepoint);
+
+                Assert.False(
+                    IsCovered(rune),
+                    $"U+{deferral.Codepoint:X4} '{rune}' is covered by both families — {deferral.Site} needs no deferral.");
+
+                Assert.True(
+                    attributes.Any(authored => authored.Site == deferral.Site && authored.Text.Contains(rune.ToString(), StringComparison.Ordinal)),
+                    $"{deferral.Site} no longer prints U+{deferral.Codepoint:X4} '{rune}' — drop the deferral ({deferral.Reason}).");
+            }
+        }
+
+        /// <summary>
+        /// Every <c>const string</c> / <c>const char</c> in the app assembly, public or not, with
+        /// the file it was authored in. Constants only: the alternative — reading captions off
+        /// static properties — means constructing view models, which runs their real logic and
+        /// makes a font test depend on service wiring. Every non-ASCII caption in this app is
+        /// already a constant, and a caption that is not is out of this sweep's reach (recorded in
+        /// docs/app/design-system.md).
+        /// </summary>
+        private static IReadOnlyList<AuthoredText> AuthoredConstants()
+        {
+            var texts = new List<AuthoredText>();
+
+            foreach (var type in typeof(WebToolCardViewModel).Assembly.GetTypes())
+            {
+                const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+                foreach (var field in type.GetFields(flags))
+                {
+                    if (!field.IsLiteral || field.IsInitOnly)
+                    {
+                        continue;
+                    }
+
+                    var text = field.GetRawConstantValue() switch
+                    {
+                        string value => value,
+                        char value => value.ToString(),
+                        _ => null
+                    };
+
+                    if (text is null)
+                    {
+                        continue;
+                    }
+
+                    texts.Add(new AuthoredText(SourceFileOf(type), field.Name, text));
+                }
+            }
+
+            return texts;
+        }
+
+        /// <summary>
+        /// Every literal <c>Text=</c> / <c>Content=</c> in the app's markup, read from the sources
+        /// through <see cref="AuthoredXaml"/> — the app compiles its XAML away, so the markup
+        /// itself is the only place a caption authored there can be seen.
+        /// <para>
+        /// Comments are stripped first, and that is load-bearing: these files quote the very markup
+        /// they explain, so an explanation of a glyph reads exactly like the glyph. Bound values
+        /// are skipped — a <c>{Binding}</c> or <c>{DynamicResource}</c> is a lookup, not text.
+        /// </para>
+        /// </summary>
+        private static IReadOnlyList<AuthoredText> AuthoredDisplayAttributes()
+        {
+            var texts = new List<AuthoredText>();
+
+            foreach (var file in AuthoredXaml.Files())
+            {
+                foreach (Match match in DisplayAttributePattern().Matches(AuthoredXaml.WithoutComments(file.Value)))
+                {
+                    var text = match.Groups["text"].Value;
+
+                    if (text.StartsWith('{'))
+                    {
+                        continue;
+                    }
+
+                    texts.Add(new AuthoredText(file.Key, match.Groups["attribute"].Value, text));
+                }
+            }
+
+            return texts;
+        }
+
+        /// <summary>
+        /// A literal <c>Text="…"</c> or <c>Content="…"</c>. The lookbehind is what keeps
+        /// <c>PlaceholderText</c> and the like from being read as <c>Text</c> and mis-attributed.
+        /// </summary>
+        [GeneratedRegex(@"(?<![\w.:])(?<attribute>Text|Content)=""(?<text>[^""]*)""")]
+        private static partial Regex DisplayAttributePattern();
+
+        private static void CollectUncoveredChromeRunes(AuthoredText authored, ICollection<string> missing)
+        {
+            foreach (var rune in authored.Text.EnumerateRunes())
+            {
+                if (System.Text.Rune.IsWhiteSpace(rune) || IsCovered(rune) || IsDeferred(authored.Site, rune))
+                {
+                    continue;
+                }
+
+                missing.Add(
+                    $"{authored.Site} {authored.Member}: U+{rune.Value:X4} '{rune}' is in neither embedded IBM Plex family.");
+            }
+        }
+
+        /// <summary>Whether <paramref name="site"/> is allowed to print <paramref name="rune"/> as text.</summary>
+        private static bool IsDeferred(string site, System.Text.Rune rune)
+        {
+            return ChromeGlyphDeferrals.Any(
+                deferral => deferral.Codepoint == rune.Value
+                    && string.Equals(deferral.Site, site, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// The file <paramref name="type"/> was authored in. The app's folders mirror its
+        /// namespaces, so the path is derivable — and a path is what an allowlist entry and a
+        /// failure message can both be read against, whatever source the string came from.
+        /// </summary>
+        private static string SourceFileOf(Type type)
+        {
+            var declaring = type;
+
+            while (declaring.DeclaringType is not null)
+            {
+                declaring = declaring.DeclaringType;
+            }
+
+            var name = declaring.Name;
+            var generic = name.IndexOf('`');
+
+            if (generic >= 0)
+            {
+                name = name[..generic];
+            }
+
+            var space = declaring.Namespace ?? string.Empty;
+            var folder = space.StartsWith(AppNamespacePrefix, StringComparison.Ordinal)
+                ? space[AppNamespacePrefix.Length..].Replace('.', '/') + "/"
+                : string.Empty;
+
+            return folder + name + ".cs";
+        }
+
         private static void CollectUncoveredRunes(
             DeviceId deviceId,
             int keyIndex,
@@ -302,5 +567,17 @@ namespace KinesisEdit.Tests.Design
 
             return true;
         }
+
+        /// <summary>One authored display string, and where it was authored.</summary>
+        /// <param name="Site">The file it lives in — <c>ViewModels/X.cs</c> or <c>Views/X.axaml</c>.</param>
+        /// <param name="Member">The constant's name, or the attribute's.</param>
+        /// <param name="Text">The string itself.</param>
+        private sealed record AuthoredText(string Site, string Member, string Text);
+
+        /// <summary>A glyph one named file may still print as text, and why it still may.</summary>
+        /// <param name="Site">The one file the exemption applies to.</param>
+        /// <param name="Codepoint">The character it exempts.</param>
+        /// <param name="Reason">Why it is deferred rather than fixed.</param>
+        private sealed record GlyphDeferral(string Site, int Codepoint, string Reason);
     }
 }
