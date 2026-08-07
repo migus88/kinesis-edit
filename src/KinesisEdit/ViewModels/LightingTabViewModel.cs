@@ -490,6 +490,22 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
+            // RE-SELECTING THE LAYER ALREADY OPEN IS NOT A LAYER CHANGE, and the difference is the
+            // paint selection: SetLayer below clears it, which is right when the user moves from
+            // Top to Fn (the keys are a different layer's) and wrong every other time this runs.
+            //
+            // It runs a lot. The switcher is a ListBox, and a ListBox raises SelectionChanged while
+            // it is binding — so simply SHOWING the tab re-asserted the open layer and wiped the
+            // selection before the first frame. Picking keys, leaving for the Keys tab and coming
+            // back did it too, because the tab is hidden rather than unloaded and is re-shown.
+            // Both were silent: the caption read "Paint · no keys selected" over a board whose caps
+            // had just been cleared, and every view-model test passed because none of them went
+            // through the view. A captured frame is what showed it.
+            if (ReferenceEquals(layer, SelectedLayer))
+            {
+                return;
+            }
+
             foreach (var entry in Layers)
             {
                 entry.IsSelected = ReferenceEquals(entry, layer);

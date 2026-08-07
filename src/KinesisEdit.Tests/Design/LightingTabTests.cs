@@ -32,6 +32,48 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public async Task ShowingTheTab_DoesNotWipeThePaintSelection(string variantName)
+        {
+            // THE DEFECT THIS PINS, which every view-model test passed straight through: the layer
+            // switcher is a ListBox, a ListBox raises SelectionChanged while it BINDS, and the
+            // handler ran SelectLayerCommand — which resets the paint selection because moving
+            // layer must. So merely showing the tab cleared it, and so did leaving for the Keys tab
+            // and coming back, because the tab is hidden rather than unloaded and is re-shown.
+            //
+            // It has to be asserted through the view: nothing that talks to the view model alone
+            // ever raises the event that caused it. A captured frame is what showed it — the paint
+            // line read "no keys selected" over a board whose caps had just been cleared.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+            var board = lighting.Board!;
+
+            lighting.SelectKeyCommand.Execute(board.Keys[0]);
+            lighting.SelectKeyCommand.Execute(board.Keys[3]);
+
+            Assert.Equal(2, lighting.Selection.Count);
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            Assert.Equal(2, lighting.Selection.Count);
+            Assert.Contains(lighting.Selection.Caption, VisibleTexts(view));
+            Assert.Equal(2, board.Keys.Count(key => key.IsLightingSelected));
+
+            // And again on a re-show, which is what switching tabs away and back does.
+            view.IsVisible = false;
+            host.Capture();
+            view.IsVisible = true;
+            host.Capture();
+
+            Assert.Equal(2, lighting.Selection.Count);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public async Task TheBoardHeader_NamesTheModeAndSaysThePreviewIsLive(string variantName)
         {
             using var scenes = new ViewSceneFactory();

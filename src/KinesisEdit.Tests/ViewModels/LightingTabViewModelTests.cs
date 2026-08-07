@@ -413,6 +413,44 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
+        public void ReSelectingTheLayerAlreadyOpen_LeavesThePaintSelectionAlone()
+        {
+            // The switcher is a ListBox, and a ListBox raises SelectionChanged while it binds, so
+            // this command runs whenever the tab is SHOWN — not only when the user moves layer.
+            // Without the identity guard that wiped the selection before the first frame, and again
+            // every time the tab was left and returned to.
+            var boards = BuildBoards(new LightingModel());
+            var tab = CreateTab();
+
+            tab.Attach(new LightingModel(), boards);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(1, tab.Selection.Count);
+
+            tab.SelectLayerCommand.Execute(tab.SelectedLayer);
+
+            Assert.Equal(1, tab.Selection.Count);
+        }
+
+        [AvaloniaFact]
+        public void MovingToTheOtherLayer_ClearsThePaintSelection()
+        {
+            // The other half of the guard: a real layer change still resets, because the keys the
+            // selection names belong to the layer that is leaving.
+            var boards = BuildBoards(new LightingModel());
+            var tab = CreateTab();
+
+            tab.Attach(new LightingModel(), boards);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(1, tab.Selection.Count);
+
+            tab.SelectLayerCommand.Execute(tab.Layers[1]);
+
+            Assert.Equal(0, tab.Selection.Count);
+        }
+
+        [AvaloniaFact]
         public void SelectKeyCommand_TogglesAKeyInAndOutOfThePaintSelection()
         {
             var boards = BuildBoards(new LightingModel());
