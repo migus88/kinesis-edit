@@ -174,9 +174,27 @@
   </Style>
 
   <!-- The same card when it is genuinely modal — a spec 11 panel over the scrim. It sits higher,
-       so it casts the deeper shadow; everything else it inherits from `overlayCard`. -->
+       so it casts the deeper shadow; everything else it inherits from `overlayCard`. It carries no
+       width: every spec 11 panel sizes itself to its own content (480 for Search Keys, 520 for Tap
+       and Hold, ...), and a width here would silently override all of them. -->
   <Style Selector="Border.overlayCard.modalCard">
     <Setter Property="BoxShadow" Value="{DynamicResource ShadowModal}" />
+  </Style>
+
+  <!-- The message box's own two widths, and the only card in the app that has more than one.
+       330 is the ordinary box — a title, a sentence and a row of answers. `.wide` is 420, which
+       docs/design/handoff.md gives the leave-with-unsaved modal: its body is a paragraph carrying
+       mono counts, and its three answers are named by outcome rather than Yes/No/Cancel, so the
+       narrow card would wrap both. The view binds the class off the request (`IsWide`), so which
+       one a box takes is the caller's statement rather than the view's guess.
+
+       A literal rather than a token: these are the widths of one surface, not a measure anything
+       else in the app lines up with, and Themes/Geometry.axaml is for the latter. -->
+  <Style Selector="Border.messageBoxCard">
+    <Setter Property="Width" Value="330" />
+  </Style>
+  <Style Selector="Border.messageBoxCard.wide">
+    <Setter Property="Width" Value="420" />
   </Style>
 
   <!-- ===== Modal and scrim ===================================================================

@@ -15,15 +15,21 @@ namespace KinesisEdit.ViewModels
     /// is still Yes to every caller, which is what keeps their <c>switch</c> and their
     /// <see cref="MessageBoxRequest.SuppressedResult"/> honest.
     /// </para>
+    /// <para>
+    /// One answer may additionally be marked <b>destructive</b>, which is what puts the red
+    /// <c>discard</c> face on it. There is deliberately no such flag for Cancel: Cancel is the way
+    /// out of the dialog and can never be the answer that loses data, so a red Cancel would be a
+    /// contradiction rather than a state.
+    /// </para>
     /// </summary>
     public sealed class MessageBoxViewModel : ViewModelBase
     {
         /// <summary>
-        /// Caption of the suppression checkbox. Mockup 1k's wording, which supersedes spec
-        /// 11 §11.9's "Hide this notification?" — the flag it writes is unchanged
-        /// (specs/08-settings.md §3).
+        /// Caption of the suppression checkbox when the request names none of its own. Mockup 1k's
+        /// wording, which supersedes spec 11 §11.9's "Hide this notification?" — the flag it writes
+        /// is unchanged (specs/08-settings.md §3).
         /// </summary>
-        public const string SuppressionCaption = "Don't ask this again";
+        public const string DefaultSuppressionCaption = "Don't ask this again";
 
         /// <summary>Label of the Yes button when the request names no outcome of its own.</summary>
         public const string DefaultYesCaption = "Yes";
@@ -75,6 +81,30 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Label of the Cancel button — the request's own outcome name, or "Cancel".</summary>
         public string CancelCaption => Caption(Request.CancelCaption, DefaultCancelCaption);
+
+        /// <summary>
+        /// Caption of the suppression checkbox — the request's own wording, or
+        /// <see cref="DefaultSuppressionCaption"/>. A box whose opt-out promises something
+        /// ("Don't ask again — always save on leaving") has to say so; the flag it writes is the
+        /// same <c>*_msg</c> key either way.
+        /// </summary>
+        public string SuppressionCaption => Request.SuppressionCaption ?? DefaultSuppressionCaption;
+
+        /// <summary>
+        /// Whether the card takes the design's wide (420 px) width rather than the default 330 px
+        /// one — the leave-with-unsaved modal of docs/design/handoff.md §2, whose body is a
+        /// paragraph rather than a sentence and whose three answers are named by outcome.
+        /// </summary>
+        public bool IsWide => Request.IsWide;
+
+        /// <summary>Whether Yes is the answer that loses data, and so wears the red face.</summary>
+        public bool IsYesDestructive => Request.DestructiveResult == MessageBoxResult.Yes;
+
+        /// <summary>Whether No is the answer that loses data, and so wears the red face.</summary>
+        public bool IsNoDestructive => Request.DestructiveResult == MessageBoxResult.No;
+
+        /// <summary>Whether OK is the answer that loses data, and so wears the red face.</summary>
+        public bool IsOkDestructive => Request.DestructiveResult == MessageBoxResult.Ok;
 
         /// <summary>Whether the 'Don't ask this again' checkbox belongs on this dialog.</summary>
         public bool IsSuppressionAvailable => Request.HasSuppressionOption;

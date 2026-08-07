@@ -216,13 +216,16 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void HasLiveConsumer_Always_MarksOnlyThePreferencesSomethingActuallyReads()
         {
-            // Fifteen of the seventeen are forward-declared: the key exists so the feature that
-            // lands later does not invent a second one. Two are wired in this change.
+            // Fourteen of the seventeen are forward-declared: the key exists so the feature that
+            // lands later does not invent a second one. Three are wired — and the order is All's,
+            // which puts mockup 1j's first row (the unsaved-changes prompt) ahead of the rest.
             var live = AppPreferenceCatalog.All
                 .Where(descriptor => descriptor.HasLiveConsumer)
                 .Select(descriptor => descriptor.Key);
 
-            Assert.Equal([SettingsKeys.ResetLayerMessage, SettingsKeys.AdvisoryDetail], live);
+            Assert.Equal(
+                [SettingsKeys.UnsavedChangesMessage, SettingsKeys.ResetLayerMessage, SettingsKeys.AdvisoryDetail],
+                live);
         }
 
         [Fact]

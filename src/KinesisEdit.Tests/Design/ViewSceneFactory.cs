@@ -277,7 +277,6 @@ namespace KinesisEdit.Tests.Design
                 monitor,
                 new DeviceSessionManager(settings),
                 _notifications,
-                CreateEjectNotifier(),
                 editors,
                 new FakeSystemClock(),
                 new FakeUiDispatcher(),
@@ -467,6 +466,37 @@ namespace KinesisEdit.Tests.Design
                 NoCaption = "Key data only",
                 SuppressionKey = NotificationKeys.Save
             });
+        }
+
+        /// <summary>
+        /// The other shape the message box has to draw: mockup 1f's leave-with-unsaved modal —
+        /// the wide (420 px) card, an opt-out that promises something, and three answers of which
+        /// the middle one loses data and is therefore red.
+        /// <para>
+        /// Built through <see cref="UnsavedChangesPrompt"/> rather than assembled here, so the
+        /// frame this scene captures is the one the editors actually raise. A scene that restated
+        /// the request would keep rendering mockup 1f's copy long after the shipped wording moved —
+        /// and the wording did move: the mock's "You've edited 7 keys across 2 layers" needs a
+        /// since-load diff the model cannot produce, so the shipped body opens "You have unsaved
+        /// changes" instead (docs/app/keyboard-editor.md).
+        /// </para>
+        /// </summary>
+        public MessageBoxViewModel CreateUnsavedChangesMessageBox()
+        {
+            return new MessageBoxViewModel(
+                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave: true, canSuppress: true));
+        }
+
+        /// <summary>
+        /// The same modal when the session can hold edits but can never write them — a demo
+        /// session, or a file that could not be read. It is a different card, not the same one with
+        /// a button hidden: offering "Save" there would be a dead end, so the title and the body
+        /// change with the answers.
+        /// </summary>
+        public MessageBoxViewModel CreateCannotSaveMessageBox()
+        {
+            return new MessageBoxViewModel(
+                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave: false, canSuppress: false));
         }
 
         /// <summary>A corner toast, the app's ordinary notice — mockup 1k's success variant.</summary>

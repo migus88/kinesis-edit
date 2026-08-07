@@ -793,6 +793,389 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(editor.IsDirty);
         }
 
+        // ===== The unsaved-changes guard (issue #52) =========================================
+        //
+        // This editor had no ConfirmCloseAsync at all: Home ended the session and dropped every
+        // unsaved remap, macro and lighting edit without a word, and the amber Save was the only
+        // thing between the user and that. Everything below is the one question — shared verbatim
+        // with the pedal editor through UnsavedChangesPrompt — and the rule that hangs off it:
+        // only a save that actually landed may let the navigation through.
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WithNothingUnsaved_LeavesWithoutAsking()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.False(editor.IsDirty);
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Empty(_notifications.MessageBoxes);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_InDemoMode_LeavesWithoutAsking()
+        {
+            // Demo mode opens no session, so it can never be dirty and there is nothing to write
+            // (03 §3.5). A question whose Save could not run would be a dead end, and one asked
+            // about work that was never going anywhere would be a lie.
+            var editor = CreateEditor(TestDevices.CreateSnapshot(
+                DeviceId.FreestyleEdgeRgb,
+                VDriveConnectionStatus.CannotAccess));
+
+            await editor.LoadAsync();
+
+            RunMutation(editor, "resetKey");
+
+            Assert.False(editor.IsDirty);
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.DoesNotContain(
+                _notifications.MessageBoxes,
+                request => request.Title == UnsavedChangesPrompt.Title);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WithUnsavedWork_AsksTheDesignsQuestion()
+        {
+            // Mockup 1f, part for part: the wide card, three answers in Cancel/Discard/Save order,
+            // Discard drawn as the one that loses data, and the opt-out that promises the opposite.
+            var editor = await CreateDirtyEditorAsync();
+
+            Answer(MessageBoxResult.Cancel);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+
+            var request = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(UnsavedChangesPrompt.Title, request.Title);
+            Assert.Equal(UnsavedChangesPrompt.KeyboardMessage, request.Message);
+            Assert.Equal(MessageBoxIcon.Confirmation, request.Icon);
+            Assert.Equal(MessageBoxButtons.YesNoCancel, request.Buttons);
+            Assert.Equal(UnsavedChangesPrompt.SaveCaption, request.YesCaption);
+            Assert.Equal(UnsavedChangesPrompt.DiscardCaption, request.NoCaption);
+            Assert.Equal(UnsavedChangesPrompt.CancelCaption, request.CancelCaption);
+            Assert.Equal(MessageBoxResult.No, request.DestructiveResult);
+            Assert.True(request.IsWide);
+
+            Assert.Equal(NotificationKeys.UnsavedChanges, request.SuppressionKey);
+            Assert.Equal(UnsavedChangesPrompt.SuppressionCaption, request.SuppressionCaption);
+            Assert.Equal(MessageBoxResult.Yes, request.SuppressedResult);
+            // Narrowed: the promise is only recorded beside the answer that can keep it.
+            Assert.Equal(MessageBoxResult.Yes, request.SuppressionResult);
+
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheUserSaves_WritesTheProfileAndLeaves()
+        {
+            var editor = await CreateDirtyEditorAsync();
+
+            Answer(MessageBoxResult.Yes);
+
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(1, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.False(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheUserDiscards_LeavesWithoutWriting()
+        {
+            var editor = await CreateDirtyEditorAsync();
+
+            Answer(MessageBoxResult.No);
+
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheUserCancels_StaysInTheEditor()
+        {
+            var editor = await CreateDirtyEditorAsync();
+
+            Answer(MessageBoxResult.Cancel);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheQuestionIsEscaped_StaysInTheEditor()
+        {
+            // Escape is not consent to lose work. Neither is a box nobody answered.
+            var editor = await CreateDirtyEditorAsync();
+
+            Answer(MessageBoxResult.None);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheQuestionCannotBeShown_StaysInTheEditor()
+        {
+            // The failure mode this guard exists to prevent, in its purest form: a box that could
+            // not be put on screen must not be read as "Discard".
+            var editor = await CreateDirtyEditorAsync();
+
+            _notifications.MessageBoxExceptionToThrow = new InvalidOperationException("no window");
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.True(editor.IsDirty);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheSaveThrows_StaysInTheEditor()
+        {
+            // Failure path 1 of 3. Nothing reached the drive, so letting the navigation through
+            // would discard the very work the question was asked about.
+            var editor = await CreateDirtyEditorAsync();
+
+            _profiles.SessionToReturn!.SaveExceptionToThrow = new IOException("the v-Drive went away");
+
+            Answer(MessageBoxResult.Yes);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.True(editor.IsDirty);
+            Assert.Equal(2, _notifications.MessageBoxes.Count);
+            Assert.Equal(KeyboardEditorViewModel.SaveTitle, _notifications.MessageBoxes[1].Title);
+            Assert.Contains("the v-Drive went away", _notifications.MessageBoxes[1].Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenValidationStopsTheSave_StaysInTheEditor()
+        {
+            // Failure path 2 of 3: the write was refused outright (04 §5.3), and the violation
+            // dialog is the second box on screen.
+            var editor = await CreateDirtyEditorAsync();
+
+            _profiles.SessionToReturn!.ResultToReturn = new ProfileSaveResult
+            {
+                Success = false,
+                Violations =
+                [
+                    new ModelViolation
+                    {
+                        Kind = ModelViolationKind.MacroCountExceeded,
+                        Message = "The layout holds 120 macros; the device allows 100."
+                    }
+                ],
+                Ejected = false
+            };
+
+            Answer(MessageBoxResult.Yes);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.True(editor.IsDirty);
+            Assert.Equal(2, _notifications.MessageBoxes.Count);
+            Assert.Contains(
+                KeyboardEditorViewModel.SaveRejectedMessage,
+                _notifications.MessageBoxes[1].Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheProfileTurnsUnwritableWhileTheQuestionIsUp_StaysInTheEditor()
+        {
+            // Failure path 3 of 3, and the quiet one: the save's own guard refuses before it starts,
+            // reporting nothing at all. The box is modal but the drive is not frozen behind it, so
+            // this is reachable — and a silent no-op that let Home through would be the worst of
+            // the three.
+            var editor = await CreateDirtyEditorAsync();
+
+            _notifications.MessageBoxShowing = _ => _profiles.SessionToReturn!.CanSave = false;
+
+            Answer(MessageBoxResult.Yes);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn!.SaveCallCount);
+            Assert.True(editor.IsDirty);
+            Assert.Single(_notifications.MessageBoxes);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_ForAProfileThatCanNeverBeSaved_AsksToDiscardInstead()
+        {
+            // A read-only profile can hold edits it can never write, so the three answers degrade
+            // to two: offering Save there would be a question with no working answer, and there is
+            // nothing to "always save", so the opt-out goes with it.
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true,
+                CanSave = false
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(editor.IsDirty);
+
+            Answer(MessageBoxResult.No);
+
+            Assert.False(await editor.ConfirmCloseAsync());
+
+            var request = Assert.Single(_notifications.MessageBoxes);
+
+            // Its own title and its own body, because the board's says "Saving writes the layout
+            // files to the v-Drive" and there is no Save button here to make that true.
+            Assert.Equal(UnsavedChangesPrompt.CannotSaveTitle, request.Title);
+            Assert.Equal(UnsavedChangesPrompt.CannotSaveMessage, request.Message);
+            Assert.DoesNotContain("Saving writes", request.Message, StringComparison.Ordinal);
+            Assert.Equal(MessageBoxIcon.Warning, request.Icon);
+            Assert.Equal(MessageBoxButtons.YesNo, request.Buttons);
+            Assert.Equal(UnsavedChangesPrompt.DiscardCaption, request.YesCaption);
+            Assert.Equal(UnsavedChangesPrompt.CancelCaption, request.NoCaption);
+            Assert.Equal(MessageBoxResult.Yes, request.DestructiveResult);
+            Assert.True(request.IsWide);
+            Assert.Null(request.SuppressionKey);
+            Assert.False(request.HasSuppressionOption);
+
+            // Yes means Discard here, which is exactly why Interpret has to be told whether saving
+            // was on offer.
+            Answer(MessageBoxResult.Yes);
+
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(0, _profiles.SessionToReturn.SaveCallCount);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhileASaveIsInFlight_RefusesWithAToastInsteadOfAQuestion()
+        {
+            // Leaving mid-save would dispose this editor while ProfileSession.Save is still
+            // writing, and the question would be the wrong one anyway — the changes are being
+            // saved, not unsaveable. The refusal speaks, because a live button that does nothing
+            // is worse than one that says why.
+            var editor = await CreateDirtyEditorAsync();
+            var gate = new TaskCompletionSource();
+
+            _profiles.SessionToReturn!.DuringSave = () => gate.Task.Wait();
+
+            var save = editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.True(editor.IsBusy);
+            Assert.False(await editor.ConfirmCloseAsync());
+            Assert.Empty(_notifications.MessageBoxes);
+
+            var toast = Assert.Single(_notifications.Toasts);
+
+            Assert.Equal(UnsavedChangesPrompt.SaveInProgressTitle, toast.Title);
+            Assert.Equal(UnsavedChangesPrompt.SaveInProgressMessage, toast.Message);
+
+            gate.SetResult();
+
+            await save;
+
+            // The moment the write finishes there is nothing left to ask about, and leaving works.
+            Assert.False(editor.IsDirty);
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Empty(_notifications.MessageBoxes);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_WhenTheUserTicksAlwaysSave_TheAnswerReachesThePreferencesScreenAndBack()
+        {
+            // The end-to-end proof for this prompt's opt-out, through the real NotificationService
+            // and the real preferences store: tick the box, and the same store the preferences
+            // screen binds to reports the option off — after which leaving saves silently, because
+            // "always save on leaving" is what the checkbox promised. Untick it there and the
+            // question comes back.
+            var presenter = new FakeMessageBoxPresenter
+            {
+                OutcomeToReturn = new MessageBoxOutcome
+                {
+                    Result = MessageBoxResult.Yes,
+                    SuppressRequested = true
+                }
+            };
+
+            var store = CreateFilePreferencesStore();
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorWithPreferencesAsync(store, presenter);
+
+            Assert.True(AppPreferenceCatalog.UnsavedChangesWarning.GetValue(store.Current));
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(1, AskedCount(presenter));
+            Assert.Equal(1, _profiles.SessionToReturn.SaveCallCount);
+
+            // What the preferences screen shows: the option is now off, and it was written as the
+            // spec-08 hide flag rather than as the option itself.
+            Assert.False(AppPreferenceCatalog.UnsavedChangesWarning.GetValue(store.Current));
+            Assert.True(store.Current.IsUnsavedChangesWarningHidden);
+            Assert.Contains(
+                KeyValuePair.Create(SettingsKeys.UnsavedChangesMessage, "on"),
+                _files.SettingsUpdates);
+
+            // And leaving stops asking — but it saves, which is the difference between this opt-out
+            // and every "don't ask this again".
+            RunMutation(editor, "resetKey");
+
+            Assert.True(editor.IsDirty);
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(1, AskedCount(presenter));
+            Assert.Equal(2, _profiles.SessionToReturn.SaveCallCount);
+
+            // Re-enabled the way the preferences screen does it — through the descriptor, never by
+            // hand — and the question is back.
+            store.Update(settings => AppPreferenceCatalog.UnsavedChangesWarning.SetValue(settings, true));
+
+            RunMutation(editor, "resetKey");
+
+            Assert.True(editor.IsDirty);
+            Assert.True(await editor.ConfirmCloseAsync());
+            Assert.Equal(2, AskedCount(presenter));
+        }
+
+        [Theory]
+        [InlineData(MessageBoxResult.No)]
+        [InlineData(MessageBoxResult.Cancel)]
+        public async Task ConfirmCloseAsync_WhenTheBoxIsTickedBesideAnAnswerThatCannotKeepThePromise_RecordsNothing(
+            MessageBoxResult answer)
+        {
+            // The opt-out reads "always save on leaving", so ticking it and then pressing Discard
+            // or Cancel must arm nothing: that would turn one "throw this away" into every future
+            // one. The narrowing is NotificationService's policy; this is the call site proving it
+            // is asked for.
+            var presenter = new FakeMessageBoxPresenter
+            {
+                OutcomeToReturn = new MessageBoxOutcome
+                {
+                    Result = answer,
+                    SuppressRequested = true
+                }
+            };
+
+            var store = CreateFilePreferencesStore();
+
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorWithPreferencesAsync(store, presenter);
+
+            await editor.ConfirmCloseAsync();
+
+            Assert.True(AppPreferenceCatalog.UnsavedChangesWarning.GetValue(store.Current));
+            Assert.DoesNotContain(
+                KeyValuePair.Create(SettingsKeys.UnsavedChangesMessage, "on"),
+                _files.SettingsUpdates);
+
+            // Still dirty either way, so the very next attempt asks again rather than saving behind
+            // the user's back.
+            Assert.True(editor.IsDirty);
+
+            await editor.ConfirmCloseAsync();
+
+            Assert.Equal(2, AskedCount(presenter));
+        }
+
         [Fact]
         public async Task Layers_CarryTheirShortcutHint()
         {
@@ -1123,6 +1506,55 @@ namespace KinesisEdit.Tests.ViewModels
         private void ConfirmTheNextReset()
         {
             _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
+        }
+
+        /// <summary>Answers whatever box goes up next with <paramref name="result"/>.</summary>
+        private void Answer(MessageBoxResult result)
+        {
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = result };
+        }
+
+        /// <summary>
+        /// A loaded editor whose session reports itself dirty — the state every unsaved-changes
+        /// test starts from. The flag is staged on the fake rather than produced by an edit,
+        /// because what is under test is the guard, not the paths that set the flag (those have
+        /// their own theory above).
+        /// </summary>
+        private async Task<KeyboardEditorViewModel> CreateDirtyEditorAsync()
+        {
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                IsDirty = true
+            };
+
+            var editor = await CreateLoadedEditorAsync();
+
+            Assert.True(editor.IsDirty);
+
+            return editor;
+        }
+
+        /// <summary>
+        /// A preferences store over the fake drive's own <c>app_settings.txt</c>, so an opt-out can
+        /// be followed all the way to the line that is written.
+        /// </summary>
+        private VDriveAppPreferencesStore CreateFilePreferencesStore()
+        {
+            var location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb);
+
+            _files.SetFile(VDriveAppPreferencesStore.GetFilePath(location));
+
+            return new VDriveAppPreferencesStore(TestDevices.CreateSettingsService(_files), location);
+        }
+
+        /// <summary>
+        /// How often the unsaved-changes question actually reached the screen. Counted by title
+        /// rather than by list length, because an editor raises other boxes — the reset
+        /// confirmation, a save failure — through the same presenter.
+        /// </summary>
+        private static int AskedCount(FakeMessageBoxPresenter presenter)
+        {
+            return presenter.Requests.Count(request => request.Title == UnsavedChangesPrompt.Title);
         }
 
         public void Dispose()

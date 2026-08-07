@@ -12,6 +12,14 @@ namespace KinesisEdit.Services
     /// their meaning. Yes stays the primary affirmative and No the secondary one whatever they
     /// are called.
     /// </para>
+    /// <para>
+    /// Four more knobs dress the leave-with-unsaved modal of docs/design/handoff.md §2 without
+    /// giving it a view of its own: <see cref="IsWide"/> takes its 420 px card,
+    /// <see cref="DestructiveResult"/> paints the answer that loses data red,
+    /// <see cref="SuppressionCaption"/> renames the opt-out ("always save on leaving" is a
+    /// promise, not "don't ask"), and <see cref="SuppressionResult"/> ties that promise to the
+    /// one answer that can keep it.
+    /// </para>
     /// </summary>
     public sealed record MessageBoxRequest
     {
@@ -50,6 +58,25 @@ namespace KinesisEdit.Services
 
         /// <summary>Result reported when the dialog is suppressed and therefore never shown.</summary>
         public MessageBoxResult SuppressedResult { get; init; } = MessageBoxResult.Ok;
+
+        /// <summary>Per-request caption for the suppression checkbox; null keeps the default.</summary>
+        public string? SuppressionCaption { get; init; }
+
+        /// <summary>
+        /// Whether this box takes the design's wide (420 px) card instead of the default 330 px one.
+        /// </summary>
+        public bool IsWide { get; init; }
+
+        /// <summary>
+        /// The answer that loses data, if any — that button is drawn on the red <c>discard</c> theme.
+        /// </summary>
+        public MessageBoxResult? DestructiveResult { get; init; }
+
+        /// <summary>
+        /// Record a suppression answer only when the result is this one; null records it on any
+        /// answer.
+        /// </summary>
+        public MessageBoxResult? SuppressionResult { get; init; }
 
         /// <summary>Whether the "Don't ask this again" checkbox belongs on this dialog.</summary>
         public bool HasSuppressionOption => !string.IsNullOrWhiteSpace(SuppressionKey);

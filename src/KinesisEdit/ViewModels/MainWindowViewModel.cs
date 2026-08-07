@@ -39,6 +39,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>Message prefix of that box; the exception's message follows it.</summary>
         public const string OpenFailureMessagePrefix = "The device could not be opened: ";
 
+        /// <summary>Title of the box raised when the app could not ask whether it may close.</summary>
+        public const string CloseFailureTitle = "Close KinesisEdit";
+
+        /// <summary>Message prefix of that box; the exception's message follows it.</summary>
+        public const string CloseFailureMessagePrefix =
+            "The open editor could not be asked about unsaved changes, so the app stayed open: ";
+
         // Window title shapes: "KinesisEdit", "TKO — KinesisEdit", "TKO (Demo) — KinesisEdit"
         // (docs/design/mockups.md §2g and the editor screens).
         private const string WindowTitleSeparator = " — ";
@@ -179,9 +186,10 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Whether a navigation is in flight. Home awaits the eject, so without this both
-        /// directions stay clickable during it: Configure would open a second session under
-        /// Home's continuation.
+        /// Whether a navigation — or the window's close question — is in flight. Each of the three
+        /// may put a modal question on screen and none of them blocks the top bar, so without this
+        /// a Configure would open a second session underneath the answer to the first one, and a
+        /// second close attempt would stack a second prompt.
         /// </summary>
         public bool IsBusy
         {
@@ -210,9 +218,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Navigates to the dashboard: closes the editor and ejects the drive when not in demo
-        /// mode. It is a <em>navigation</em>, so it stays runnable while the dashboard is already
-        /// showing and simply does nothing — see <see cref="IsHomeSelected"/> for why the
+        /// Navigates to the dashboard: asks the open editor whether it may be closed, then closes
+        /// it. <b>It never ejects</b> — docs/design/mockups.md §1l: "Home just goes home … ejecting
+        /// is its own deliberate action on the dashboard card, so nothing is released behind the
+        /// user's back." It is a <em>navigation</em>, so it stays runnable while the dashboard is
+        /// already showing and simply does nothing — see <see cref="IsHomeSelected"/> for why the
         /// alternative, gating it on <see cref="IsEditorOpen"/>, cannot work.
         /// </summary>
         public IAsyncRelayCommand HomeCommand { get; }
@@ -236,7 +246,6 @@ namespace KinesisEdit.ViewModels
         private readonly DeviceMonitorService _monitor;
         private readonly DeviceSessionManager _sessions;
         private readonly INotificationService _notifications;
-        private readonly VDriveEjectNotifier _ejectNotifier;
         private readonly IEditorViewModelFactory _editors;
         private readonly ISystemClock _clock;
         private readonly IUiDispatcher _dispatcher;
@@ -257,13 +266,17 @@ namespace KinesisEdit.ViewModels
         /// <c>DispatcherTimer</c> would put Avalonia inside a view model
         /// (docs/app/app-shell.md, invariant 8). <paramref name="lastRefreshedTickInterval"/>
         /// overrides the 200 ms default; tests park it.
+        /// <para>
+        /// No eject notifier: since Home stopped ejecting (docs/design/mockups.md §1l) the shell
+        /// has nothing to eject, and the only eject left in the app is the dashboard card's, which
+        /// holds its own notifier.
+        /// </para>
         /// </summary>
         public MainWindowViewModel(
             DashboardViewModel dashboard,
             DeviceMonitorService monitor,
             DeviceSessionManager sessions,
             INotificationService notifications,
-            VDriveEjectNotifier ejectNotifier,
             IEditorViewModelFactory editors,
             ISystemClock clock,
             IUiDispatcher dispatcher,
@@ -273,7 +286,6 @@ namespace KinesisEdit.ViewModels
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
-            _ejectNotifier = ejectNotifier ?? throw new ArgumentNullException(nameof(ejectNotifier));
             _editors = editors ?? throw new ArgumentNullException(nameof(editors));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -403,6 +415,65 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Whether the app may close — the answer the window's <c>Closing</c> guard acts on. True
+        /// at once when no editor is open; otherwise the open editor is asked the same question
+        /// Home and Configure ask it (<see cref="DeviceEditorViewModel.ConfirmCloseAsync"/>), so
+        /// all three ways out of a session raise one prompt and none of them can drop unsaved work
+        /// silently (docs/design/mockups.md §1l, "Unsaved changes").
+        /// <para>
+        /// <b>Total, and its safe answer is "no".</b> It is awaited from the window's closing
+        /// handler, so a throw would escape onto the UI thread with nobody to catch it; and every
+        /// way this can fail — a confirmation that throws, a box that could not be presented,
+        /// another navigation already asking — ends with the window staying open. Losing work
+        /// because the *question* failed is the exact outcome this guard exists to prevent.
+        /// </para>
+        /// <para>
+        /// It takes part in <see cref="IsBusy"/> for the same reason both navigations do: a
+        /// Configure must not start underneath the close prompt, and a second close attempt while
+        /// the prompt is up must not stack a second prompt behind it.
+        /// </para>
+        /// <para>
+        /// It only answers. Tearing the editor down stays with <see cref="Dispose"/>, which the
+        /// composition root runs from <c>desktop.Exit</c> — so a close that is approved and then
+        /// abandoned by the platform leaves the session exactly as it was.
+        /// </para>
+        /// </summary>
+        public async Task<bool> ConfirmShutdownAsync()
+        {
+            if (!IsEditorOpen)
+            {
+                return true;
+            }
+
+            // Something is already asking — a navigation, or an earlier close attempt whose prompt
+            // is still up. Refusing rather than queueing keeps it to one question: the user answers
+            // the box on screen and closes again if that is still what they want.
+            if (IsBusy)
+            {
+                return false;
+            }
+
+            IsBusy = true;
+
+            try
+            {
+                return await ConfirmEditorCloseAsync().ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                await ReportFailureAsync(
+                    CloseFailureTitle,
+                    CloseFailureMessagePrefix + exception.Message).ConfigureAwait(true);
+
+                return false;
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
         private DeviceEditorViewModel CreateEditor(DeviceSnapshot device)
         {
             return _editors.Create(device);
@@ -412,7 +483,7 @@ namespace KinesisEdit.ViewModels
         /// Whether the navigation may go ahead: there is a device, and the open editor agreed to be
         /// closed. A confirmation that throws is reported and answered with "no", which leaves the
         /// open editor on screen with everything it was holding — the alternative, treating it as a
-        /// failed open, would discard its unsaved changes without asking and skip the eject.
+        /// failed open, would discard its unsaved changes without asking.
         /// </summary>
         private async Task<bool> ConfirmOpenAsync(DeviceSnapshot device)
         {
@@ -467,19 +538,26 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>Tells the user why the device did not open (see <see cref="ReportFailureAsync"/>).</summary>
+        private Task ReportOpenFailureAsync(Exception exception)
+        {
+            return ReportFailureAsync(OpenFailureTitle, OpenFailureMessagePrefix + exception.Message);
+        }
+
         /// <summary>
-        /// Tells the user why the device did not open. Swallows a box that cannot be shown — the
-        /// window may already be gone, and a failure to report a failure must not escape a method
-        /// whose whole point is that it never throws.
+        /// Tells the user that something the shell was doing failed. Swallows a box that cannot be
+        /// shown — the window may already be gone, which is precisely the case while the app is
+        /// closing, and a failure to report a failure must not escape a method whose whole point is
+        /// that it never throws.
         /// </summary>
-        private async Task ReportOpenFailureAsync(Exception exception)
+        private async Task ReportFailureAsync(string title, string message)
         {
             try
             {
                 await _notifications.ShowMessageBoxAsync(new MessageBoxRequest
                 {
-                    Title = OpenFailureTitle,
-                    Message = OpenFailureMessagePrefix + exception.Message,
+                    Title = title,
+                    Message = message,
                     Icon = MessageBoxIcon.Error
                 }).ConfigureAwait(true);
             }
@@ -489,11 +567,18 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>
+        /// Returns to the dashboard. <b>Nothing is ejected here</b>: docs/design/mockups.md §1l
+        /// says "Home just goes home — it never ejects. Ejecting is its own deliberate action on
+        /// the dashboard card, so nothing is released behind the user's back", and a drive released
+        /// as a side effect of a navigation is exactly what that forbids. The dashboard card's
+        /// <c>Eject</c> button is the only eject in the app.
+        /// </summary>
         private async Task GoHomeAsync()
         {
-            // Home is already where we are: nothing to confirm, nothing to close, nothing to eject.
-            // The command stays runnable there so the pill can wear its selected face, so this is
-            // the one place that has to say the navigation is a no-op.
+            // Home is already where we are: nothing to confirm and nothing to close. The command
+            // stays runnable there so the pill can wear its selected face, so this is the one place
+            // that has to say the navigation is a no-op.
             if (!IsEditorOpen || IsBusy)
             {
                 return;
@@ -508,20 +593,12 @@ namespace KinesisEdit.ViewModels
                     return;
                 }
 
-                var session = _sessions.Active;
-
                 _sessions.End();
 
                 CloseEditor();
 
                 CurrentView = Dashboard;
                 IsDemoMode = false;
-
-                // Demo mode never touches the drive, so there is nothing to eject (03 §3.5).
-                if (session is not null && !session.IsDemoMode && session.Device.Location is not null)
-                {
-                    await _ejectNotifier.EjectAsync(session.Device.Location.RootPath).ConfigureAwait(true);
-                }
             }
             finally
             {
@@ -702,6 +779,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Unsubscribes from the dashboard and the detection loop, stops the readout ticker, and
         /// closes any open editor. Safe to call multiple times.
+        /// <para>
+        /// It still closes the editor even though <see cref="ConfirmShutdownAsync"/> now runs
+        /// first, and deliberately <em>asks nothing</em>: <see cref="IDisposable"/> cannot await,
+        /// and this must stay correct for anything that tears the shell down without going through
+        /// the window's closing guard. The guard is what makes the question happen while there is
+        /// still a window to ask it in; this is the teardown that follows.
+        /// </para>
         /// </summary>
         public void Dispose()
         {
