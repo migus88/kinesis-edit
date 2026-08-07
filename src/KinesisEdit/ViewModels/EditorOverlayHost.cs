@@ -4,9 +4,16 @@ using KinesisEdit.Core.Input;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// Holds whichever of the editor's inline feature panels (spec 11) is open: the swap itself,
-    /// the nesting §11.1's Search buttons need, and the keystroke capture a panel needs — started
-    /// for a sink that is waiting for a keypress, suspended for a text-entry panel.
+    /// Holds whichever of the editor's inline feature panels is open — Macro Timing Delays
+    /// (§11.3), the macro-insertion token picker (§11.6) and Export (§11.5) — the swap itself, and
+    /// the keystroke capture a panel needs: started for a sink that is waiting for a keypress,
+    /// suspended for a text-entry panel.
+    /// <para>
+    /// <b>There is no nesting any more.</b> It existed for exactly one caller — §11.1's two Search
+    /// buttons, which opened a picker over the Tap and Hold dialog — and that dialog is now a panel
+    /// of the key inspector rail, which hosts its own picker inline. A host that could still nest
+    /// would be tested dead code.
+    /// </para>
     /// <para>
     /// It is a collaborator of <see cref="KeyboardEditorViewModel"/> rather than part of it
     /// because none of this is about a keyboard — the editor decides <em>which</em> panel opens
@@ -39,11 +46,8 @@ namespace KinesisEdit.ViewModels
 
         private readonly IKeystrokeCaptureService _capture;
         private readonly EventHandler _closedHandler;
-        private readonly EventHandler _nestedClosedHandler;
         private readonly PropertyChangedEventHandler _sinkPropertyChangedHandler;
         private EditorOverlayViewModel? _active;
-        private EditorOverlayViewModel? _nested;
-        private EditorOverlayViewModel? _suspended;
         private IKeystrokeSink? _sink;
         private bool _isCaptureStarted;
         private bool _isCaptureSuspended;
@@ -54,50 +58,18 @@ namespace KinesisEdit.ViewModels
         {
             _capture = capture ?? throw new ArgumentNullException(nameof(capture));
             _closedHandler = (_, _) => Clear();
-            _nestedClosedHandler = (_, _) => RestoreSuspended();
             _sinkPropertyChangedHandler = (_, e) => OnSinkPropertyChanged(e);
         }
 
-        /// <summary>
-        /// Opens <paramref name="overlay"/>, replacing whatever was open. Any nesting in progress
-        /// ends here: the panel opened this way becomes the entire overlay state, so a picker that
-        /// is still up can no longer put its parent back afterwards.
-        /// </summary>
+        /// <summary>Opens <paramref name="overlay"/>, replacing whatever was open.</summary>
         public void Show(EditorOverlayViewModel overlay)
         {
             ArgumentNullException.ThrowIfNull(overlay);
 
-            DetachNested();
             ShowCore(overlay);
         }
 
-        /// <summary>
-        /// Opens <paramref name="child"/> over <paramref name="parent"/> and brings the parent
-        /// back when the child closes, accepted or cancelled alike. Only §11.1's Search buttons
-        /// need it: the picker they raise is a step inside the Tap and Hold panel, not a
-        /// replacement for it.
-        /// </summary>
-        public void ShowNested(EditorOverlayViewModel child, EditorOverlayViewModel parent)
-        {
-            ArgumentNullException.ThrowIfNull(child);
-            ArgumentNullException.ThrowIfNull(parent);
-
-            DetachNested();
-            ShowCore(child);
-
-            if (!ReferenceEquals(Active, child))
-            {
-                // Refused (closed host, or an already-closed panel): nothing is up to nest under.
-                return;
-            }
-
-            _nested = child;
-            _suspended = parent;
-
-            child.Closed += _nestedClosedHandler;
-        }
-
-        /// <summary>Cancels the open panel and drops it; a nested picker falls back to its parent.</summary>
+        /// <summary>Cancels the open panel and drops it.</summary>
         public void Dismiss()
         {
             var overlay = Active;
@@ -109,10 +81,8 @@ namespace KinesisEdit.ViewModels
 
             overlay.Cancel();
 
-            // Cancel raises Closed, which clears the property — and, for a nested picker, puts
-            // its parent back in the same breath. Only a panel that did neither (one that had
-            // already closed itself) still needs clearing by hand, and the reference check is
-            // what keeps this from tearing down the restored parent.
+            // Cancel raises Closed, which clears the property. Only a panel that did not (one that
+            // had already closed itself) still needs clearing by hand.
             if (ReferenceEquals(Active, overlay))
             {
                 Clear();
@@ -120,14 +90,13 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Shuts the host down for good: no nesting is restored, the open panel is cancelled so
-        /// its own teardown runs, and capture is left un-suspended. Safe to call multiple times.
+        /// Shuts the host down for good: the open panel is cancelled so its own teardown runs, and
+        /// capture is left un-suspended. Safe to call multiple times.
         /// </summary>
         public void Close()
         {
             _isClosed = true;
 
-            DetachNested();
             Dismiss();
         }
 
@@ -245,31 +214,6 @@ namespace KinesisEdit.ViewModels
             _isCaptureStarted = false;
 
             _capture.Stop();
-        }
-
-        private void RestoreSuspended()
-        {
-            var parent = _suspended;
-
-            DetachNested();
-
-            if (_isClosed || parent is null || parent.IsClosed)
-            {
-                return;
-            }
-
-            ShowCore(parent);
-        }
-
-        private void DetachNested()
-        {
-            if (_nested is not null)
-            {
-                _nested.Closed -= _nestedClosedHandler;
-                _nested = null;
-            }
-
-            _suspended = null;
         }
     }
 }

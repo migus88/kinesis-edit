@@ -353,17 +353,27 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Whether the next physical keystroke already belongs to somebody: a key waiting for its
-        /// new assignment, a macro being recorded, or an armed Tap and Hold field. These are
-        /// exactly the three consumers of "one keystroke, one target" (invariant 5), and while any
-        /// of them is live the editor's keyboard grammar is <b>off entirely</b> — a user assigning
-        /// ⌘S to a key must get <c>s</c>-with-Meta recorded, not a save.
+        /// new assignment, a macro being recorded, an armed field of a modal panel, or an armed
+        /// record button in the key inspector rail. These are the consumers of "one keystroke, one
+        /// target" (invariant 5), and while any of them is live the editor's keyboard grammar is
+        /// <b>off entirely</b> — a user assigning ⌘S to a key must get <c>s</c>-with-Meta recorded,
+        /// not a save.
+        /// <para>
+        /// <b>The rail's flag is not optional here.</b> The rail is not modal, so gate 2 of the
+        /// view's key handler (an open overlay owns the keyboard) never fires for it — without this
+        /// term ⌘S would start serializing the model while a hold action was being recorded.
+        /// </para>
         /// <para>
         /// It is read on demand by <see cref="Views.KeyboardEditorView"/>'s key handler and is
-        /// deliberately not observable: nothing binds it, and its three sources already raise their
-        /// own notifications.
+        /// deliberately not observable: nothing binds it, and its sources already raise their own
+        /// notifications.
         /// </para>
         /// </summary>
-        public bool IsCaptureActive => IsListening || IsOverlayAwaitingKeystroke || _macroPanel?.IsRecording == true;
+        public bool IsCaptureActive =>
+            IsListening
+            || IsOverlayAwaitingKeystroke
+            || _macroPanel?.IsRecording == true
+            || Inspector.IsRecording;
 
         /// <summary>The device's layers, in model order.</summary>
         public IReadOnlyList<KeyboardLayerViewModel> Layers
@@ -453,12 +463,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
         public IAsyncRelayCommand SaveCommand { get; }
 
-        /// <summary>
-        /// Opens the Assign Tap and Hold Action panel for the selected key (11 §11.1), after the
-        /// firmware gate and the four pre-dialog checks; a refusal from either is shown instead.
-        /// </summary>
-        public IAsyncRelayCommand TapAndHoldCommand { get; }
-
         /// <summary>Opens the Macro Timing Delays panel and inserts its delay into the macro (11 §11.3).</summary>
         public IAsyncRelayCommand InsertDelayCommand { get; }
 
@@ -467,15 +471,13 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// ⌘F, the grammar's "focus the token search from anywhere in the editor"
-        /// (docs/design/mockups.md <c>2b</c>): it opens the Search Keys panel of §11.6 and the view
-        /// puts the caret in its field.
+        /// (docs/design/mockups.md <c>2b</c>).
         /// <para>
-        /// Where a macro is open on the Macros tab it <b>is</b> the insertion picker
-        /// (<see cref="InsertSpecialActionCommand"/>) — finding a token there means inserting it.
-        /// Everywhere else it is the plain §11.6 picker, whose Ok simply closes: this app assigns a
-        /// key only from a captured physical keypress, so a picked token has nowhere to go until
-        /// <a href="https://github.com/migus88/kinesis-edit/issues/92">#92</a> repoints ⌘F at the
-        /// inspector's own token picker.
+        /// It has somewhere to write now. On the Layout tab it puts the caret in the <b>key
+        /// inspector's</b> own search field, where ↵ assigns the picked action to the selected
+        /// position — which is what the accelerator was always meant to do, and could not before the
+        /// rail existed. With a macro open on the Macros tab it <b>is</b> the insertion picker
+        /// (<see cref="InsertSpecialActionCommand"/>): finding a token there means inserting it.
         /// </para>
         /// </summary>
         public IRelayCommand OpenSearchCommand { get; }
@@ -503,16 +505,12 @@ namespace KinesisEdit.ViewModels
         private readonly EditorOverlayHost _overlays;
         private readonly KeyboardVisual? _visual;
         private readonly Action<CapturedKeystroke> _keystrokeCapturedHandler;
-        private readonly Action<SearchKeysOverlayViewModel> _searchRequestedHandler;
         private readonly EventHandler _activeOverlayChangedHandler;
-        private readonly EventHandler _tapAndHoldClosedHandler;
         private readonly EventHandler _macroRecordingChangedHandler;
         private readonly EventHandler _macrosChangedHandler;
         private readonly EventHandler _lightingChangedHandler;
         private readonly PropertyChangedEventHandler _macroPanelPropertyChangedHandler;
         private IProfileSession? _session;
-        private TapAndHoldOverlayViewModel? _tapAndHoldOverlay;
-        private KeyboardKeyViewModel? _tapAndHoldKey;
         private IReadOnlyList<KeyboardLayerViewModel> _layers = [];
         private IReadOnlyList<string> _invalidLineMessages = [];
         private KeyboardLayerViewModel? _selectedLayer;
@@ -532,9 +530,13 @@ namespace KinesisEdit.ViewModels
         private bool _isDisposed;
 
         /// <summary>
-        /// Set by <see cref="OnKeystrokeCaptured"/> whenever a keystroke went to the open panel's
-        /// sink, and read-and-cleared by the view on the very key event that produced it — see
-        /// <see cref="TryTakeOverlayKeystroke"/>.
+        /// Set by <see cref="OnKeystrokeCaptured"/> whenever a keystroke went to <b>any</b> sink —
+        /// the open modal's, or an armed key-inspector panel's — and read-and-cleared by the view on
+        /// the very key event that produced it. See <see cref="TryTakeOverlayKeystroke"/>.
+        /// <para>
+        /// It is latched by the <em>router</em> rather than announced by the panel, so there is one
+        /// answer to "did a sink take this one" no matter which sink took it.
+        /// </para>
         /// </summary>
         private bool _hasOverlayTakenKeystroke;
 
@@ -615,7 +617,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
-            TapAndHoldCommand = new AsyncRelayCommand(OpenTapAndHoldAsync, () => CanOpenTapAndHold());
             InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
             InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
             OpenSearchCommand = new RelayCommand(OpenSearch, () => CanOpenSearch());
@@ -628,11 +629,14 @@ namespace KinesisEdit.ViewModels
             // first SelectTab/SelectLayer, both of which refresh it.
             BoardLegend = new BoardLegendViewModel(CopyKeyCommand, ResetLayerCommand);
 
+            // The key inspector rail and its two mode panels (KeyboardEditorViewModel.Inspector.cs).
+            // Built here for the same reason: RefreshLegend pushes state into it, and the first
+            // SelectLayer below already runs that.
+            Inspector = CreateInspector();
+
             SelectTab(EditorTab.Keys);
 
             _activeOverlayChangedHandler = (_, _) => OnActiveOverlayChanged();
-            _tapAndHoldClosedHandler = (_, _) => OnTapAndHoldClosed();
-            _searchRequestedHandler = OnSearchRequested;
             _macroRecordingChangedHandler = (_, _) => OnMacroRecordingChanged();
             _macrosChangedHandler = (_, _) => RefreshCounters();
             _macroPanelPropertyChangedHandler = (_, e) => OnMacroPanelPropertyChanged(e);
@@ -765,10 +769,10 @@ namespace KinesisEdit.ViewModels
         /// the feature's own business; the hosting itself — the swap, the capture suspension a
         /// text-entry panel needs, and the teardown on
         /// <see cref="EditorOverlayViewModel.Closed"/> — is <see cref="EditorOverlayHost"/>'s.
-        /// A listening key <b>and any macro recording</b> are ended first: an inline panel is
-        /// modal, and either of those would otherwise keep eating the keystrokes the panel is
-        /// there for — spec 10 routes a captured key to the Tap and Hold dialog "if that dialog is
-        /// open", not "if a field is armed".
+        /// A listening key, any macro recording <b>and any armed rail panel</b> are ended first: an
+        /// inline panel is modal, and any of those would otherwise keep eating the keystrokes the
+        /// panel is there for — spec 10 routes a captured key to a modal "if that dialog is open",
+        /// not "if a field is armed".
         /// </summary>
         public void ShowOverlay(EditorOverlayViewModel overlay)
         {
@@ -779,10 +783,6 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            // Reaching the host directly ends whatever the editor's own feature commands had
-            // going: the panel opened here becomes the entire overlay state, so a half-finished
-            // Tap and Hold can never write back into an editor that has moved on.
-            DetachTapAndHold();
             CancelRemap();
 
             // The scrim swallows every click aimed at the board, so an armed copy could never be
@@ -791,8 +791,11 @@ namespace KinesisEdit.ViewModels
 
             // A recording underneath owns the capture service and would swallow every key aimed at
             // the panel, Escape included; stopping it hands the service back before the panel asks
-            // the host for it.
+            // the host for it. The rail is under the same scrim, so its armed record button stands
+            // down for the same reason — the rail itself stays open behind the panel.
             _macroPanel?.StopRecording();
+
+            DeactivateInspector();
 
             _overlays.Show(overlay);
         }
@@ -1043,6 +1046,11 @@ namespace KinesisEdit.ViewModels
             // the board could never finish it, so it ends here too.
             CancelCopyKey();
 
+            // The rail is drawn on the Layout tab only, so a record button armed in it must not go
+            // on capturing behind a section that does not show it. The rail is stood down, not
+            // closed: coming back to the Layout tab must find it as it was left.
+            DeactivateInspector();
+
             if (tab != EditorTab.Macros)
             {
                 _macroPanel?.StopRecording();
@@ -1101,6 +1109,7 @@ namespace KinesisEdit.ViewModels
             CancelRemap();
             CancelCopyKey();
             _macroPanel?.StopRecording();
+            DeactivateInspector();
             ClearSelectedKey();
 
             foreach (var entry in Layers)
@@ -1139,6 +1148,16 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void SelectKey(KeyboardKeyViewModel? key)
         {
+            // Clicking a cap is a request for the inspector, whichever branch the click then takes —
+            // including a second click on the cap that is already selected, which must reopen a rail
+            // the user pressed Escape on rather than only starting a remap. It is why the rail needs
+            // Open() at all: Refresh alone cannot tell "the user asked again" from "somebody else's
+            // edit went through the funnel".
+            if (key is not null)
+            {
+                Inspector.Open();
+            }
+
             if (IsCopyArmed)
             {
                 if (key is not null)
@@ -1158,6 +1177,11 @@ namespace KinesisEdit.ViewModels
                 CancelRemap();
                 ClearSelectedKey();
                 UpdateMacroTrigger();
+
+                // Nothing is selected, so the rail has nothing to be about: it collapses and its
+                // Auto column measures zero. A selection change writes nothing, so it never reaches
+                // RefreshCounters — hence the explicit push here and in SelectKeyDirectly.
+                RefreshInspector();
 
                 return;
             }
@@ -1198,6 +1222,8 @@ namespace KinesisEdit.ViewModels
             SelectedKey = key;
 
             UpdateMacroTrigger();
+
+            RefreshInspector();
         }
 
         private void ClearSelectedKey()
@@ -1280,14 +1306,23 @@ namespace KinesisEdit.ViewModels
         /// then a listening key. The editor owns the single subscription, so the order lives in one
         /// place.
         /// <para>
-        /// The sink takes precedence on being <em>open</em>, not on being armed: a panel with no
-        /// field armed swallows the keystroke and discards it, which is what keeps anything under
-        /// a modal panel from quietly consuming keys aimed at it.
+        /// A <b>modal</b> sink takes precedence on being <em>open</em>, not on being armed: a panel
+        /// with no field armed swallows the keystroke and discards it, which is what keeps anything
+        /// under a scrim from quietly consuming keys aimed at the panel. The <b>rail</b> is the
+        /// opposite, and deliberately so — see <see cref="TryRouteToInspector"/>.
         /// </para>
         /// </summary>
         private void OnKeystrokeCaptured(CapturedKeystroke keystroke)
         {
             if (keystroke is null)
+            {
+                return;
+            }
+
+            // Ahead of everything, because an armed record button in the rail is the most specific
+            // claim on the next keystroke there is. It is also the only branch here that tests
+            // WantsKeystrokes rather than mere existence.
+            if (TryRouteToInspector(keystroke))
             {
                 return;
             }
@@ -1353,72 +1388,6 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// A Search button of the open Tap and Hold panel (§11.1). The picker arrives fully
-        /// configured — its title is the field's, and the picked action is written back into the
-        /// panel by the panel itself — so the editor only has to show it over its parent.
-        /// </summary>
-        private void OnSearchRequested(SearchKeysOverlayViewModel search)
-        {
-            if (search is null || _tapAndHoldOverlay is not { } parent)
-            {
-                return;
-            }
-
-            _overlays.ShowNested(search, parent);
-        }
-
-        private void ShowTapAndHold(TapAndHoldOverlayViewModel overlay, KeyboardKeyViewModel key)
-        {
-            ShowOverlay(overlay);
-
-            if (!ReferenceEquals(ActiveOverlay, overlay))
-            {
-                // Refused (disposed, or already closed): nothing is up, so nothing may be hooked.
-                return;
-            }
-
-            _tapAndHoldOverlay = overlay;
-            _tapAndHoldKey = key;
-
-            overlay.SearchRequested += _searchRequestedHandler;
-            overlay.Closed += _tapAndHoldClosedHandler;
-        }
-
-        /// <summary>
-        /// The panel is gone: drop its hooks first — so a late event can never reach an editor
-        /// that has moved on — and only then apply what an accepted assignment changed. Core
-        /// announces nothing (invariant 3), so the cap has to be re-read by hand.
-        /// </summary>
-        private void OnTapAndHoldClosed()
-        {
-            var wasAccepted = _tapAndHoldOverlay?.WasAccepted == true;
-            var key = _tapAndHoldKey;
-
-            DetachTapAndHold();
-
-            if (!wasAccepted || key is null)
-            {
-                return;
-            }
-
-            key.RefreshFromModel();
-
-            RefreshCounters();
-        }
-
-        private void DetachTapAndHold()
-        {
-            if (_tapAndHoldOverlay is not null)
-            {
-                _tapAndHoldOverlay.SearchRequested -= _searchRequestedHandler;
-                _tapAndHoldOverlay.Closed -= _tapAndHoldClosedHandler;
-                _tapAndHoldOverlay = null;
-            }
-
-            _tapAndHoldKey = null;
-        }
-
-        /// <summary>
         /// Shows a one-shot panel whose single result is a keystroke to append to the macro under
         /// edit — the Macro Timing Delays and Search Keys panels of §11.3/§11.6. Both hooks come
         /// off again the moment the panel closes, however it closed, so a dismissed panel can
@@ -1454,67 +1423,6 @@ namespace KinesisEdit.ViewModels
             overlay.Closed += closed;
         }
 
-        /// <summary>
-        /// §11.1's order: the firmware gate first, then the four pre-dialog checks, then the
-        /// panel. Both gates report themselves and simply refuse, so nothing here decides what a
-        /// refusal says. The state is re-checked after the gate's dialog, which is awaited and
-        /// during which the user may have selected another key.
-        /// </summary>
-        private async Task OpenTapAndHoldAsync()
-        {
-            if (!CanOpenTapAndHold())
-            {
-                return;
-            }
-
-            var key = SelectedKey!;
-
-            var isAvailable = await TapAndHoldOverlayViewModel
-                .EnsureFirmwareAvailableAsync(Device.DeviceId, Device.Firmware, _notifications, _urlLauncher)
-                .ConfigureAwait(true);
-
-            if (!isAvailable || !CanOpenTapAndHold() || !ReferenceEquals(SelectedKey, key))
-            {
-                return;
-            }
-
-            var result = TapAndHoldOverlayViewModel.TryCreate(Layout!, SelectedLayer!.Layer, key.Key);
-
-            if (!result.IsAllowed)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = TapAndHoldOverlayViewModel.OverlayTitle,
-                    Message = result.RefusalMessage!,
-                    Icon = MessageBoxIcon.Warning
-                }).ConfigureAwait(true);
-
-                return;
-            }
-
-            ShowTapAndHold(result.Overlay!, key);
-        }
-
-        /// <summary>
-        /// §11.1's own precondition, ahead of the firmware gate and the four pre-dialog checks:
-        /// the device has to <em>have</em> the feature. Without this guard a board that does not
-        /// (<see cref="Core.Devices.TapAndHoldCapability.IsSupported"/> false — it also states no
-        /// delay range, so the panel would open at 0 ms) could be given an assignment that
-        /// <see cref="KeyboardLayout.Validate"/> then reports as
-        /// <see cref="ModelViolationKind.TapAndHoldNotSupported"/>, blocking the whole save.
-        /// </summary>
-        private bool CanOpenTapAndHold()
-        {
-            return Layout is { } layout
-                   && layout.Device.TapAndHold.IsSupported
-                   && SelectedLayer is not null
-                   && SelectedKey is not null
-                   && SelectedKey.CanEdit
-                   && !IsLoading
-                   && !IsBusy
-                   && ActiveOverlay is null;
-        }
-
         private async Task InsertDelayAsync()
         {
             if (!CanInsertIntoMacro())
@@ -1539,6 +1447,12 @@ namespace KinesisEdit.ViewModels
                 handler => overlay.Accepted -= handler);
         }
 
+        /// <summary>
+        /// §11.6's <c>Search Keys (Macro)</c>: the same picker the key inspector hosts, wrapped in a
+        /// modal because an insertion is a question with one answer that has to come back here. The
+        /// session's <c>Recent</c> history is shared, so an action inserted into a macro is offered
+        /// by the rail's own chip afterwards.
+        /// </summary>
         private void InsertSpecialAction()
         {
             if (!CanInsertIntoMacro())
@@ -1546,7 +1460,10 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            var overlay = new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.MacroTitle, Layout!.Dialect);
+            var overlay = new TokenPickerOverlayViewModel(
+                TokenPickerOverlayViewModel.MacroTitle,
+                Layout!.Dialect,
+                _recentTokens);
 
             ShowMacroInsertOverlay(
                 overlay,
@@ -1556,14 +1473,26 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// ⌘F. With a macro open on the Macros tab this <em>is</em> the insertion picker, so the
-        /// token the user searches for is inserted where they were working; everywhere else it is
-        /// the plain §11.6 picker. A Search Keys panel that is already up is left alone — the view
-        /// re-focuses its field, which is all "focus the token search" can mean when it is open.
+        /// token the user searches for is inserted where they were working. Everywhere else it puts
+        /// the caret in the <b>key inspector's</b> search field — the rail is not modal, so nothing
+        /// is opened over anything: the picker is already on screen beside the board, and ↵ on a row
+        /// assigns it to the selected position.
+        /// <para>
+        /// A modal panel that is already up keeps the keyboard: ⌘F never replaces one feature panel
+        /// with another, and it never reaches past a scrim into the rail underneath it.
+        /// </para>
         /// </summary>
         private void OpenSearch()
         {
-            if (!CanOpenSearch() || ActiveOverlay is SearchKeysOverlayViewModel)
+            if (!CanOpenSearch())
             {
+                return;
+            }
+
+            if (ActiveOverlay is TokenPickerOverlayViewModel picker)
+            {
+                picker.FocusSearch();
+
                 return;
             }
 
@@ -1576,11 +1505,14 @@ namespace KinesisEdit.ViewModels
 
             if (ActiveOverlay is not null)
             {
-                // Another panel owns the surface; ⌘F never replaces one feature panel with another.
                 return;
             }
 
-            ShowOverlay(new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.DefaultTitle, Layout!.Dialect));
+            // The rail's own Remap panel. It refuses politely on a locked position and while nothing
+            // is selected — the panel decides, not this class.
+            Inspector.Open();
+
+            _remapPanel.FocusSearch();
         }
 
         private bool CanOpenSearch()
@@ -1641,6 +1573,7 @@ namespace KinesisEdit.ViewModels
             CancelRemap();
             CancelCopyKey();
             _macroPanel?.StopRecording();
+            DeactivateInspector();
 
             var outcome = await _importer.ImportAsync(session, Device.DeviceId).ConfigureAwait(true);
 
@@ -2002,6 +1935,7 @@ namespace KinesisEdit.ViewModels
             CancelRemap();
             CancelCopyKey();
             _macroPanel?.StopRecording();
+            DeactivateInspector();
 
             ProfileSaveResult? result = null;
             Exception? error = null;
@@ -2121,7 +2055,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand.NotifyCanExecuteChanged();
             CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
-            TapAndHoldCommand.NotifyCanExecuteChanged();
             InsertDelayCommand.NotifyCanExecuteChanged();
             InsertSpecialActionCommand.NotifyCanExecuteChanged();
             OpenSearchCommand.NotifyCanExecuteChanged();
@@ -2138,8 +2071,8 @@ namespace KinesisEdit.ViewModels
         /// <see cref="EditorOverlayHost.Close"/> <em>cancels</em> the open panel rather than
         /// merely dropping it: the one-shot hooks of <see cref="ShowMacroInsertOverlay"/> come off
         /// on the panel's own <see cref="EditorOverlayViewModel.Closed"/>, so cancelling is what
-        /// runs them. The Tap and Hold hooks are dropped first, which is why a half-finished
-        /// assignment cannot write back into a disposed editor on the way out.
+        /// runs them. The rail's hooks are dropped first, which is why a half-finished assignment
+        /// cannot write back into a disposed editor on the way out.
         /// </para>
         /// </summary>
         public void Dispose()
@@ -2159,7 +2092,7 @@ namespace KinesisEdit.ViewModels
             // the strip has to come off it here or a closed editor keeps being re-read.
             AdvisoryStrip.Dispose();
 
-            DetachTapAndHold();
+            DetachInspector();
 
             _overlays.Close();
             _overlays.ActiveChanged -= _activeOverlayChangedHandler;

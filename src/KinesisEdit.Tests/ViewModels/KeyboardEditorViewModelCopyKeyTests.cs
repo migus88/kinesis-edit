@@ -9,13 +9,13 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The legend row's <c>Copy key…</c> (mockups 1e/2a), built to the editor's existing
-    /// click-then-press grammar with the press replaced by a second click: arm from the selected
-    /// key, then the next cap clicked is the target.
+    /// <c>Copy key…</c> (mockups 1e/2a), built to the editor's existing click-then-press grammar
+    /// with the press replaced by a second click: arm from the selected key, then the next cap
+    /// clicked is the target.
     /// <para>
-    /// It is deliberately not the inspector's <c>Copy to…</c> of
-    /// <a href="https://github.com/migus88/kinesis-edit/issues/92">#92</a>, which the handoff puts
-    /// in the inspector footer.
+    /// <b>One action, three entry points.</b> The legend row's <c>Copy key…</c>, the key
+    /// inspector footer's <c>Copy to…</c> and the locked-key panel's all run this same command
+    /// (issue #92) — an earlier note calling the footer's a different action is superseded.
     /// </para>
     /// </summary>
     public sealed class KeyboardEditorViewModelCopyKeyTests : IDisposable
@@ -70,20 +70,63 @@ namespace KinesisEdit.Tests.ViewModels
             await editor.LoadAsync();
         }
 
+        /// <summary>
+        /// The predicate deliberately does <b>not</b> consult the open overlay any more: the key
+        /// inspector footer runs this very command, and the rail is not modal, so nothing about it
+        /// may be phrased in terms of <c>HasActiveOverlay</c> (issue #92). Nothing is lost — the
+        /// panel disarms the pick on the way in, and the scrim is what stops a target being
+        /// clicked.
+        /// </summary>
         [AvaloniaFact]
-        public async Task CopyKeyCommand_WhileAPanelIsOpen_CannotRun()
+        public async Task CopyKeyCommand_WhenAPanelOpens_IsDisarmedRatherThanDisabled()
         {
-            // The scrim swallows every click aimed at the board, so the pick could never be
-            // finished — the same reason a remap may not be started under a panel.
             var editor = await CreateLoadedEditorAsync();
 
             editor.SelectKeyCommand.Execute(KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex));
+            editor.CopyKeyCommand.Execute(null);
+
+            Assert.True(editor.IsCopyArmed);
+
+            editor.ShowOverlay(new ExportOverlayViewModel(null, _folderPicker, _files, _notifications));
+
+            Assert.False(editor.IsCopyArmed);
+            Assert.True(editor.CopyKeyCommand.CanExecute(null));
+        }
+
+        /// <summary>
+        /// Acceptance criterion 5 of issue #92: a locked position (05 §5.3) is a legal copy
+        /// <b>source</b>. It was refused outright before, which is what made the locked-key panel's
+        /// <c>Copy from…</c>/<c>Copy to…</c> asymmetry cosmetic rather than real.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task CopyKeyCommand_WithALockedPositionSelected_StillArms()
+        {
+            var editor = await CreateLoadedEditorAsync(TestLayouts.CreateLockedKeyLayout());
+            var locked = editor.SelectedLayer!.Keys[1];
+            var target = editor.SelectedLayer.Keys[2];
+
+            Assert.False(locked.CanEdit);
+
+            // The target carries a remap, so the copy has something visible to overwrite: a locked
+            // position can never be remapped, so what it copies across is "nothing assigned".
+            Remap(editor, target, TestLayouts.Gen1Key("F5"));
+
+            Assert.True(target.Key.IsModified);
+
+            editor.SelectKeyCommand.Execute(locked);
 
             Assert.True(editor.CopyKeyCommand.CanExecute(null));
 
-            editor.ShowOverlay(new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.DefaultTitle, editor.Layout!.Dialect));
+            editor.CopyKeyCommand.Execute(null);
 
-            Assert.False(editor.CopyKeyCommand.CanExecute(null));
+            Assert.True(editor.IsCopyArmed);
+            Assert.Same(locked, editor.CopySource);
+
+            // ...and the copy really runs: reading a locked position is exactly what is allowed.
+            editor.SelectKeyCommand.Execute(target);
+
+            Assert.False(editor.IsCopyArmed);
+            Assert.False(target.Key.IsModified);
         }
 
         [AvaloniaFact]
@@ -364,7 +407,7 @@ namespace KinesisEdit.Tests.ViewModels
             editor.SelectKeyCommand.Execute(KeyAt(editor, TestLayouts.RgbDigitOneKeyIndex));
             editor.CopyKeyCommand.Execute(null);
 
-            editor.ShowOverlay(new SearchKeysOverlayViewModel(SearchKeysOverlayViewModel.DefaultTitle, editor.Layout!.Dialect));
+            editor.ShowOverlay(new ExportOverlayViewModel(null, _folderPicker, _files, _notifications));
 
             Assert.False(editor.IsCopyArmed);
         }

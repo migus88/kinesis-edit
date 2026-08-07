@@ -85,6 +85,18 @@ namespace KinesisEdit.Core.Model
         /// <summary>Number of tap-and-hold assignments across every layer (§5.6; 11 §11.1).</summary>
         public int TapAndHoldCount => CountKeys(static key => key.IsTapAndHold);
 
+        /// <summary>
+        /// The dialect <paramref name="deviceId"/>'s files are written in, <b>without building a
+        /// layout to ask</b>. It is the very rule <see cref="Dialect"/> is set from (05 §3 legend),
+        /// exposed because it is a fact about the <em>device</em> and not about any profile: the
+        /// token picker needs a catalog before a profile has been read, and re-deriving the mapping
+        /// at the call site would be a second place for it to disagree with this one.
+        /// </summary>
+        public static TokenDialect DialectFor(DeviceId deviceId)
+        {
+            return KeyboardLayoutBuilder.ResolveDialect(deviceId);
+        }
+
         private readonly List<Macro> _macros = [];
 
         /// <summary>

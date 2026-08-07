@@ -1,0 +1,165 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="244" d:DesignHeight="420"
+             x:Class="KinesisEdit.Views.TokenPickerView"
+             x:DataType="vm:TokenPickerViewModel">
+  <!--
+    The token picker (mockups 1e/2a): a query, a live counter, the filter chips and the grouped
+    result rows. It is the whole of §11.6's searchable list, drawn once and hosted twice — inline in
+    the key inspector's Remap panel, and inside the macro-insertion modal.
+
+    IT CARRIES NO RECORD BUTTON. Mockup 1e draws `● Record` beside the search field; here it sits
+    beside the current-assignment field one row up, in Views/RemapPanelView.axaml. Two reasons, both
+    stated there: Record arms keystroke capture, which this control knows nothing about and must not
+    learn in order to stay reusable in a modal that has no capture at all; and the rail is 268 px
+    wide, where a field, a counter and a button on one line leaves the field too narrow to show what
+    was typed into it. The pairing is the same one the Tap and Hold panel uses — the field, and the
+    button that fills it.
+
+    THE MONO LAW, ROW BY ROW. `[esc]` is mono because layoutN.txt contains exactly that; the action's
+    name, the scope, the group headers and the counter are the app talking about the file and are
+    sans. That is also why the query box is `searchField` and not `monoValue`: it holds what the user
+    is looking for, never a value the file carries.
+
+    TWO MARKS ARE DRAWN RATHER THAN TYPED. The `↵` of the assign hint here, and the `●` of the Record
+    button next door. Neither U+21B5 nor U+25CF is in either embedded IBM Plex family (checked
+    against the glyph typefaces), so both would fall through to a platform substitute and tofu where
+    there is none — the same finding that turned mockup 1e's `⌕` into the Path the SearchField theme
+    draws.
+  -->
+  <StackPanel Spacing="8">
+
+    <!-- ===== The query and the counter =======================================================
+         A Grid rather than a horizontal StackPanel: a StackPanel measures its children with
+         infinite width, so the field would never shrink to the rail and the counter would be
+         pushed off the edge. -->
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <!-- A real TextBox, and the one place in this panel where that is right: capture stands down
+           while focus sits in one, so the query is typed rather than swallowed as a keystroke. The
+           theme draws the leading `⌕` itself, as a Path. -->
+      <TextBox Grid.Column="0"
+               Classes="searchField"
+               Text="{Binding Query, Mode=TwoWay}"
+               Watermark="{x:Static vm:TokenPickerViewModel.SearchLabel}" />
+
+      <!-- Matches over the whole catalog of this dialect. Both numbers are derived — the
+           denominator is KeySearchCatalog.Build(dialect).Count — and neither is mono: a count is
+           the app counting, not a value any file contains. -->
+      <TextBlock Grid.Column="1"
+                 Text="{Binding CounterText}"
+                 Classes="meta muted"
+                 VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- ===== The chips =======================================================================
+         `All · Letters · Nav · Media · Mouse · Hotkeys · Recent`, on the FilterChip control theme
+         that #86 wrote and left without a call site. A WrapPanel, because seven chips never fit one
+         268 px line; below TokenPickerViewModel.NarrowWidth the picker hides `Mouse` and `Hotkeys`,
+         which is mockup 2a's reduced row — a responsive rule, not a second chip set. -->
+    <ItemsControl ItemsSource="{Binding Categories}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <WrapPanel />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:TokenPickerCategoryViewModel">
+          <Button Classes="filterChip"
+                  Classes.selected="{Binding IsSelected}"
+                  IsVisible="{Binding IsShown}"
+                  Margin="0,0,4,4"
+                  Content="{Binding Caption}"
+                  CommandParameter="{Binding}"
+                  Command="{Binding $parent[views:TokenPickerView].((vm:TokenPickerViewModel)DataContext).SelectCategoryCommand}" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- A query that matches nothing says so, rather than leaving an empty box that reads as a
+         broken list. Muted prose, never an error: nothing failed. -->
+    <TextBlock Text="{x:Static vm:TokenPickerViewModel.NoMatchesMessage}"
+               Classes="body muted"
+               TextWrapping="Wrap"
+               IsVisible="{Binding !HasMatches}" />
+
+    <!-- ===== The results =====================================================================
+         Counted headers with their rows beneath them. The header is outside the row containers on
+         purpose: a header drawn inside one would take the selection fill along with the row.
+
+         The rows are ListBoxItems on the SelectableListRow container theme, laid out by an
+         ItemsControl rather than selected by a ListBox — the list is grouped, and one ListBox per
+         group would be one independent selection per group. `IsSelected` is bound instead, which is
+         what raises the theme's own `:selected` face, and the picker keeps exactly one row carrying
+         it. -->
+    <ScrollViewer Classes="tokenPickerResults" HorizontalScrollBarVisibility="Disabled">
+      <ItemsControl ItemsSource="{Binding Groups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="vm:TokenPickerGroupViewModel">
+            <Border Classes="tokenPickerGroup">
+              <StackPanel Spacing="2">
+                <!-- `Navigation · 3`. Sans, deliberately: `sectionLabel` is the app's usual caption
+                     role and it is mono, which the mono law reserves for file values. -->
+                <TextBlock Text="{Binding Header}"
+                           Classes="pill muted"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="0,0,0,2" />
+
+                <ItemsControl ItemsSource="{Binding Rows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:TokenPickerRowViewModel">
+                      <ListBoxItem Theme="{StaticResource SelectableListRow}"
+                                   IsSelected="{Binding IsSelected}"
+                                   Tapped="OnRowTapped"
+                                   DoubleTapped="OnRowDoubleTapped">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                          <!-- The token as the file spells it. -->
+                          <TextBlock Grid.Column="0"
+                                     Text="{Binding Token}"
+                                     Classes="monoValue"
+                                     VerticalAlignment="Center" />
+
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}"
+                                       Classes="meta"
+                                       TextTrimming="CharacterEllipsis" />
+                            <!-- Where the row lives on the board, or — for a duplicate registration
+                                 — the row it duplicates, named by that row rather than by its
+                                 token: a real alias spells the SAME token as its canonical, so
+                                 "alias of [numlk]" would appear on the [numlk] row itself. -->
+                            <TextBlock Text="{Binding Detail}"
+                                       Classes="meta muted"
+                                       IsVisible="{Binding HasDetail}"
+                                       TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+
+                          <!-- `↵ assign`, on the row ↵ would take. -->
+                          <StackPanel Grid.Column="2"
+                                      Orientation="Horizontal"
+                                      Spacing="4"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{Binding IsSelected}">
+                            <controls:Icon Classes="assignHint"
+                                           Data="M 13,3 L 13,9 L 4,9 M 7,6 L 4,9 L 7,12"
+                                           VerticalAlignment="Center" />
+                            <TextBlock Text="{x:Static vm:TokenPickerRowViewModel.AssignHint}"
+                                       Classes="meta muted"
+                                       VerticalAlignment="Center" />
+                          </StackPanel>
+                        </Grid>
+                      </ListBoxItem>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </StackPanel>
+</UserControl>

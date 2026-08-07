@@ -39,9 +39,35 @@
     <Setter Property="Theme" Value="{StaticResource EjectButton}" />
   </Style>
 
-  <!-- The red-tinted Discard in the leave-with-unsaved modal. The only red button in the app. -->
+  <!-- The red-tinted Discard in the leave-with-unsaved modal. -->
   <Style Selector="Button.discard">
     <Setter Property="Theme" Value="{StaticResource DiscardButton}" />
+  </Style>
+
+  <!-- The key inspector's `● Record`: the button that arms capture so the next physical keypress
+       becomes the assignment (the Remap panel's, and the Tap and Hold panel's two).
+
+       It shares `DiscardButton`'s theme rather than adding a 28th, because it is the same red-tinted
+       role and docs/design/handoff.md:82 says so outright — that hue is "also the Record ● color".
+       Discard and Record are the app's two red buttons, and red means the same thing in both: this
+       one is not the safe path. The `●` itself is drawn as an Ellipse at the call site (neither
+       embedded IBM Plex family carries U+25CF), on the `recordDot` role in Styles/Editor.axaml.
+
+       Only the theme is set here. A Setter in a Style outranks a ControlTheme setter, so a second
+       property would be one the theme no longer decides. -->
+  <Style Selector="Button.recordAction">
+    <Setter Property="Theme" Value="{StaticResource DiscardButton}" />
+  </Style>
+
+  <!-- The token picker's `All · Letters · Nav · Media · Mouse · Hotkeys · Recent` row (mockups 1e
+       and 2a). `FilterChip` was written with the rest of the control-theme layer in #86 and left
+       with no bridge and no call site, as substrate for exactly this; this is the bridge, and the
+       key inspector's Remap panel is the call site.
+
+       `Classes.selected` drives the chosen chip's face, which is the theme's own — one chip of the
+       row is live at a time and the picker keeps the flags in step. -->
+  <Style Selector="Button.filterChip">
+    <Setter Property="Theme" Value="{StaticResource FilterChip}" />
   </Style>
 
   <!-- Chromeless until the pointer arrives: the small actions that must not compete with the
@@ -116,9 +142,10 @@
     <Setter Property="Theme" Value="{StaticResource SettingSwitch}" />
   </Style>
 
-  <!-- The one query box in the app (the Search Keys picker). Sans, not mono: it holds what the user
-       is looking for, never a value the config file carries — which is exactly the line
-       `TextBox.monoValue` in Styles/Text.axaml sits on the other side of. -->
+  <!-- The app's query box: the token picker's, in the key inspector rail and in the macro-insertion
+       modal alike. Sans, not mono: it holds what the user is looking for, never a value the config
+       file carries — which is exactly the line `TextBox.monoValue` in Styles/Text.axaml sits on the
+       other side of. -->
   <Style Selector="TextBox.searchField">
     <Setter Property="Theme" Value="{StaticResource SearchField}" />
   </Style>

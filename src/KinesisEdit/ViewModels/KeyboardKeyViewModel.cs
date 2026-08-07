@@ -19,6 +19,64 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed class KeyboardKeyViewModel : ViewModelBase
     {
+        /// <summary>
+        /// How the key inspector names the first panel of a split board (mockups <c>1e</c>/<c>2a</c>:
+        /// "Left half · [d] position"). It is the <b>drawn</b> panel, not a hand of the user's:
+        /// on the Freestyle Edge RGB panel 0 is the hotkey column plus the left typing half.
+        /// </summary>
+        public const string LeftHalfDescription = "Left half";
+
+        /// <summary>How it names the second panel.</summary>
+        public const string RightHalfDescription = "Right half";
+
+        /// <summary>
+        /// Where a cap sits, in the inspector's words. A board drawn in one piece has no halves to
+        /// name and answers with an empty string rather than calling its only panel "left" — the
+        /// header then reads "[d] position", which is still true.
+        /// <para>
+        /// It takes the section count rather than reading it off the cap because the cap knows only
+        /// its own <see cref="Section"/>; the layer is what knows how many panels the board has
+        /// (<see cref="KeyboardLayerViewModel.Sections"/>). Anything past the second panel is
+        /// likewise left unnamed: no supported board has one, and inventing "third half" would be
+        /// worse than saying nothing.
+        /// </para>
+        /// </summary>
+        public static string DescribeSection(int section, int sectionCount)
+        {
+            if (sectionCount < 2)
+            {
+                return string.Empty;
+            }
+
+            return section switch
+            {
+                0 => LeftHalfDescription,
+                1 => RightHalfDescription,
+                _ => string.Empty
+            };
+        }
+
+        /// <summary>
+        /// One key-table entry spelled the way the device's own config file spells it —
+        /// <c>[esc]</c>, <c>[d]</c>. The brackets are the file's (specs/04-layout-files.md), which
+        /// is what makes this mono type rather than sans: "mono means this is literally a value in
+        /// a config file".
+        /// <para>
+        /// An entry with no token in this dialect falls back to its caption, unbracketed, so the
+        /// inspector says <em>something</em> about a position it cannot spell rather than showing
+        /// an empty pair of brackets. Every position of every shipped geometry is built from a
+        /// token, so the fallback is a guard rather than a path.
+        /// </para>
+        /// </summary>
+        public static string FormatToken(KeyDefinition key, TokenDialect dialect)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+
+            var token = key.GetToken(dialect);
+
+            return token.Length > 0 ? "[" + token + "]" : KeyCaption.For(key, dialect, KeyCaption.IsMacOs);
+        }
+
         /// <summary>The model object this cap edits.</summary>
         public KeyboardKey Key { get; }
 
@@ -86,6 +144,34 @@ namespace KinesisEdit.ViewModels
         /// </para>
         /// </summary>
         public bool IsCaptionStacked => Caption.Contains('\n', StringComparison.Ordinal);
+
+        /// <summary>
+        /// What the board shipped this position doing, as its config file spells it — the
+        /// <c>factory [d]</c> half of the inspector's assignment line (mockups <c>1e</c>/<c>2a</c>)
+        /// and the token its header names the position by.
+        /// <para>
+        /// It is <see cref="KeyboardKey.OriginalKey"/> and never the silkscreen: the print is what
+        /// the cap says (<see cref="Caption"/>), the token is what the file says, and on the hotkey
+        /// column the two differ outright — the cap reads <c>vdrv</c> and the file reads
+        /// <c>[hk7]</c>. Fixed for the life of the position, so it never notifies.
+        /// </para>
+        /// </summary>
+        public string FactoryAssignmentText { get; }
+
+        /// <summary>
+        /// What the position does <b>now</b>, as the file would spell it — the <c>now [esc]</c>
+        /// half of the assignment line. <see cref="KeyboardKey.ModifiedOrOriginalKey"/>, so it
+        /// equals <see cref="FactoryAssignmentText"/> until the position is remapped.
+        /// <para>
+        /// Re-read by <see cref="RefreshFromModel"/> like every other derived readout: Core mutates
+        /// in place and announces nothing.
+        /// </para>
+        /// </summary>
+        public string CurrentAssignmentText
+        {
+            get => _currentAssignmentText;
+            private set => SetProperty(ref _currentAssignmentText, value);
+        }
 
         /// <summary>Whether the position carries a remap (specs/05-key-model.md §1.3).</summary>
         public bool IsModified
@@ -188,6 +274,7 @@ namespace KinesisEdit.ViewModels
         private readonly KeyVisual _visual;
         private readonly TokenDialect _dialect;
         private string _caption;
+        private string _currentAssignmentText;
         private string? _colorOverlayHex;
         private bool _isModified;
         private bool _isMacro;
@@ -205,6 +292,8 @@ namespace KinesisEdit.ViewModels
             _colorOverlayHex = colorOverlayHex;
 
             _caption = ResolveCaption();
+            FactoryAssignmentText = FormatToken(key.OriginalKey, dialect);
+            _currentAssignmentText = FormatToken(key.ModifiedOrOriginalKey, dialect);
             _isModified = key.IsModified;
             _isMacro = key.IsMacro;
             _isTapAndHold = key.IsTapAndHold;
@@ -218,6 +307,7 @@ namespace KinesisEdit.ViewModels
         public void RefreshFromModel()
         {
             Caption = ResolveCaption();
+            CurrentAssignmentText = FormatToken(Key.ModifiedOrOriginalKey, _dialect);
             IsModified = Key.IsModified;
             IsMacro = Key.IsMacro;
             IsTapAndHold = Key.IsTapAndHold;

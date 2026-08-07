@@ -7,7 +7,8 @@ namespace KinesisEdit.Core.Tests.Keys
     /// dialect minus the non-searchable entries, the three-part item text
     /// ("search name, plus its display text when different, plus <c>' (' + token + ')'</c> when
     /// the display text differs from the layout-file token"), and the incremental
-    /// case-insensitive filter over name and file token.
+    /// case-insensitive filter over name and file token. Also the scope each row carries and the
+    /// counted grouping behind the token picker's result headers.
     /// </summary>
     public sealed class KeySearchCatalogTests
     {
@@ -157,6 +158,98 @@ namespace KinesisEdit.Core.Tests.Keys
             var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
 
             Assert.Empty(KeySearchCatalog.Filter(entries, "no-such-key"));
+        }
+
+        [Fact]
+        public void Build_ScopesTheKeypadRowsToTheKeypad()
+        {
+            var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
+
+            Assert.All(
+                entries.Where(entry => entry.Definition.Table == KeyTable.KeypadKeys),
+                entry => Assert.Equal(KeySearchScope.Keypad, entry.Scope));
+            Assert.Equal(KeySearchScope.Keypad, Single(TokenDialect.Gen1, "kp0").Scope);
+        }
+
+        [Fact]
+        public void Build_SeparatesTheDeviceHotkeysFromTheProfileSelectors()
+        {
+            var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
+            var hotkeys = entries.Where(entry => entry.Scope == KeySearchScope.DeviceHotkey).ToList();
+            var profiles = entries.Where(entry => entry.Scope == KeySearchScope.Profile).ToList();
+
+            // §3.11 holds both: hk0..hk10 are the board's own hotkeys, pro0..pro9 select a profile.
+            Assert.Equal(11, hotkeys.Count);
+            Assert.Equal(10, profiles.Count);
+            Assert.All(hotkeys, entry => Assert.StartsWith("hk", entry.FileToken));
+            Assert.All(profiles, entry => Assert.StartsWith("pro", entry.FileToken));
+            Assert.All(
+                hotkeys.Concat(profiles),
+                entry => Assert.Equal(KeyTable.ProfilesAndHotkeys, entry.Definition.Table));
+        }
+
+        [Fact]
+        public void Build_LeavesAnOrdinaryKeyUnscoped()
+        {
+            Assert.Equal(KeySearchScope.None, Single(TokenDialect.Gen1, "a").Scope);
+            Assert.Equal(KeySearchScope.None, Single(TokenDialect.Gen1, "esc").Scope);
+            Assert.Equal(KeySearchScope.None, Single(TokenDialect.Gen1, "lshft").Scope);
+        }
+
+        [Fact]
+        public void ScopeFor_WithNullDefinition_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => KeySearchCatalog.ScopeFor(null!));
+        }
+
+        [Fact]
+        public void Group_GroupsBySubTableInFirstAppearanceOrder()
+        {
+            var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
+            var groups = KeySearchCatalog.Group(entries);
+
+            Assert.Equal(
+                entries.Select(entry => entry.Definition.Table).Distinct(),
+                groups.Select(group => group.Table));
+            Assert.Equal(KeyTable.LettersAndDigits, groups[0].Table);
+            Assert.All(
+                groups,
+                group => Assert.All(group.Entries, entry => Assert.Equal(group.Table, entry.Definition.Table)));
+        }
+
+        [Fact]
+        public void Group_CountsEveryRowExactlyOnce()
+        {
+            var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
+            var groups = KeySearchCatalog.Group(entries);
+
+            Assert.Equal(entries.Count, groups.Sum(group => group.Count));
+            Assert.All(groups, group => Assert.Equal(group.Entries.Count, group.Count));
+            Assert.All(groups, group => Assert.NotEmpty(group.Entries));
+            Assert.Equal(entries, groups.SelectMany(group => group.Entries));
+        }
+
+        [Fact]
+        public void Group_OverAFilteredList_CountsOnlyTheMatches()
+        {
+            var entries = KeySearchCatalog.Build(TokenDialect.Gen1);
+            var matches = KeySearchCatalog.Filter(entries, "vol");
+            var groups = KeySearchCatalog.Group(matches);
+
+            Assert.Equal(matches.Count, groups.Sum(group => group.Count));
+            Assert.Equal(new[] { KeyTable.MediaKeys }, groups.Select(group => group.Table));
+        }
+
+        [Fact]
+        public void Group_WithNoRows_ReturnsNoGroups()
+        {
+            Assert.Empty(KeySearchCatalog.Group(Array.Empty<KeySearchEntry>()));
+        }
+
+        [Fact]
+        public void Group_WithNullEntries_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => KeySearchCatalog.Group(null!));
         }
 
         private static KeySearchEntry Single(TokenDialect dialect, string token)
