@@ -10,7 +10,12 @@ namespace KinesisEdit.Tests.ViewModels
     /// The keystroke routing of specs/10-apps-and-ui.md — "a captured key is forwarded to the Tap
     /// and Hold dialog if that dialog is open; otherwise it is applied as a remap, or appended to
     /// the active macro" — plus the overlay host around it: capture suspended while a text-entry
-    /// panel is open, and the Macros tab that the macro panel lives on.
+    /// panel is open.
+    /// <para>
+    /// Since issue #93 the <b>only</b> surface that records a macro is the key inspector's Macro
+    /// panel; the Macros tab is a library and takes no keystroke at all. Every "a macro is
+    /// recording" case below therefore arms the rail.
+    /// </para>
     /// </summary>
     public sealed class KeyboardEditorViewModelRoutingTests : IDisposable
     {
@@ -38,25 +43,25 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task SelectTabCommand_ForTheMacrosTab_ShowsThePanelAndTheKeysTabHidesItAgain()
+        public async Task SelectTabCommand_ForTheMacrosTab_ShowsTheLibraryAndTheLayoutTabHidesItAgain()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            Assert.NotNull(editor.MacroPanel);
-            Assert.False(editor.IsMacroPanelVisible);
+            Assert.NotNull(editor.MacroLibraryPanel);
+            Assert.False(editor.IsMacroLibraryVisible);
 
             editor.SelectTabCommand.Execute(editor.Tabs[1]);
 
             Assert.Equal(EditorTab.Macros, editor.SelectedTab);
-            Assert.True(editor.IsMacroPanelVisible);
+            Assert.True(editor.IsMacroLibraryVisible);
 
             editor.SelectTabCommand.Execute(editor.Tabs[0]);
 
-            Assert.False(editor.IsMacroPanelVisible);
+            Assert.False(editor.IsMacroLibraryVisible);
         }
 
         [Fact]
-        public async Task MacroPanel_TriggerKey_IsTheBoardsSelectionOnBothTabs()
+        public async Task MacroLibrary_SlotBranch_FollowsTheBoardsSelection()
         {
             var editor = await CreateLoadedEditorAsync();
             var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
@@ -64,44 +69,47 @@ namespace KinesisEdit.Tests.ViewModels
             editor.SelectTabCommand.Execute(editor.Tabs[1]);
             editor.SelectKeyCommand.Execute(key);
 
-            Assert.Same(key, editor.MacroPanel!.TriggerKey);
+            Assert.NotEmpty(editor.MacroLibraryPanel.Slots);
 
             editor.SelectLayerCommand.Execute(editor.Layers[1]);
 
-            // A layer switch drops the selection, and the panel follows it.
-            Assert.Null(editor.MacroPanel.TriggerKey);
-            Assert.Equal(MacroPanelViewModel.NoTriggerKeyMessage, editor.MacroPanel.Message);
+            // A layer switch drops the selection, and the tab's slot branch follows it.
+            Assert.Empty(editor.MacroLibraryPanel.Slots);
+            Assert.Equal(MacroLibraryViewModel.NoKeySubtitle, editor.MacroLibraryPanel.Subtitle);
         }
 
         [Fact]
-        public async Task RecordCommand_StartsCaptureAndStopRecordingStopsIt()
+        public async Task RecordCommand_StartsCaptureAndStoppingItStopsCapture()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            var panel = OpenMacroPanel(editor);
+
+            panel.RecordCommand.Execute(null);
 
             Assert.Equal(1, _capture.StartCount);
             Assert.True(_capture.IsCapturing);
 
-            editor.MacroPanel.StopRecordingCommand.Execute(null);
+            panel.RecordCommand.Execute(null);
 
             Assert.Equal(1, _capture.StopCount);
             Assert.False(_capture.IsCapturing);
         }
 
         [Fact]
-        public async Task KeystrokeCaptured_WhileTheMacroPanelRecords_AppendsAStepAndRemapsNothing()
+        public async Task KeystrokeCaptured_WhileTheRailsMacroPanelRecords_AppendsAStepAndRemapsNothing()
         {
             var editor = await CreateLoadedEditorAsync();
             var key = SelectDigitOne(editor);
+            var panel = OpenMacroPanel(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            panel.RecordCommand.Execute(null);
 
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
-            Assert.Equal("Z", Assert.Single(editor.MacroPanel.Steps.Items).KeyText);
+            Assert.Equal("[z]", Assert.Single(panel.Steps.Items).TokenText);
             Assert.False(key.IsModified);
             Assert.Equal(0, editor.ModifiedKeyCount);
         }
@@ -118,17 +126,19 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.True(key.IsModified);
             Assert.Equal("Remap (1)", editor.RemapCounterCaption);
-            Assert.Empty(editor.MacroPanel!.Steps.Items);
+            Assert.Equal(0, editor.MacroCount);
         }
 
         [Fact]
-        public async Task KeystrokeCaptured_WithAnOpenSinkOverlay_GoesToTheOverlayBeforeTheMacroPanel()
+        public async Task KeystrokeCaptured_WithAnOpenSinkOverlay_GoesToTheOverlayBeforeTheRail()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            var panel = OpenMacroPanel(editor);
+
+            panel.RecordCommand.Execute(null);
 
             var overlay = new SinkOverlay();
 
@@ -138,7 +148,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // Priority 1: an overlay that wants keystrokes takes them from everything else.
             Assert.Equal(TestLayouts.Gen1Key("z"), Assert.Single(overlay.Received).Key);
-            Assert.Empty(editor.MacroPanel.Steps.Items);
+            Assert.Empty(panel.Steps.Items);
         }
 
         /// <summary>
@@ -161,7 +171,7 @@ namespace KinesisEdit.Tests.ViewModels
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
             Assert.Single(overlay.Received);
-            Assert.Empty(editor.MacroPanel!.Steps.Items);
+            Assert.Equal(0, editor.MacroCount);
         }
 
         /// <summary>
@@ -172,27 +182,29 @@ namespace KinesisEdit.Tests.ViewModels
         /// from the keyboard at all.
         /// </summary>
         [Fact]
-        public async Task ShowOverlay_WhileTheMacroPanelRecords_StopsTheRecordingAndReleasesCapture()
+        public async Task ShowOverlay_WhileTheRailsMacroPanelRecords_StopsTheRecordingAndReleasesCapture()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            var panel = OpenMacroPanel(editor);
 
-            Assert.True(editor.MacroPanel.IsRecording);
+            panel.RecordCommand.Execute(null);
+
+            Assert.True(panel.IsRecording);
             Assert.True(_capture.IsCapturing);
 
             var overlay = new SinkOverlay { WantsKeystrokes = false };
 
             editor.ShowOverlay(overlay);
 
-            Assert.False(editor.MacroPanel.IsRecording);
+            Assert.False(panel.IsRecording);
             Assert.False(_capture.IsCapturing);
 
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
-            Assert.Empty(editor.MacroPanel.Steps.Items);
+            Assert.Empty(panel.Steps.Items);
         }
 
         /// <summary>
@@ -232,7 +244,9 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync();
             var key = SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            // The board is listening too: the rail's armed field is the more specific claim and
+            // takes the keystroke ahead of it.
+            editor.BeginRemapCommand.Execute(null);
 
             var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
 
@@ -241,7 +255,7 @@ namespace KinesisEdit.Tests.ViewModels
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
             Assert.Equal(TestLayouts.Gen1Key("z"), key.Key.ModifiedOrOriginalKey);
-            Assert.Empty(editor.MacroPanel.Steps.Items);
+            Assert.Equal(0, editor.MacroCount);
         }
 
         /// <summary>
@@ -295,18 +309,17 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(_capture.IsCapturing);
             Assert.False(editor.IsCaptureActive);
 
-            // Somebody else's capture. Switching the rail's mode announces its recording state
-            // again — unchanged and false — and answering that with an unconditional Stop would
-            // silently deafen the macro that owns the service.
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            // Somebody else's capture — a listening key on the board. Switching the rail's mode
+            // announces its recording state again, unchanged and false, and answering that with an
+            // unconditional Stop would silently deafen the key that owns the service.
+            editor.BeginRemapCommand.Execute(null);
 
             Assert.True(_capture.IsCapturing);
 
             SelectMode(editor, KeyInspectorMode.TapAndHold);
 
             Assert.True(_capture.IsCapturing);
-            Assert.True(editor.MacroPanel.IsRecording);
+            Assert.True(editor.IsListening);
         }
 
         /// <summary>
@@ -357,12 +370,13 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.False(editor.IsCaptureActive);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            var macro = OpenMacroPanel(editor);
+
+            macro.RecordCommand.Execute(null);
 
             Assert.True(editor.IsCaptureActive);
 
-            editor.MacroPanel.StopRecordingCommand.Execute(null);
+            macro.RecordCommand.Execute(null);
 
             Assert.False(editor.IsCaptureActive);
 
@@ -380,6 +394,8 @@ namespace KinesisEdit.Tests.ViewModels
             // so an armed record button in it is invisible to the view's "an open panel owns the
             // keyboard" gate. Without this term ⌘S fires while a hold action is being recorded.
             editor.CloseOverlayCommand.Execute(null);
+
+            SelectMode(editor, KeyInspectorMode.Remap);
 
             var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
 
@@ -514,13 +530,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task BeginRemapCommand_WhileTheMacroPanelRecords_IsUnavailable()
+        public async Task BeginRemapCommand_WhileTheRailsMacroPanelRecords_IsUnavailable()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            OpenMacroPanel(editor).RecordCommand.Execute(null);
 
             Assert.False(editor.BeginRemapCommand.CanExecute(null));
         }
@@ -532,10 +548,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal("Macro (0)", editor.MacroCounterCaption);
 
-            SelectDigitOne(editor);
-
-            editor.MacroPanel!.InsertKeystroke(TestLayouts.Gen1Key("a"));
-            editor.MacroPanel.AssignCommand.Execute(null);
+            RecordAMacro(editor, "a");
 
             Assert.Equal(1, editor.MacroCount);
             Assert.Equal("Macro (1)", editor.MacroCounterCaption);
@@ -543,14 +556,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task ResetLayoutCommand_ClearsTheMacrosAndRefreshesThePanel()
+        public async Task ResetLayoutCommand_ClearsTheMacrosAndRefreshesTheLibrary()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            SelectDigitOne(editor);
+            RecordAMacro(editor, "a");
 
-            editor.MacroPanel!.InsertKeystroke(TestLayouts.Gen1Key("a"));
-            editor.MacroPanel.AssignCommand.Execute(null);
+            Assert.Single(editor.MacroLibraryPanel.Rows);
 
             // The reset scopes confirm first (NotificationKeys.ResetLayer), and the fake answers
             // Ok by default rather than the Yes the guard waits for.
@@ -560,23 +572,23 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(0, editor.MacroCount);
             Assert.Equal("Macro (0)", editor.MacroCounterCaption);
-            Assert.Empty(editor.MacroPanel.Macros);
-            Assert.Empty(editor.MacroPanel.Steps.Items);
+            Assert.Empty(editor.MacroLibraryPanel.Rows);
         }
 
         [Fact]
-        public async Task SelectTabCommand_LeavingTheMacrosTab_StopsRecording()
+        public async Task SelectTabCommand_LeavingTheLayoutTab_StandsTheRailsRecordingDown()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
-            editor.SelectTabCommand.Execute(editor.Tabs[0]);
+            var panel = OpenMacroPanel(editor);
 
-            Assert.False(editor.MacroPanel.IsRecording);
+            panel.RecordCommand.Execute(null);
+
+            editor.SelectTabCommand.Execute(editor.Tabs[1]);
+
+            Assert.False(panel.IsRecording);
             Assert.False(_capture.IsCapturing);
         }
 
@@ -601,19 +613,22 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Dispose_WhileTheMacroPanelRecords_StopsCaptureAndDetachesThePanel()
+        public async Task Dispose_WhileTheRailsMacroPanelRecords_StopsCaptureAndClosesTheRail()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectDigitOne(editor);
 
-            editor.MacroPanel!.RecordCommand.Execute(null);
+            var panel = OpenMacroPanel(editor);
+
+            panel.RecordCommand.Execute(null);
 
             editor.Dispose();
 
             Assert.False(_capture.IsCapturing);
             Assert.False(_capture.HasSubscribers);
-            Assert.Null(editor.MacroPanel);
+            Assert.False(panel.IsRecording);
+            Assert.False(editor.Inspector.IsOpen);
         }
 
         private static KeyboardKeyViewModel SelectDigitOne(KeyboardEditorViewModel editor)
@@ -623,6 +638,31 @@ namespace KinesisEdit.Tests.ViewModels
             editor.SelectKeyCommand.Execute(key);
 
             return key;
+        }
+
+        /// <summary>
+        /// Puts the key inspector on its Macro mode and hands the panel back — the app's one macro
+        /// editor since issue #93.
+        /// </summary>
+        private static MacroInspectorPanelViewModel OpenMacroPanel(KeyboardEditorViewModel editor)
+        {
+            SelectMode(editor, KeyInspectorMode.Macro);
+
+            return Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+        }
+
+        /// <summary>Records one keystroke into the selected position's macro, through the rail.</summary>
+        private void RecordAMacro(KeyboardEditorViewModel editor, string token)
+        {
+            SelectDigitOne(editor);
+
+            var panel = OpenMacroPanel(editor);
+
+            panel.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key(token));
+
+            panel.Deactivate();
         }
 
         /// <summary>Puts the key inspector on <paramref name="mode"/> through its own tab.</summary>

@@ -204,14 +204,14 @@ namespace KinesisEdit.Tests.ViewModels
         {
             var editor = await CreateLoadedEditorAsync();
 
-            editor.SelectedTab = EditorTab.Macros;
-
-            Assert.Null(editor.MacroPanel!.EditedMacro);
-            Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
-
             SelectDigitOne(editor);
 
-            Assert.NotNull(editor.MacroPanel.EditedMacro);
+            // The rail is on Remap and the position carries no macro: there is nothing to insert
+            // into, and the picked token would land where the user cannot see it.
+            Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
+
+            OpenMacroEditor(editor);
+
             Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
 
             editor.SelectKeyCommand.Execute(null);
@@ -220,33 +220,34 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// specs/11-feature-dialogs.md §11.6 inserts into "the active macro". Selecting any
-        /// macro-capable key opens an unassigned draft, so on the Keys tab — where the macro panel
-        /// is not on screen at all — the command must stay dead: a token appended there lands in a
-        /// macro the user cannot see and never assigns.
+        /// specs/11-feature-dialogs.md §11.6 inserts into "the active macro", which since issue #93
+        /// is whatever the <b>key inspector's</b> Macro panel has open. With the rail on any other
+        /// mode the command must stay dead: a token appended there lands in a macro the user is not
+        /// looking at.
         /// <para>
-        /// §11.3's insertion is no longer one of these: it is edited in place on the key inspector's
-        /// Macro panel (issue #93), so there is no delay command left to gate.
+        /// §11.3's insertion is no longer one of these: it is edited in place on the same panel, so
+        /// there is no delay command left to gate.
         /// </para>
         /// </summary>
         [Fact]
-        public async Task InsertSpecialActionCommand_OnTheKeysTabWithAMacroCapableKeySelected_IsUnavailable()
+        public async Task InsertSpecialActionCommand_WithTheRailOnAnotherMode_IsUnavailable()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            SelectDigitOne(editor);
-
-            Assert.Equal(EditorTab.Keys, editor.SelectedTab);
-            Assert.False(editor.IsMacroPanelVisible);
-            Assert.NotNull(editor.MacroPanel!.EditedMacro);
-
-            Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
-
-            editor.SelectedTab = EditorTab.Macros;
+            OpenMacroEditor(editor);
 
             Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
 
-            editor.SelectedTab = EditorTab.Keys;
+            SelectMode(editor, KeyInspectorMode.Remap);
+
+            Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
+
+            SelectMode(editor, KeyInspectorMode.Macro);
+
+            Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
+
+            // The rail closed is the same answer: nothing is on screen to insert into.
+            editor.Inspector.CloseCommand.Execute(null);
 
             Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
         }
@@ -267,10 +268,14 @@ namespace KinesisEdit.Tests.ViewModels
             Pick(overlay.Picker, Gen1("f13"));
 
             Assert.Null(editor.ActiveOverlay);
-            Assert.Equal(Gen1("f13"), Assert.Single(editor.MacroPanel!.EditedMacro!.Keystrokes).Key);
+            Assert.Equal(Gen1("f13"), Assert.Single(editor.Layout!.EnumerateMacros()).Keystrokes[^1].Key);
 
             // One RecentTokenStore per editor: an action inserted into a macro here is offered by
-            // the key inspector's own Recent chip afterwards.
+            // the key inspector's own Recent chip afterwards. Since issue #93 the rail is left on
+            // its MACRO panel by this flow — that is where a macro is edited now — so the Remap
+            // panel, which is the one that owns a token picker, is asked for by name.
+            SelectMode(editor, KeyInspectorMode.Remap);
+
             var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
 
             Assert.Same(overlay.Picker.Recent, remap.Picker.Recent);
@@ -410,9 +415,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, editor.ModifiedKeyCount);
             Assert.Equal("Remap (1)", editor.RemapCounterCaption);
 
-            // The picture, the macro panel and the selection all come from the new model.
+            // The picture, the macro library and the selection all come from the new model.
             Assert.Same(editor.Layout!.Layers[0].Keys[0], editor.Layers[0].Keys[0].Key);
-            Assert.Same(editor.Layout, editor.MacroPanel!.Layout);
+            Assert.Same(editor.Layout, editor.MacroLibrary!.Layout);
             Assert.Null(editor.SelectedKey);
 
             // ...and the line the parser could not apply is shown, not dropped (04 §5).
@@ -501,21 +506,21 @@ namespace KinesisEdit.Tests.ViewModels
             editor.InsertSpecialActionCommand.Execute(null);
 
             var overlay = Assert.IsType<TokenPickerOverlayViewModel>(editor.ActiveOverlay);
-            var panel = editor.MacroPanel!;
+            var macro = Assert.Single(editor.Layout!.EnumerateMacros());
+            var length = macro.Keystrokes.Count;
 
             editor.Dispose();
 
             Assert.True(overlay.IsClosed);
             Assert.Null(editor.ActiveOverlay);
-            Assert.Null(editor.MacroPanel);
             Assert.False(_capture.HasSubscribers);
             Assert.False(_capture.IsCapturing);
 
-            // The detached panel still raises its events; none of them may reach the editor.
-            panel.InsertKeystroke(Gen1("a"));
+            // The closed panel still raises its own Selected event; the hook came off with it on
+            // Closed, so nothing it says may reach a macro any more.
+            Pick(overlay.Picker, Gen1("f13"));
 
-            Assert.Null(editor.MacroPanel);
-            Assert.Equal(0, editor.MacroCount);
+            Assert.Equal(length, macro.Keystrokes.Count);
         }
 
         /// <summary>
@@ -626,11 +631,39 @@ namespace KinesisEdit.Tests.ViewModels
         /// Opens the Macros tab over a macro-capable key — what the two insertion panels of §11.3
         /// and §11.6 need, because they append to the macro the panel has <em>on screen</em>.
         /// </summary>
-        private static KeyboardKeyViewModel OpenMacroEditor(KeyboardEditorViewModel editor)
+        /// <summary>
+        /// Opens a macro where issue #93 put the editor: the board's position, on the key
+        /// inspector's Macro panel, with one keystroke already recorded so there IS a macro.
+        /// </summary>
+        private KeyboardKeyViewModel OpenMacroEditor(KeyboardEditorViewModel editor)
         {
-            editor.SelectedTab = EditorTab.Macros;
+            var key = SelectDigitOne(editor);
 
-            return SelectDigitOne(editor);
+            SelectMode(editor, KeyInspectorMode.Macro);
+
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+
+            panel.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(Gen1("a"));
+
+            panel.Deactivate();
+
+            return key;
+        }
+
+        /// <summary>Puts the key inspector on <paramref name="mode"/> through its own tab.</summary>
+        private static void SelectMode(KeyboardEditorViewModel editor, KeyInspectorMode mode)
+        {
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == mode)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+
+                    return;
+                }
+            }
         }
 
         private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync(DeviceSnapshot? snapshot = null)

@@ -345,7 +345,7 @@ namespace KinesisEdit.ViewModels
             _resolveLibrary = resolveLibrary ?? throw new ArgumentNullException(nameof(resolveLibrary));
             _capability = device.Device.Macros;
             _dialect = KeyboardLayout.DialectFor(device.DeviceId);
-            _maxMacroCount = MacroPanelViewModel.ResolveMaxMacroCount(device);
+            _maxMacroCount = MacroLimits.ResolveMaxMacroCount(device);
             _usesMacroSlots = _capability.PersistedSlotsPerKey is > 0 && !_capability.UsesFlatMacroList;
 
             MaxCoTriggers = _capability.PersistedCoTriggersPerMacro ?? _capability.MaxCoTriggersPerMacro ?? 0;

@@ -12,7 +12,7 @@
   <!-- The per-device editor of specs/10-apps-and-ui.md, on the redesign's editor-shell layout
        (docs/design/handoff.md § "Editor shell", mockups 1e/1f/2a): a 46px toolbar, a 38px tab bar,
        the Demo Mode bar, then the content. The keyboard picture the remap workflow runs on, the
-       macro panel of the Macros tab, the Lighting and Settings panels, and the feature panels of
+       macro library of the Macros tab, the Lighting and Settings panels, and the feature panels of
        specs/11-feature-dialogs.md rendered as an overlay over all of it. The picture itself is the
        generic KeyboardView; everything device-specific reaches it as data.
 
@@ -221,17 +221,17 @@
 
           <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
           <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
-            <!-- The board serves both tabs: the macro's trigger is the key selected on it, so the
-                 Macros tab docks its panel beside the picture rather than replacing it.
+            <!-- TWO COLUMNS: the board, and the 268px key inspector rail beside it. The rail is
+                 Auto and collapses itself on the selection, so a column with nothing in it measures
+                 zero and the board takes the width back. There is deliberately NO clipping container
+                 between the rail and the board: ClipToBounds is false the whole way down the board
+                 chain (Controls/KeyboardView.axaml), and a Border here would start cutting caps off.
 
-                 THREE COLUMNS: the board, the 380px macro panel, and the 268px key inspector rail.
-                 Both side columns are Auto and both collapse themselves — the macro panel on the
-                 tab, the rail on the selection — so a column with nothing in it measures zero and
-                 the board takes the width back. There is deliberately NO clipping container between
-                 the rail and the board: ClipToBounds is false the whole way down the board chain
-                 (Controls/KeyboardView.axaml), and a Border here would start cutting caps off. -->
-            <Grid ColumnDefinitions="*,Auto,Auto"
-                  IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros'}">
+                 THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to dock its
+                 editor beside this picture; it is a library now (mockup 1i) and takes the whole
+                 content area for itself, below. -->
+            <Grid ColumnDefinitions="*,Auto"
+                  IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
               <Grid Grid.Column="0" RowDefinitions="Auto,*">
                 <!--
                   No "Esc cancels" here: while a key is listening the capture service swallows every
@@ -280,37 +280,31 @@
                 </StackPanel>
               </Grid>
 
-              <!-- The macro editor of specs/10-apps-and-ui.md and specs/06-macros.md, in
-                   Views/MacroPanelView.axaml — a bare content host, exactly as the key inspector
-                   hosts its own panels, because ViewLocator resolves MacroPanelViewModel to that
-                   view by name.
-
-                   THE WIDTH, THE GUTTER AND THE VISIBILITY STAY HERE. They are facts of this
-                   three-column row rather than of the panel: 380px is what the row gives it, the
-                   16px gutter is what separates it from the board, and only an invisible element
-                   lets this Auto column measure zero when the Macros tab is closed. -->
-              <ContentControl Grid.Column="1"
-                              Width="380"
-                              Margin="16,0,0,0"
-                              Content="{Binding MacroPanel}"
-                              IsVisible="{Binding IsMacroPanelVisible}" />
-
               <!-- The key inspector rail (mockups 1e/2a). It is NOT modal: no scrim, no overlay
                    host, and the board to its left stays clickable the whole time it is open.
 
-                   NO GUTTER, unlike the macro panel beside it. The rail carries its own inset
-                   surface and a hairline down its left edge (`inspectorRail`), which is how mockup
-                   1e separates it — and every pixel spent on a margin here comes out of the board's
-                   column, where the legend row under the picture is already exactly as wide as its
-                   own counts and actions.
+                   NO GUTTER. The rail carries its own inset surface and a hairline down its left
+                   edge (`inspectorRail`), which is how mockup 1e separates it — and every pixel
+                   spent on a margin here comes out of the board's column, where the legend row under
+                   the picture is already exactly as wide as its own counts and actions.
 
                    IsVisible is bound HERE as well as inside the rail: the rail collapses its own
                    frame, which is what makes it usable on its own, but only an invisible element
                    lets this Auto column measure zero. -->
-              <views:KeyInspectorView Grid.Column="2"
+              <views:KeyInspectorView Grid.Column="1"
                                       DataContext="{Binding Inspector}"
                                       IsVisible="{Binding IsOpen}" />
             </Grid>
+
+            <!-- The Macros tab (mockup 1i) — a library, not an editor, and since issue #93 it takes
+                 the whole content area rather than docking beside the board. It draws no board of
+                 its own: `Pick another key` and `＋ Record a macro` both leave for the Layout tab,
+                 where the board and the one recording surface in this app are.
+
+                 A bare content host, exactly as the key inspector hosts its own panels, because
+                 ViewLocator resolves MacroLibraryViewModel to Views/MacroLibraryView by name. -->
+            <ContentControl Content="{Binding MacroLibraryPanel}"
+                            IsVisible="{Binding IsMacroLibraryVisible}" />
 
             <!-- The lighting editor of specs/07-lighting.md §3/§4; the panels are the mode's, so this
                  is one ContentControl and the panel decides what it shows. -->

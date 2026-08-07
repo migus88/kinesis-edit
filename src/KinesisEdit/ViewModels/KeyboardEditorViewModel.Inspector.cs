@@ -180,8 +180,6 @@ namespace KinesisEdit.ViewModels
                 // (invariant 5).
                 CancelRemap();
 
-                _macroPanel?.StopRecording();
-
                 _capture.Start();
             }
             else
@@ -205,8 +203,6 @@ namespace KinesisEdit.ViewModels
         private void OnMacroInspectorAssigned()
         {
             SelectedKey?.RefreshFromModel();
-
-            _macroPanel?.RefreshFromModel();
 
             RefreshCounters();
         }

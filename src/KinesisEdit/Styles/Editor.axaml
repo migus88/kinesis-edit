@@ -186,6 +186,28 @@
     <Setter Property="Padding" Value="9,7" />
   </Style>
 
+  <!-- ===== The Macros tab's slot cards =======================================================
+       One card of mockup 1i's left half. It is the `card` surface with a selected face on top,
+       which `Border.card` has none of: which card the `this macro` meter is reading is a selection,
+       and selection is one of the accent's two sanctioned meanings.
+
+       THE THICKNESS DOES NOT MOVE between the two states. A card that grew a second pixel of border
+       when it was picked would shuffle every card under it by one; the face lifts to the raised
+       surface instead, which is the design's "a filled face and an accent ring" without the reflow.
+       It is paint on a Border rather than a ControlTheme because a Border is not a templated
+       control and there is no template here to replace. -->
+  <Style Selector="Border.macroSlotCard">
+    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusPanel}" />
+    <Setter Property="Padding" Value="{DynamicResource PaddingCard}" />
+  </Style>
+  <Style Selector="Border.macroSlotCard.selected">
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
   <!-- ===== Lighting mode menu ================================================================
        One full-width row per mode, the selected one accent-filled. `ModeOption` carries the rail's
        own 9x7 rhythm and its `.selected` face. -->

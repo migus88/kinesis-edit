@@ -39,10 +39,9 @@ namespace KinesisEdit.Tests.Design
             [typeof(TokenPickerCategoryViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the filter chips).",
             [typeof(TokenPickerGroupViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the counted result groups).",
             [typeof(TokenPickerRowViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the result rows, inside their group).",
-            [typeof(MacroSlotViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the slot pills).",
-            [typeof(MacroStepViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the recorded steps).",
-            [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the co-trigger toggles).",
-            [typeof(MacroListEntryViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the profile's macros).",
+            [typeof(MacroSlotViewModel)] = "DataTemplate in Views/MacroLibraryView.axaml (the slot cards).",
+            [typeof(MacroLibraryRowViewModel)] = "DataTemplate in Views/MacroLibraryView.axaml (one row per named macro).",
+            [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroInspectorPanelView.axaml (the co-trigger toggles).",
             [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
             [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
@@ -63,10 +62,8 @@ namespace KinesisEdit.Tests.Design
             [typeof(ColorPickerViewModel)] = "Views/LightingTabView.axaml hosts Controls/ColorPickerView explicitly.",
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
-            [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside Views/MacroPanelView.axaml.",
-            [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside Views/MacroPanelView.axaml.",
             [typeof(MacroInspectorStepsViewModel)] = "Bound as Steps.* inside Views/MacroInspectorPanelView.axaml.",
-            [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml."
+            [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml, and as the three meters of Views/MacroLibraryView.axaml."
         };
 
         /// <summary>Every concrete view model the app declares.</summary>

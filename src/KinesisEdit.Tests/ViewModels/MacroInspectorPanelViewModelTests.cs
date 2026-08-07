@@ -218,7 +218,7 @@ namespace KinesisEdit.Tests.ViewModels
         public void Recording_WhenTheProfileIsAtItsMacroCount_RefusesAndSaysSo()
         {
             var scene = new Scene(this);
-            var limit = MacroPanelViewModel.ResolveMaxMacroCount(scene.Device)!.Value;
+            var limit = MacroLimits.ResolveMaxMacroCount(scene.Device)!.Value;
 
             TestLayouts.FillMacroSlots(scene.Layout, limit);
 

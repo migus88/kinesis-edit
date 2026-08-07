@@ -44,7 +44,7 @@ namespace KinesisEdit.ViewModels
         /// (<c>SettingsCapability.None</c>: Savant Elite2, CROSSFIRE, Advantage 360 Professional);</item>
         /// <item>the Macros tab is always present — the panel behind it reads the device's own
         /// macro capability and says so itself on a board that has none
-        /// (<c>MacroPanelViewModel.NotSupportedMessage</c>), which is one place fewer for the two
+        /// (<c>MacroLibraryViewModel.NotSupportedMessage</c>), which is one place fewer for the two
         /// answers to disagree.</item>
         /// </list>
         /// The lighting question is device-level on purpose: this runs before any profile has been

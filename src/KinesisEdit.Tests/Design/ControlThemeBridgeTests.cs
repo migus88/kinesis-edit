@@ -159,10 +159,10 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheMacroPanel_BridgesItsSlotPillsAndItsCoTriggerToggles()
+        public async Task TheMacrosTab_BridgesItsSearchFieldAndItsRowActions()
         {
-            // The panel is the Macros tab's, hosted in a ContentControl's template, so none of it
-            // exists until that section is open.
+            // The tab is hosted in a ContentControl's template, so none of it exists until that
+            // section is open.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -175,8 +175,8 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            AssertClassCarriesTheme(view, "navPill", "NavPill");
-            AssertClassCarriesTheme(view, "toggleSegment", "ToggleSegment");
+            AssertClassCarriesTheme(view, "searchField", "SearchField");
+            AssertClassCarriesTheme(view, "secondary", "SecondaryButton");
         }
 
         [AvaloniaFact]

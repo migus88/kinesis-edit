@@ -233,7 +233,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(EditorTab.Macros, editor.SelectedTab);
             Assert.True(editor.Tabs[1].IsSelected);
-            Assert.True(editor.IsMacroPanelVisible);
+            Assert.True(editor.IsMacroLibraryVisible);
         }
 
         [Fact]
@@ -1259,6 +1259,32 @@ namespace KinesisEdit.Tests.ViewModels
                 editor.Layers.Select(layer => layer.ShortcutHint));
         }
 
+        /// <summary>
+        /// Records one keystroke into <paramref name="key"/>'s macro through the key inspector's
+        /// Macro panel — the app's one macro editor since issue #93. The Macros tab is a library and
+        /// records nothing.
+        /// </summary>
+        private void RecordAMacro(KeyboardEditorViewModel editor, KeyboardKeyViewModel key)
+        {
+            editor.SelectKeyCommand.Execute(key);
+
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
+
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+
+            panel.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(KeyRegistry.FindByToken("a", TokenDialect.Gen1)!);
+
+            panel.Deactivate();
+        }
+
         private void RunMutation(KeyboardEditorViewModel editor, string path)
         {
             var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
@@ -1285,10 +1311,9 @@ namespace KinesisEdit.Tests.ViewModels
                     editor.ResetLayoutCommand.Execute(null);
                     break;
                 case "macroAssign":
-                    editor.SelectedTab = EditorTab.Macros;
-                    editor.SelectKeyCommand.Execute(key);
-                    editor.MacroPanel!.InsertKeystroke(KeyRegistry.FindByToken("a", TokenDialect.Gen1)!);
-                    editor.MacroPanel.AssignCommand.Execute(null);
+                    // The app's one macro editor is the key inspector's Macro panel (issue #93), so
+                    // a macro is made by recording one there.
+                    RecordAMacro(editor, key);
                     break;
                 case "lightingMode":
                     editor.Lighting.SelectModeCommand.Execute(
@@ -1335,10 +1360,8 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync();
 
             editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
-            editor.SelectedTab = EditorTab.Macros;
-            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitTwoKeyIndex]);
-            editor.MacroPanel!.InsertKeystroke(TestLayouts.Gen1Key("a"));
-            editor.MacroPanel.AssignCommand.Execute(null);
+
+            RecordAMacro(editor, editor.SelectedLayer!.Keys[TestLayouts.RgbDigitTwoKeyIndex]);
 
             _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
 
