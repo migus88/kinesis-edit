@@ -640,7 +640,7 @@ namespace KinesisEdit.ViewModels
                 return string.Format(CultureInfo.InvariantCulture, SlotHeaderWithoutKeyFormat, _deviceName);
             }
 
-            var caption = KeyCaption.For(key.Key.TriggerKey, layout.Dialect, KeyCaption.IsMacOs);
+            var caption = KeyCaption.For(key.Key.TriggerKey, layout.Dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
 
             return string.Format(CultureInfo.InvariantCulture, SlotHeaderFormat, caption, _deviceName);
         }
