@@ -100,6 +100,22 @@
       The colour is a role, not a value, and it is declared once per variant here because a brush in
       a plain (non-theme) dictionary would resolve its colour against the APPLICATION's variant
       rather than the window's.
+
+      THE `{StaticResource}` BELOW IS CORRECT, AND MUST NOT BE "FIXED" TO A `{DynamicResource}`.
+      Contract 7 says colours are always DynamicResource, and this is the one exception the contract
+      cannot cover: a GeometryDrawing is not a StyledElement and has no place in any logical tree, so
+      a DynamicResource on it has no resource host to walk and would resolve to nothing at all - an
+      unpainted tile, silently. The StaticResource is safe here for the reason the contract worries
+      about elsewhere: it is resolved against the theme dictionary it is *written in*, so the Dark
+      copy takes dark's SurfaceLineHigh and the Light copy takes light's, and the pair is what makes
+      the variant switchable. A live variant change re-resolves `HatchBrush` itself - every call site
+      names it with {DynamicResource} - and lands on the other variant's tile.
+
+      That last sentence is the part no assertion about the brush object can see, and it stopped
+      being hypothetical when the Settings screen (issue #96) made the variant changeable at runtime.
+      It is pinned at the glass instead, by
+      Design/ShellScreenTests.TheHatchTile_AcrossALiveThemeFlip_RepaintsInTheNewVariantsToken, which
+      reads the board legend's locked swatch out of two captured frames either side of a live flip.
     -->
     <ResourceDictionary x:Key="Dark">
       <DrawingBrush x:Key="HatchBrush"

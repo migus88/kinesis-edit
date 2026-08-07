@@ -49,6 +49,12 @@ Rationale (spec 03 §5.3): the firmware only reloads its files once the v-Drive 
 - `MacVDriveEjector` — runs `diskutil unmount <root>` through `IProcessRunner` (`SystemProcessRunner` wraps `Process`; tests use a fake). **`unmount`, not `eject`, is deliberate** (decision on issue #6): the spec only requires flush + release, and unmount lets the volume cleanly re-mount. This is new behavior — legacy hid eject on macOS entirely.
 - `UnsupportedVDriveEjector` — `IsSupported` false; `Eject` returns a failed `VDriveEjectResult`, never throws. Windows (lock–dismount–eject sequence, spec 03 §5.3) and Linux are later issues; the interface is designed for them now.
 - `VDriveEject.CreateForCurrentPlatform()` — macOS → real ejector, everything else → unsupported.
+  **It belongs at a composition root or a shared default — never inline inside an operation.** The
+  app names it once when wiring `DeviceEjectService`; `ProfileSession` names it once for the shared
+  default it falls back to when `Load` was given no ejector ([profiles.md](profiles.md) "The service
+  seam"), so a session handed an ejector saves without ever spawning `diskutil`. That save was the
+  last operation in the solution that called the factory inline, which is the shape that pins a code
+  path to the platform.
 
 ## Load-bearing invariants
 
@@ -56,7 +62,13 @@ Rationale (spec 03 §5.3): the firmware only reloads its files once the v-Drive 
 2. **The write-refusal rule is a safety feature** (spec 03 §5.2): it prevents scattering files onto arbitrary volumes when a path is wrong. `allowCreate` is per-call and deliberate — and it is the only path that creates anything (file and, if needed, its parent folder).
 3. **Device facts live in the catalog only.** Labels, marker/version/settings paths, layout folders all come from `DeviceDefinition`; this layer contains zero device-specific strings.
 4. **Scanners never throw on bad candidates** — an unreadable volume is somebody else's mount, not an error.
-5. **The settings merge adds and replaces; it deletes only what it is explicitly told to.** `app_settings.txt` is shared with the legacy Pascal app, which writes keys this app does not model, so `UpdateSettingsFile` must never be turned into a whole-file rewrite. `removedKeys` is the single, surgical escape hatch, and it obeys the same `=`-separator matching rule as everything else — a `StartsWith` deletion would take `cust_color_10` along with `cust_color_1`.
+5. **Consumers depend on `IVDriveFileService`/`IVDriveEjector`, and can be handed substitutes.**
+   Concrete construction stays at a composition root or a shared static default; an operation never
+   builds its own. That is what lets a caller run a whole load/save against in-memory content with
+   nothing touching a disk or a child process. Where a consumer also builds a `SettingsService`, it
+   must build it over **the same** file service instance it was given — otherwise one operation
+   straddles two sources (the trap `ProfileSession.ResolveSettingsService` exists to close).
+6. **The settings merge adds and replaces; it deletes only what it is explicitly told to.** `app_settings.txt` is shared with the legacy Pascal app, which writes keys this app does not model, so `UpdateSettingsFile` must never be turned into a whole-file rewrite. `removedKeys` is the single, surgical escape hatch, and it obeys the same `=`-separator matching rule as everything else — a `StartsWith` deletion would take `cust_color_10` along with `cust_color_1`.
 
 ## Deliberately not here
 

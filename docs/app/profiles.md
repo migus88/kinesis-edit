@@ -9,7 +9,7 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 
 | Namespace | Entry point | Does | Owning spec |
 |---|---|---|---|
-| `KinesisEdit.Core.Profiles` | `ProfileSession.Load(VDriveLocation, DeviceId, int)` | Reads/parses `layout<n>.txt` + `led<n>.txt` (where present) + keyboard settings into a fresh session | 03 §4.1/§4.3; 04 §4.2 |
+| `KinesisEdit.Core.Profiles` | `ProfileSession.Load(VDriveLocation, DeviceId, int, IVDriveFileService?, IVDriveEjector?)` | Reads/parses `layout<n>.txt` + `led<n>.txt` (where present) + keyboard settings into a fresh session; the two trailing services are optional and default to the shared real ones | 03 §4.1/§4.3; 04 §4.2 |
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Save()` / `.SaveAs(int, bool)` | Validate → write layout → write led → (SaveAs+startup) update settings → eject → message | 03 §5.3 |
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Import(ImportedFileKind, lines)` | Replaces the session's layout **or** lighting from an imported file; writes nothing | 10 "Import"; 07 §1.4 |
 | `KinesisEdit.Core.Profiles` | `ProfileSaveResult`, `ProfileImportResult` | Outcome records: `Success`/`Violations`/`Ejected`/`PostSaveMessage`; `Kind`/`InvalidLines` | 03 §5.3; 04 §5 |
@@ -49,6 +49,33 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
   switches both the current layout file and the current led file at once"). `setAsStartup: false`
   never touches the settings file.
 
+## The service seam — `Load`'s two optional services
+
+`Load` takes an optional `IVDriveFileService` and an optional `IVDriveEjector` after the profile
+number. Omit them and nothing changes: the session uses the **shared** static defaults — one
+`VDriveFileService`, one `SettingsService` over it, and one `VDriveEject.CreateForCurrentPlatform()`
+ejector — so a plain three-argument `Load` reads, writes and ejects exactly as it always has, and
+`CreateForCurrentPlatform()` is reached from that default alone.
+
+- **The file service is all-or-nothing.** A session given one routes **every** read and write through
+  it — `layout<n>.txt`, `led<n>.txt` *and* the settings file, whose `SettingsService` is constructed
+  over the very same instance (`ResolveSettingsService`). Keeping a static `SettingsService` while
+  letting the file service be injected would produce a session reading its layout from the substitute
+  and its settings from the real disk; that split is the failure this seam exists to make impossible,
+  and `ProfileSessionInjectedServicesTests` pins it (its startup-profile theory can only produce both
+  post-save wordings if the settings snapshot came from the injected service).
+- **The ejector is the platform escape.** `ExecuteSave`'s eject — the module's one unseamed platform
+  side effect, `diskutil unmount` on macOS — goes through the injected ejector, so a session can save
+  without spawning a child process. `Save()` and `SaveAs()` share the one `ExecuteSave`, so there is
+  a single eject call site.
+- **Core learns nothing new from this.** The services are injectable, full stop: there is no demo
+  flag, no demo type and no demo branch here (see "Deliberately not here"). Why an app-layer caller
+  would want an in-memory drive is the app layer's business.
+- The app-side counterpart is `KinesisEdit.Services.ProfileSessionFactory(IVDriveFileService?,
+  IVDriveEjector?)` — both optional, both forwarded to `Load` **as given** (nulls included, so
+  defaulting stays Core's single decision), and `new ProfileSessionFactory()` still means the real
+  drive with the real ejector.
+
 ## Profile-0 guard
 
 `Load`, `Save`, and `SaveAs` all check profile 0 on a `HasReadOnlyFactoryProfile` device **before**
@@ -76,8 +103,10 @@ directly through `Load` and through `SaveAs(0, ...)` from a session loaded at an
    target }` (+ `LedMode = "led<target>.txt"` when the device's `SettingsCapability.LedMode` is
    `LedFileName`) saved via `SettingsService.SaveKeyboardSettings` — read-modify-write, so every
    other setting survives untouched.
-6. `IVDriveEject.CreateForCurrentPlatform().Eject(location.RootPath)`; `Ejected` is whatever it
-   reports (macOS: real `diskutil unmount`; Windows/Linux: unsupported, always false today).
+6. `IVDriveEjector.Eject(location.RootPath)` — the session's ejector, which is
+   `VDriveEject.CreateForCurrentPlatform()` unless `Load` was given one; `Ejected` is whatever it
+   reports (macOS: real `diskutil unmount`; Windows/Linux: unsupported, always false today). A
+   failed eject never fails the save.
 7. `PostSaveMessage` from `ProfileSaveMessageCatalog.GetMessage(Device, targetProfileNumber,
    isStartupProfile)`, where `isStartupProfile` is `setAsStartup || settings.StartupProfileNumber ==
    targetProfileNumber` (the settings snapshot captured at `Load`).
@@ -141,7 +170,8 @@ The app project therefore codes against `KinesisEdit.Services.IProfileSession` /
 `IsDirty`, `Save()`, `Import(kind, lines)`, `PlanExport(selection)` — implemented for real by
 `ProfileSessionAdapter` (a pure pass-through; its `PlanExport` is the one line that calls
 `ProfileExportPlanner.Plan` on the wrapped session) and `ProfileSessionFactory` (calls
-`ProfileSession.Load`, wraps the result). **Nothing is re-implemented above this module**; the seam
+`ProfileSession.Load`, wraps the result; its two optional constructor dependencies are the
+file service and ejector it forwards — see "The service seam" above). **Nothing is re-implemented above this module**; the seam
 exists only so the editor view models can be unit-tested without a drive. Its consumer is the
 keyboard editor ([keyboard-editor.md](keyboard-editor.md)), which loads
 `LayoutScheme.FirstProfileNumber` on open, calls `Save()` off the UI thread, and reaches `Import`
@@ -160,7 +190,9 @@ even reaches Core's guard — while an export only needs a session to exist, whi
 - **Demo-mode gating and the "Keyboard Connection Lost" dialog** (03 §3.5) — app-layer concerns;
   Core has no concept of demo mode. A drive that vanishes mid-save surfaces whatever
   `IVDriveFileService` throws naturally (`FileNotFoundException`/`IOException`); there is no
-  Core-level exception for it and no demo-mode parameter on `ProfileSession`.
+  Core-level exception for it and no demo-mode parameter on `ProfileSession`. `Load`'s two optional
+  services are **not** that parameter in disguise: they name *which* file service and ejector to use,
+  and this module cannot tell a fixture-backed one from a drive-backed one.
 - **The settings-only post-save message** (`"Changes will be implemented when v-Drive is
   closed."`, 03 §5.3) — that wording belongs to a bare keyboard-settings save with no profile
   content involved — it lives in `SettingsMessageCatalog` and is shown by the editor's settings

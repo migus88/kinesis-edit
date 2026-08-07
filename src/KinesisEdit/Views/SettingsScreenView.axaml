@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="KinesisEdit.Views.SettingsScreenView"
+             x:DataType="vm:SettingsScreenViewModel">
+  <!--
+    The shell's Settings screen: the app's HOST preferences - theme, motion, and the window geometry
+    that is restored without asking. It is not the editor's Settings tab, which edits a keyboard's
+    own settings file and travels with the board; the subtitle says so, in the app's own voice,
+    because a reader arriving from that tab has just been told the opposite.
+
+    The design handoff draws no host-wide Settings screen (mockup 1j is the editor's tab), so the
+    layout is this app's, built out of what the redesign already owns: a page title, sectionLabel
+    captions, `card` panels, and the segmented control every other one-of-N in the app is.
+  -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="24" Spacing="{DynamicResource Space24}" MaxWidth="720" HorizontalAlignment="Left">
+
+      <!-- ===== The screen's own header ======================================================= -->
+      <StackPanel Spacing="{DynamicResource Space4}">
+        <TextBlock Text="{x:Static vm:SettingsScreenViewModel.Title}" Classes="pageTitle" />
+        <TextBlock Text="{x:Static vm:SettingsScreenViewModel.Subtitle}"
+                   Classes="body muted"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- ===== Appearance =================================================================== -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:SettingsScreenViewModel.AppearanceSectionLabel}" Classes="sectionLabel" />
+
+        <!-- One row, so no `listRow`: that class is the hairline *between* rows of an
+             ItemsControl and its "no border on the first" rule is written against a generated
+             ContentPresenter, which a hand-placed row has none of. Used here it would draw a
+             separator flush inside the card's own top edge with nothing above it to separate. -->
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+              <TextBlock Text="{x:Static vm:SettingsScreenViewModel.ThemeCaption}" Classes="rowCaption" />
+              <TextBlock Text="{x:Static vm:SettingsScreenViewModel.ThemeDescription}"
+                         Classes="meta muted"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- One of three, so a segmented control, exactly as the layer switch and the
+                 lighting layer switch are: one tab stop for the group, arrows inside it.
+                 `SelectedItem` reads the view model one way - SelectThemeCommand owns which
+                 segment is lit - and the selection change runs that command, so a pick the store
+                 refused snaps the segment back rather than leaving the control showing something
+                 nothing switched to. -->
+            <ListBox Grid.Column="1"
+                     Theme="{StaticResource SegmentedControl}"
+                     VerticalAlignment="Center"
+                     ItemsSource="{Binding ThemeOptions}"
+                     SelectedItem="{Binding SelectedThemeOption, Mode=OneWay}"
+                     SelectionChanged="OnThemeSelectionChanged">
+              <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:AppThemeOption">
+                  <TextBlock Text="{Binding Caption}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== Motion ======================================================================= -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:SettingsScreenViewModel.MotionSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+              <TextBlock Text="{x:Static vm:SettingsScreenViewModel.MotionCaption}" Classes="rowCaption" />
+              <TextBlock Text="{x:Static vm:SettingsScreenViewModel.MotionDescription}"
+                         Classes="meta muted"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ListBox Grid.Column="1"
+                     Theme="{StaticResource SegmentedControl}"
+                     VerticalAlignment="Center"
+                     ItemsSource="{Binding MotionOptions}"
+                     SelectedItem="{Binding SelectedMotionOption, Mode=OneWay}"
+                     SelectionChanged="OnMotionSelectionChanged">
+              <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:MotionOption">
+                  <TextBlock Text="{Binding Caption}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== Window ======================================================================= -->
+      <!-- Prose, and deliberately no control: the window's size and position are restored silently,
+           so there is no choice to render. A disabled switch would claim one that does not exist,
+           and a live one would offer to break something nobody asked to break. -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:SettingsScreenViewModel.WindowSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <TextBlock Text="{x:Static vm:SettingsScreenViewModel.WindowNote}"
+                     Classes="body muted"
+                     TextWrapping="Wrap" />
+        </Border>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

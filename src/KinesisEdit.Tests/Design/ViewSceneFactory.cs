@@ -564,6 +564,31 @@ namespace KinesisEdit.Tests.Design
                 return CreateNoDevice();
             }
 
+            // The shell's own Settings screen — the host preferences, not any keyboard's. Its
+            // appliers are recorded rather than run: a scene must not repaint the session it is
+            // being rendered in, and ThemeApplier writes to the one Application every other scene
+            // shares. A non-default pick, so a frame of this screen shows a lit segment that is not
+            // simply the first one.
+            if (viewType == typeof(SettingsScreenView))
+            {
+                var preferences = new FakeHostPreferencesStore(new HostPreferences
+                {
+                    Theme = AppThemePreference.Dark,
+                    Motion = MotionPreference.AlwaysReduce
+                });
+
+                var settings = new SettingsScreenViewModel(preferences, _ => { }, _ => { });
+
+                _disposables.Add(settings);
+
+                return settings;
+            }
+
+            if (viewType == typeof(HelpScreenView))
+            {
+                return new HelpScreenViewModel(_urlLauncher);
+            }
+
             if (viewType == typeof(EditorPlaceholderView))
             {
                 return new EditorPlaceholderViewModel(TestDevices.CreateSnapshot(DeviceId.Advantage2));
