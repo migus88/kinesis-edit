@@ -224,6 +224,154 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("Fn", layers[1].Caption);
         }
 
+        [Fact]
+        public void Sections_ForTheFreestyleEdgeRgb_AreTheBoardsTwoPanels()
+        {
+            var layer = BuildRgbLayers(lighting: null)[0];
+
+            Assert.Equal(2, layer.Sections.Count);
+            Assert.Equal(new[] { 0, 1 }, layer.Sections.Select(section => section.Index));
+            Assert.Equal(VisualCatalog.FreestyleEdgeRgb.Sections[1].X, layer.Sections[1].OriginX);
+            Assert.Equal(VisualCatalog.FreestyleEdgeRgb.Sections[1].Y, layer.Sections[1].OriginY);
+            Assert.Equal(VisualCatalog.FreestyleEdgeRgb.Sections[1].Width, layer.Sections[1].BoardWidth);
+            Assert.Equal(VisualCatalog.FreestyleEdgeRgb.Sections[1].Height, layer.Sections[1].BoardHeight);
+        }
+
+        [Fact]
+        public void Sections_HoldTheVerySameCapInstancesAsTheFlatKeyList()
+        {
+            // The editor resolves a cap through the flat list and ApplyColorOverlays writes through
+            // it; a copy in the sections would leave the drawn board showing state nothing updates.
+            var layer = BuildRgbLayers(lighting: null)[0];
+            var fromSections = layer.Sections.SelectMany(section => section.Keys).ToList();
+
+            Assert.Equal(layer.Keys.Count, fromSections.Count);
+
+            foreach (var key in layer.Keys)
+            {
+                Assert.Contains(fromSections, candidate => ReferenceEquals(candidate, key));
+            }
+        }
+
+        [Fact]
+        public void Sections_MutatedThroughTheFlatList_ShowTheChangeToo()
+        {
+            var lighting = new LightingModel();
+            var layer = BuildRgbLayers(lighting)[0];
+
+            lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(255, 0, 0));
+            layer.ApplyColorOverlays(KeyColorOverlay.Build(RgbDevice, lighting, layer.Layer));
+
+            var fromSection = layer.Sections
+                .SelectMany(section => section.Keys)
+                .Single(key => key.Index == TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Equal("#FF0000", fromSection.ColorOverlayHex);
+        }
+
+        [Fact]
+        public void Counts_OfAFreshLayout_AreZeroExceptForTheGeometrysLockedPositions()
+        {
+            var layer = BuildRgbLayers(lighting: null)[0];
+
+            Assert.Equal(0, layer.RemappedCount);
+            Assert.Equal(0, layer.MacroCount);
+            Assert.Equal(0, layer.TapAndHoldCount);
+            Assert.Equal(0, layer.AdvisoryCount);
+            Assert.Equal(layer.Keys.Count(key => !key.CanEdit), layer.LockedCount);
+        }
+
+        [Fact]
+        public void Counts_AfterEditsOnTheLayer_FollowTheModelOnRefresh()
+        {
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layer = KeyboardLayerViewModel.BuildAll(layout, VisualCatalog.FreestyleEdgeRgb, lighting: null)[0];
+            var changed = new List<string>();
+
+            layer.PropertyChanged += (_, arguments) => changed.Add(arguments.PropertyName!);
+
+            var keys = layout.Layers[0].Keys;
+
+            keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+            keys[TestLayouts.RgbDigitTwoKeyIndex].ApplyRemap(TestLayouts.Gen1Key("y"));
+            keys[TestLayouts.RgbDigitThreeKeyIndex].SetMacro(1, layout.CreateMacro());
+            keys[TestLayouts.RgbDigitThreeKeyIndex].ApplyTapAndHold(
+                TestLayouts.Gen1Key("a"),
+                TestLayouts.Gen1Key("b"),
+                250);
+
+            layer.RefreshFromModel();
+
+            Assert.Equal(2, layer.RemappedCount);
+            Assert.Equal(1, layer.MacroCount);
+            Assert.Equal(1, layer.TapAndHoldCount);
+            Assert.Contains(nameof(KeyboardLayerViewModel.RemappedCount), changed);
+            Assert.Contains(nameof(KeyboardLayerViewModel.MacroCount), changed);
+            Assert.Contains(nameof(KeyboardLayerViewModel.TapAndHoldCount), changed);
+        }
+
+        [Fact]
+        public void RefreshCounts_AfterASingleCapWasRefreshed_BringsTheLayerTotalsBackInLine()
+        {
+            // A single-key edit refreshes only that cap, so the legend row's totals are the one
+            // thing that still has to be told.
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layer = KeyboardLayerViewModel.BuildAll(layout, VisualCatalog.FreestyleEdgeRgb, lighting: null)[0];
+
+            layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+            layer.Keys[TestLayouts.RgbDigitOneKeyIndex].RefreshFromModel();
+
+            Assert.Equal(0, layer.RemappedCount);
+
+            layer.RefreshCounts();
+
+            Assert.Equal(1, layer.RemappedCount);
+        }
+
+        [Fact]
+        public void Counts_AreScopedToTheirOwnLayer()
+        {
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layers = KeyboardLayerViewModel.BuildAll(layout, VisualCatalog.FreestyleEdgeRgb, lighting: null);
+
+            layout.Layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            layers[0].RefreshFromModel();
+            layers[1].RefreshFromModel();
+
+            Assert.Equal(0, layers[0].RemappedCount);
+            Assert.Equal(1, layers[1].RemappedCount);
+        }
+
+        [Fact]
+        public void AdvisoryCount_IsPushedInBecauseNothingOnTheModelCarriesIt()
+        {
+            var layer = BuildRgbLayers(lighting: null)[0];
+            var changed = new List<string>();
+
+            layer.PropertyChanged += (_, arguments) => changed.Add(arguments.PropertyName!);
+            layer.AdvisoryCount = 3;
+
+            Assert.Equal(3, layer.AdvisoryCount);
+            Assert.Contains(nameof(KeyboardLayerViewModel.AdvisoryCount), changed);
+
+            // RefreshCounts recomputes the four model-derived counts and must not clear this one.
+            layer.RefreshCounts();
+
+            Assert.Equal(3, layer.AdvisoryCount);
+        }
+
+        [Fact]
+        public void LockedCount_CountsThePositionsThatCanNeverBeRemapped()
+        {
+            var layer = KeyboardLayerViewModel.BuildAll(
+                TestLayouts.CreateLockedKeyLayout(),
+                TestLayouts.CreateVisual(0, 1, 2),
+                lighting: null)[0];
+
+            Assert.Equal(1, layer.LockedCount);
+        }
+
         private static IReadOnlyList<KeyboardLayerViewModel> BuildRgbLayers(object? lighting)
         {
             return KeyboardLayerViewModel.BuildAll(

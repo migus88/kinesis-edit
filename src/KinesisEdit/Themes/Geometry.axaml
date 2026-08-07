@@ -71,6 +71,39 @@
        33.6 button). 212 is the next step of the 4px grid that clears both. -->
   <x:Double x:Key="HeightDeviceCard">212</x:Double>
 
+  <!-- The keyboard canvas.
+
+       The board is drawn on a cell pitch, not on a cap size: every 1U cell is KeycapPitchX wide
+       and KeycapPitchY tall, and the cap inside it is inset by KeycapGap. Pitch minus gap is
+       therefore the cap the handoff specifies - "keycaps at mock scale: 30x26 (1u), gap 4":
+
+           34 - 4 = 30 wide      30 - 4 = 26 tall
+
+       That subtraction is the load-bearing arithmetic of the whole canvas and is asserted in
+       ShapeAndTypeTokenTests, so the three numbers cannot drift apart in silence. A wide key is
+       still its span in pitches minus one gap (a 2U Backspace is 2 x 34 - 4 = 64), which is why
+       the gap is a single inset and not a margin on each side.
+
+       The two halves of the split board are two panels: each is padded by PaddingBoardSection,
+       carries RadiusBoardSection, and the two are separated by the existing GutterSplit (26). -->
+  <x:Double x:Key="KeycapPitchX">34</x:Double>
+  <x:Double x:Key="KeycapPitchY">30</x:Double>
+  <x:Double x:Key="KeycapGap">4</x:Double>
+  <Thickness x:Key="PaddingBoardSection">9</Thickness>
+  <CornerRadius x:Key="RadiusBoardSection">7</CornerRadius>
+
+  <!-- The keycap badge vocabulary (handoff.md, "Focus, selection, key badges"). One badge, one
+       hue, one shape: a bar across the bottom edge for a remap, a dot top-right for a macro, a
+       right-triangle bottom-right for tap-and-hold, a rounded bar top-right for an advisory.
+       BadgeGap is what keeps two badges that share a corner apart. The colours are already
+       tokens (BadgeMacroBrush, BadgeTapHoldBrush, StatusAdvisoryStrongBrush, AccentBrush). -->
+  <x:Double x:Key="BadgeRemapBarHeight">2</x:Double>
+  <x:Double x:Key="BadgeMacroDotSize">5</x:Double>
+  <x:Double x:Key="BadgeTapHoldSize">6</x:Double>
+  <x:Double x:Key="BadgeAdvisoryBarWidth">12</x:Double>
+  <x:Double x:Key="BadgeAdvisoryBarHeight">3</x:Double>
+  <x:Double x:Key="BadgeGap">2</x:Double>
+
   <!-- Icons are geometry, never raster: a 16px box drawn with a 1.5px square-capped stroke. -->
   <x:Double x:Key="IconSize">16</x:Double>
   <x:Double x:Key="IconStrokeThickness">1.5</x:Double>

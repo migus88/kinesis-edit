@@ -6,36 +6,94 @@
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="250"
              x:Class="KinesisEdit.Controls.KeyboardView"
-             x:DataType="vm:KeyboardLayerViewModel">
+             x:DataType="vm:KeyboardLayerViewModel"
+             ClipToBounds="False">
   <!-- The keyboard picture of one layer. It is parameterised entirely by the layer view model —
-       board size, key rectangles and captions — so every device the visual catalog knows about is
-       drawn by this one control; nothing here is device-specific. -->
-  <ItemsControl ItemsSource="{Binding Keys}">
-    <ItemsControl.ItemsPanel>
-      <ItemsPanelTemplate>
-        <controls:KeyboardPanel BoardWidth="{Binding BoardWidth}" BoardHeight="{Binding BoardHeight}" />
-      </ItemsPanelTemplate>
-    </ItemsControl.ItemsPanel>
+       section boxes, key rectangles and captions — so every device the visual catalog knows about is
+       drawn by this one control; nothing here is device-specific.
 
-    <!-- The generated item container is what the panel lays out, so the key's unit rectangle is
-         projected onto the container's attached properties here. This keeps KeyboardPanel free of
-         any knowledge of the item type. -->
-    <ItemsControl.Styles>
-      <Style Selector="ContentPresenter" x:DataType="vm:KeyboardKeyViewModel">
-        <Setter Property="controls:KeyboardPanel.UnitX" Value="{Binding X}" />
-        <Setter Property="controls:KeyboardPanel.UnitY" Value="{Binding Y}" />
-        <Setter Property="controls:KeyboardPanel.UnitWidth" Value="{Binding Width}" />
-        <Setter Property="controls:KeyboardPanel.UnitHeight" Value="{Binding Height}" />
-      </Style>
-    </ItemsControl.Styles>
+       Two nestings, and each one has a job:
 
-    <!-- The LED row is a property of the PICTURE, not of the key: both tabs draw the same layer
-         view model, so the surface is the only thing that can say whether lighting is on screen.
-         It is handed to each cap here, where the cap is still in the picture's logical tree. -->
-    <ItemsControl.ItemTemplate>
-      <DataTemplate DataType="vm:KeyboardKeyViewModel">
-        <controls:KeyCapView ShowsLedStrip="{Binding $parent[controls:KeyboardView].ShowsLedStrips}" />
-      </DataTemplate>
-    </ItemsControl.ItemTemplate>
-  </ItemsControl>
+         BoardScaleHost   grows the finished picture into the space there is, as one transform, so
+                          the hairlines, the 9/400 legends and the 2px badges grow with the caps
+                          (docs/design/handoff.md: "scale the whole board up with available space;
+                          keep proportions").
+         Sections         a split board is two bordered panels with the design's 26px gutter between
+                          them (mockup 1e: the hotkey column and the left half in one box, the right
+                          half in another). A one-piece board is one panel and the same markup.
+
+       ClipToBounds is off on every one of them, all the way out to this control: a focused cap casts
+       a 3px halo past its own bounds into a grid whose caps are 4px apart, and a clip anywhere on
+       the chain erases it. -->
+  <controls:BoardScaleHost ClipToBounds="False">
+    <ItemsControl ItemsSource="{Binding Sections}" ClipToBounds="False">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal"
+                      Spacing="{StaticResource GutterSplit}"
+                      ClipToBounds="False" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+
+      <ItemsControl.ItemTemplate>
+        <DataTemplate DataType="vm:KeyboardSectionViewModel">
+          <!-- One drawn panel of the board. The panel surface with the line border is the mock's
+               own box; the caps read as raised out of it. Top-aligned rather than stretched, so a
+               shorter half is its own height instead of an empty box the height of the taller one. -->
+          <Border Background="{DynamicResource SurfacePanelBrush}"
+                  BorderBrush="{DynamicResource SurfaceLineBrush}"
+                  BorderThickness="1"
+                  CornerRadius="{StaticResource RadiusBoardSection}"
+                  Padding="{StaticResource PaddingBoardSection}"
+                  VerticalAlignment="Top"
+                  ClipToBounds="False">
+            <ItemsControl ItemsSource="{Binding Keys}" ClipToBounds="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <!-- The section's own extent, and the board-absolute origin it stands at: the
+                       caps keep the one continuous coordinate space arrow navigation reads
+                       (KeyAdjacency), and the panel subtracts the origin as it places them.
+
+                       The cell pitch and the gap are the tokens, passed in rather than baked into
+                       the panel, so changing Themes/Geometry.axaml moves the board. -->
+                  <controls:KeyboardPanel BoardWidth="{Binding BoardWidth}"
+                                          BoardHeight="{Binding BoardHeight}"
+                                          UnitOriginX="{Binding OriginX}"
+                                          UnitOriginY="{Binding OriginY}"
+                                          PitchX="{StaticResource KeycapPitchX}"
+                                          PitchY="{StaticResource KeycapPitchY}"
+                                          Gap="{StaticResource KeycapGap}"
+                                          ClipToBounds="False" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+
+              <!-- The generated item container is what the panel lays out, so the key's unit
+                   rectangle is projected onto the container's attached properties here. This keeps
+                   KeyboardPanel free of any knowledge of the item type. -->
+              <ItemsControl.Styles>
+                <Style Selector="ContentPresenter" x:DataType="vm:KeyboardKeyViewModel">
+                  <Setter Property="controls:KeyboardPanel.UnitX" Value="{Binding X}" />
+                  <Setter Property="controls:KeyboardPanel.UnitY" Value="{Binding Y}" />
+                  <Setter Property="controls:KeyboardPanel.UnitWidth" Value="{Binding Width}" />
+                  <Setter Property="controls:KeyboardPanel.UnitHeight" Value="{Binding Height}" />
+                  <Setter Property="ClipToBounds" Value="False" />
+                </Style>
+              </ItemsControl.Styles>
+
+              <!-- The LED row and the state badges are properties of the PICTURE, not of the key:
+                   both tabs draw the same layer view model, so the surface is the only thing that
+                   can say whether lighting, or the badge vocabulary, is on screen. They are handed
+                   to each cap here, where the cap is still in the picture's logical tree. -->
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:KeyboardKeyViewModel">
+                  <controls:KeyCapView ShowsLedStrip="{Binding $parent[controls:KeyboardView].ShowsLedStrips}"
+                                       ShowsStateBadge="{Binding $parent[controls:KeyboardView].ShowsStateBadges}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </controls:BoardScaleHost>
 </UserControl>

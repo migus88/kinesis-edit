@@ -25,7 +25,7 @@ namespace KinesisEdit.ViewModels
     /// <see cref="KeyboardKeyViewModel"/>/<see cref="KeyboardLayerViewModel"/>.
     /// </para>
     /// </summary>
-    public sealed class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable
+    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -553,6 +553,8 @@ namespace KinesisEdit.ViewModels
             ResetKeyCommand = new RelayCommand(ResetKey, () => SelectedKey is not null && SelectedKey.CanEdit && !IsLoading && !IsBusy);
             ResetLayerCommand = new RelayCommand(ResetLayer, () => SelectedLayer is not null && !IsLoading && !IsBusy);
             ResetLayoutCommand = new RelayCommand(ResetLayout, () => Layout is not null && !IsLoading && !IsBusy);
+            CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
+            CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
             TapAndHoldCommand = new AsyncRelayCommand(OpenTapAndHoldAsync, () => CanOpenTapAndHold());
             InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
@@ -561,6 +563,11 @@ namespace KinesisEdit.ViewModels
             ExportCommand = new RelayCommand(OpenExport, () => CanExport());
             ImportCommand = new AsyncRelayCommand(ImportAsync, () => CanImport());
             CloseOverlayCommand = new RelayCommand(_overlays.Dismiss, () => ActiveOverlay is not null);
+
+            // The legend row is a projection, not a decision: it holds the shown layer's five
+            // counts and runs two of this class's commands. Built here so it exists before the
+            // first SelectTab/SelectLayer, both of which refresh it.
+            BoardLegend = new BoardLegendViewModel(CopyKeyCommand, ResetLayerCommand);
 
             SelectTab(EditorTab.Keys);
 
@@ -661,6 +668,10 @@ namespace KinesisEdit.ViewModels
             // Tap and Hold can never write back into an editor that has moved on.
             DetachTapAndHold();
             CancelRemap();
+
+            // The scrim swallows every click aimed at the board, so an armed copy could never be
+            // finished while a panel is up.
+            CancelCopyKey();
 
             // A recording underneath owns the capture service and would swallow every key aimed at
             // the panel, Escape included; stopping it hands the service back before the panel asks
@@ -912,6 +923,10 @@ namespace KinesisEdit.ViewModels
             // to keep, because that is the section it belongs to.
             CancelRemap();
 
+            // An armed copy is finished with a click on the board; a section that does not draw
+            // the board could never finish it, so it ends here too.
+            CancelCopyKey();
+
             if (tab != EditorTab.Macros)
             {
                 _macroPanel?.StopRecording();
@@ -968,6 +983,7 @@ namespace KinesisEdit.ViewModels
         private void SelectLayer(KeyboardLayerViewModel? layer)
         {
             CancelRemap();
+            CancelCopyKey();
             _macroPanel?.StopRecording();
             ClearSelectedKey();
 
@@ -978,8 +994,11 @@ namespace KinesisEdit.ViewModels
 
             SelectedLayer = layer;
 
-            // The Layout tab's strip is about the layer on screen, so it follows the switch.
+            // The Layout tab's strip is about the layer on screen, so it follows the switch. So is
+            // the legend row: its five counts are the shown layer's, and a switch writes nothing,
+            // so neither goes through RefreshCounters.
             RefreshAdvisorySummary();
+            RefreshLegend();
 
             UpdateMacroTrigger();
         }
@@ -994,9 +1013,30 @@ namespace KinesisEdit.ViewModels
         /// The click contract of specs/10-apps-and-ui.md: the first click selects, a second click
         /// on the same key starts listening, and a click on the listening key cancels it again.
         /// Selecting a different key always cancels listening first.
+        /// <para>
+        /// An armed <c>Copy key…</c> takes the click ahead of all of that: while a copy is waiting
+        /// for its target, the next cap clicked <em>is</em> the target and nothing else
+        /// (<see cref="CompleteCopyKey"/>). Without the interception the second half of the pick
+        /// would be read as the click contract's "a second hit on the selected cap" and start a
+        /// remap on the very key the user meant to copy from.
+        /// </para>
         /// </summary>
         private void SelectKey(KeyboardKeyViewModel? key)
         {
+            if (IsCopyArmed)
+            {
+                if (key is not null)
+                {
+                    CompleteCopyKey(key);
+
+                    return;
+                }
+
+                // A click that selects nothing is not a target; it ends the pick and then falls
+                // through to the ordinary "nothing is selected" branch below.
+                CancelCopyKey();
+            }
+
             if (key is null)
             {
                 CancelRemap();
@@ -1078,6 +1118,11 @@ namespace KinesisEdit.ViewModels
             }
 
             CancelRemap();
+
+            // A listening key and an armed copy are two different answers to "what does the next
+            // input mean", so only one of them is ever live. Arming the copy ends a listen for the
+            // same reason (ArmCopyKey), which is what makes the Escape order below unambiguous.
+            CancelCopyKey();
 
             var key = SelectedKey!;
 
@@ -1478,6 +1523,7 @@ namespace KinesisEdit.ViewModels
             }
 
             CancelRemap();
+            CancelCopyKey();
             _macroPanel?.StopRecording();
 
             var outcome = await _importer.ImportAsync(session, Device.DeviceId).ConfigureAwait(true);
@@ -1546,18 +1592,22 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-reads everything the chrome says about the model: the two spec-10 counters and the
-        /// dirty flag behind the amber Save. <b>Every path that can write to the layout ends
-        /// here</b> — a captured remap, the three resets, an accepted tap-and-hold, every
+        /// Re-reads everything the chrome says about the model: the two spec-10 counters, the
+        /// legend row's five layer-scoped counts, and the dirty flag behind the amber Save.
+        /// <b>Every path that can write to the layout ends here</b> — a captured remap, the three
+        /// resets, a completed key copy, an accepted tap-and-hold, every
         /// <see cref="MacroPanelViewModel.MacrosChanged"/>, and <see cref="Apply"/> after a load or
-        /// an import. Core announces nothing, so a path that skips it leaves both readouts stale.
+        /// an import. Core announces nothing, so a path that skips it leaves every readout stale.
         /// </summary>
         private void RefreshCounters()
         {
             ModifiedKeyCount = Layout?.ModifiedKeyCount ?? 0;
             MacroCount = Layout?.MacroCount ?? 0;
 
+            // Order matters by one step: RebuildAdvisories pushes each layer's advisory count in,
+            // and the legend row reads it back off the layer.
             RebuildAdvisories();
+            RefreshLegend();
             RefreshDirtyState();
         }
 
@@ -1583,6 +1633,12 @@ namespace KinesisEdit.ViewModels
                 {
                     key.HasAdvisory = _advisories.HasAdvisoryForKey(layer.Index, key.Index);
                 }
+
+                // The one count the layer cannot derive from its own caps: the fact lives out here,
+                // in EditorAdvisories, so it is pushed in exactly like the per-cap flag above. It is
+                // an aggregate of what the strip already says, not a third place an advisory is
+                // reported (invariant 21).
+                layer.AdvisoryCount = _advisories.CountForLayer(layer.Index);
             }
 
             if (_macroPanel is not null)
@@ -1730,6 +1786,7 @@ namespace KinesisEdit.ViewModels
             }
 
             CancelRemap();
+            CancelCopyKey();
             _macroPanel?.StopRecording();
 
             ProfileSaveResult? result = null;
@@ -1839,6 +1896,8 @@ namespace KinesisEdit.ViewModels
             ResetKeyCommand.NotifyCanExecuteChanged();
             ResetLayerCommand.NotifyCanExecuteChanged();
             ResetLayoutCommand.NotifyCanExecuteChanged();
+            CopyKeyCommand.NotifyCanExecuteChanged();
+            CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
             TapAndHoldCommand.NotifyCanExecuteChanged();
             InsertDelayCommand.NotifyCanExecuteChanged();
@@ -1881,6 +1940,7 @@ namespace KinesisEdit.ViewModels
 
             DetachMacroPanel();
             StopListening();
+            CancelCopyKey();
         }
 
         /// <summary>What one load attempt produced: a session (or none, in demo mode), a model, and a failure.</summary>

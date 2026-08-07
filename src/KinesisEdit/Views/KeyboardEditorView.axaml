@@ -25,8 +25,10 @@
          Row 1  tab bar        38  Layout Macros [Lighting] [Settings] ... LAYER (segments + kbd)
          Row 2  Demo Mode bar      only in demo mode
          Row 3  advisory strip 30  the open section's one calm sentence; collapses when it has none
-         Row 4  content            padded 24,16: the sections, the provisional action row, the
-                                   invalid-line block -->
+         Row 4  content            padded 24,16: the sections — the Layout/Macros board is the
+                                   keyboard canvas with its legend row under it, centred both
+                                   ways — then the provisional action row and the invalid-line
+                                   block -->
   <Panel>
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
 
@@ -241,12 +243,29 @@
                           VerticalAlignment="Center" />
                 </StackPanel>
 
-                <Border Grid.Row="1"
-                        Classes="keyboardBoard"
-                        IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+                <!-- The keyboard canvas and its legend row, centred as one block in the content
+                     area (handoff § "Screens → 3. Layout tab": "Content = keyboard canvas
+                     (centered, both split halves as separate panels with 26px gutter) + legend
+                     row"). The two are one StackPanel so the row is exactly as wide as the board
+                     and its ends line up with the board's, which is how mockups 1e/2a draw it.
+
+                     NO OUTER FRAME. The picture draws its own bordered section panels now
+                     (Controls/KeyboardView.axaml), so the `keyboardBoard` inset surround this used
+                     to carry would be a second frame around them; the canvas here is the content
+                     area itself. The Lighting tab keeps the surround, because its board sits inside
+                     a column of controls rather than on a canvas of its own. -->
+                <StackPanel Grid.Row="1"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
                   <controls:KeyboardView DataContext="{Binding SelectedLayer}"
+                                         HorizontalAlignment="Center"
                                          KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
-                </Border>
+
+                  <!-- ~14px below the board, as the mock spaces it. The row counts the state of
+                       the layer on screen and carries `Copy key…` and `Reset layer`. -->
+                  <views:BoardLegendView DataContext="{Binding BoardLegend}" Margin="0,14,0,0" />
+                </StackPanel>
               </Grid>
 
               <!-- The macro editor of specs/10-apps-and-ui.md and specs/06-macros.md. Every number
@@ -503,18 +522,21 @@
           </Panel>
         </Panel>
 
-        <!-- PROVISIONAL. The three resets and the five spec 11 feature buttons left the chrome when
-             the toolbar and tab bar landed, and this row is where they wait: issue #91 gives the
-             resets their real home in the legend row under the board, and #92/#93 turn the feature
-             panels into inspector panels. Nothing here is the design's shape — it exists so every
-             action stays reachable and keeps working in the meantime, on every tab, which is why it
-             sits under the whole content area rather than under the board.
+        <!-- STILL PROVISIONAL, and smaller than it was. `Reset Layer` has left for its real home,
+             the legend row under the board (issue #91), where it sits beside the counts it acts on
+             and takes the mockups' sentence case. What is left waits for the two issues that own
+             its real homes: `Reset Key` belongs to the key inspector's footer `Revert key`
+             (#92 — handoff § "Screens → 3. Layout tab"), and the four spec 11 buttons plus
+             Import/Export become inspector panels and editor-level actions with #92/#93.
+
+             Nothing here is the design's shape — it exists so every action stays reachable and
+             keeps working in the meantime, on every tab, which is why it sits under the whole
+             content area rather than under the board.
 
              Every button reports its own availability through its command's CanExecute, so there is
              no visibility logic here. -->
         <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
           <Button Content="Reset Key" Command="{Binding ResetKeyCommand}" Margin="6,0,0,4" />
-          <Button Content="Reset Layer" Command="{Binding ResetLayerCommand}" Margin="6,0,0,4" />
           <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
           <Button Content="Tap and Hold" Command="{Binding TapAndHoldCommand}" Margin="6,0,0,4" />
           <Button Content="Insert Delay" Command="{Binding InsertDelayCommand}" Margin="6,0,0,4" />

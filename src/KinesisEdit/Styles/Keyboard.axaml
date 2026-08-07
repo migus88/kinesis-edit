@@ -21,26 +21,115 @@
   </Style>
 
   <!--
-    One key cap. Nothing but the bridge: `KeyCapButton` carries the geometry, the 11/400 legend
-    step, the six states and the concentric selection/focus rings.
+    One key cap. Nothing but the bridge: `KeyCapButton` carries the geometry, the 9/400 legend step,
+    the face ladder, the four state badges and the concentric selection/focus rings.
 
     A class style here would outrank every one of those, so this style deliberately sets no other
     property — `Padding` most of all, which the theme fixes at 2 and to which the hatch overlay's
-    `Margin="-2"` and the selection ring's `Margin="-1"` are both tuned.
+    `Margin="-2"`, the remap bar's `Margin="-2"` and the selection ring's `Margin="-1"` are all
+    tuned.
   -->
   <Style Selector="Button.keyCap">
     <Setter Property="Theme" Value="{StaticResource KeyCapButton}" />
   </Style>
 
+  <!--
+    The legend roles the cap's own content carries: the caption, the caption's stacked variant, and
+    the silkscreen sub-legend. Only what differs from what the cap already inherits — the theme sets
+    9/400 on the Button itself, so an ordinary caption needs no type of its own and this style is
+    colour alone. The other two step the size down, and each says in `Themes/Typography.axaml` which
+    number it takes and why.
+
+    There is deliberately no `.keyCapText.modified` rule any more. A remapped cap used to lift its
+    caption to the accent on top of a 14% accent face and an accent border; mockups 1e/2a draw it as
+    an ordinary raised cap wearing only the 2px bar, and three accent signals for one state on a
+    26px cap is noise. The bar is the remap signal — see Themes/ControlThemes/Keycap.axaml.
+  -->
   <Style Selector=":is(TextBlock).keyCapText">
     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-  </Style>
-  <Style Selector=":is(TextBlock).keyCapText.modified">
-    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
+
+    <!--
+      NO `LineHeight`, HERE OR ON THE SUB-LEGEND BELOW, AND THAT IS THE POINT.
+
+      Both used to set one — 9 on a 9px caption, 7 on a 7px legend — justified as "line-height 1,
+      the design's own rule for single-line UI text, and how the mockups set every cap
+      (`font: 400 9px/1`)". THAT REASONING TRANSFERS A CSS IDIOM TO A DIFFERENT ENGINE and it cost
+      the whole board: CSS `line-height: 1` only removes leading and lets the glyphs spill out of
+      the line box, while Avalonia's `LineHeight` SIZES the line box and draws nothing past it.
+
+      Concretely, and worth keeping because it is not guessable: Avalonia pins the baseline at the
+      font's own ascent below the top of each line and truncates the block at `nLines x LineHeight`.
+      IBM Plex Sans is 1.3em tall (ascent 1.025em, descent 0.275em, no line gap), so at 9px the
+      baseline alone lands at 9.225 — a 9px line box cuts ABOVE it. Every cap on the board lost
+      ~2.7px off its bottom: `Esc` read `Fsc`, `Space` read `Snace`, `Q` read `O`, and the second
+      line of `Caps\nLock` went altogether. Themes/Typography.axaml already states this rule for the
+      whole app ("a literal LineHeight == FontSize would cut the descenders off every label"); these
+      two styles were the only place breaking it.
+
+      The room the old values were buying is bought properly instead, in Controls/KeyCapView.axaml:
+      the content grid reclaims the cap's 2px padding band (`Margin="0,-2"`, which moves no badge),
+      the sub-legend is not drawn on a lighting board at all, and a caption carrying its own line
+      break steps down to `FontSizeKeycapLabelStacked`. See that file for the vertical budget.
+    -->
   </Style>
   <Style Selector=":is(TextBlock).keyCapText.locked">
     <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+  </Style>
+
+  <!--
+    A caption that carries a line break of its own — `Caps\nLock`, `Page\nDown`
+    (specs/05-key-model.md §1.1). Two 9px lines measure 23.4px against a 24px content box, which
+    leaves nothing for the LED strip a lighting board draws under them, so the stacked case takes
+    the step that fits: `FontSizeKeycapLabelStacked` (8), declared beside the caption step with its
+    reasoning. Only the size moves — the family, the weight and the colour are the caption's own.
+  -->
+  <Style Selector=":is(TextBlock).keyCapText.stacked">
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeKeycapLabelStacked}" />
+  </Style>
+
+  <!--
+    The silkscreen sub-legend, one step under the caption and one step dimmer, so "printed on the
+    cap" and "what this key now does" are never mistaken for each other.
+
+    THE STEP IS OFF THE PUBLISHED SCALE, and knowingly — but it is still a token, because the type
+    scale lives in Themes/ and a bare size in a style is the same category of mistake as a hex.
+    `FontSizeKeycapSubLegend` (7) is declared beside `FontSizeKeycapLabel` (9) and carries the
+    reasoning: mockup 1e sets this legend at 6.5px against a 10px caption, this app 7 against 9, and
+    both pairs sit outside the handoff's scale because the scale has no step for board silkscreen.
+    The whole board scales up as a unit, so 7 is the authored size rather than the drawn one.
+  -->
+  <Style Selector=":is(TextBlock).keyCapSubText">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeKeycapSubLegend}" />
+
+    <!-- No `LineHeight` here either, and for the reason spelled out on `.keyCapText` above: the old
+         7 cut the descender off `play` and `speed`. The natural 9.1px box is what the cap's budget
+         is now written against. -->
+
+    <!--
+      THE TWO LINE BOXES OVERLAP BY 2px, ON PURPOSE, AND THAT IS WHAT THIS MARGIN SAYS.
+
+      A line box is taller than the ink in it: at the 9px caption step Plex Sans puts the baseline
+      9.2px down and reserves 2.5 more for a descent that `F1`, `2` and `;` do not use, and this
+      legend's own box opens with 2.3px of leading above its cap height. So the caption's last 2px
+      and this legend's first 2px are, on the captions the board actually carries, empty in both.
+      Tucking into them costs nothing visible — the caption's baseline still sits 5px clear of this
+      legend's cap top — and it buys two things a 26px cap has no other source for:
+
+        - the pair drops from 23px of the cap's 24 to 20, which is the difference between a budget
+          that fits and one that fits with room; and
+        - THE CAPTION MOVES 2px DOWN, out from under the badges. The advisory bar and the macro dot
+          own the band 2-5px inside the cap's border (Themes/ControlThemes/Keycap.axaml), and with
+          the caption leading the stack — which is the order mockup 1e draws and the hierarchy the
+          design asks for — a cap carrying both a silkscreen and a badge had the mark landing across
+          the top of its own legend. At 2px down the caption's cap height starts at 4.9 and the bar
+          ends at 5.
+
+      Mockup 1e sets a positive 2px gap here instead, but it draws the pair on a cap 31px tall
+      (29x31) while the handoff pins this board's at 30x26. There is no version of that gap that
+      fits five pixels less of cap.
+    -->
+    <Setter Property="Margin" Value="0,-2,0,0" />
   </Style>
 
   <!--

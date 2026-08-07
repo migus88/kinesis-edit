@@ -5,9 +5,29 @@ namespace KinesisEdit.Controls
 {
     /// <summary>
     /// Arranges its children from board-absolute <b>key-unit</b> rectangles (1.0 = one 1U cap,
-    /// <see cref="Core.Geometry.Visual.KeyVisual"/>), scaling the whole board uniformly into
-    /// whatever space it is given and centring it there. It is the only piece of the keyboard
-    /// picture that does arithmetic: it knows nothing about keys, layers or remaps.
+    /// <see cref="Core.Geometry.Visual.KeyVisual"/>) onto the design's <b>mock-scale cell</b>. It is
+    /// the only piece of the keyboard picture that does arithmetic, and it knows nothing about keys,
+    /// layers or remaps.
+    /// <para>
+    /// The cell is not square. Every 1U cell is <see cref="PitchX"/> wide and <see cref="PitchY"/>
+    /// tall, and the cap inside it is inset by <see cref="Gap"/> — so pitch minus gap is the cap the
+    /// handoff specifies, "keycaps at mock scale: 30x26 (1u), gap 4" (34 - 4 = 30 wide, 30 - 4 = 26
+    /// tall). The gap is a single inset rather than half a gap on each side, which is what makes a
+    /// wide cap its span in pitches minus <i>one</i> gap: a 2U Backspace is 2 x 34 - 4 = 64, and a
+    /// row of six 1U caps is 6 x 34 - 4 = 200.
+    /// </para>
+    /// <para>
+    /// <b>It scales nothing.</b> The whole board — caps, hairlines, legends, badges, section padding
+    /// and the split gutter — is authored at mock scale and grown as one picture by
+    /// <see cref="BoardScaleHost"/>. A panel that scaled its own cells would grow the cells and
+    /// leave everything drawn on top of them behind.
+    /// </para>
+    /// <para>
+    /// <see cref="UnitOriginX"/>/<see cref="UnitOriginY"/> are what let one panel draw a
+    /// <i>section</i> of a board without any coordinate being re-based: the keys keep the
+    /// board-absolute units arrow navigation needs (<c>KeyAdjacency</c>) and the panel subtracts its
+    /// own origin as it places them.
+    /// </para>
     /// <para>
     /// Placement travels on <b>attached properties</b> rather than being read off each child's
     /// <c>DataContext</c>, so the panel stays usable with any item type — the item view model is
@@ -21,14 +41,16 @@ namespace KinesisEdit.Controls
     public sealed class KeyboardPanel : Panel
     {
         /// <summary>
-        /// Pixel size of one key unit when the panel is measured without a usable constraint (an
-        /// auto-sized or scrolling parent). A constrained parent overrides it: the scale is then
-        /// derived from the space actually offered.
+        /// The <c>KeycapPitchX</c> token's value, as the fallback for a panel nothing sets it on —
+        /// a design-time preview or a targeted test. The view passes the token itself.
         /// </summary>
-        public const double NaturalUnitSize = 44.0;
+        public const double DefaultPitchX = 34.0;
 
-        /// <summary>Gap left between neighbouring caps, in key units, so they never touch.</summary>
-        public const double KeyGapUnits = 0.06;
+        /// <summary>The <c>KeycapPitchY</c> token's value; see <see cref="DefaultPitchX"/>.</summary>
+        public const double DefaultPitchY = 30.0;
+
+        /// <summary>The <c>KeycapGap</c> token's value; see <see cref="DefaultPitchX"/>.</summary>
+        public const double DefaultGap = 4.0;
 
         /// <summary>Left edge of the child on the board, in key units.</summary>
         public static readonly AttachedProperty<double> UnitXProperty =
@@ -46,13 +68,33 @@ namespace KinesisEdit.Controls
         public static readonly AttachedProperty<double> UnitHeightProperty =
             AvaloniaProperty.RegisterAttached<KeyboardPanel, Control, double>("UnitHeight", 1.0);
 
-        /// <summary>Width of the whole board, in key units.</summary>
+        /// <summary>Width of the section being drawn, in key units.</summary>
         public static readonly StyledProperty<double> BoardWidthProperty =
             AvaloniaProperty.Register<KeyboardPanel, double>(nameof(BoardWidth));
 
-        /// <summary>Height of the whole board, in key units.</summary>
+        /// <summary>Height of the section being drawn, in key units.</summary>
         public static readonly StyledProperty<double> BoardHeightProperty =
             AvaloniaProperty.Register<KeyboardPanel, double>(nameof(BoardHeight));
+
+        /// <summary>Board-absolute key-unit X this panel's left edge stands at.</summary>
+        public static readonly StyledProperty<double> UnitOriginXProperty =
+            AvaloniaProperty.Register<KeyboardPanel, double>(nameof(UnitOriginX));
+
+        /// <summary>Board-absolute key-unit Y this panel's top edge stands at.</summary>
+        public static readonly StyledProperty<double> UnitOriginYProperty =
+            AvaloniaProperty.Register<KeyboardPanel, double>(nameof(UnitOriginY));
+
+        /// <summary>Pixels per key unit horizontally; the <c>KeycapPitchX</c> token.</summary>
+        public static readonly StyledProperty<double> PitchXProperty =
+            AvaloniaProperty.Register<KeyboardPanel, double>(nameof(PitchX), DefaultPitchX);
+
+        /// <summary>Pixels per key unit vertically; the <c>KeycapPitchY</c> token.</summary>
+        public static readonly StyledProperty<double> PitchYProperty =
+            AvaloniaProperty.Register<KeyboardPanel, double>(nameof(PitchY), DefaultPitchY);
+
+        /// <summary>Pixels a cap is inset by inside its cell; the <c>KeycapGap</c> token.</summary>
+        public static readonly StyledProperty<double> GapProperty =
+            AvaloniaProperty.Register<KeyboardPanel, double>(nameof(Gap), DefaultGap);
 
         /// <summary>Reads <see cref="UnitXProperty"/> off <paramref name="control"/>.</summary>
         public static double GetUnitX(Control control)
@@ -118,78 +160,106 @@ namespace KinesisEdit.Controls
             control.SetValue(UnitHeightProperty, value);
         }
 
-        /// <summary>Width of the board being drawn, in key units.</summary>
+        /// <summary>Width of the section being drawn, in key units.</summary>
         public double BoardWidth
         {
             get => GetValue(BoardWidthProperty);
             set => SetValue(BoardWidthProperty, value);
         }
 
-        /// <summary>Height of the board being drawn, in key units.</summary>
+        /// <summary>Height of the section being drawn, in key units.</summary>
         public double BoardHeight
         {
             get => GetValue(BoardHeightProperty);
             set => SetValue(BoardHeightProperty, value);
         }
 
+        /// <inheritdoc cref="UnitOriginXProperty" />
+        public double UnitOriginX
+        {
+            get => GetValue(UnitOriginXProperty);
+            set => SetValue(UnitOriginXProperty, value);
+        }
+
+        /// <inheritdoc cref="UnitOriginYProperty" />
+        public double UnitOriginY
+        {
+            get => GetValue(UnitOriginYProperty);
+            set => SetValue(UnitOriginYProperty, value);
+        }
+
+        /// <inheritdoc cref="PitchXProperty" />
+        public double PitchX
+        {
+            get => GetValue(PitchXProperty);
+            set => SetValue(PitchXProperty, value);
+        }
+
+        /// <inheritdoc cref="PitchYProperty" />
+        public double PitchY
+        {
+            get => GetValue(PitchYProperty);
+            set => SetValue(PitchYProperty, value);
+        }
+
+        /// <inheritdoc cref="GapProperty" />
+        public double Gap
+        {
+            get => GetValue(GapProperty);
+            set => SetValue(GapProperty, value);
+        }
+
         static KeyboardPanel()
         {
             AffectsParentArrange<KeyboardPanel>(UnitXProperty, UnitYProperty, UnitWidthProperty, UnitHeightProperty);
-            AffectsMeasure<KeyboardPanel>(BoardWidthProperty, BoardHeightProperty);
+            AffectsArrange<KeyboardPanel>(UnitOriginXProperty, UnitOriginYProperty);
+            AffectsMeasure<KeyboardPanel>(
+                BoardWidthProperty,
+                BoardHeightProperty,
+                PitchXProperty,
+                PitchYProperty,
+                GapProperty);
         }
 
         /// <summary>
-        /// Reports the board at the scale the offered space allows, so a constrained parent gets a
-        /// board that already fits and an unconstrained one gets the natural size.
+        /// Reports the section at mock scale, whatever space is on offer: the picture is scaled as a
+        /// whole by <see cref="BoardScaleHost"/>, so shrinking here would scale it twice.
         /// </summary>
         protected override Size MeasureOverride(Size availableSize)
         {
+            MeasureChildren();
+
             if (!TryGetBoard(out var boardWidth, out var boardHeight))
             {
-                MeasureChildren(default);
-
                 return default;
             }
 
-            var scale = ResolveScale(availableSize, boardWidth, boardHeight);
-
-            MeasureChildren(scale);
-
-            return new Size(boardWidth * scale, boardHeight * scale);
+            return new Size(CellSpan(boardWidth, PitchX), CellSpan(boardHeight, PitchY));
         }
 
         /// <summary>
-        /// Scales the board uniformly into <paramref name="finalSize"/>, centres it, and places
-        /// every child at its key-unit rectangle shrunk by <see cref="KeyGapUnits"/>.
+        /// Places every child on the cell grid, relative to this panel's own key-unit origin.
         /// </summary>
         protected override Size ArrangeOverride(Size finalSize)
         {
-            if (!TryGetBoard(out var boardWidth, out var boardHeight))
+            if (!TryGetBoard(out _, out _))
             {
                 ArrangeChildrenEmpty();
 
                 return finalSize;
             }
 
-            var scale = ResolveScale(finalSize, boardWidth, boardHeight);
-
-            if (scale <= 0)
-            {
-                ArrangeChildrenEmpty();
-
-                return finalSize;
-            }
-
-            var gap = KeyGapUnits * scale;
-            var originX = (finalSize.Width - (boardWidth * scale)) / 2;
-            var originY = (finalSize.Height - (boardHeight * scale)) / 2;
+            var pitchX = PitchX;
+            var pitchY = PitchY;
+            var originX = UnitOriginX;
+            var originY = UnitOriginY;
 
             foreach (var child in Children)
             {
-                var left = originX + (GetUnitX(child) * scale) + (gap / 2);
-                var top = originY + (GetUnitY(child) * scale) + (gap / 2);
-                var width = Math.Max(0, (GetUnitWidth(child) * scale) - gap);
-                var height = Math.Max(0, (GetUnitHeight(child) * scale) - gap);
+                var left = (GetUnitX(child) - originX) * pitchX;
+                var top = (GetUnitY(child) - originY) * pitchY;
+                var width = CellSpan(GetUnitWidth(child), pitchX);
+                var height = CellSpan(GetUnitHeight(child), pitchY);
 
                 child.Arrange(new Rect(left, top, width, height));
             }
@@ -197,23 +267,19 @@ namespace KinesisEdit.Controls
             return finalSize;
         }
 
-        /// <summary>
-        /// The uniform scale that fits the board into <paramref name="available"/>. A dimension
-        /// that is infinite, NaN or non-positive contributes nothing, which leaves the natural
-        /// size when neither dimension constrains the board.
-        /// </summary>
-        private static double ResolveScale(Size available, double boardWidth, double boardHeight)
-        {
-            var horizontal = IsUsable(available.Width) ? available.Width / boardWidth : double.PositiveInfinity;
-            var vertical = IsUsable(available.Height) ? available.Height / boardHeight : double.PositiveInfinity;
-            var scale = Math.Min(horizontal, vertical);
-
-            return double.IsFinite(scale) && scale > 0 ? scale : NaturalUnitSize;
-        }
-
         private static bool IsUsable(double length)
         {
             return double.IsFinite(length) && length > 0;
+        }
+
+        /// <summary>
+        /// How many pixels <paramref name="units"/> key units occupy at <paramref name="pitch"/>,
+        /// less the one gap that is never drawn — the trailing edge of a cap, and of the section.
+        /// Clamped at 0, because a negative <see cref="Rect"/> throws.
+        /// </summary>
+        private double CellSpan(double units, double pitch)
+        {
+            return Math.Max(0, (units * pitch) - Gap);
         }
 
         private bool TryGetBoard(out double boardWidth, out double boardHeight)
@@ -224,11 +290,16 @@ namespace KinesisEdit.Controls
             return IsUsable(boardWidth) && IsUsable(boardHeight);
         }
 
-        private void MeasureChildren(double scale)
+        private void MeasureChildren()
         {
+            var pitchX = PitchX;
+            var pitchY = PitchY;
+
             foreach (var child in Children)
             {
-                child.Measure(new Size(GetUnitWidth(child) * scale, GetUnitHeight(child) * scale));
+                child.Measure(new Size(
+                    CellSpan(GetUnitWidth(child), pitchX),
+                    CellSpan(GetUnitHeight(child), pitchY)));
             }
         }
 

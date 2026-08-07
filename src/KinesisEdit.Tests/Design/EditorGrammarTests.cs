@@ -74,12 +74,18 @@ namespace KinesisEdit.Tests.Design
             // The Freestyle Edge RGB's two halves are one continuous coordinate space with a 1U
             // gap, so nothing special-cases the crossing — but it is the case a row/column
             // implementation would get wrong, which is why it is pinned at this level too.
+            //
+            // The picture is now two separate bordered panels with the design's gutter between
+            // them, and this is the crossing that must not care: KeyAdjacency works on the
+            // board-absolute Core coordinates, which no renderer re-bases.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
             var editor = (KeyboardEditorViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
 
             Select(editor, LastKeyOfTheLeftHalf);
 
@@ -90,6 +96,10 @@ namespace KinesisEdit.Tests.Design
             Press(host, PhysicalKey.ArrowLeft);
 
             Assert.Equal(LastKeyOfTheLeftHalf, editor.SelectedKey!.Index);
+
+            // And the two really are drawn in different panels, or the crossing would be a
+            // crossing of nothing.
+            Assert.NotEqual(PanelOf(view, LastKeyOfTheLeftHalf), PanelOf(view, FirstKeyOfTheRightHalf));
         }
 
         [AvaloniaFact]
@@ -780,6 +790,19 @@ namespace KinesisEdit.Tests.Design
         private static object? FocusedElement(Control view)
         {
             return TopLevel.GetTopLevel(view)?.FocusManager?.GetFocusedElement();
+        }
+
+        /// <summary>
+        /// The board panel the cap of <paramref name="keyIndex"/> is drawn in. A split board is two
+        /// of them, so this is how a test says "the arrow left the panel it started in".
+        /// </summary>
+        private static KeyboardPanel PanelOf(Control view, int keyIndex)
+        {
+            var cap = view.GetVisualDescendants()
+                .OfType<KeyCapView>()
+                .First(candidate => candidate.DataContext is KeyboardKeyViewModel key && key.Index == keyIndex);
+
+            return cap.GetVisualAncestors().OfType<KeyboardPanel>().First();
         }
 
         /// <summary>

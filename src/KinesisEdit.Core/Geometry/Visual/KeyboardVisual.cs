@@ -11,6 +11,12 @@ namespace KinesisEdit.Core.Geometry.Visual
     /// index across layers), never in where the key physically sits — so the keyboard
     /// view renders the same rectangles for every layer and swaps only the captions.
     /// </para>
+    /// <para>
+    /// <see cref="Keys"/> is the flat authoring-order list and is what arrow navigation
+    /// (<see cref="KeyAdjacency"/>) and the view-model join work from. <see cref="Sections"/>
+    /// is the same set grouped into drawn panels; the two are views of one list, never two
+    /// lists that could disagree.
+    /// </para>
     /// </summary>
     public sealed class KeyboardVisual
     {
@@ -22,6 +28,13 @@ namespace KinesisEdit.Core.Geometry.Visual
 
         /// <summary>Key placements in authoring order. Indices are unique, not necessarily sorted.</summary>
         public IReadOnlyList<KeyVisual> Keys { get; }
+
+        /// <summary>
+        /// The board's drawn panels, ordered by <see cref="KeyboardSection.Index"/>. Every
+        /// key of <see cref="Keys"/> appears in exactly one section, and the indices are
+        /// dense from 0 — a gap is an authoring bug and throws, like a duplicate key index.
+        /// </summary>
+        public IReadOnlyList<KeyboardSection> Sections { get; }
 
         /// <summary>Board width in key units: the largest <see cref="KeyVisual.Right"/>; 0 when empty.</summary>
         public double Width { get; }
@@ -61,6 +74,7 @@ namespace KinesisEdit.Core.Geometry.Visual
 
             Variant = variant;
             Keys = copy;
+            Sections = BuildSections(copy);
             Width = width;
             Height = height;
             _keysByIndex = keysByIndex;
@@ -73,6 +87,67 @@ namespace KinesisEdit.Core.Geometry.Visual
         public bool TryGetKey(int index, [NotNullWhen(true)] out KeyVisual? key)
         {
             return _keysByIndex.TryGetValue(index, out key);
+        }
+
+        /// <summary>
+        /// Groups the keys by <see cref="KeyVisual.Section"/> and measures each group's
+        /// board-absolute bounding box, preserving authoring order inside a section.
+        /// </summary>
+        private static IReadOnlyList<KeyboardSection> BuildSections(IReadOnlyList<KeyVisual> keys)
+        {
+            if (keys.Count == 0)
+            {
+                return Array.Empty<KeyboardSection>();
+            }
+
+            var grouped = new SortedDictionary<int, List<KeyVisual>>();
+
+            foreach (var key in keys)
+            {
+                if (!grouped.TryGetValue(key.Section, out var members))
+                {
+                    members = new List<KeyVisual>();
+                    grouped.Add(key.Section, members);
+                }
+
+                members.Add(key);
+            }
+
+            var sections = new KeyboardSection[grouped.Count];
+            var expectedIndex = 0;
+
+            foreach (var (index, members) in grouped)
+            {
+                if (index != expectedIndex)
+                {
+                    throw new ArgumentException(
+                        $"Section indices must be dense from 0; section {expectedIndex} has no keys.",
+                        nameof(keys));
+                }
+
+                sections[expectedIndex] = Measure(index, members);
+                expectedIndex++;
+            }
+
+            return sections;
+        }
+
+        private static KeyboardSection Measure(int index, IReadOnlyList<KeyVisual> members)
+        {
+            var left = double.MaxValue;
+            var top = double.MaxValue;
+            var right = double.MinValue;
+            var bottom = double.MinValue;
+
+            foreach (var key in members)
+            {
+                left = Math.Min(left, key.X);
+                top = Math.Min(top, key.Y);
+                right = Math.Max(right, key.Right);
+                bottom = Math.Max(bottom, key.Bottom);
+            }
+
+            return new KeyboardSection(index, members.ToArray(), left, top, right - left, bottom - top);
         }
     }
 }

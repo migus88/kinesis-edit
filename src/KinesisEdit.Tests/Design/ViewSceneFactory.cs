@@ -547,6 +547,15 @@ namespace KinesisEdit.Tests.Design
                 return await CreatePedalEditorAsync().ConfigureAwait(true);
             }
 
+            // The legend row is the *editor's*, not the board's: its counts are pushed in by
+            // RefreshCounters. The advisories scene is what gives it something to count — a
+            // duplicate remap moves Remapped and Advisory together, so a row of zeros never
+            // passes for a working one.
+            if (viewType == typeof(BoardLegendView))
+            {
+                return (await CreateEditorWithAdvisoriesAsync().ConfigureAwait(true)).BoardLegend;
+            }
+
             if (viewType == typeof(KeyboardView))
             {
                 return (await CreateEditorAsync().ConfigureAwait(true)).SelectedLayer;
