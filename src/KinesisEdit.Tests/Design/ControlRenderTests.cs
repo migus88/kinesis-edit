@@ -100,28 +100,43 @@ namespace KinesisEdit.Tests.Design
         {
             // A top border on every row draws a hairline flush inside the card's own top edge, with
             // nothing above it to separate. The first row therefore carries none.
+            //
+            // THE RULE IS PER LIST, NOT PER VIEW. The Settings tab now lays out two of them — the
+            // board's settings rows and the app-preference rows below them — and each card's own
+            // first row is the one with no separator. So the rows are grouped by their items panel,
+            // which is exactly what the `ContentPresenter:nth-child(1)` selector in
+            // Styles/Surfaces.axaml counts.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(viewTypeName);
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            var rows = view.GetVisualDescendants()
+            var lists = view.GetVisualDescendants()
                 .OfType<Border>()
                 .Where(border => border.Classes.Contains("listRow"))
+                .GroupBy(border => border.GetVisualParent()?.GetVisualParent())
+                .Select(group => group.ToArray())
                 .ToArray();
 
-            Assert.True(rows.Length >= 2, $"The settings scene rendered {rows.Length} rows; the rule needs at least two.");
-            Assert.Equal(0, rows[0].BorderThickness.Top);
+            Assert.True(lists.Length > 0, "The scene rendered no rows at all.");
+            Assert.True(
+                lists.Any(rows => rows.Length >= 2),
+                "No list in the scene rendered two rows; the separator rule needs at least two.");
 
-            foreach (var row in rows.Skip(1))
+            foreach (var rows in lists)
             {
-                Assert.Equal(1, row.BorderThickness.Top);
-            }
+                Assert.Equal(0, rows[0].BorderThickness.Top);
 
-            // A separator is a top border and only a top border; a bottom one would leave a
-            // trailing hairline under the last row.
-            Assert.All(rows, row => Assert.Equal(0, row.BorderThickness.Bottom));
+                foreach (var row in rows.Skip(1))
+                {
+                    Assert.Equal(1, row.BorderThickness.Top);
+                }
+
+                // A separator is a top border and only a top border; a bottom one would leave a
+                // trailing hairline under the last row.
+                Assert.All(rows, row => Assert.Equal(0, row.BorderThickness.Bottom));
+            }
         }
 
         [AvaloniaTheory]

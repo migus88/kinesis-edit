@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.VDrive.Discovery;
+using KinesisEdit.Services;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
@@ -296,6 +297,13 @@ namespace KinesisEdit.Tests.Design
             Assert.DoesNotContain("dirty", save.Classes);
 
             scenes.MarkSessionDirty();
+
+            // Any path that ends in RefreshCounters would do; this one now confirms first
+            // (NotificationKeys.ResetLayer), and the scene's fake answers Ok unless told otherwise.
+            ((FakeNotificationService)scenes.Notifications).OutcomeToReturn = new MessageBoxOutcome
+            {
+                Result = MessageBoxResult.Yes
+            };
 
             editor.ResetLayoutCommand.Execute(null);
 

@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="620"
+             x:Class="KinesisEdit.Views.AppPreferencesView"
+             x:DataType="vm:AppPreferencesViewModel">
+  <!-- The Settings tab's second section (docs/design/mockups.md §1j): "App & notifications —
+       stored per device", then the custom-swatch strip. Both live in this device's
+       app_settings.txt and both go through the session's one IAppPreferencesStore, so the strip
+       and the lighting tab's colour picker can never disagree.
+
+       There is no ScrollViewer here: this section is composed into the Settings tab's own
+       scrolling column, and a nested scroller would trap the wheel over half the page. -->
+  <StackPanel Spacing="{DynamicResource Space16}">
+
+    <!-- ===== App & notifications ============================================================ -->
+    <StackPanel Spacing="{DynamicResource Space8}">
+      <TextBlock Text="{x:Static vm:AppPreferencesViewModel.SectionLabel}" Classes="sectionLabel" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="{DynamicResource Space8}">
+
+          <!-- Demo mode: the boxes still move, nothing is written, and the sentence says so in
+               Core's own words. Boxed like the message box's opt-out, because it is a statement
+               about the controls below rather than one of them. -->
+          <Border Classes="suppressionRow" IsVisible="{Binding IsReadOnly}">
+            <TextBlock Text="{Binding DemoModeCaveat}" Classes="body muted" TextWrapping="Wrap" />
+          </Border>
+
+          <!-- Mockup 1j's five, in 1j's order. -->
+          <ItemsControl ItemsSource="{Binding Featured}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:AppPreferenceRowViewModel">
+                <Border Classes="listRow">
+                  <StackPanel Spacing="{DynamicResource Space4}">
+                    <CheckBox Content="{Binding Caption}" IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                    <!-- Indented under the caption rather than under the box, so the sentence
+                         reads as the option's explanation and not as a second option. -->
+                    <TextBlock Text="{Binding Description}"
+                               Classes="body muted"
+                               TextWrapping="Wrap"
+                               Margin="30,0,0,0" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- "+N more" (mockup 1j draws "+7 more"): the count comes from the catalog, so it can
+               never disagree with the list it opens. -->
+          <Button Classes="link"
+                  Content="{Binding DisclosureCaption}"
+                  Command="{Binding ToggleAdditionalCommand}"
+                  HorizontalAlignment="Left" />
+
+          <ItemsControl ItemsSource="{Binding Additional}" IsVisible="{Binding AreAdditionalShown}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:AppPreferenceRowViewModel">
+                <Border Classes="listRow">
+                  <StackPanel Spacing="{DynamicResource Space4}">
+                    <CheckBox Content="{Binding Caption}" IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                    <TextBlock Text="{Binding Description}"
+                               Classes="body muted"
+                               TextWrapping="Wrap"
+                               Margin="30,0,0,0" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <!-- ===== Custom swatches ================================================================ -->
+    <StackPanel Spacing="{DynamicResource Space8}">
+      <TextBlock Text="{x:Static vm:CustomSwatchesViewModel.SectionLabel}" Classes="sectionLabel" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="{DynamicResource Space8}">
+
+          <!-- The twelve cust_color_N slots (specs/08-settings.md §3). An unset slot is drawn as a
+               hollow square — "no swatch stored", not black — and is still selectable, because
+               selecting it is how it gets filled. -->
+          <ItemsControl ItemsSource="{Binding Swatches.Slots}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:CustomColorSlotViewModel">
+                <Panel>
+                  <!-- The accent ring marks the slot being edited — one of the accent's two
+                       sanctioned meanings. It is its own element rather than a thicker border on
+                       the swatch, so moving the selection never reflows the row; the swatch's own
+                       margin insets it by 3 so the ring is drawn around the colour, not under it. -->
+                  <Border Margin="0,0,4,4"
+                          BorderThickness="1"
+                          BorderBrush="{DynamicResource AccentBrush}"
+                          CornerRadius="{DynamicResource RadiusControl}"
+                          IsVisible="{Binding IsSelected}" />
+                  <Button Classes="colorSwatch"
+                          Margin="3,3,7,7"
+                          ToolTip.Tip="{Binding Caption}"
+                          Command="{Binding $parent[views:AppPreferencesView].((vm:AppPreferencesViewModel)DataContext).Swatches.SelectSlotCommand}"
+                          CommandParameter="{Binding}">
+                    <Border Classes="colorSwatchFill"
+                            Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
+                  </Button>
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- The editing row. Absent rather than disabled when nothing can be written: demo mode
+               already says why, one line above, and a dead field beside it would say it twice.
+               The hex box is mono because #RRGGBB is what app_settings.txt carries verbatim. -->
+          <StackPanel Spacing="{DynamicResource Space8}" IsVisible="{Binding Swatches.CanEdit}">
+            <TextBlock Text="{Binding Swatches.SelectionCaption}" Classes="meta muted" />
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space8}">
+              <TextBox Classes="monoValue"
+                       Text="{Binding Swatches.ColorHex, Mode=TwoWay}"
+                       Width="110"
+                       VerticalAlignment="Center" />
+              <Button Classes="secondary"
+                      Content="{x:Static vm:CustomSwatchesViewModel.ReplaceCaption}"
+                      Command="{Binding Swatches.ReplaceCommand}" />
+              <Button Classes="secondary"
+                      Content="{x:Static vm:CustomSwatchesViewModel.ClearCaption}"
+                      Command="{Binding Swatches.ClearCommand}" />
+            </StackPanel>
+            <TextBlock Text="{x:Static vm:CustomSwatchesViewModel.EditHint}"
+                       Classes="meta muted"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

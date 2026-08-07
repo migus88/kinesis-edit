@@ -35,7 +35,19 @@ namespace KinesisEdit.Core.VDrive.Io
         /// replaced in place with "key=value"; unmanaged lines are preserved verbatim in
         /// order; managed keys with no matching line are appended in caller order. The file
         /// must already exist (specs/03-vdrive-and-files.md §5.2 write-refusal rule).
+        /// <para>
+        /// <paramref name="removedKeys"/> is the merge's one escape hatch: every line carrying
+        /// one of those keys — same '='-separator matching rule — is deleted instead of
+        /// rewritten. It exists because some values cannot be expressed as text: a custom-color
+        /// slot the user cleared is never written as <c>cust_color_1=</c> (spec 08 §3), so
+        /// without deletion the stale line would survive the merge and come back on the next
+        /// load. Removal stays surgical — only the keys named here are dropped, everything else
+        /// still survives verbatim.
+        /// </para>
         /// </summary>
-        void UpdateSettingsFile(string path, IEnumerable<KeyValuePair<string, string>> values);
+        void UpdateSettingsFile(
+            string path,
+            IEnumerable<KeyValuePair<string, string>> values,
+            IEnumerable<string>? removedKeys = null);
     }
 }

@@ -134,7 +134,8 @@ namespace KinesisEdit
                 new AvaloniaFolderPickerService(() => FindOwnerWindow(desktop)),
                 new AvaloniaFilePickerService(() => FindOwnerWindow(desktop)),
                 fileService,
-                urlLauncher);
+                urlLauncher,
+                sessions);
 
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, urlLauncher);
             _shell = new MainWindowViewModel(

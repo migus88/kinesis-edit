@@ -7,6 +7,21 @@ namespace KinesisEdit.Core.Settings
     /// <c>on</c>); null means the key is absent, which the spec defines as <c>off</c> = show —
     /// so both null and false mean the notification is shown. Colors are null when unset; an
     /// unset color's key is skipped on save, never written empty (spec 08 §3).
+    /// <para>
+    /// <b>Five keys here are not in spec 08</b> — four further hide flags this app's own prompts
+    /// need (<c>warn_unsaved_msg</c>, <c>reset_layer_msg</c>, <c>capture_summary_msg</c>,
+    /// <c>switch_variant_msg</c>) and one display preference (<c>advisory_detail</c>). Do not go
+    /// hunting for them in the spec: they are additions, and they are safe on disk because
+    /// <c>SettingsService.SaveAppSettings</c> writes through <c>IVDriveFileService</c>'s
+    /// read-modify-write merge and the legacy Pascal app ignores keys it does not model.
+    /// </para>
+    /// <para>
+    /// <b>Two polarities live in this record and they are opposites.</b> Every <c>Is…Hidden</c>
+    /// property is a suppression flag — <c>on</c> = hide, absent = show. <c>advisory_detail</c>
+    /// is a <i>display</i> preference — <c>on</c> = expand, absent = the one-line form — and is
+    /// named <see cref="IsAdvisoryDetailExpanded"/> so no call site can mistake it for a hide
+    /// flag. Never fold the two into one "flag" abstraction.
+    /// </para>
     /// </summary>
     public sealed record AppSettings
     {
@@ -51,6 +66,43 @@ namespace KinesisEdit.Core.Settings
 
         /// <summary>Hide flag <c>updownkeystroke_msg</c>: "Downstroke/Upstroke Active" half-keystroke hint (spec 08 §3).</summary>
         public bool? IsUpDownKeystrokeMessageHidden { get; init; }
+
+        /// <summary>
+        /// Hide flag <c>warn_unsaved_msg</c>: the Save / Discard / Cancel prompt shown when a
+        /// session with unsaved changes is left. <b>Not a spec 08 key</b> (see the type summary),
+        /// but it follows the §3 convention exactly — true = <c>on</c> = <b>hide</b> the warning,
+        /// null = absent = warn.
+        /// </summary>
+        public bool? IsUnsavedChangesWarningHidden { get; init; }
+
+        /// <summary>
+        /// Hide flag <c>reset_layer_msg</c>: the confirmation shown before a layer's remaps and
+        /// macros are erased. <b>Not a spec 08 key</b> (see the type summary); §3 convention —
+        /// true = <c>on</c> = <b>hide</b> the confirmation, null = absent = confirm.
+        /// </summary>
+        public bool? IsResetLayerConfirmationHidden { get; init; }
+
+        /// <summary>
+        /// Hide flag <c>capture_summary_msg</c>: the "keystrokes captured" summary shown when
+        /// macro recording stops. <b>Not a spec 08 key</b> (see the type summary); §3 convention —
+        /// true = <c>on</c> = <b>hide</b> the summary, null = absent = show it.
+        /// </summary>
+        public bool? IsCaptureSummaryHidden { get; init; }
+
+        /// <summary>
+        /// Hide flag <c>switch_variant_msg</c>: the confirmation shown before the editor switches
+        /// to another keyboard variant. <b>Not a spec 08 key</b> (see the type summary); §3
+        /// convention — true = <c>on</c> = <b>hide</b> the confirmation, null = absent = confirm.
+        /// </summary>
+        public bool? IsSwitchVariantConfirmationHidden { get; init; }
+
+        /// <summary>
+        /// Display preference <c>advisory_detail</c>. <b>The odd one out: this is not a hide
+        /// flag.</b> True = <c>on</c> = <b>expand</b> advisory warnings to their full text; null =
+        /// absent = <c>off</c> = the single trimmed line. Reading it as "hidden" inverts the
+        /// screen, which is why the property is named for what <c>on</c> actually does.
+        /// </summary>
+        public bool? IsAdvisoryDetailExpanded { get; init; }
 
         /// <summary>
         /// The twelve custom picker colors, index 0 = <c>cust_color_1</c> … index 11 =

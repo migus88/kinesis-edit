@@ -2,6 +2,7 @@ using Avalonia.Headless.XUnit;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 
@@ -380,6 +381,10 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(editor.ResetLayerCommand, editor.BoardLegend.ResetLayerCommand);
             Assert.Equal(1, editor.BoardLegend.RemappedCount);
 
+            // Running the editor's own instance means running its confirmation too: the legend's
+            // button asks before it erases, exactly as the toolbar's does.
+            ConfirmTheNextReset();
+
             editor.BoardLegend.ResetLayerCommand.Execute(null);
 
             Assert.False(key.Key.IsModified);
@@ -434,6 +439,12 @@ namespace KinesisEdit.Tests.ViewModels
             {
                 editor.Dispose();
             }
+        }
+
+        /// <summary>Answers Yes to the next reset confirmation, which erases nothing without one.</summary>
+        private void ConfirmTheNextReset()
+        {
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
         }
 
         private static KeyboardKeyViewModel KeyAt(KeyboardEditorViewModel editor, int index)

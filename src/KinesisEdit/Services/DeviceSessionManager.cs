@@ -5,9 +5,9 @@ namespace KinesisEdit.Services
     /// it (specs/10-apps-and-ui.md, "the Configure button sets demo mode from the device's
     /// connected/writable state, records the active device"), Home ends it, and every detection
     /// pass re-points it at the device's latest snapshot. Chooses the device's
-    /// notification-preference store: the v-Drive's <c>app_settings.txt</c> for a connected drive,
-    /// a read-only view of that same file for a demo session over a drive that is present but not
-    /// writable, and the null store when there is no drive at all (specs/08-settings.md §3).
+    /// <see cref="IAppPreferencesStore"/>: the v-Drive's <c>app_settings.txt</c> for a connected
+    /// drive, a read-only view of that same file for a demo session over a drive that is present
+    /// but not writable, and the null store when there is no drive at all (specs/08-settings.md §3).
     /// </summary>
     public sealed class DeviceSessionManager : IDeviceSessionAccessor
     {
@@ -19,7 +19,7 @@ namespace KinesisEdit.Services
 
         private readonly ISettingsService _settings;
 
-        /// <summary>Creates the manager; <paramref name="settings"/> backs v-Drive suppression stores.</summary>
+        /// <summary>Creates the manager; <paramref name="settings"/> backs v-Drive preference stores.</summary>
         public DeviceSessionManager(ISettingsService settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -30,7 +30,7 @@ namespace KinesisEdit.Services
         {
             ArgumentNullException.ThrowIfNull(device);
 
-            var session = new DeviceSession(device, CreateSuppressionStore(device));
+            var session = new DeviceSession(device, CreatePreferencesStore(device));
             Active = session;
 
             ActiveChanged?.Invoke(session);
@@ -41,7 +41,7 @@ namespace KinesisEdit.Services
         /// <summary>
         /// Re-points the active session at this refresh's snapshot of its device, matched by the
         /// scanned catalog slot so a Freestyle board that re-resolves mid-session still matches.
-        /// Demo mode and the suppression store stay as they were when the session opened; only the
+        /// Demo mode and the preferences store stay as they were when the session opened; only the
         /// live drive state moves. Does nothing when no session is open or the device is absent
         /// from <paramref name="snapshots"/>.
         /// </summary>
@@ -80,19 +80,20 @@ namespace KinesisEdit.Services
             ActiveChanged?.Invoke(null);
         }
 
-        private INotificationSuppressionStore CreateSuppressionStore(DeviceSnapshot device)
+        private IAppPreferencesStore CreatePreferencesStore(DeviceSnapshot device)
         {
             if (device.Location is null)
             {
-                return NullNotificationSuppressionStore.Instance;
+                return NullAppPreferencesStore.Instance;
             }
 
-            var store = new VDriveNotificationSuppressionStore(_settings, device.Location);
+            var store = new VDriveAppPreferencesStore(_settings, device.Location);
 
             // The file is still there and still readable when the drive is merely not writable,
             // and specs/08-settings.md §3 bans saving in demo mode, not loading — so a demo
-            // session over a real drive keeps the notifications the user hid on it.
-            return device.IsDemoMode ? new ReadOnlyNotificationSuppressionStore(store) : store;
+            // session over a real drive keeps the notifications the user hid on it, and the
+            // preferences screen shows what the board actually carries.
+            return device.IsDemoMode ? new ReadOnlyAppPreferencesStore(store) : store;
         }
     }
 }

@@ -13,6 +13,12 @@ namespace KinesisEdit.Tests.ViewModels
     /// custom slots that live in <c>app_settings.txt</c> (specs/08-settings.md §3). The parse and
     /// serialize rules are Core's; what this layer has to get right is which slot it writes and
     /// whether it writes at all.
+    /// <para>
+    /// Every case goes through a real <see cref="IAppPreferencesStore"/> chosen exactly as
+    /// <c>DeviceSessionManager</c> chooses one, because the picker no longer reads or writes the
+    /// file itself: it is one consumer of the session's single store, and these tests are only
+    /// meaningful over the store the app would actually give it.
+    /// </para>
     /// </summary>
     public sealed class ColorPickerViewModelTests
     {
@@ -82,13 +88,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task StoreCustomColorCommand_WritesTheFirstEmptySlotThrough()
+        public void StoreCustomColorCommand_WritesTheFirstEmptySlotThrough()
         {
             var picker = CreatePicker();
 
             picker.Color = new LedColor(1, 2, 3);
 
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             Assert.Equal("#010203", picker.CustomColors[0].ColorHex);
 
@@ -99,17 +105,18 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task StoreCustomColorCommand_ReReadsBeforeWriting_SoOtherFlagsSurvive()
+        public void StoreCustomColorCommand_WritesThroughTheStore_SoOtherFlagsSurvive()
         {
             // app_settings.txt has one reader and one writer; a whole-model write built from a
-            // stale snapshot would drop the notification flags another feature just set.
+            // stale snapshot would drop the notification flags another feature just set. The store
+            // holds the whole model, so this is now structural rather than a discipline.
             _settings.AppSettingsToReturn = AppSettings.Empty with { IsSaveMessageHidden = true };
 
             var picker = CreatePicker();
 
             picker.Color = new LedColor(9, 9, 9);
 
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             var saved = Assert.Single(_settings.AppSettingsSaves);
 
@@ -134,10 +141,10 @@ namespace KinesisEdit.Tests.ViewModels
             await picker.LoadAsync();
 
             picker.Color = new LedColor(2, 2, 2);
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             picker.Color = new LedColor(3, 3, 3);
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             Assert.Equal("#020202", picker.CustomColors[0].ColorHex);
             Assert.Equal("#030303", picker.CustomColors[1].ColorHex);
@@ -145,7 +152,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task StoreCustomColorCommand_InDemoMode_IsUnavailableAndWritesNothing()
+        public void StoreCustomColorCommand_InDemoMode_IsUnavailableAndWritesNothing()
         {
             // Spec 08 §3: app settings are never saved in demo mode.
             var picker = CreatePicker(TestDevices.CreateSnapshot(
@@ -155,14 +162,14 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(picker.CanStoreCustomColors);
             Assert.False(picker.StoreCustomColorCommand.CanExecute(null));
 
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             Assert.Empty(_settings.AppSettingsSaves);
             Assert.All(picker.CustomColors, slot => Assert.False(slot.HasColor));
         }
 
         [Fact]
-        public async Task StoreCustomColorCommand_WhenTheWriteThrows_KeepsTheSlotForTheSession()
+        public void StoreCustomColorCommand_WhenTheWriteThrows_KeepsTheSlotForTheSession()
         {
             _settings.SaveAppExceptionToThrow = new IOException("the v-Drive went away");
 
@@ -170,7 +177,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.Color = new LedColor(4, 5, 6);
 
-            await picker.StoreCustomColorCommand.ExecuteAsync(null);
+            picker.StoreCustomColorCommand.Execute(null);
 
             Assert.Equal("#040506", picker.CustomColors[0].ColorHex);
         }
@@ -224,9 +231,26 @@ namespace KinesisEdit.Tests.ViewModels
 
         private ColorPickerViewModel CreatePicker(DeviceSnapshot? snapshot = null)
         {
-            return new ColorPickerViewModel(
-                snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
-                _settings);
+            var device = snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+
+            return new ColorPickerViewModel(device, CreateStore(device));
+        }
+
+        /// <summary>
+        /// The store the app would build for <paramref name="device"/> — the same three-way rule
+        /// <c>DeviceSessionManager.CreatePreferencesStore</c> applies, so a demo device really gets
+        /// the store that discards writes rather than a fake that merely records them.
+        /// </summary>
+        private IAppPreferencesStore CreateStore(DeviceSnapshot device)
+        {
+            if (device.Location is null)
+            {
+                return NullAppPreferencesStore.Instance;
+            }
+
+            var store = new VDriveAppPreferencesStore(_settings, device.Location);
+
+            return device.IsDemoMode ? new ReadOnlyAppPreferencesStore(store) : store;
         }
     }
 }

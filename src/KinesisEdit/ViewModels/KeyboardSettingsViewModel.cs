@@ -17,9 +17,28 @@ namespace KinesisEdit.ViewModels
     /// <c>KeyboardSettingsGate</c>, and the post-save wording is
     /// <see cref="SettingsMessageCatalog"/>.
     /// </para>
+    /// <para>
+    /// The tab has a <b>second section</b>, <see cref="Preferences"/>, and this class owns it. The
+    /// two are unrelated in every way but the screen they share — one writes the board's settings
+    /// file, the other this app's <c>app_settings.txt</c> — so the only thing this class does with
+    /// it is build it, expose it for <c>Views/KeyboardSettingsView.axaml</c> to host, and include
+    /// it in <see cref="LoadAsync"/>. It is owned here rather than handed in by the editor because
+    /// the view that renders it binds to <i>this</i> view model, and a section assigned after
+    /// construction is a second step every host has to remember.
+    /// </para>
     /// </summary>
     public sealed class KeyboardSettingsViewModel : ViewModelBase
     {
+        /// <summary>
+        /// Caption over the device-settings rows (docs/design/mockups.md 1j: <c>Section "Written to
+        /// the keyboard"</c>). It lives here rather than in <see cref="SettingsMessageCatalog"/>
+        /// because it names a <b>section of a screen</b>, not a settings rule — the same split
+        /// <c>NoDeviceViewModel.TroubleshootingButtonCaption</c> already makes. Core carries the
+        /// strings that state facts about the hardware; the view layer carries the ones that
+        /// describe its own layout.
+        /// </summary>
+        public const string DeviceSectionLabel = "Written to the keyboard";
+
         /// <summary>Title of everything a settings save raises — its failure dialog and its toast.</summary>
         public const string SaveTitle = "Save Settings";
 
@@ -55,6 +74,13 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>The controls this device shows, built once from its capability.</summary>
         public IReadOnlyList<SettingsRowViewModel> Rows { get; }
+
+        /// <summary>
+        /// The tab's second section: this app's per-device preferences and the custom-swatch strip
+        /// (<c>app_settings.txt</c>). Present on every board — it describes the app, not the
+        /// hardware — so it is rendered even where <see cref="Rows"/> is empty.
+        /// </summary>
+        public AppPreferencesViewModel Preferences { get; }
 
         /// <summary>
         /// Whether a read of the settings file is in flight (or has not been started yet). It
@@ -106,11 +132,53 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool CanEditSettings { get; }
 
-        /// <summary>Whether the panel is locked — the negation of <see cref="CanEditSettings"/>.</summary>
+        /// <summary>
+        /// Whether the section is read-only — the negation of <see cref="CanEditSettings"/>. The
+        /// rows still show what the keyboard is doing; only writing them is refused, which is a
+        /// property of the hardware and never an error (see <see cref="ReadOnlyBanner"/>).
+        /// </summary>
         public bool IsLocked => !CanEditSettings;
 
-        /// <summary>Core's explanation of the lock; empty while the panel is editable.</summary>
+        /// <summary>
+        /// The one-line statement over a read-only section, verbatim from mockup 1j; empty while
+        /// the section is writable.
+        /// </summary>
+        public string ReadOnlyBanner => IsLocked ? SettingsMessageCatalog.Advantage2ReadOnlyBanner : string.Empty;
+
+        /// <summary>The banner's explanation of what still works, verbatim from mockup 1j.</summary>
+        public string ReadOnlyExplanation => IsLocked ? SettingsMessageCatalog.Advantage2ReadOnlyExplanation : string.Empty;
+
+        /// <summary>
+        /// Core's spec 08 §5.4 wording for the same lock, kept beside the mockup's prose as the
+        /// footnote that names the condition <see cref="KeyboardSettingsGate"/> actually tested —
+        /// the version file carried no <c>4MB</c> marker. The two are not duplicates: the
+        /// explanation above is what the user is told, this is what the app looked at.
+        /// </summary>
         public string LockHint => IsLocked ? SettingsMessageCatalog.Advantage2SettingsDisabledHint : string.Empty;
+
+        /// <summary>
+        /// The support page the read-only banner's "Which board do I have?" link opens; null when
+        /// the catalog carries none for this device, which is what disables the link.
+        /// </summary>
+        public string? TroubleshootingUrl => _device.Device.TroubleshootingUrl;
+
+        /// <summary>
+        /// Whether the banner offers the link at all. A link with nowhere to go, or with no
+        /// launcher to open it, is not rendered — the design's "a feature that is not there is
+        /// absent, not disabled".
+        /// </summary>
+        public bool HasWhichBoardLink => _urlLauncher is not null && TroubleshootingUrl is not null;
+
+        /// <summary>Opens <see cref="TroubleshootingUrl"/> in the user's browser.</summary>
+        public IRelayCommand WhichBoardCommand { get; }
+
+        /// <summary>
+        /// Whether the Save action is drawn at all. A read-only section has nothing to commit, and
+        /// the design's rule is that what a board cannot do is absent rather than greyed out; demo
+        /// mode keeps the button and disables it, because there the refusal is the app's and
+        /// <see cref="DemoModeHint"/> already says so.
+        /// </summary>
+        public bool ShowsSaveAction => !IsLocked;
 
         /// <summary>An inline note about this panel's state — the demo-mode hint or a read failure.</summary>
         public string StatusMessage
@@ -134,6 +202,7 @@ namespace KinesisEdit.ViewModels
         private readonly DeviceSnapshot _device;
         private readonly ISettingsService _settings;
         private readonly INotificationService _notifications;
+        private readonly IUrlLauncher? _urlLauncher;
         private KeyboardSettings _loaded = KeyboardSettings.Empty;
         private string _statusMessage = string.Empty;
         private string? _loadErrorMessage;
@@ -144,17 +213,36 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Creates the panel for <paramref name="device"/>. Construction touches no file — the
-        /// rows come from the catalog — so the editor can build it eagerly and let
-        /// <see cref="LoadAsync"/> do the reading.
+        /// rows come from the catalog and <see cref="Preferences"/> rests at its defaults — so the
+        /// editor can build it eagerly and let <see cref="LoadAsync"/> do the reading.
+        /// <para>
+        /// <paramref name="preferences"/> is the session's one <c>app_settings.txt</c> and is
+        /// <b>required</b>: a defaulted <see cref="NullAppPreferencesStore"/> would let a host
+        /// forget it and render a whole section that reads and writes nothing, which no test on
+        /// this class could see. A host with no drive passes
+        /// <see cref="NullAppPreferencesStore.Instance"/> in as many words.
+        /// </para>
+        /// <para>
+        /// <paramref name="urlLauncher"/> is optional because the only thing it reaches is the
+        /// read-only banner's "Which board do I have?" link, and a panel built without one simply
+        /// does not offer it — the same shape as a device whose catalog entry carries no
+        /// <c>TroubleshootingUrl</c>. It is not a way to skip the dependency: a host that has a
+        /// launcher passes it.
+        /// </para>
         /// </summary>
         public KeyboardSettingsViewModel(
             DeviceSnapshot device,
             ISettingsService settings,
-            INotificationService notifications)
+            INotificationService notifications,
+            IAppPreferencesStore preferences,
+            IUrlLauncher? urlLauncher = null)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
+            _urlLauncher = urlLauncher;
+
+            Preferences = new AppPreferencesViewModel(preferences);
 
             Rows = KeyboardSettingsRows.Create(device.Device.Settings);
 
@@ -165,7 +253,15 @@ namespace KinesisEdit.ViewModels
             CanEditSettings = device.IsDemoMode
                 || KeyboardSettingsGate.CanEditKeyboardSettings(device.DeviceId, device.VersionFile);
 
+            // Read-only is decided once, by the hardware, and never moves for the life of the
+            // panel — unlike IsEnabled, which the load and every save turn off and on again.
+            foreach (var row in Rows)
+            {
+                row.IsReadOnly = IsLocked;
+            }
+
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
+            WhichBoardCommand = new RelayCommand(OpenTroubleshootingTips, () => HasWhichBoardLink);
 
             RefreshStatusMessage();
             RefreshState();
@@ -183,6 +279,12 @@ namespace KinesisEdit.ViewModels
         /// picker's custom slots follow. Only a device with no <c>Location</c> at all reads
         /// nothing, because there is no file to read.
         /// </para>
+        /// <para>
+        /// It reads <b>both</b> of the tab's sections. <see cref="Preferences"/> is read first and
+        /// outside the guards below, because <c>app_settings.txt</c> is this app's file rather than
+        /// the board's: a device with no settings capability at all still has preferences, and the
+        /// early return under it would otherwise leave that section on its constructor defaults.
+        /// </para>
         /// </summary>
         public async Task LoadAsync()
         {
@@ -192,6 +294,8 @@ namespace KinesisEdit.ViewModels
             }
 
             _hasLoadStarted = true;
+
+            await Preferences.LoadAsync().ConfigureAwait(true);
 
             try
             {
@@ -329,6 +433,24 @@ namespace KinesisEdit.ViewModels
             }
 
             return settings;
+        }
+
+        /// <summary>
+        /// The banner's "Which board do I have?" link. Same wiring as the empty state's
+        /// "Troubleshooting tips" (<c>NoDeviceViewModel.OpenTroubleshootingTips</c>): the catalog's
+        /// per-device page, opened through <see cref="IUrlLauncher"/>, and a refusal by the
+        /// platform is not worth a dialog.
+        /// </summary>
+        private void OpenTroubleshootingTips()
+        {
+            var url = TroubleshootingUrl;
+
+            if (url is null || _urlLauncher is null)
+            {
+                return;
+            }
+
+            _urlLauncher.Open(url);
         }
 
         private async Task TryShowMessageBoxAsync(MessageBoxRequest request)

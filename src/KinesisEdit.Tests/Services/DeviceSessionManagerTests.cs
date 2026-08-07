@@ -15,7 +15,12 @@ namespace KinesisEdit.Tests.Services
 
             Assert.Same(session, manager.Active);
             Assert.False(session.IsDemoMode);
-            Assert.IsType<VDriveNotificationSuppressionStore>(session.SuppressionStore);
+            Assert.IsType<VDriveAppPreferencesStore>(session.Preferences);
+
+            // One object, two views: the notification pipeline sees the narrow interface, the
+            // settings screen sees the whole file. Two stores would be two copies of it.
+            Assert.Same(session.Preferences, session.SuppressionStore);
+            Assert.True(session.Preferences.IsWritable);
         }
 
         [Fact]
@@ -26,7 +31,8 @@ namespace KinesisEdit.Tests.Services
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.Advantage2, VDriveConnectionStatus.NotDetected));
 
             Assert.True(session.IsDemoMode);
-            Assert.IsType<NullNotificationSuppressionStore>(session.SuppressionStore);
+            Assert.IsType<NullAppPreferencesStore>(session.Preferences);
+            Assert.False(session.Preferences.IsWritable);
         }
 
         [Fact]
@@ -37,16 +43,19 @@ namespace KinesisEdit.Tests.Services
             var fileService = new FakeVDriveFileService();
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Advantage2, VDriveConnectionStatus.CannotAccess);
             fileService.SetFile(
-                VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!),
+                VDriveAppPreferencesStore.GetFilePath(snapshot.Location!),
                 NotificationKeys.Save + "=on");
             var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
 
             var session = manager.Begin(snapshot);
             session.SuppressionStore.SetHidden(NotificationKeys.Save, false);
+            session.Preferences.Update(settings => settings with { IsAdvisoryDetailExpanded = true });
 
             Assert.True(session.IsDemoMode);
-            Assert.IsType<ReadOnlyNotificationSuppressionStore>(session.SuppressionStore);
+            Assert.IsType<ReadOnlyAppPreferencesStore>(session.Preferences);
+            Assert.False(session.Preferences.IsWritable);
             Assert.True(session.SuppressionStore.IsHidden(NotificationKeys.Save));
+            Assert.Null(session.Preferences.Current.IsAdvisoryDetailExpanded);
             Assert.Empty(fileService.WrittenPaths);
         }
 
@@ -55,7 +64,7 @@ namespace KinesisEdit.Tests.Services
         {
             var manager = new DeviceSessionManager(TestDevices.CreateSettingsService(new FakeVDriveFileService()));
             var session = manager.Begin(TestDevices.CreateSnapshot(DeviceId.Tko));
-            var store = session.SuppressionStore;
+            var store = session.Preferences;
             var lost = TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.NotDetected);
 
             manager.UpdateActive([lost]);
@@ -63,7 +72,7 @@ namespace KinesisEdit.Tests.Services
             Assert.Same(lost, session.Device);
             Assert.False(session.IsDemoMode);
             Assert.Equal(VDriveHealth.Error, session.Health);
-            Assert.Same(store, session.SuppressionStore);
+            Assert.Same(store, session.Preferences);
         }
 
         [Fact]

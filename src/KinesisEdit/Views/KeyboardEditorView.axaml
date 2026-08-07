@@ -196,7 +196,9 @@
       <!-- ===== Row 3: the advisory strip ======================================================
            One strip serves all four tabs: its sentence and its count are the *open* section's, and
            the whole strip hides when that section has nothing to say — so this row is 30px or 0px
-           and the board below it never shifts as the user edits.
+           and the board below it never shifts as the user edits. The row is Auto rather than 30
+           because the `advisory_detail` preference lets the strip wrap to its full text and grow;
+           at its default (one trimmed line) the height is the same 30px it always was.
 
            It is full-bleed like the chrome above it, and it sits above the content rather than
            inside it because it belongs to the section, not to the board (mockup 1e draws it above

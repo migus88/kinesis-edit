@@ -15,6 +15,16 @@ namespace KinesisEdit.ViewModels
     /// <see cref="LedColor"/> lives in that control, so this view model only ever sees
     /// <see cref="LedColor"/> and <c>#RRGGBB</c> strings (docs/app/app-shell.md, invariant 6).
     /// </para>
+    /// <para>
+    /// <b>The twelve slots are not this picker's.</b> They belong to the session's
+    /// <see cref="IAppPreferencesStore"/>, which is the file's one reader and one writer
+    /// (docs/app/settings.md, invariant 8). This class used to load and save
+    /// <c>app_settings.txt</c> itself, which was safe only while it was the only consumer; the
+    /// settings screen's swatch strip is the second, and two readers show each other stale slots
+    /// the moment either writes. So it reads <see cref="IAppPreferencesStore.Current"/> and
+    /// re-reads it on <see cref="IAppPreferencesStore.Changed"/>, exactly like every other
+    /// consumer.
+    /// </para>
     /// </summary>
     public sealed class ColorPickerViewModel : ViewModelBase
     {
@@ -94,25 +104,26 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand<CustomColorSlotViewModel> SelectCustomColorCommand { get; }
 
         /// <summary>Writes <see cref="Color"/> into the next custom slot and persists the twelve.</summary>
-        public IAsyncRelayCommand StoreCustomColorCommand { get; }
+        public IRelayCommand StoreCustomColorCommand { get; }
 
         /// <summary>Raised whenever <see cref="Color"/> changed, however it was set.</summary>
         public event Action<LedColor>? ColorChanged;
 
-        private readonly DeviceSnapshot _device;
-        private readonly ISettingsService _settings;
+        private readonly IAppPreferencesStore _preferences;
         private LedColor _color = LedColor.DefaultEffectColor;
         private int _rotationIndex;
         private bool _hasLoadStarted;
 
         /// <summary>
-        /// Creates the picker for <paramref name="device"/>. Construction touches no file;
-        /// <see cref="LoadAsync"/> reads the stored slots.
+        /// Creates the picker for <paramref name="device"/> over the session's
+        /// <paramref name="preferences"/>. Construction touches no file — the store is read lazily
+        /// and <see cref="LoadAsync"/> is what triggers it off the UI thread.
         /// </summary>
-        public ColorPickerViewModel(DeviceSnapshot device, ISettingsService settings)
+        public ColorPickerViewModel(DeviceSnapshot device, IAppPreferencesStore preferences)
         {
-            _device = device ?? throw new ArgumentNullException(nameof(device));
-            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            ArgumentNullException.ThrowIfNull(device);
+
+            _preferences = preferences ?? throw new ArgumentNullException(nameof(preferences));
 
             var slots = new List<CustomColorSlotViewModel>(AppSettings.CustomColorCount);
 
@@ -126,13 +137,20 @@ namespace KinesisEdit.ViewModels
 
             SelectSwatchCommand = new RelayCommand<ColorSwatch>(SelectSwatch);
             SelectCustomColorCommand = new RelayCommand<CustomColorSlotViewModel>(SelectCustomColor);
-            StoreCustomColorCommand = new AsyncRelayCommand(StoreCustomColorAsync, () => CanStoreCustomColors);
+            StoreCustomColorCommand = new RelayCommand(StoreCustomColor, () => CanStoreCustomColors);
+
+            // No unsubscribe: the store is created when the device session opens and dies with it,
+            // and this picker is built inside that same session's editor. Both become garbage
+            // together, so there is nothing to detach from.
+            _preferences.Changed += OnPreferencesChanged;
         }
 
         /// <summary>
         /// Reads the stored custom slots off the UI thread. Total and idempotent: a missing or
         /// unreadable <c>app_settings.txt</c> simply leaves the twelve slots empty — a picker
-        /// preference is never worth a dialog.
+        /// preference is never worth a dialog. The <see cref="Task.Run"/> is where the session's
+        /// file is actually parsed, because the store loads on the first read of
+        /// <see cref="IAppPreferencesStore.Current"/> and never again.
         /// </summary>
         public async Task LoadAsync()
         {
@@ -143,18 +161,11 @@ namespace KinesisEdit.ViewModels
 
             _hasLoadStarted = true;
 
-            var location = _device.Location;
-
-            if (location is null)
-            {
-                return;
-            }
-
             AppSettings? loaded = null;
 
             try
             {
-                loaded = await Task.Run(() => _settings.LoadAppSettings(location)).ConfigureAwait(true);
+                loaded = await Task.Run(() => _preferences.Current).ConfigureAwait(true);
             }
             catch (Exception)
             {
@@ -163,18 +174,29 @@ namespace KinesisEdit.ViewModels
 
             if (loaded is not null)
             {
-                Apply(loaded);
+                ApplySlots(loaded);
+
+                _rotationIndex = 0;
             }
         }
 
-        private void Apply(AppSettings settings)
+        /// <summary>
+        /// Re-reads the twelve slots after somebody — this picker, or the settings screen's swatch
+        /// strip — changed them. It deliberately leaves <c>_rotationIndex</c> alone: the rotation
+        /// is this picker's own place in a full set of slots, not a fact about the file, and
+        /// resetting it on every write would make "store" overwrite slot 1 forever.
+        /// </summary>
+        private void OnPreferencesChanged()
+        {
+            ApplySlots(_preferences.Current);
+        }
+
+        private void ApplySlots(AppSettings settings)
         {
             for (var index = 0; index < CustomColors.Count; index++)
             {
                 CustomColors[index].Color = LedColorConverter.ToLedColor(settings.CustomColors[index]);
             }
-
-            _rotationIndex = 0;
         }
 
         private void SelectSwatch(ColorSwatch? swatch)
@@ -195,12 +217,18 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Stores the current color in the first empty slot, or — when all twelve are full — in
-        /// the next one round-robin, and writes the twelve back. The write is a read-modify-write
-        /// through <see cref="ISettingsService"/> so the notification hide flags another feature
-        /// may have changed meanwhile survive: <c>app_settings.txt</c> has one reader and one
-        /// writer (docs/app/app-shell.md).
+        /// the next one round-robin, and writes it through the session's store. Everything else in
+        /// <c>app_settings.txt</c> survives because the store holds the whole model and saves it
+        /// read-modify-write; a preference another feature set meanwhile is already in
+        /// <see cref="IAppPreferencesStore.Current"/> rather than only on disk.
+        /// <para>
+        /// Synchronous, and deliberately so: the store swallows I/O failures and raises
+        /// <see cref="IAppPreferencesStore.Changed"/> on the calling thread, and that event moves
+        /// view-model properties. Pushing the write onto a background thread would raise it there
+        /// too, which is a binding update off the UI thread.
+        /// </para>
         /// </summary>
-        private async Task StoreCustomColorAsync()
+        private void StoreCustomColor()
         {
             if (!CanStoreCustomColors)
             {
@@ -210,24 +238,13 @@ namespace KinesisEdit.ViewModels
             var slot = FindStoreTarget();
             var color = Color;
 
+            // Set first, so the slot carries the colour for this session even if the drive refused
+            // the write; the store's Changed then re-applies the same value.
             slot.Color = color;
 
-            var location = _device.Location!;
-            var stored = LedColorConverter.ToSettingsColor(color);
-
-            try
-            {
-                await Task.Run(() =>
-                {
-                    var settings = _settings.LoadAppSettings(location).WithCustomColor(slot.SlotNumber, stored);
-
-                    _settings.SaveAppSettings(location, settings);
-                }).ConfigureAwait(true);
-            }
-            catch (Exception)
-            {
-                // Swallowed on purpose; the slot still carries the color for this session.
-            }
+            _preferences.Update(settings => settings.WithCustomColor(
+                slot.SlotNumber,
+                LedColorConverter.ToSettingsColor(color)));
         }
 
         private CustomColorSlotViewModel FindStoreTarget()

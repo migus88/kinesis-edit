@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.SavantElite;
+using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 using KinesisEdit.ViewModels;
@@ -128,6 +129,44 @@ namespace KinesisEdit.Tests.Services
             factory.Create(TestDevices.CreateSnapshot(DeviceId.Advantage2));
 
             Assert.Equal(0, resolutions);
+        }
+
+        [Fact]
+        public void Create_ForAnOpenSession_GivesBothPreferenceConsumersThatSessionsOwnStore()
+        {
+            // THE ONE DEFECT A GREEN SUITE HIDES HERE. The colour picker and the Settings tab's
+            // preferences section both take an IAppPreferencesStore, and a composition root that
+            // dropped it would leave them on a store nobody ever writes: swatches silently gone,
+            // preferences silently unsaved, every unit test on both classes still passing. So this
+            // walks the exact path App.axaml.cs walks — DeviceSessionManager first (the shell opens
+            // the session before it asks for an editor), then the factory — and asserts the two
+            // consumers see a write made on the session's own store, with no reload on either side.
+            var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+            var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(_fileService));
+            var session = sessions.Begin(device);
+            var factory = new EditorViewModelFactory(
+                _profiles,
+                _settings,
+                () => _capture,
+                _notifications,
+                _pedalFiles,
+                _folderPicker,
+                _filePicker,
+                _fileService,
+                _urlLauncher,
+                sessions);
+
+            using var editor = Assert.IsType<KeyboardEditorViewModel>(factory.Create(device));
+
+            session.Preferences.Update(settings => settings.WithCustomColor(1, new SettingsColor(255, 0, 128)));
+
+            Assert.Equal("#FF0080", editor.Lighting.Picker.CustomColors[0].ColorHex);
+            Assert.Equal("#FF0080", editor.Settings.Preferences.Swatches.Slots[0].ColorHex);
+
+            // And the store is the writable one, so the section offers its editing row rather than
+            // the demo caveat: a session over a connected drive is not read-only.
+            Assert.True(editor.Settings.Preferences.Swatches.CanEdit);
+            Assert.False(editor.Settings.Preferences.IsReadOnly);
         }
 
         [Fact]

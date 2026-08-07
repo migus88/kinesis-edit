@@ -36,6 +36,22 @@ namespace KinesisEdit.Tests.Design
         /// <summary>Side of the check box's own box, as <c>Fields.axaml</c> sizes it.</summary>
         private const double CheckBoxSize = 16;
 
+        /// <summary>The setting switch's track, as <c>Fields.axaml</c> sizes it.</summary>
+        private const double SwitchTrackWidth = 40;
+
+        /// <inheritdoc cref="SwitchTrackWidth" />
+        private const double SwitchTrackHeight = 20;
+
+        /// <summary>
+        /// Centre of the knob's off position inside the track: a 1px border, a 3px inset and half of
+        /// the 14px knob. The two constants are what let a probe say "here is where the knob is" and
+        /// "here is where it is not" without either landing on an edge.
+        /// </summary>
+        private const double KnobCentreOff = 11;
+
+        /// <inheritdoc cref="KnobCentreOff" />
+        private const double KnobCentreOn = SwitchTrackWidth - KnobCentreOff;
+
         /// <summary>Every theme this file declares, and the control type it templates.</summary>
         public static TheoryData<string, string, string> ThemesAndVariants()
         {
@@ -284,6 +300,8 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("CheckBox", "Dark")]
         [InlineData("CheckBox", "Light")]
+        [InlineData("SettingSwitch", "Dark")]
+        [InlineData("SettingSwitch", "Light")]
         [InlineData("SelectableListRow", "Dark")]
         [InlineData("SelectableListRow", "Light")]
         public void KeyboardFocus_PaintsTheHaloOnTheThemesThatOwnTheirTemplate(string key, string variantName)
@@ -322,6 +340,8 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("CheckBox", "Dark")]
         [InlineData("CheckBox", "Light")]
+        [InlineData("SettingSwitch", "Dark")]
+        [InlineData("SettingSwitch", "Light")]
         [InlineData("SelectableListRow", "Dark")]
         [InlineData("SelectableListRow", "Light")]
         public void PointerFocusOfAButtonLikeControl_DoesNotPaintTheHalo(string key, string variantName)
@@ -598,6 +618,107 @@ namespace KinesisEdit.Tests.Design
             Assert.True(glyph.Data.Bounds.Width > 0, "The indeterminate mark has no length.");
         }
 
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheSettingSwitch_SaysItsValueWithTheKnobsPosition(string variantName)
+        {
+            // A switch has no mark to show or hide — where the knob IS is the value, which is the
+            // whole reason the settings rows use one instead of a check box. Both halves are
+            // asserted at the glass, because the position is an alignment setter carried by a
+            // `/template/` selector and a layout pass, and neither is visible on the control.
+            var variant = ToVariant(variantName);
+            var toggle = Sized(new ToggleButton());
+
+            toggle.Theme = (ControlTheme)DesignTokens.Resolve("SettingSwitch", variant);
+
+            using var host = ThemedHost.Show(toggle, variant, HostWidth, HostHeight);
+
+            var root = RootOf(toggle);
+            var knob = KnobOf(toggle);
+
+            Assert.Equal(new Size(SwitchTrackWidth, SwitchTrackHeight), root.Bounds.Size);
+            Assert.Equal(DesignTokens.Resolve("TextMutedBrush", variant), knob.Fill);
+
+            // Off: the knob is at the near end and the far end is bare track.
+            AssertClose(DesignTokens.ResolveBrushColor("TextMutedBrush", variant), TrackPixel(host, root, KnobCentreOff));
+            AssertClose(DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant), TrackPixel(host, root, KnobCentreOn));
+
+            toggle.IsChecked = true;
+
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // On: it has crossed, the track is accent, and the knob is drawn in the on-accent colour
+            // — reached through the AccentButton* aliases, which is where the per-variant divergence
+            // is written down.
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), knob.Fill);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), toggle.Background);
+
+            AssertClose(DesignTokens.ResolveBrushColor("AccentTextBrush", variant), TrackPixel(host, root, KnobCentreOn));
+            AssertClose(DesignTokens.ResolveBrushColor("AccentBrush", variant), TrackPixel(host, root, KnobCentreOff));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ADisabledSettingSwitch_LeavesTheAccentFamilyEntirely(string variantName)
+        {
+            // The read-only settings panel is a screen full of these, and an unreachable "on" that
+            // kept the accent face would read as an "on" that works. Same rule as the disabled
+            // primary action and the disabled check box.
+            var variant = ToVariant(variantName);
+            var toggle = Sized(new ToggleButton { IsChecked = true });
+
+            toggle.Theme = (ControlTheme)DesignTokens.Resolve("SettingSwitch", variant);
+
+            using var host = ThemedHost.Show(toggle, variant, HostWidth, HostHeight);
+
+            toggle.IsEnabled = false;
+
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), toggle.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), toggle.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), KnobOf(toggle).Fill);
+
+            // And the knob has NOT snapped back: a disabled switch still tells the truth about the
+            // value it is showing, which is exactly what the read-only panel needs of it.
+            var root = RootOf(toggle);
+
+            AssertClose(DesignTokens.ResolveBrushColor("TextDisabledBrush", variant), TrackPixel(host, root, KnobCentreOn));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheSettingSwitch_RingsItsTrackOnKeyboardFocus(string variantName)
+        {
+            // The ring is asserted on the track's straight top edge rather than through
+            // BorderPixel's left-edge probe: this is the only field cut to RadiusPill, and a pill's
+            // leftmost pixel is the extremity of a curve, where antialiasing decides the answer.
+            var variant = ToVariant(variantName);
+            var toggle = Sized(new ToggleButton());
+
+            toggle.Theme = (ControlTheme)DesignTokens.Resolve("SettingSwitch", variant);
+
+            using var host = ThemedHost.Show(toggle, variant, HostWidth, HostHeight);
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineHighBrush", variant), toggle.BorderBrush);
+
+            Assert.True(toggle.Focus(NavigationMethod.Tab), "The switch refused keyboard focus.");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), toggle.BorderBrush);
+
+            var root = RootOf(toggle);
+            var frame = host.Capture();
+            var probe = root.TranslatePoint(new Point(SwitchTrackWidth / 2, 0), host.Window)
+                ?? throw new InvalidOperationException("The track is not in the window's visual tree.");
+
+            AssertClose(
+                DesignTokens.ResolveBrushColor("AccentBrush", variant),
+                FramePixels.At(frame, (int)probe.X, (int)probe.Y));
+        }
+
         [AvaloniaFact]
         public void TheFieldThemes_NameNoFluentTemplatePart()
         {
@@ -644,6 +765,11 @@ namespace KinesisEdit.Tests.Design
             ["TokenField"] = typeof(Border),
             ["Slider"] = typeof(Slider),
             ["CheckBox"] = typeof(CheckBox),
+            // ToggleButton, NOT ToggleSwitch, and the TargetType is the assertion: ToggleSwitch
+            // declares `PART_MovingKnobs` a required template part, so a theme that owned its
+            // template would have to write a `PART_` name — banned by contract 2 and by
+            // ControlThemeBridgeTests across this whole directory. See Fields.axaml.
+            ["SettingSwitch"] = typeof(ToggleButton),
             ["ComboBox"] = typeof(ComboBox),
             ["SelectableListRow"] = typeof(ListBoxItem)
         };
@@ -656,6 +782,7 @@ namespace KinesisEdit.Tests.Design
             ["TokenField"] = "RadiusControl",
             ["Slider"] = "RadiusControl",
             ["CheckBox"] = "RadiusChip",
+            ["SettingSwitch"] = "RadiusPill",
             ["ComboBox"] = "RadiusControl",
             ["SelectableListRow"] = "RadiusControl"
         };
@@ -731,20 +858,30 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>
         /// The part whose border carries the focus ring. It is the control itself everywhere except
-        /// the check box, where the ring belongs on the box rather than around the label.
+        /// the two toggles, where the ring belongs on the box or the track rather than around the
+        /// label — <see cref="CheckBox"/> derives from <see cref="ToggleButton"/>, so one test
+        /// covers both.
         /// </summary>
         private static Visual RingOf(Control control)
         {
-            return control is CheckBox ? RootOf(control) : control;
+            return control is ToggleButton ? RootOf(control) : control;
         }
 
         /// <summary>
-        /// The part whose fill the face probe should land on — the check box's own 16px box, and the
-        /// control itself for everything else.
+        /// The part whose fill the face probe should land on — the check box's own 16px box, the
+        /// switch's 40x20 track, and the control itself for everything else.
         /// </summary>
         private static Visual FaceOf(Control control)
         {
-            return control is CheckBox ? RootOf(control) : control;
+            return control is ToggleButton ? RootOf(control) : control;
+        }
+
+        /// <summary>The moving knob of the setting switch.</summary>
+        private static Avalonia.Controls.Shapes.Ellipse KnobOf(Control control)
+        {
+            return control.GetVisualDescendants()
+                .OfType<Avalonia.Controls.Shapes.Ellipse>()
+                .Single(ellipse => ellipse.Name == "Knob");
         }
 
         /// <summary>The <c>Border#Root</c> of a theme that writes its own template.</summary>
@@ -795,6 +932,19 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
+        /// The colour of the switch's track at <paramref name="x"/>, sampled on its vertical middle
+        /// — either the knob's fill or the bare track, depending on which end the knob is at.
+        /// </summary>
+        private static Color TrackPixel(ThemedHost host, Visual track, double x)
+        {
+            var frame = host.Capture();
+            var probe = track.TranslatePoint(new Point(x, SwitchTrackHeight / 2), host.Window)
+                ?? throw new InvalidOperationException("The track is not in the window's visual tree.");
+
+            return FramePixels.At(frame, (int)probe.X, (int)probe.Y);
+        }
+
+        /// <summary>
         /// The colour two pixels outside <paramref name="root"/>'s left edge — inside the 3px halo
         /// when there is one, and the window's canvas when there is not.
         /// </summary>
@@ -840,6 +990,7 @@ namespace KinesisEdit.Tests.Design
                 _ when targetTypeName == typeof(Border).FullName => new Border(),
                 _ when targetTypeName == typeof(Slider).FullName => new Slider { Minimum = 1, Maximum = 9, Value = 4 },
                 _ when targetTypeName == typeof(CheckBox).FullName => new CheckBox { Content = "Warn before leaving" },
+                _ when targetTypeName == typeof(ToggleButton).FullName => new ToggleButton(),
                 _ when targetTypeName == typeof(ComboBox).FullName => new ComboBox { ItemsSource = new[] { "Top", "Fn" } },
                 _ when targetTypeName == typeof(ListBoxItem).FullName => new ListBoxItem { Content = "[esc]" },
                 _ => throw new ArgumentOutOfRangeException(nameof(targetTypeName), targetTypeName, "Unknown field target.")

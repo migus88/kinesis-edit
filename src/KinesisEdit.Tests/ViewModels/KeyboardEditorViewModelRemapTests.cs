@@ -229,6 +229,10 @@ namespace KinesisEdit.Tests.ViewModels
             editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
             editor.Layout.Layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
 
+            // Both reset scopes confirm first (NotificationKeys.ResetLayer); the fake's default
+            // answer is Ok, which is not the Yes the guard waits for.
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
+
             editor.ResetLayerCommand.Execute(null);
 
             Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
@@ -244,6 +248,8 @@ namespace KinesisEdit.Tests.ViewModels
 
             editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
             editor.Layout.Layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
 
             editor.ResetLayoutCommand.Execute(null);
 

@@ -8,7 +8,7 @@ namespace KinesisEdit.Tests.Services
     /// without merging: the merge rule of specs/08-settings.md §1 is exercised against the real
     /// service over a temp directory, so no second implementation of it can drift, but the write
     /// must still be observable — a fake that threw instead would let
-    /// <see cref="KinesisEdit.Services.VDriveNotificationSuppressionStore"/> swallow it and make
+    /// <see cref="KinesisEdit.Services.VDriveAppPreferencesStore"/> swallow it and make
     /// "demo mode persists nothing" pass even when demo mode persists everything.
     /// </summary>
     internal sealed class FakeVDriveFileService : IVDriveFileService
@@ -18,6 +18,13 @@ namespace KinesisEdit.Tests.Services
         public List<string> WrittenPaths { get; } = [];
 
         public List<KeyValuePair<string, string>> SettingsUpdates { get; } = [];
+
+        /// <summary>
+        /// The keys each update asked to delete. Recorded for the same reason as
+        /// <see cref="SettingsUpdates"/>: a removal is a write, so a fake that dropped it on the
+        /// floor would let "demo mode persists nothing" pass while demo mode cleared slots.
+        /// </summary>
+        public List<string> SettingsRemovals { get; } = [];
 
         /// <summary>
         /// When set, a write blocks until the test completes this source — the only way to observe
@@ -75,7 +82,10 @@ namespace KinesisEdit.Tests.Services
             _files[path] = lines;
         }
 
-        public void UpdateSettingsFile(string path, IEnumerable<KeyValuePair<string, string>> values)
+        public void UpdateSettingsFile(
+            string path,
+            IEnumerable<KeyValuePair<string, string>> values,
+            IEnumerable<string>? removedKeys = null)
         {
             ArgumentNullException.ThrowIfNull(values);
 
@@ -86,6 +96,11 @@ namespace KinesisEdit.Tests.Services
 
             WrittenPaths.Add(path);
             SettingsUpdates.AddRange(values);
+
+            if (removedKeys is not null)
+            {
+                SettingsRemovals.AddRange(removedKeys);
+            }
         }
     }
 }

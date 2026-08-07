@@ -9,7 +9,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public async Task ShowMessageBoxAsync_WithHiddenNotification_DoesNotPresentIt()
         {
-            var store = new FakeNotificationSuppressionStore();
+            var store = new FakeAppPreferencesStore();
             store.SetInitiallyHidden(NotificationKeys.Save);
             var service = CreateService(store, out var presenter);
             var request = CreateSuppressibleRequest();
@@ -24,7 +24,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public async Task ShowMessageBoxAsync_WithShownNotification_PresentsIt()
         {
-            var service = CreateService(new FakeNotificationSuppressionStore(), out var presenter);
+            var service = CreateService(new FakeAppPreferencesStore(), out var presenter);
             var request = CreateSuppressibleRequest();
 
             var outcome = await service.ShowMessageBoxAsync(request);
@@ -36,7 +36,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public async Task ShowMessageBoxAsync_WithoutSuppressionKey_AlwaysPresentsIt()
         {
-            var store = new FakeNotificationSuppressionStore();
+            var store = new FakeAppPreferencesStore();
             store.SetInitiallyHidden(NotificationKeys.Save);
             var service = CreateService(store, out var presenter);
 
@@ -53,7 +53,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public async Task ShowMessageBoxAsync_WhenUserAsksToHide_PersistsTheSuppression()
         {
-            var store = new FakeNotificationSuppressionStore();
+            var store = new FakeAppPreferencesStore();
             var service = CreateService(store, out var presenter);
             presenter.OutcomeToReturn = new MessageBoxOutcome
             {
@@ -72,7 +72,7 @@ namespace KinesisEdit.Tests.Services
         {
             var fileService = new FakeVDriveFileService();
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess);
-            fileService.SetFile(VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!), "save_msg=off");
+            fileService.SetFile(VDriveAppPreferencesStore.GetFilePath(snapshot.Location!), "save_msg=off");
             var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
             sessions.Begin(snapshot);
             var presenter = CreateSuppressingPresenter();
@@ -83,7 +83,7 @@ namespace KinesisEdit.Tests.Services
             // Asserting on the store the session actually chose as well as on the file service:
             // an inverted policy would hand the session a writing store, and the fake records
             // attempted settings writes instead of throwing them away.
-            Assert.IsType<ReadOnlyNotificationSuppressionStore>(sessions.Active!.SuppressionStore);
+            Assert.IsType<ReadOnlyAppPreferencesStore>(sessions.Active!.SuppressionStore);
             Assert.Single(presenter.Requests);
             Assert.Empty(fileService.WrittenPaths);
             Assert.Empty(fileService.SettingsUpdates);
@@ -94,7 +94,7 @@ namespace KinesisEdit.Tests.Services
         {
             var fileService = new FakeVDriveFileService();
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko);
-            var settingsPath = VDriveNotificationSuppressionStore.GetFilePath(snapshot.Location!);
+            var settingsPath = VDriveAppPreferencesStore.GetFilePath(snapshot.Location!);
             fileService.SetFile(settingsPath, "save_msg=off");
             var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(fileService));
             sessions.Begin(snapshot);
@@ -103,7 +103,7 @@ namespace KinesisEdit.Tests.Services
 
             await service.ShowMessageBoxAsync(CreateSuppressibleRequest());
 
-            Assert.IsType<VDriveNotificationSuppressionStore>(sessions.Active!.SuppressionStore);
+            Assert.IsType<VDriveAppPreferencesStore>(sessions.Active!.SuppressionStore);
             Assert.Equal(settingsPath, Assert.Single(fileService.WrittenPaths));
             Assert.Equal(KeyValuePair.Create(NotificationKeys.Save, "on"), Assert.Single(fileService.SettingsUpdates));
         }
@@ -124,7 +124,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void ShowToast_WithoutTimeout_UsesTheFiveSecondDefault()
         {
-            var service = CreateService(new FakeNotificationSuppressionStore(), out _);
+            var service = CreateService(new FakeAppPreferencesStore(), out _);
             var toasts = new List<ToastRequest>();
             service.ToastRequested += toast => toasts.Add(toast);
 
@@ -141,7 +141,7 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void ShowLoading_WithoutCaption_UsesTheDefaultCaption()
         {
-            var service = CreateService(new FakeNotificationSuppressionStore(), out _);
+            var service = CreateService(new FakeAppPreferencesStore(), out _);
             var captions = new List<string?>();
             service.LoadingChanged += caption => captions.Add(caption);
 
@@ -155,14 +155,14 @@ namespace KinesisEdit.Tests.Services
         [Fact]
         public void ShowLoading_WithDeviceCaption_ReportsTheDeviceName()
         {
-            var service = CreateService(new FakeNotificationSuppressionStore(), out _);
+            var service = CreateService(new FakeAppPreferencesStore(), out _);
 
             service.ShowLoading(LoadingCaptions.ForDevice("TKO"));
 
             Assert.Equal("Loading TKO…", service.LoadingCaption);
         }
 
-        private static NotificationService CreateService(INotificationSuppressionStore store, out FakeMessageBoxPresenter presenter)
+        private static NotificationService CreateService(IAppPreferencesStore store, out FakeMessageBoxPresenter presenter)
         {
             presenter = new FakeMessageBoxPresenter();
             var accessor = new StubSessionAccessor(new DeviceSession(TestDevices.CreateSnapshot(DeviceId.Tko), store));

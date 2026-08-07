@@ -823,9 +823,13 @@ namespace KinesisEdit.Tests.ViewModels
                     editor.ResetKeyCommand.Execute(null);
                     break;
                 case "resetLayer":
+                    // Both scopes now confirm first, and the fake answers Ok by default, which is
+                    // not the Yes the guard waits for.
+                    ConfirmTheNextReset();
                     editor.ResetLayerCommand.Execute(null);
                     break;
                 case "resetLayout":
+                    ConfirmTheNextReset();
                     editor.ResetLayoutCommand.Execute(null);
                     break;
                 case "macroAssign":
@@ -841,6 +845,210 @@ namespace KinesisEdit.Tests.ViewModels
                 default:
                     throw new ArgumentOutOfRangeException(nameof(path), path, "Unknown mutation path.");
             }
+        }
+
+        [Fact]
+        public async Task ResetLayerCommand_AsksBeforeItErasesAnything()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            ConfirmTheNextReset();
+
+            editor.ResetLayerCommand.Execute(null);
+
+            var request = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(KeyboardEditorViewModel.ResetLayerTitle, request.Title);
+            Assert.Equal(KeyboardEditorViewModel.ResetLayerConfirmation, request.Message);
+            Assert.Equal(MessageBoxIcon.Confirmation, request.Icon);
+            Assert.Equal(MessageBoxButtons.YesNo, request.Buttons);
+            Assert.Equal(KeyboardEditorViewModel.ResetLayerConfirmCaption, request.YesCaption);
+            Assert.Equal(KeyboardEditorViewModel.ResetDeclineCaption, request.NoCaption);
+
+            // The whole point of the guard: it is the first production box that can be switched
+            // off, and a switched-off one means "go ahead" rather than "do nothing".
+            Assert.Equal(NotificationKeys.ResetLayer, request.SuppressionKey);
+            Assert.True(request.HasSuppressionOption);
+            Assert.Equal(MessageBoxResult.Yes, request.SuppressedResult);
+
+            Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+            Assert.Equal(0, editor.ModifiedKeyCount);
+        }
+
+        [Fact]
+        public async Task ResetLayerCommand_WhenTheConfirmationIsDeclined_ErasesNothing()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+            editor.SelectedTab = EditorTab.Macros;
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+            editor.MacroPanel!.InsertKeystroke(TestLayouts.Gen1Key("a"));
+            editor.MacroPanel.AssignCommand.Execute(null);
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.Single(_notifications.MessageBoxes);
+            Assert.True(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+            Assert.Equal(1, editor.MacroCount);
+        }
+
+        [Fact]
+        public async Task ResetLayoutCommand_AsksUnderTheSameKeyWithItsOwnWording()
+        {
+            // One preference governs both scopes, so the sentence is the only thing that says
+            // which of them is about to run — and it has to say it.
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            ConfirmTheNextReset();
+
+            editor.ResetLayoutCommand.Execute(null);
+
+            var request = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(KeyboardEditorViewModel.ResetLayoutTitle, request.Title);
+            Assert.Equal(KeyboardEditorViewModel.ResetLayoutConfirmation, request.Message);
+            Assert.Equal(NotificationKeys.ResetLayer, request.SuppressionKey);
+            Assert.NotEqual(KeyboardEditorViewModel.ResetLayerConfirmation, request.Message);
+            Assert.Equal(0, editor.ModifiedKeyCount);
+        }
+
+        [Fact]
+        public async Task ResetLayoutCommand_WhenTheConfirmationIsDeclined_ErasesNothing()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+            editor.Layout.Layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.No };
+
+            editor.ResetLayoutCommand.Execute(null);
+
+            Assert.All(
+                editor.Layout.Layers,
+                layer => Assert.True(layer.Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified));
+        }
+
+        [Fact]
+        public async Task ResetLayerCommand_WhenTheConfirmationCannotBeShown_ErasesNothing()
+        {
+            // A box that cannot be put on screen is not consent (the rule the lighting tab's
+            // Reset All already follows), and it must not bring the editor down either.
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            _notifications.MessageBoxExceptionToThrow = new InvalidOperationException("no window");
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.True(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+        }
+
+        [Fact]
+        public async Task ResetKeyCommand_StillAsksNothing()
+        {
+            // Deliberate asymmetry, pinned so it cannot become an accident: the catalog's
+            // reset confirmation is "Confirm before resetting a layer", and the spec's other reset
+            // flag (reset_key_msg) guards resetting a *macro*, which this command does not do —
+            // it drops one position's remap.
+            var editor = await CreateLoadedEditorAsync();
+            var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            key.Key.ApplyRemap(TestLayouts.Gen1Key("z"));
+            key.RefreshFromModel();
+
+            editor.SelectKeyCommand.Execute(key);
+            editor.ResetKeyCommand.Execute(null);
+
+            Assert.Empty(_notifications.MessageBoxes);
+            Assert.False(key.IsModified);
+        }
+
+        [Fact]
+        public async Task ResetLayerCommand_WhenTheConfirmationIsHidden_ErasesWithoutAsking()
+        {
+            // Through the real NotificationService, because the short-circuit is its policy: the
+            // editor never reads IsHidden itself, or there would be two policies for one decision.
+            var presenter = new FakeMessageBoxPresenter();
+            var store = new FakeAppPreferencesStore();
+
+            store.SetInitiallyHidden(NotificationKeys.ResetLayer);
+
+            var editor = await CreateLoadedEditorWithPreferencesAsync(store, presenter);
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.Empty(presenter.Requests);
+            Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+        }
+
+        [Fact]
+        public async Task ResetLayerCommand_WhenTheUserTicksDontAskAgain_TheAnswerReachesThePreferencesScreenAndBack()
+        {
+            // The end-to-end proof of the suppression pipeline, which had no production call site
+            // before this: tick the box, and the same store the preferences screen binds to reports
+            // the option off — then untick it there and the confirmation comes back.
+            var presenter = new FakeMessageBoxPresenter
+            {
+                OutcomeToReturn = new MessageBoxOutcome
+                {
+                    Result = MessageBoxResult.Yes,
+                    SuppressRequested = true
+                }
+            };
+
+            var location = TestDevices.CreateLocation(DeviceId.FreestyleEdgeRgb);
+
+            _files.SetFile(VDriveAppPreferencesStore.GetFilePath(location));
+
+            var store = new VDriveAppPreferencesStore(TestDevices.CreateSettingsService(_files), location);
+            var editor = await CreateLoadedEditorWithPreferencesAsync(store, presenter);
+
+            Assert.True(AppPreferenceCatalog.ResetLayerConfirmation.GetValue(store.Current));
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.Single(presenter.Requests);
+            Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+
+            // What the preferences screen shows: the option is now off, and it was written as the
+            // spec-08 hide flag rather than as the option itself.
+            Assert.False(AppPreferenceCatalog.ResetLayerConfirmation.GetValue(store.Current));
+            Assert.True(store.Current.IsResetLayerConfirmationHidden);
+            Assert.Contains(
+                KeyValuePair.Create(SettingsKeys.ResetLayerMessage, "on"),
+                _files.SettingsUpdates);
+
+            // And the reset stops asking.
+            editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.Single(presenter.Requests);
+            Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+
+            // Re-enabled the way the preferences screen does it — through the descriptor, never by
+            // hand — and the question is back.
+            store.Update(settings => AppPreferenceCatalog.ResetLayerConfirmation.SetValue(settings, true));
+
+            editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            editor.ResetLayerCommand.Execute(null);
+
+            Assert.Equal(2, presenter.Requests.Count);
+            Assert.False(editor.Layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
         }
 
         [Fact]
@@ -868,20 +1076,53 @@ namespace KinesisEdit.Tests.ViewModels
 
         private KeyboardEditorViewModel CreateEditor(DeviceSnapshot? snapshot = null)
         {
+            return CreateEditor(snapshot, _notifications, sessions: null);
+        }
+
+        private KeyboardEditorViewModel CreateEditor(
+            DeviceSnapshot? snapshot,
+            INotificationService notifications,
+            IDeviceSessionAccessor? sessions)
+        {
             var editor = new KeyboardEditorViewModel(
                 snapshot ?? TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _profiles,
                 _settings,
                 _capture,
-                _notifications,
+                notifications,
                 _folderPicker,
                 _filePicker,
                 _files,
-                _urlLauncher);
+                _urlLauncher,
+                sessions);
 
             _editors.Add(editor);
 
             return editor;
+        }
+
+        /// <summary>
+        /// An editor over <paramref name="store"/>, wired to the <b>real</b>
+        /// <see cref="NotificationService"/> so that the suppression policy under test is the
+        /// app's own rather than a fake's.
+        /// </summary>
+        private async Task<KeyboardEditorViewModel> CreateLoadedEditorWithPreferencesAsync(
+            IAppPreferencesStore store,
+            IMessageBoxPresenter presenter)
+        {
+            var snapshot = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+            var sessions = new StubSessionAccessor(new DeviceSession(snapshot, store));
+            var editor = CreateEditor(snapshot, new NotificationService(presenter, sessions), sessions);
+
+            await editor.LoadAsync();
+
+            return editor;
+        }
+
+        /// <summary>Answers the reset confirmation with its affirmative; the fake says Ok by default.</summary>
+        private void ConfirmTheNextReset()
+        {
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
         }
 
         public void Dispose()
@@ -889,6 +1130,16 @@ namespace KinesisEdit.Tests.ViewModels
             foreach (var editor in _editors)
             {
                 editor.Dispose();
+            }
+        }
+
+        private sealed class StubSessionAccessor : IDeviceSessionAccessor
+        {
+            public DeviceSession? Active { get; }
+
+            public StubSessionAccessor(DeviceSession? active)
+            {
+                Active = active;
             }
         }
     }

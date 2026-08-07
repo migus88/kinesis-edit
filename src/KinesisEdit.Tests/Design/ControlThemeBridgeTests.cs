@@ -68,6 +68,20 @@ namespace KinesisEdit.Tests.Design
                 (typeof(KeyboardEditorView).FullName!, "primaryAction", "PrimaryActionButton"),
                 (typeof(KeyboardEditorView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(AdvisoryStripView).FullName!, "secondary", "SecondaryButton"),
+                // The Settings tab. `settingSwitch` is the 27th control theme and the only bridge
+                // in the app that goes onto a ToggleButton — the switch cannot be a ToggleSwitch
+                // (Themes/ControlThemes/Fields.axaml says why), so nothing but this row would
+                // notice the bridge going missing.
+                (typeof(KeyboardSettingsView).FullName!, "settingSwitch", "SettingSwitch"),
+                (typeof(KeyboardSettingsView).FullName!, "primaryAction", "PrimaryActionButton"),
+
+                // Its second section. `link` here is the "+N more" disclosure; the swatch strip's
+                // Replace/Clear and its hex box are only rendered while the store is writable,
+                // which the editor scene's session makes it.
+                (typeof(AppPreferencesView).FullName!, "link", "LinkButton"),
+                (typeof(AppPreferencesView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(AppPreferencesView).FullName!, "monoValue", "MonoValueField"),
+
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
                 (typeof(TapAndHoldOverlayView).FullName!, "actionField", "TokenField"),

@@ -424,6 +424,10 @@ namespace KinesisEdit.Tests.ViewModels
             editor.MacroPanel!.InsertKeystroke(TestLayouts.Gen1Key("a"));
             editor.MacroPanel.AssignCommand.Execute(null);
 
+            // The reset scopes confirm first (NotificationKeys.ResetLayer), and the fake answers
+            // Ok by default rather than the Yes the guard waits for.
+            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
+
             editor.ResetLayoutCommand.Execute(null);
 
             Assert.Equal(0, editor.MacroCount);

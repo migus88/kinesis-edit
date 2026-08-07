@@ -229,13 +229,24 @@ namespace KinesisEdit.ViewModels
         /// no profile — the menus come from the catalogs — so the editor builds it eagerly and
         /// hands the model over in <see cref="Attach"/> once the profile has been read.
         /// </summary>
+        /// <param name="device">The board this panel edits.</param>
+        /// <param name="notifications">The app-wide notification surface.</param>
+        /// <param name="preferences">
+        /// The session's <c>app_settings.txt</c>, which is where the picker's twelve custom slots
+        /// live. <b>Required, and deliberately not defaulted</b>: a defaulted
+        /// <see cref="NullAppPreferencesStore"/> would let a call site forget the store and lose
+        /// every swatch silently, with no test able to see it. A host with no drive passes
+        /// <see cref="NullAppPreferencesStore.Instance"/> in as many words.
+        /// </param>
         public LightingTabViewModel(
             DeviceSnapshot device,
-            ISettingsService settings,
-            INotificationService notifications)
+            INotificationService notifications,
+            IAppPreferencesStore preferences)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
+
+            ArgumentNullException.ThrowIfNull(preferences);
 
             IsAvailable = IsSupported(device.Device);
             IsLayerCustomizationAvailable = LightingAvailability.IsFnLayerLightingAvailable(
@@ -250,7 +261,7 @@ namespace KinesisEdit.ViewModels
             EffectColor = LightingColorSlotViewModel.CreateEffectColor();
             BaseColor = LightingColorSlotViewModel.CreateBaseColor();
 
-            Picker = new ColorPickerViewModel(device, settings);
+            Picker = new ColorPickerViewModel(device, preferences);
             Picker.ColorChanged += OnPickerColorChanged;
 
             SelectLayerCommand = new RelayCommand<LightingLayerViewModel>(SelectLayer);

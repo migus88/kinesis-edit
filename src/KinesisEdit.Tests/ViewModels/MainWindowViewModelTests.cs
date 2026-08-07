@@ -691,7 +691,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(_shell.IsDemoMode);
             Assert.True(_sessions.Active!.IsDemoMode);
             Assert.Equal("Demo Mode", _shell.StatusIndicatorText);
-            Assert.IsType<ReadOnlyNotificationSuppressionStore>(_sessions.Active.SuppressionStore);
+            Assert.IsType<ReadOnlyAppPreferencesStore>(_sessions.Active.SuppressionStore);
         }
 
         [Fact]

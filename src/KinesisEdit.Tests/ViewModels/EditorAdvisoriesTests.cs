@@ -354,6 +354,8 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(editor.AdvisoryStrip.AdvisoryCount, editor.Advisories.ForTab(EditorTab.Keys, layer.Index).Count);
             Assert.Equal(AdvisoryText.Review(editor.AdvisoryStrip.AdvisoryCount), editor.AdvisoryStrip.ReviewCaption);
 
+            fixture.ConfirmTheNextReset();
+
             editor.ResetLayoutCommand.Execute(null);
 
             Assert.Equal(0, editor.Advisories.Total);
@@ -378,6 +380,8 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex)!.HasAdvisory);
             Assert.True(layer.Keys[0].HasAdvisory);
             Assert.False(layer.FindByIndex(TestLayouts.RgbDigitTwoKeyIndex)!.HasAdvisory);
+
+            fixture.ConfirmTheNextReset();
 
             editor.ResetLayoutCommand.Execute(null);
 
@@ -686,6 +690,15 @@ namespace KinesisEdit.Tests.ViewModels
                 editor.BeginRemapCommand.Execute(null);
 
                 _capture.RaiseKeystroke(assignment);
+            }
+
+            /// <summary>
+            /// Answers the reset confirmation (<c>NotificationKeys.ResetLayer</c>) with its
+            /// affirmative; the fake service says Ok by default, which the guard reads as "no".
+            /// </summary>
+            public void ConfirmTheNextReset()
+            {
+                Notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
             }
 
             public void Dispose()

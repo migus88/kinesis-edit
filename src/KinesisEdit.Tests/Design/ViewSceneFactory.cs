@@ -138,8 +138,22 @@ namespace KinesisEdit.Tests.Design
                 return _editor;
             }
 
+            var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
+
+            // A settings file the panel can actually read. Without one the Settings tab's rows load
+            // nothing, HasLoadedSettings stays false, every row and its Save are disabled and the
+            // tab renders a read-failure note — a real state, but not the one mockup 1j is about,
+            // and every frame captured off this scene would be of the wrong screen.
+            _files.SetFile(
+                device.Location!.SettingsFilePath,
+                "startup_file=layout2.txt",
+                "macro_speed=8",
+                "status_play_speed=5",
+                "v_drive=auto",
+                "game_mode=on");
+
             var editor = new KeyboardEditorViewModel(
-                TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
+                device,
                 _profiles,
                 TestDevices.CreateSettingsService(_files),
                 _capture,
@@ -147,7 +161,8 @@ namespace KinesisEdit.Tests.Design
                 _folderPicker,
                 _filePicker,
                 _files,
-                _urlLauncher);
+                _urlLauncher,
+                OpenSessionFor(device));
 
             _disposables.Add(editor);
 
@@ -196,8 +211,9 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         public KeyboardEditorViewModel CreateEditorFor(DeviceId deviceId)
         {
+            var device = TestDevices.CreateSnapshot(deviceId);
             var editor = new KeyboardEditorViewModel(
-                TestDevices.CreateSnapshot(deviceId),
+                device,
                 _profiles,
                 TestDevices.CreateSettingsService(_files),
                 _capture,
@@ -205,7 +221,8 @@ namespace KinesisEdit.Tests.Design
                 _folderPicker,
                 _filePicker,
                 _files,
-                _urlLauncher);
+                _urlLauncher,
+                OpenSessionFor(device));
 
             _disposables.Add(editor);
 
@@ -375,8 +392,9 @@ namespace KinesisEdit.Tests.Design
 
             if (viewType == typeof(KeyboardEditorView))
             {
+                var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess);
                 var editor = new KeyboardEditorViewModel(
-                    TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess),
+                    device,
                     _profiles,
                     TestDevices.CreateSettingsService(_files),
                     _capture,
@@ -384,7 +402,8 @@ namespace KinesisEdit.Tests.Design
                     _folderPicker,
                     _filePicker,
                     _files,
-                    _urlLauncher);
+                    _urlLauncher,
+                    OpenSessionFor(device));
 
                 _disposables.Add(editor);
 
@@ -537,6 +556,13 @@ namespace KinesisEdit.Tests.Design
                 return (await CreateEditorAsync().ConfigureAwait(true)).Settings;
             }
 
+            // The Settings tab's second section. It is a section of that tab rather than a screen
+            // of its own, so its scene is the same editor's — the tab hosts this very object.
+            if (viewType == typeof(AppPreferencesView))
+            {
+                return (await CreateEditorAsync().ConfigureAwait(true)).Settings.Preferences;
+            }
+
             if (viewType == typeof(LightingTabView))
             {
                 return (await CreateEditorAsync().ConfigureAwait(true)).Lighting;
@@ -626,6 +652,28 @@ namespace KinesisEdit.Tests.Design
             editor.BeginRemapCommand.Execute(null);
 
             _capture.RaiseKeystroke(assignment);
+        }
+
+        /// <summary>
+        /// A session manager with <paramref name="device"/> already open, which is the state the
+        /// shell is always in by the time it builds an editor (<c>MainWindowViewModel.OpenDevice</c>
+        /// calls <c>Begin</c> and only then asks the factory for one). Without it every editor
+        /// scene would fall back to <see cref="NullAppPreferencesStore"/> and the Settings tab's
+        /// preferences section would render its read-only face — a state the app only ever shows
+        /// for a board with no drive, so the frames would be of the wrong screen.
+        /// <para>
+        /// Each editor gets its own manager rather than sharing the shells': a shell ends the
+        /// session it holds when its navigation unwinds, and a scene's editor must not lose its
+        /// store to another scene's shell.
+        /// </para>
+        /// </summary>
+        private DeviceSessionManager OpenSessionFor(DeviceSnapshot device)
+        {
+            var sessions = new DeviceSessionManager(TestDevices.CreateSettingsService(_files));
+
+            sessions.Begin(device);
+
+            return sessions;
         }
 
         private DeviceMonitorService CreateMonitor(bool withDevices = true)

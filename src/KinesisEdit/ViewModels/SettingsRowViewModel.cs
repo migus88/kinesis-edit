@@ -31,7 +31,26 @@ namespace KinesisEdit.ViewModels
             set => SetProperty(ref _isEnabled, value);
         }
 
+        /// <summary>
+        /// Whether the row's value is real and current but cannot be written — the 2MB Advantage2
+        /// of docs/design/mockups.md 1j, which draws it as a quiet <c>(read-only)</c> marker beside
+        /// the value.
+        /// <para>
+        /// It is <b>not</b> the negation of <see cref="IsEnabled"/> and must not be confused with
+        /// it: a row is also disabled while the file is being read, while a save is in flight, and
+        /// after a read that failed — none of which is a statement about the hardware, and none of
+        /// which may carry the marker. This one says "the board will not accept a write", which is
+        /// a fact rather than a failure, and is why the whole screen stays on the advisory ramp.
+        /// </para>
+        /// </summary>
+        public bool IsReadOnly
+        {
+            get => _isReadOnly;
+            set => SetProperty(ref _isReadOnly, value);
+        }
+
         private bool _isEnabled = true;
+        private bool _isReadOnly;
 
         /// <summary>Creates a row labelled <paramref name="caption"/>.</summary>
         protected SettingsRowViewModel(string caption, string description)

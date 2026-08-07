@@ -17,6 +17,7 @@ namespace KinesisEdit.Tests.ViewModels
     {
         private readonly FakeSettingsService _settings = new();
         private readonly FakeNotificationService _notifications = new();
+        private readonly FakeAppPreferencesStore _preferences = new();
 
         [Fact]
         public void Rows_ForAPerKeyRgbBoard_AreTheKeysSpecEightSaysItWrites()
@@ -107,6 +108,63 @@ namespace KinesisEdit.Tests.ViewModels
         {
             Assert.Empty(Create(DeviceId.SavantElite2).Rows);
             Assert.Empty(Create(DeviceId.Advantage360Professional, VDriveConnectionStatus.NotDetected).Rows);
+        }
+
+        /// <summary>Every catalog device, so a board added later is covered without editing a list.</summary>
+        public static TheoryData<DeviceId> EveryDevice()
+        {
+            var cases = new TheoryData<DeviceId>();
+
+            foreach (var device in DeviceCatalog.All)
+            {
+                cases.Add(device.Id);
+            }
+
+            return cases;
+        }
+
+        [Theory]
+        [MemberData(nameof(EveryDevice))]
+        public void Rows_AreAbsentForEverySettingTheBoardDoesNotHave(DeviceId deviceId)
+        {
+            // The acceptance criterion, per capability shape and asserting ABSENCE. Mockup 1j is
+            // explicit: "Game mode, backlight mode, and status-report speed don't exist on this
+            // device, so they aren't shown at all — only settings the board actually has appear
+            // here." There is deliberately no disabled row standing in for a missing setting, and
+            // that is what this pins for all nine boards at once: for each of the ten controls
+            // KeyboardSettingsRows can emit, the row is present exactly when the capability
+            // designates it, and simply not in the list otherwise.
+            var capability = DeviceCatalog.GetById(deviceId).Settings;
+            var captions = CreateForCapability(deviceId)
+                .Rows
+                .Select(row => row.Caption)
+                .ToArray();
+
+            AssertRowPresence(captions, KeyboardSettingsRows.StartupProfileCaption, capability.StartupSetting != StartupSettingKind.None);
+            AssertRowPresence(captions, KeyboardSettingsRows.LedModeCaption, capability.LedMode == LedModeKind.ModeString);
+            AssertRowPresence(captions, KeyboardSettingsRows.MacroSpeedCaption, capability.WritesMacroSpeed);
+            AssertRowPresence(captions, KeyboardSettingsRows.StatusPlaySpeedCaption, capability.StatusSetting != StatusSettingKind.None);
+            AssertRowPresence(captions, KeyboardSettingsRows.VDriveAutoMountCaption, capability.VDriveSetting == VDriveSettingKind.AutoManual);
+            AssertRowPresence(captions, KeyboardSettingsRows.VDriveOpenOnStartupCaption, capability.VDriveSetting == VDriveSettingKind.OpenOnStartup);
+            AssertRowPresence(captions, KeyboardSettingsRows.GameModeCaption, capability.WritesGameMode);
+            AssertRowPresence(captions, KeyboardSettingsRows.ProgramLockCaption, capability.WritesProgramLock);
+            AssertRowPresence(captions, KeyboardSettingsRows.KeyClickToneCaption, capability.WritesKeyClickTone);
+            AssertRowPresence(captions, KeyboardSettingsRows.ToggleToneCaption, capability.WritesToggleTone);
+        }
+
+        [Theory]
+        [MemberData(nameof(EveryDevice))]
+        public async Task EveryRowARowedBoardShows_IsLiveOnceTheFileHasBeenRead(DeviceId deviceId)
+        {
+            // The other half of "absence, never disablement": a row that IS on the screen is one the
+            // user can actually change. A capability gate implemented as a greyed-out control would
+            // pass the absence test above by leaving the row out of nothing, and fail here.
+            var panel = CreateForCapability(deviceId);
+
+            await panel.LoadAsync();
+
+            Assert.All(panel.Rows, row => Assert.True(row.IsEnabled, $"{row.Caption} is on screen but dead."));
+            Assert.All(panel.Rows, row => Assert.False(row.IsReadOnly, $"{row.Caption} claims to be read-only."));
         }
 
         [Fact]
@@ -354,7 +412,8 @@ namespace KinesisEdit.Tests.ViewModels
             var panel = new KeyboardSettingsViewModel(
                 device,
                 TestDevices.CreateSettingsService(fileService),
-                _notifications);
+                _notifications,
+                _preferences);
 
             await panel.LoadAsync();
             await panel.SaveCommand.ExecuteAsync(null);
@@ -611,6 +670,135 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public async Task Advantage2_WithoutTheFourMegabyteMarker_CarriesTheReadOnlyBannerVerbatim()
+        {
+            // Mockup 1j's banner, word for word out of Core. It states a hardware fact and says what
+            // still works; nothing about it is an error, which is why the whole section is drawn on
+            // the advisory ramp and no StatusError* brush is reachable from the view.
+            var panel = Create(DeviceId.Advantage2);
+
+            await panel.LoadAsync();
+
+            Assert.True(panel.IsLocked);
+            Assert.Equal(SettingsMessageCatalog.Advantage2ReadOnlyBanner, panel.ReadOnlyBanner);
+            Assert.Equal(SettingsMessageCatalog.Advantage2ReadOnlyExplanation, panel.ReadOnlyExplanation);
+
+            // The mockup writes the link as "Which board do I have? ↗". The arrow is drawn as
+            // IconExternalLink geometry beside the words, so the caption itself must not carry it.
+            Assert.DoesNotContain('↗', SettingsMessageCatalog.WhichBoardLinkCaption);
+        }
+
+        [Fact]
+        public async Task AWritableSection_CarriesNoBannerAtAll()
+        {
+            var panel = Create(DeviceId.FreestyleEdgeRgb);
+
+            await panel.LoadAsync();
+
+            Assert.False(panel.IsLocked);
+            Assert.Equal(string.Empty, panel.ReadOnlyBanner);
+            Assert.Equal(string.Empty, panel.ReadOnlyExplanation);
+            Assert.All(panel.Rows, row => Assert.False(row.IsReadOnly));
+            Assert.True(panel.ShowsSaveAction);
+        }
+
+        [Fact]
+        public async Task EveryRowOfAReadOnlySection_CarriesTheQuietMarkerAndKeepsItsValue()
+        {
+            // 1j: "Startup profile — ... — 1 (read-only)". The marker is per row, and the value
+            // beside it is real and current — a read-only panel still READS the file (spec 08 §3
+            // bans saving, not loading), so the rows show what the keyboard is actually doing.
+            _settings.KeyboardSettingsToReturn = new KeyboardSettings
+            {
+                MacroSpeed = 6,
+                StatusPlaySpeed = 3,
+                IsKeyClickToneEnabled = false,
+                IsToggleToneEnabled = true
+            };
+
+            var panel = Create(DeviceId.Advantage2);
+
+            await panel.LoadAsync();
+
+            Assert.NotEmpty(panel.Rows);
+            Assert.All(panel.Rows, row => Assert.True(row.IsReadOnly, $"{row.Caption} carries no marker."));
+
+            Assert.Equal(6, Slider(panel, KeyboardSettingsRows.MacroSpeedCaption).Value);
+            Assert.Equal(3, Slider(panel, KeyboardSettingsRows.StatusPlaySpeedCaption).Value);
+            Assert.False(Toggle(panel, KeyboardSettingsRows.KeyClickToneCaption).IsOn);
+            Assert.True(Toggle(panel, KeyboardSettingsRows.ToggleToneCaption).IsOn);
+        }
+
+        [Fact]
+        public void AReadOnlySection_DrawsNoSaveActionAtAll()
+        {
+            // "A feature the board does not have is absent, not disabled" — there is nothing to
+            // commit here, and a dead Save would be a second control saying "refused". Demo mode is
+            // the opposite case and keeps its button: there the refusal is the app's, and
+            // DemoModeHint already explains it.
+            Assert.False(Create(DeviceId.Advantage2).ShowsSaveAction);
+            Assert.True(Create(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess).ShowsSaveAction);
+        }
+
+        [Fact]
+        public async Task AnUnrecognisedValue_SurvivesInsideAReadOnlySection()
+        {
+            // The unrecognised-value path and the read-only treatment are independent, and the row
+            // has to carry both: the marker says the value cannot be written, the placeholder says
+            // what the value is. A read-only panel never saves, so the file is safe either way —
+            // but the row must still not silently select an option on the user's behalf.
+            _settings.KeyboardSettingsToReturn = new KeyboardSettings { LedMode = "X" };
+
+            var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdge);
+            var panel = new KeyboardSettingsViewModel(device, _settings, _notifications, _preferences);
+
+            await panel.LoadAsync();
+
+            // Force the row into the read-only shape the Advantage2 gets. (The Freestyle Edge is the
+            // only board with a choice row and it is never locked, so the two states can only meet
+            // on the row itself — which is exactly where the marker lives.)
+            LedMode(panel).IsReadOnly = true;
+
+            Assert.True(LedMode(panel).IsUnset);
+            Assert.Equal("X", LedMode(panel).UnrecognizedValue);
+            Assert.Equal(SettingsChoiceRowViewModel.UnrecognizedCaptionPrefix + "X", LedMode(panel).Placeholder);
+            Assert.True(LedMode(panel).IsReadOnly);
+        }
+
+        [Fact]
+        public void TheWhichBoardLink_OpensTheCatalogsPageForThisDevice()
+        {
+            var launcher = new FakeUrlLauncher();
+            var panel = new KeyboardSettingsViewModel(
+                TestDevices.CreateSnapshot(DeviceId.Advantage2),
+                _settings,
+                _notifications,
+                _preferences,
+                launcher);
+
+            Assert.True(panel.HasWhichBoardLink);
+            Assert.Equal(DeviceCatalog.GetById(DeviceId.Advantage2).TroubleshootingUrl, panel.TroubleshootingUrl);
+            Assert.True(panel.WhichBoardCommand.CanExecute(null));
+
+            panel.WhichBoardCommand.Execute(null);
+
+            Assert.Equal(panel.TroubleshootingUrl, Assert.Single(launcher.OpenedUrls));
+        }
+
+        [Fact]
+        public void TheWhichBoardLink_WithoutALauncher_IsNotOffered()
+        {
+            // A link with nowhere to go is absent rather than dead — and the command still refuses,
+            // so a call site that binds it anyway cannot throw.
+            var panel = Create(DeviceId.Advantage2);
+
+            Assert.False(panel.HasWhichBoardLink);
+            Assert.False(panel.WhichBoardCommand.CanExecute(null));
+
+            panel.WhichBoardCommand.Execute(null);
+        }
+
+        [Fact]
         public void EveryOtherDevice_IsNeverLocked()
         {
             // The gate is Advantage2-only (specs/09-firmware.md §1.1).
@@ -633,9 +821,27 @@ namespace KinesisEdit.Tests.ViewModels
         {
             var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
 
-            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(null!, _settings, _notifications));
-            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(device, null!, _notifications));
-            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(device, _settings, null!));
+            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(null!, _settings, _notifications, _preferences));
+            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(device, null!, _notifications, _preferences));
+            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(device, _settings, null!, _preferences));
+            Assert.Throws<ArgumentNullException>(() => new KeyboardSettingsViewModel(device, _settings, _notifications, null!));
+        }
+
+        /// <summary>
+        /// Asserts a caption is in <paramref name="captions"/> exactly when the capability says the
+        /// board has that setting — and, crucially, that a setting it lacks is <b>not there at
+        /// all</b> rather than present in some disabled form.
+        /// </summary>
+        private static void AssertRowPresence(IReadOnlyList<string> captions, string caption, bool isExpected)
+        {
+            if (isExpected)
+            {
+                Assert.Contains(caption, captions);
+
+                return;
+            }
+
+            Assert.DoesNotContain(caption, captions);
         }
 
         private static VersionFileInfo CreateFourMegabyteVersionFile()
@@ -685,7 +891,27 @@ namespace KinesisEdit.Tests.ViewModels
             return new KeyboardSettingsViewModel(
                 TestDevices.CreateSnapshot(deviceId, status, versionFile: versionFile),
                 _settings,
-                _notifications);
+                _notifications,
+                _preferences);
+        }
+
+        /// <summary>
+        /// A panel over <paramref name="deviceId"/> that is as writable as that board can be: a
+        /// connected drive where one exists, and the Advantage2's 4MB marker so its gate is not what
+        /// the capability tests end up measuring.
+        /// <para>
+        /// The Advantage 360 Professional is web-tool only and carries no volume label, so there is
+        /// no drive to build a location from; it is opened without one, which is also why its row
+        /// list is empty and every assertion over it is vacuous.
+        /// </para>
+        /// </summary>
+        private KeyboardSettingsViewModel CreateForCapability(DeviceId deviceId)
+        {
+            var status = DeviceCatalog.GetById(deviceId).VolumeLabels.Count > 0
+                ? VDriveConnectionStatus.Connected
+                : VDriveConnectionStatus.NotDetected;
+
+            return Create(deviceId, status, CreateFourMegabyteVersionFile());
         }
     }
 }
