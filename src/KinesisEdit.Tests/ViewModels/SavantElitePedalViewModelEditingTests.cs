@@ -859,10 +859,42 @@ namespace KinesisEdit.Tests.ViewModels
 
             var box = Assert.Single(_notifications.MessageBoxes);
 
-            Assert.Equal(SavantElitePedalViewModel.UnsavedChangesMessage, box.Message);
+            // The shared question of mockup 1f, in the board's own words: three answers, the wide
+            // card, and Discard painted as the one that loses data.
+            Assert.Equal(UnsavedChangesPrompt.Title, box.Title);
+            Assert.Equal(UnsavedChangesPrompt.PedalMessage, box.Message);
             Assert.Equal(MessageBoxButtons.YesNoCancel, box.Buttons);
+            Assert.Equal(UnsavedChangesPrompt.SaveCaption, box.YesCaption);
+            Assert.Equal(UnsavedChangesPrompt.DiscardCaption, box.NoCaption);
+            Assert.Equal(UnsavedChangesPrompt.CancelCaption, box.CancelCaption);
+            Assert.Equal(MessageBoxResult.No, box.DestructiveResult);
+            Assert.True(box.IsWide);
             Assert.Equal(PedalFilePath, Assert.Single(_fileService.WrittenPaths));
             Assert.False(editor.HasUnsavedChanges);
+        }
+
+        [Fact]
+        public async Task ConfirmCloseAsync_OnThePedal_OffersNoDontAskAgainOptOut()
+        {
+            // Deliberate, and the reason is structural rather than editorial: the opt-out promises
+            // "always save on leaving", and the only surface that can take the promise back is the
+            // Settings tab's "App & notifications" section. The Savant Elite2 is
+            // SettingsCapability.None, so it renders no Settings tab at all — a user who ticked the
+            // box here could never untick it. It gets the checkbox with issues #53 / #96.
+            var editor = await LoadAsync("[lpedal]>");
+
+            await EditAsync(editor, LeftPedal, Key("a"));
+
+            Answer(MessageBoxResult.Cancel);
+
+            await editor.ConfirmCloseAsync();
+
+            var box = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Null(box.SuppressionKey);
+            Assert.False(box.HasSuppressionOption);
+            Assert.Null(box.SuppressionResult);
+            Assert.Null(box.SuppressionCaption);
         }
 
         [Fact]
@@ -924,8 +956,18 @@ namespace KinesisEdit.Tests.ViewModels
 
             var box = Assert.Single(_notifications.MessageBoxes);
 
-            Assert.Equal(SavantElitePedalViewModel.DiscardChangesMessage, box.Message);
+            // Its own wording, not the pedal's: every clause of PedalMessage is about a save, and
+            // this card has no Save on it. Two answers, of which Discard is the affirmative because
+            // it is the only one that moves — which is exactly why Interpret has to be told whether
+            // saving was on offer.
+            Assert.Equal(UnsavedChangesPrompt.CannotSaveTitle, box.Title);
+            Assert.Equal(UnsavedChangesPrompt.CannotSaveMessage, box.Message);
+            Assert.DoesNotContain("Saving writes", box.Message, StringComparison.Ordinal);
             Assert.Equal(MessageBoxButtons.YesNo, box.Buttons);
+            Assert.Equal(UnsavedChangesPrompt.DiscardCaption, box.YesCaption);
+            Assert.Equal(UnsavedChangesPrompt.CancelCaption, box.NoCaption);
+            Assert.Equal(MessageBoxResult.Yes, box.DestructiveResult);
+            Assert.Null(box.SuppressionKey);
 
             Answer(MessageBoxResult.Yes);
 

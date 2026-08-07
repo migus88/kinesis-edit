@@ -6,7 +6,8 @@ namespace KinesisEdit.Services
     /// active device's store reports hidden is never presented (specs/08-settings.md §3:
     /// <c>on</c> means "hide this notification"), and a "Hide this notification?" answer is
     /// written back to that store — which in demo mode is
-    /// <see cref="NullAppPreferencesStore"/>, so nothing is persisted.
+    /// <see cref="NullAppPreferencesStore"/>, so nothing is persisted. A request may narrow that
+    /// write-back to one answer with <see cref="MessageBoxRequest.SuppressionResult"/>.
     /// </summary>
     public sealed class NotificationService : INotificationService
     {
@@ -47,7 +48,15 @@ namespace KinesisEdit.Services
 
             var outcome = await _presenter.PresentAsync(request).ConfigureAwait(true);
 
-            if (outcome.SuppressRequested && request.HasSuppressionOption)
+            // A ticked box is only written back when the answer it was ticked beside can keep the
+            // promise it makes. Issue #52's checkbox reads "always save on leaving", so ticking it
+            // and then pressing Discard or Cancel must not arm auto-save — that would turn one
+            // "throw this away" into every future one. A request that names no
+            // MessageBoxRequest.SuppressionResult records on any answer, which is what every
+            // "Don't ask this again" box has always done.
+            if (outcome.SuppressRequested
+                && request.HasSuppressionOption
+                && (request.SuppressionResult is null || outcome.Result == request.SuppressionResult))
             {
                 store.SetHidden(suppressionKey!, true);
             }

@@ -113,6 +113,30 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
+        public void TheUnsavedChangesModal_BridgesTheDiscardAnswerAndLeavesSaveOnTheAccent()
+        {
+            // `discard` is bridged for exactly one card and reached from no other: the answer that
+            // loses data in the leave-with-unsaved modal (mockup 1f). It cannot join the table
+            // above, because which button wears it depends on the request — an ordinary box has no
+            // destructive answer at all, and its No is `secondary`.
+            using var scenes = new ViewSceneFactory();
+
+            var view = new MessageBoxView
+            {
+                DataContext = scenes.CreateUnsavedChangesMessageBox()
+            };
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            AssertClassCarriesTheme(view, "discard", "DiscardButton");
+
+            // The other half of the claim: naming one answer destructive must not pull the
+            // affirmative off the accent with it. Both faces exist on this one card.
+            AssertClassCarriesTheme(view, "primaryAction", "PrimaryActionButton");
+            AssertClassCarriesTheme(view, "secondary", "SecondaryButton");
+        }
+
+        [AvaloniaFact]
         public async Task TheMacroPanel_BridgesItsSlotPillsAndItsCoTriggerToggles()
         {
             // The panel is the Macros tab's, hosted in a ContentControl's template, so none of it

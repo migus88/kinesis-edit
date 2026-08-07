@@ -21,8 +21,62 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(viewModel.IsSuppressionAvailable);
 
             // Mockup 1k's wording, which supersedes spec 11 §11.9's "Hide this notification?".
-            // Only the caption moved: the flag it writes is still one of the twelve `*_msg` keys.
-            Assert.Equal("Don't ask this again", MessageBoxViewModel.SuppressionCaption);
+            // Only the caption moved: the flag it writes is still one of the `*_msg` keys.
+            Assert.Equal("Don't ask this again", MessageBoxViewModel.DefaultSuppressionCaption);
+            Assert.Equal("Don't ask this again", viewModel.SuppressionCaption);
+        }
+
+        [Fact]
+        public void SuppressionCaption_WithARequestOfItsOwn_OverridesTheDefault()
+        {
+            // The leave-with-unsaved modal's opt-out promises something rather than merely going
+            // quiet (mockup 1f), so it has to say what it promises. The key it writes is unchanged.
+            var viewModel = new MessageBoxViewModel(CreateRequest(NotificationKeys.UnsavedChanges) with
+            {
+                SuppressionCaption = "Don't ask again — always save on leaving"
+            });
+
+            Assert.Equal("Don't ask again — always save on leaving", viewModel.SuppressionCaption);
+            Assert.Equal(NotificationKeys.UnsavedChanges, viewModel.Request.SuppressionKey);
+        }
+
+        [Fact]
+        public void IsWide_FollowsTheRequest_AndIsOffByDefault()
+        {
+            // 330 is the ordinary box; 420 is the leave-with-unsaved modal (docs/design/handoff.md).
+            var ordinary = new MessageBoxViewModel(CreateRequest());
+            var wide = new MessageBoxViewModel(CreateRequest() with
+            {
+                IsWide = true
+            });
+
+            Assert.False(ordinary.IsWide);
+            Assert.True(wide.IsWide);
+        }
+
+        [Theory]
+        [InlineData(null, false, false, false)]
+        [InlineData(MessageBoxResult.Yes, true, false, false)]
+        [InlineData(MessageBoxResult.No, false, true, false)]
+        [InlineData(MessageBoxResult.Ok, false, false, true)]
+        [InlineData(MessageBoxResult.Cancel, false, false, false)]
+        public void DestructiveFlags_MarkExactlyTheAnswerTheRequestNames(
+            MessageBoxResult? destructive,
+            bool yes,
+            bool no,
+            bool ok)
+        {
+            // Cancel is in the table on purpose: it is the way out of the dialog and can never be
+            // the answer that loses data, so naming it must light nothing up rather than throw.
+            var viewModel = new MessageBoxViewModel(CreateRequest() with
+            {
+                Buttons = MessageBoxButtons.YesNoCancel,
+                DestructiveResult = destructive
+            });
+
+            Assert.Equal(yes, viewModel.IsYesDestructive);
+            Assert.Equal(no, viewModel.IsNoDestructive);
+            Assert.Equal(ok, viewModel.IsOkDestructive);
         }
 
         [Fact]

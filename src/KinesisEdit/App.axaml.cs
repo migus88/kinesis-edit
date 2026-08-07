@@ -143,7 +143,6 @@ namespace KinesisEdit
                 _deviceMonitor,
                 sessions,
                 notifications,
-                ejectNotifier,
                 editorFactory,
                 clock,
                 dispatcher);

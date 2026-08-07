@@ -68,6 +68,70 @@ namespace KinesisEdit.Tests.Services
         }
 
         [Fact]
+        public async Task ShowMessageBoxAsync_WithASuppressionResult_PersistsOnlyThatAnswer()
+        {
+            // Issue #52's opt-out reads "always save on leaving", so the flag is a promise the Save
+            // answer keeps and no other answer can.
+            var store = new FakeAppPreferencesStore();
+            var service = CreateService(store, out var presenter);
+            presenter.OutcomeToReturn = new MessageBoxOutcome
+            {
+                Result = MessageBoxResult.Yes,
+                SuppressRequested = true
+            };
+
+            await service.ShowMessageBoxAsync(CreateAlwaysSaveRequest());
+
+            Assert.Equal(KeyValuePair.Create(NotificationKeys.UnsavedChanges, true), Assert.Single(store.Writes));
+            Assert.True(store.IsHidden(NotificationKeys.UnsavedChanges));
+        }
+
+        [Theory]
+        [InlineData(MessageBoxResult.No)]
+        [InlineData(MessageBoxResult.Cancel)]
+        public async Task ShowMessageBoxAsync_WithASuppressionResult_PersistsNothingOnAnyOtherAnswer(
+            MessageBoxResult answer)
+        {
+            // Discard is the other affirmative and Cancel is the way out; ticking the box beside
+            // either must not arm auto-save, which would turn one "throw this away" into every
+            // future one.
+            var store = new FakeAppPreferencesStore();
+            var service = CreateService(store, out var presenter);
+            presenter.OutcomeToReturn = new MessageBoxOutcome
+            {
+                Result = answer,
+                SuppressRequested = true
+            };
+
+            await service.ShowMessageBoxAsync(CreateAlwaysSaveRequest());
+
+            Assert.Empty(store.Writes);
+            Assert.False(store.IsHidden(NotificationKeys.UnsavedChanges));
+        }
+
+        [Theory]
+        [InlineData(MessageBoxResult.Yes)]
+        [InlineData(MessageBoxResult.No)]
+        [InlineData(MessageBoxResult.Cancel)]
+        public async Task ShowMessageBoxAsync_WithoutASuppressionResult_PersistsOnAnyAnswer(
+            MessageBoxResult answer)
+        {
+            // The behaviour every "Don't ask this again" box has always had, held in place: the
+            // narrowing above is opt-in, so no existing caller changed.
+            var store = new FakeAppPreferencesStore();
+            var service = CreateService(store, out var presenter);
+            presenter.OutcomeToReturn = new MessageBoxOutcome
+            {
+                Result = answer,
+                SuppressRequested = true
+            };
+
+            await service.ShowMessageBoxAsync(CreateSuppressibleRequest());
+
+            Assert.Equal(KeyValuePair.Create(NotificationKeys.Save, true), Assert.Single(store.Writes));
+        }
+
+        [Fact]
         public async Task ShowMessageBoxAsync_InDemoMode_PersistsNothing()
         {
             var fileService = new FakeVDriveFileService();
@@ -189,6 +253,23 @@ namespace KinesisEdit.Tests.Services
                 Title = "Save",
                 Message = "Profile 1 Saved",
                 SuppressionKey = NotificationKeys.Save
+            };
+        }
+
+        /// <summary>
+        /// The leave-with-unsaved modal's shape: an opt-out that arms auto-save, and so is recorded
+        /// only when the answer beside it was Save.
+        /// </summary>
+        private static MessageBoxRequest CreateAlwaysSaveRequest()
+        {
+            return new MessageBoxRequest
+            {
+                Title = "Save changes before leaving?",
+                Message = "You've edited 7 keys across 2 layers.",
+                Buttons = MessageBoxButtons.YesNoCancel,
+                SuppressionKey = NotificationKeys.UnsavedChanges,
+                SuppressionCaption = "Don't ask again — always save on leaving",
+                SuppressionResult = MessageBoxResult.Yes
             };
         }
 

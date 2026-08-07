@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Headless;
@@ -311,6 +312,66 @@ namespace KinesisEdit.Tests.Design
 
             Assert.True(editor.IsDirty);
             Assert.Contains("dirty", save.Classes);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task ThePedalEditorsSave_TakesTheSameAmberRampWhenItsSessionIsDirty(string variantName)
+        {
+            // handoff.md § 2 makes the dirty Save a property of the **editor shell**, not of one
+            // board, so the rule has to hold on the Savant Elite2 as well as on the keyboard. Its
+            // toolbar is still the pre-redesign one — issue #53 rebuilds it — but the button obeys.
+            //
+            // "Accent when clean" is the keyboard's half of this and is asserted above
+            // (ADirtySave_PaintsTheAdvisoryStrongRampAndACleanOneDoesNot). It is not assertable
+            // here: this board's CanSave requires something to write, so a clean pedal Save is
+            // *disabled* and wears BaseButton's disabled face. What matters — and what `.dirty`
+            // itself carries `:not(:disabled)` for — is that the amber appears only with unsaved
+            // work and leaves again the moment the file is written.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(SavantElitePedalView).FullName!);
+            var pedal = (SavantElitePedalViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, variant);
+
+            host.Capture();
+
+            var save = view.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => Equals(button.Content, "Save"));
+
+            var amber = DesignTokens.Resolve("StatusAdvisoryStrongBrush", variant);
+
+            Assert.False(pedal.HasUnsavedChanges);
+            Assert.DoesNotContain("dirty", save.Classes);
+            Assert.NotEqual(amber, save.Background);
+
+            // Through the binding the app uses, not by hand: programming an input is what makes
+            // the session dirty (12 §5).
+            pedal.BeginEditCommand.Execute(pedal.Inputs[0]);
+
+            scenes.Capture.RaiseKeystroke(PedalTokenMap.Resolve("a")!);
+
+            pedal.DoneCommand.Execute(null);
+
+            host.Capture();
+
+            Assert.True(pedal.HasUnsavedChanges);
+            Assert.Contains("dirty", save.Classes);
+            Assert.True(save.IsEffectivelyEnabled, "A disabled Save cannot wear the amber (`:not(:disabled)`).");
+            Assert.Equal(amber, save.Background);
+
+            await pedal.SaveCommand.ExecuteAsync(null);
+
+            host.Capture();
+
+            Assert.False(pedal.HasUnsavedChanges);
+            Assert.DoesNotContain("dirty", save.Classes);
+            Assert.NotEqual(amber, save.Background);
         }
 
         [AvaloniaTheory]

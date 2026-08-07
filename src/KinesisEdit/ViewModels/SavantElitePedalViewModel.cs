@@ -90,8 +90,12 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string SavingCaption = "Saving…";
 
-        /// <summary>Title of the toast raised when a navigation is refused because a save is running.</summary>
-        public const string SaveInProgressTitle = "Saving";
+        /// <summary>
+        /// Title of the toast raised when a navigation is refused because a save is running. Both
+        /// editors refuse in the same words, so the wording lives with the shared prompt; this is
+        /// an alias, not a second string.
+        /// </summary>
+        public const string SaveInProgressTitle = UnsavedChangesPrompt.SaveInProgressTitle;
 
         /// <summary>
         /// Message of that toast. The loading indicator is now <b>blocking</b> — it sits on the
@@ -101,7 +105,7 @@ namespace KinesisEdit.ViewModels
         /// from any path that is not a click, and a navigation that silently did nothing would be
         /// worse than one that says why.
         /// </summary>
-        public const string SaveInProgressMessage = "Please wait for the save to finish.";
+        public const string SaveInProgressMessage = UnsavedChangesPrompt.SaveInProgressMessage;
 
         /// <summary>Message prefix when the save threw; the exception's message follows it.</summary>
         public const string SaveErrorMessagePrefix = "The pedal configuration could not be saved: ";
@@ -115,24 +119,6 @@ namespace KinesisEdit.ViewModels
         /// the physical mode switch.
         /// </summary>
         public const string SavedToastMessage = "Switch your Savant Elite2 back to play mode to apply the changes.";
-
-        /// <summary>The question asked when the editor is left with unsaved changes (12 §5 step 9).</summary>
-        public const string UnsavedChangesMessage = "Do you want to save changes to the pedal configuration file?";
-
-        /// <summary>Its affirmative: write the file, then go. Still <c>Yes</c>.</summary>
-        public const string SaveAndLeaveCaption = "Save and leave";
-
-        /// <summary>Its other affirmative: go anyway, losing the edits. Still <c>No</c>.</summary>
-        public const string LeaveWithoutSavingCaption = "Leave without saving";
-
-        /// <summary>
-        /// The same question when saving is impossible anyway — a demo session, or a file that
-        /// could not be read. Offering "Yes, save" there would be a dead end.
-        /// </summary>
-        public const string DiscardChangesMessage = "Your changes cannot be saved to this device. Leave the editor and discard them?";
-
-        /// <summary>Its affirmative: leave, losing the edits, because there is nowhere to put them. Still <c>Yes</c>.</summary>
-        public const string DiscardChangesCaption = "Discard changes";
 
         /// <summary>Why a Special Action was refused for want of anything to apply it to (§6).</summary>
         public const string EmptyEntryMessage = "Add a keystroke first.";
@@ -518,8 +504,10 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The unsaved-changes gate of 12 §5 step 9, asked by the shell before it closes the
-        /// editor: Yes saves (and refuses to leave when the save failed), No discards, Cancel stays.
-        /// An edit still in the entry box is discarded first — it was never committed to an input.
+        /// editor: Save writes and refuses to leave when the write failed, Discard leaves, Cancel
+        /// stays. An edit still in the entry box is discarded first — it was never committed to an
+        /// input. The question is <see cref="UnsavedChangesPrompt"/>'s, shared verbatim with the
+        /// keyboard editor; only the sentence about what the save writes is this board's.
         /// <para>
         /// A save in flight refuses outright, without a question — but with a toast. The blocking
         /// loading card now covers Home with its scrim, so the *pointer* can no longer get here at
@@ -550,39 +538,25 @@ namespace KinesisEdit.ViewModels
                 return true;
             }
 
-            if (!CanEverSave())
-            {
-                // Demo mode and an unreadable file can hold edits but can never write them, so the
-                // question is "discard?" rather than "save?" — a Yes that cannot succeed would
-                // leave the user with no way out of the editor.
-                var discard = await ShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = SaveTitle,
-                    Message = DiscardChangesMessage,
-                    Icon = MessageBoxIcon.Warning,
-                    Buttons = MessageBoxButtons.YesNo,
-                    YesCaption = DiscardChangesCaption,
-                    NoCaption = StayHereCaption
-                }).ConfigureAwait(true);
+            // Demo mode and an unreadable file can hold edits but can never write them, so the
+            // question degrades to "discard?" — a Save that cannot succeed would leave the user
+            // with no way out of the editor.
+            var canSave = CanEverSave();
 
-                return discard?.Result == MessageBoxResult.Yes;
-            }
+            // canSuppress is false, and it is a property of this board rather than a preference.
+            // The opt-out promises "always save on leaving", and the only place to take that
+            // promise back is the "App & notifications" section of the Settings tab — which the
+            // Savant Elite2 does not render, because it is SettingsCapability.None. A pedal user
+            // who ticked the box could never untick it. It gets the checkbox when it gets a
+            // preferences surface of its own (issues #53 / #96).
+            var outcome = await ShowMessageBoxAsync(
+                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.PedalMessage, canSave, canSuppress: false))
+                .ConfigureAwait(true);
 
-            var outcome = await ShowMessageBoxAsync(new MessageBoxRequest
+            return UnsavedChangesPrompt.Interpret(outcome, canSave) switch
             {
-                Title = SaveTitle,
-                Message = UnsavedChangesMessage,
-                Icon = MessageBoxIcon.Confirmation,
-                Buttons = MessageBoxButtons.YesNoCancel,
-                YesCaption = SaveAndLeaveCaption,
-                NoCaption = LeaveWithoutSavingCaption,
-                CancelCaption = StayHereCaption
-            }).ConfigureAwait(true);
-
-            return outcome?.Result switch
-            {
-                MessageBoxResult.Yes => await SaveAsync().ConfigureAwait(true),
-                MessageBoxResult.No => true,
+                UnsavedChangesAnswer.Save => await SaveAsync().ConfigureAwait(true),
+                UnsavedChangesAnswer.Discard => true,
                 // Cancel, Escape, and a box that could not be shown all leave the editor open:
                 // navigating away would discard the changes the question is about.
                 _ => false
