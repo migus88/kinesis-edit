@@ -198,9 +198,11 @@
 
         <!-- ===== The footer ====================================================================
              Always present (docs/design/handoff.md § "Layout tab"): the key's advisory note, then
-             the two actions. Both actions are the EDITOR's commands — `Revert key` is its
-             ResetKeyCommand, which calls ClearRemap() and deliberately not Remap(OriginalKey), and
-             `Copy to…` is its CopyKeyCommand, the arm-then-click-a-target pick issue #91 built.
+             the two actions. `Copy to…` is the EDITOR's CopyKeyCommand, the arm-then-click-a-target
+             pick issue #91 built. `Revert key` is the rail's RevertKeyCommand, which offers the
+             showing panel first refusal (TryRevert — the Macro panel's whole state lives in
+             Macro1..Macro5, which a remap reset does not touch) and otherwise runs the editor's own
+             ResetKeyCommand, which calls ClearRemap() and deliberately not Remap(OriginalKey).
              Nothing is reimplemented here.
 
              Hidden for a locked position: the locked panel carries its own copy actions and there
@@ -230,7 +232,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Classes="secondary"
                       Content="{x:Static vm:KeyInspectorViewModel.RevertKeyCaption}"
-                      Command="{Binding ResetKeyCommand}" />
+                      Command="{Binding RevertKeyCommand}" />
               <Button Classes="secondary"
                       Content="{x:Static vm:KeyInspectorViewModel.CopyToCaption}"
                       Command="{Binding CopyKeyCommand}"

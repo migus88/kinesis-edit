@@ -26,6 +26,38 @@
     <FontFamily x:Key="FontSans">avares://KinesisEdit/Assets/Fonts#IBM Plex Sans, Helvetica Neue, Segoe UI, Ubuntu, $Default</FontFamily>
     <FontFamily x:Key="FontMono">avares://KinesisEdit/Assets/Fonts#IBM Plex Mono, SF Mono, Menlo, Consolas, DejaVu Sans Mono, $Default</FontFamily>
 
+    <!-- THE THIRD FAMILY, and the only one that is not IBM Plex: the key-symbol face. It carries
+         19 codepoints and nothing else - the characters that NAME A PHYSICAL KEY (⇧ ⌃ ⌥ ⌘ ⌫ ⏎ ␣
+         ⇥ ⇪ ⌦ …). A macro step that reads
+         `[b] ⇧ held` is spelling a key, not decorating a button, so the mark is a character in a
+         face rather than a geometry in Themes/Icons.axaml. That is a DELIBERATE DEVIATION from
+         the "geometry only, nothing is an icon font" law, scoped to this family alone and
+         recorded with its reason in docs/app/design-system.md.
+
+         It is a 4.4 KB subset of DejaVu Sans 2.37, RENAMED on subsetting so it does not claim to
+         be DejaVu; licence in Assets/Fonts/LICENSE-KinesisKeySymbols.txt (Bitstream Vera / Arev,
+         permissive and redistributable).
+
+         NOT EVERY CODEPOINT IN THE SUBSET NEEDS THIS FACE, and the distinction matters before
+         anyone "fixes" a working call site. The four modifier marks - ⇧ U+21E7, ⌃ U+2303,
+         ⌥ U+2325, ⌘ U+2318 - are in NEITHER Plex family, which is the whole reason the family
+         exists. The four ARROWS - ← ↑ → ↓ U+2190..U+2193 - Plex carries perfectly well, and the
+         app already draws them in the ordinary face (KeyRegistry's arrow legends, the step list's
+         `· ↑↓` reorder hint). They are in the subset only so a future surface that sets a whole
+         run of key marks can do it in one face; an existing arrow drawn in Plex is CORRECT and
+         must be left alone. The rest sit between the two: Plex's coverage of ⌫ ⏎ ␣ ⇥ ⇪ ⌦ ⇞ ⇟ ⇱ ⇲
+         ⌤ is what KeySymbolGlyphCoverage and the Plex probe answer, per codepoint - ask them
+         rather than assuming either way.
+
+         THE FAMILY IS NOT PART OF THE PLEX GLYPH GATE. `EmbeddedFontGlyphCoverage.CanPrint` still
+         means "both IBM Plex families carry this at every scale weight", which is what stops a ⌘
+         reaching a sans caption that cannot draw it; `KeySymbolGlyphCoverage` answers the separate
+         question about this face. See Services/ and docs/app/design-system.md.
+
+         The fallbacks are the faces most likely to carry the same marks if the embedded asset ever
+         fails to load - Lucida Grande on macOS, Segoe UI Symbol on Windows, DejaVu Sans on Linux. -->
+    <FontFamily x:Key="FontKeySymbols">avares://KinesisEdit/Assets/Fonts#Kinesis Key Symbols, Lucida Grande, Segoe UI Symbol, DejaVu Sans, $Default</FontFamily>
+
     <!-- The scale, in the order the handoff lists it. -->
     <x:Double x:Key="FontSizeDeviceHeadline">24</x:Double>
     <x:Double x:Key="FontSizePageTitle">18</x:Double>
@@ -65,6 +97,22 @@
          mark; the two never appear on one cap anyway (no \n caption on any board carries a
          secondary legend). Recorded in docs/app/design-system.md. -->
     <x:Double x:Key="FontSizeKeycapLabelStacked">8</x:Double>
+
+    <!-- THE KEY-SYMBOL MARK, sized to sit optically beside `monoValueSmall` rather than to a step
+         of the published scale - which has no step for "a character out of a different face".
+
+         The number is derived, not chosen. A mark has no baseline-to-x-height relationship with
+         the mono text beside it, so the only honest match is CAP HEIGHT: the subset's ⇧ and ⌘ top
+         out at 0.754 em (DejaVu draws its key marks above cap height), while IBM Plex Mono's caps
+         reach 0.698 em. Set at the same size the marks would stand ~8% taller than the `R`
+         side letter next to them and read as a size shout. 10 x 0.698 / 0.754 = 9.26, so 9 - at
+         which the mark's cap is 6.79 px against the mono cap's 6.98 px, a 2.7% difference nobody
+         can see. Recorded in docs/app/design-system.md.
+
+         It does NOT borrow `FontSizeKeycapLabel`, which is the same 9 and means "a legend printed
+         on a key cap"; the same argument that gave the logo mark and the step number sizes of
+         their own. -->
+    <x:Double x:Key="FontSizeKeySymbol">9</x:Double>
 
     <!-- Not a step of the text scale: the "K" of the app mark, alone in the app at 700 and alone
          in being mono type that is not a value out of a config file. The handoff grants the

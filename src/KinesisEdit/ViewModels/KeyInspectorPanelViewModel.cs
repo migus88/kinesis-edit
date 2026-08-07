@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using KinesisEdit.Core.Model;
 using KinesisEdit.ViewModels.Advisories;
 
@@ -130,6 +131,51 @@ namespace KinesisEdit.ViewModels
             KeyboardLayerViewModel? layer,
             KeyboardLayout? layout,
             EditorAdvisories advisories);
+
+        /// <summary>
+        /// <b>First refusal on the rail's <c>Revert key</c></b> (issue #122). The footer asks the
+        /// <em>showing</em> panel before it does anything: a panel that answers true has put the
+        /// position back the way it found it and the rail stops there, and a panel that answers
+        /// false — the default, and what every panel but Macro answers — leaves the footer to run
+        /// the editor's own <c>ResetKeyCommand</c> exactly as it always has.
+        ///
+        /// <para><b>The fall-through is the point.</b> <c>ResetKeyCommand</c> calls
+        /// <c>KeyboardKey.ClearRemap()</c> and deliberately <em>not</em> <c>Remap(OriginalKey)</c>,
+        /// because the latter would also destroy the position's tap-and-hold and multi-modifier.
+        /// That reasoning is unchanged and this hook must not disturb it; it exists because
+        /// <c>ClearRemap()</c> touches only the remap, which made the button a no-op on a panel
+        /// whose whole state lives in <c>Macro1..Macro5</c>.</para>
+        ///
+        /// <para><b>A panel that overrides it needs a baseline, and taking one has traps.</b> The
+        /// only honest "before" is the state the position was in when the inspector was pointed at
+        /// it, so the snapshot is taken in <see cref="Refresh"/> — but only when the <em>key
+        /// identity changed</em>. <see cref="Refresh"/> runs on every editor refresh, for every
+        /// panel, so an unconditional snapshot is overwritten by the user's own first edit and the
+        /// revert silently becomes a no-op again. Taking it must also stay a <b>read</b>
+        /// (see the remarks above), survive a null key and the same key again, and restoring must
+        /// not re-take it, or reverting twice would mean something different from reverting once.</para>
+        /// </summary>
+        /// <returns>Whether the panel handled the revert itself.</returns>
+        public virtual bool TryRevert()
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="command"/> is one of the panel's own recording controls — the
+        /// buttons that arm capture and stand it down.
+        /// <para>
+        /// The editor asks before it stands recording down on a pointer press
+        /// (<c>KeyboardEditorViewModel.StopRecordingOnInteraction</c>): a press anywhere in the app
+        /// ends a recording, and the one place that must be exempt is the control the press is
+        /// aimed at. Without the exemption the seam stops the recording on the very click meant to
+        /// start it, and fights the Stop button into needing two.
+        /// </para>
+        /// </summary>
+        public virtual bool IsRecordingControl(ICommand? command)
+        {
+            return false;
+        }
 
         /// <summary>
         /// Stands the panel down: whatever it has armed stops, and nothing is written. Called when

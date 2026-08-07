@@ -22,12 +22,14 @@ namespace KinesisEdit.ViewModels
     /// keystroke produces a new row rather than a mutated one;
     /// <see cref="MacroInspectorStepsViewModel"/> owns every write.</para>
     ///
-    /// <para><b>Held modifiers are the file's two-letter codes, not <c>⇧</c>.</b> Mockup <c>2i</c>
-    /// draws <c>02 [b] ⇧ held</c>; U+21E7 is in neither embedded IBM Plex family, so the character
-    /// would tofu wherever the platform substitutes nothing — the same rule that made the record
-    /// dot an <c>Ellipse</c>. <c>LS</c>/<c>RC</c>/… is the modifier's own spelling in 05 §5.1, which
-    /// makes it mono for the same reason the token beside it is. Recorded as a deviation in
-    /// docs/app/design-system.md.</para>
+    /// <para><b>Held modifiers are marks, not the file's two-letter codes.</b> Mockup <c>2i</c>
+    /// draws <c>02 [b] ⇧ held</c>, and since the key-symbol family was embedded that is what the row
+    /// draws too: <see cref="Modifiers"/> is <see cref="MacroModifierMarks.Split"/>'s output, one
+    /// part per held modifier, each carrying its <c>R</c> side letter (left is unmarked) and its
+    /// mark <b>separately</b> because no one face in the app can set both. The file's own spelling
+    /// (<c>LS</c>, <c>RC</c>, <c>S </c> — 05 §5.1) is <see cref="Keystroke.FormatModifiers"/>'s and
+    /// stays there, unread by this row: it is what goes on the drive, not what a person reads.
+    /// <c>held</c> and <c>tap</c> stay words — only the codes became marks.</para>
     /// </summary>
     public sealed class MacroInspectorStepViewModel : ViewModelBase
     {
@@ -87,13 +89,25 @@ namespace KinesisEdit.ViewModels
         public bool HasToken => TokenText.Length > 0;
 
         /// <summary>
-        /// The modifiers held with the step, as 05 §5.1's two-letter codes (<c>LS</c>, <c>LS,LC</c>),
-        /// or an empty string. Always empty for a step that is itself a modifier key.
+        /// The modifiers held with the step, drawn as marks (<c>⇧</c>, <c>R⌃</c>) in 05 §5.1's own
+        /// order, or empty. Always empty for a step that is itself a modifier key (§5.1 attaches no
+        /// modifier string to a modifier).
+        /// <para>
+        /// Each part hands out its side letter and its mark separately: the row sets
+        /// <see cref="MacroModifierMarks.Mark.Side"/> in the ordinary mono face and
+        /// <see cref="MacroModifierMarks.Mark.Symbol"/> in <c>.keySymbol</c>, because the key-symbol
+        /// subset carries no Latin letters. Binding the joined
+        /// <see cref="MacroModifierMarks.Mark.Text"/> would fall back to a system font for the
+        /// <c>R</c>. Only a right-hand modifier has one — left is unmarked — so the row binds the
+        /// side run's visibility to <see cref="MacroModifierMarks.Mark.HasSide"/>, and hands
+        /// <see cref="MacroModifierMarks.Mark.Description"/> to the tooltip, which is where the
+        /// left/generic distinction the marks no longer draw stays reachable.
+        /// </para>
         /// </summary>
-        public string ModifiersText { get; }
+        public IReadOnlyList<MacroModifierMarks.Mark> Modifiers { get; }
 
         /// <summary>Whether the step carries held modifiers.</summary>
-        public bool HasModifiers => ModifiersText.Length > 0;
+        public bool HasModifiers => Modifiers.Count > 0;
 
         /// <summary>What the step does: <c>tap</c> / <c>press</c> / <c>release</c> / <c>held</c>.</summary>
         public string ActionText { get; }
@@ -132,7 +146,20 @@ namespace KinesisEdit.ViewModels
             internal set => SetProperty(ref _isSelected, value);
         }
 
+        /// <summary>
+        /// Whether a drag in flight would land on this row — the ring the panel draws under the
+        /// pointer while a step is being carried. Set by <c>MacroInspectorPanelView</c> and by
+        /// nothing else; it is a property of the <em>gesture</em>, not of the macro, so it is never
+        /// written by a reorder and never survives one (the rows are rebuilt).
+        /// </summary>
+        public bool IsDropTarget
+        {
+            get => _isDropTarget;
+            internal set => SetProperty(ref _isDropTarget, value);
+        }
+
         private bool _isSelected;
+        private bool _isDropTarget;
 
         /// <summary>
         /// Builds one row. <paramref name="delay"/> is the keystroke folded in behind
@@ -157,8 +184,8 @@ namespace KinesisEdit.ViewModels
             IsDelayOnly = isDelayOnly;
 
             TokenText = isDelayOnly ? string.Empty : KeyboardKeyViewModel.FormatToken(keystroke.Key, dialect);
-            ModifiersText = isDelayOnly ? string.Empty : keystroke.FormatModifiers();
-            ActionText = isDelayOnly ? DelayAction : BuildAction(keystroke, ModifiersText);
+            Modifiers = isDelayOnly ? [] : MacroModifierMarks.Split(keystroke.Modifiers);
+            ActionText = isDelayOnly ? DelayAction : BuildAction(keystroke);
 
             DelayMilliseconds = delay.Milliseconds;
             IsRandomDelay = delay.IsRandom;
@@ -166,13 +193,18 @@ namespace KinesisEdit.ViewModels
             KeystrokeCount = delay.IsPresent && !isDelayOnly ? 2 : 1;
         }
 
-        private static string BuildAction(Keystroke keystroke, string modifiersText)
+        /// <summary>
+        /// Which of the four words the row ends in. Read off the modifier <b>flags</b> rather than
+        /// off a rendered string: the marks are a view of the set and a set the display drops
+        /// (a bit outside 05 §5.1's table) is still a set the step was struck with.
+        /// </summary>
+        private static string BuildAction(Keystroke keystroke)
         {
             return keystroke.EffectiveDirection switch
             {
                 KeyDirection.Down => PressAction,
                 KeyDirection.Up => ReleaseAction,
-                _ => modifiersText.Length > 0 ? HeldAction : TapAction
+                _ => keystroke.Modifiers != MacroModifiers.None ? HeldAction : TapAction
             };
         }
     }

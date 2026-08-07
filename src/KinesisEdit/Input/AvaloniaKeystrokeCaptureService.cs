@@ -61,6 +61,16 @@ namespace KinesisEdit.Input
         /// it is the safety net for text boxes hosted <i>in</i> the capturing window. Turning it
         /// off makes such a text box a swallow probe — with capture live, typing into it produces
         /// no text because the keystrokes are consumed before the box sees them.
+        /// <para>
+        /// <b>It is a safety net and never the answer on its own</b> (issue #122). The suspension is
+        /// <em>silent</em>: nothing above this class is told, so a surface that arms capture and
+        /// then lets focus reach a text box goes on claiming it is recording while the keystrokes
+        /// go into the box — state that lies. A consumer that shows the user it is capturing must
+        /// therefore stand <em>itself</em> down when focus enters a text input rather than lean on
+        /// this; the keyboard editor does (<c>KeyboardEditorViewModel.StopRecordingOnInteraction</c>,
+        /// docs/app/keystroke-capture.md). What this flag still guarantees is the deterministic part
+        /// — that nothing is captured or swallowed while the caret is in a field.
+        /// </para>
         /// </summary>
         public bool SuspendOnTextInputFocus
         {

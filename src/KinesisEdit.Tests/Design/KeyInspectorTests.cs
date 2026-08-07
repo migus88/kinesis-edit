@@ -128,8 +128,15 @@ namespace KinesisEdit.Tests.Design
             var revert = Assert.Single(buttons, button => Equals(button.Content, KeyInspectorViewModel.RevertKeyCaption));
             var copy = Assert.Single(buttons, button => Equals(button.Content, KeyInspectorViewModel.CopyToCaption));
 
-            Assert.Same(scene.ResetKeyCommand, revert.Command);
+            // `Copy to…` is the editor's command outright. `Revert key` is the rail's, because the
+            // showing panel gets first refusal on it since issue #122 — but with no panel to take
+            // it, pressing the button still runs the editor's own reset and nothing else.
+            Assert.Same(scene.Inspector.RevertKeyCommand, revert.Command);
             Assert.Same(scene.CopyKeyCommand, copy.Command);
+
+            revert.Command!.Execute(null);
+
+            Assert.Equal(1, scene.ResetKeyRuns);
         }
 
         [AvaloniaFact]
@@ -454,6 +461,9 @@ namespace KinesisEdit.Tests.Design
 
             public IRelayCommand CopyKeyCommand { get; }
 
+            /// <summary>How often the editor's own reset really ran.</summary>
+            public int ResetKeyRuns { get; private set; }
+
             private readonly int _keyIndex;
 
             public Scene()
@@ -466,7 +476,7 @@ namespace KinesisEdit.Tests.Design
                 Layout = layout;
                 Layer = KeyboardLayerViewModel.BuildAll(layout, visual, lighting: null)[0];
 
-                ResetKeyCommand = new RelayCommand(() => { });
+                ResetKeyCommand = new RelayCommand(() => ResetKeyRuns++);
                 CopyKeyCommand = new RelayCommand(() => { });
 
                 Inspector = new KeyInspectorViewModel(ResetKeyCommand, CopyKeyCommand, new RelayCommand(() => { }, () => false));

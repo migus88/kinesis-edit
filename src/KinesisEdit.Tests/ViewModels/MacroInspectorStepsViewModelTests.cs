@@ -80,10 +80,100 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("[lshft]", steps.Items[0].TokenText);
             Assert.Equal(MacroInspectorStepViewModel.PressAction, steps.Items[0].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.HeldAction, steps.Items[1].ActionText);
-            Assert.Equal("LS", steps.Items[1].ModifiersText);
             Assert.Equal(MacroInspectorStepViewModel.ReleaseAction, steps.Items[2].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.TapAction, steps.Items[3].ActionText);
             Assert.Equal("05", steps.NextStepNumberText);
+        }
+
+        /// <summary>
+        /// The row draws mockup <c>2i</c>'s marks, not the file's codes (issue #122, AC 5).
+        /// <b>Left is unmarked and only right is spelled</b>, so a left modifier and a generic one
+        /// both come out as the bare mark; the two halves still come out separately because no one
+        /// face in the app can set a Latin <c>R</c> and a <c>⇧</c> at once.
+        /// </summary>
+        [Fact]
+        public void Load_DrawsHeldModifiersAsMarksAndNotAsTheFilesCodes()
+        {
+            var steps = Create();
+            var macro = new Macro();
+
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("b"), MacroModifiers.LeftShift));
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("c"), MacroModifiers.Shift));
+            macro.AddKeystroke(new Keystroke(
+                TestLayouts.Gen1Key("d"),
+                MacroModifiers.RightControl | MacroModifiers.LeftAlt));
+
+            steps.Load(macro);
+
+            var left = Assert.Single(steps.Items[0].Modifiers);
+
+            Assert.False(left.HasSide);
+            Assert.Equal(MacroModifierMarks.LeftSide, left.Side);
+            Assert.Equal(MacroModifierMarks.ShiftMark, left.Symbol);
+
+            // A generic modifier draws the bare mark: the file's own spelling pads it to `S `, and
+            // that trailing space is a file fact rather than a display one. It therefore draws
+            // EXACTLY like the left one above — the intended cost of leaving left unmarked — and
+            // `Description` is what still separates them.
+            var generic = Assert.Single(steps.Items[1].Modifiers);
+
+            Assert.False(generic.HasSide);
+            Assert.Equal(MacroModifierMarks.ShiftMark, generic.Symbol);
+            Assert.Equal(left.Text, generic.Text);
+            Assert.NotEqual(left.Description, generic.Description);
+
+            // Two modifiers come out in 05 §5.1's own order — Control before Alt — because Split
+            // walks the same enumeration the serializer writes in.
+            Assert.Equal(
+                [MacroModifierMarks.ControlMark, MacroModifierMarks.AltMark],
+                steps.Items[2].Modifiers.Select(mark => mark.Symbol));
+
+            Assert.Equal(
+                [MacroModifierMarks.RightSide, MacroModifierMarks.LeftSide],
+                steps.Items[2].Modifiers.Select(mark => mark.Side));
+
+            Assert.All(steps.Items, step => Assert.True(step.HasModifiers));
+        }
+
+        /// <summary>
+        /// The two rows that carry no modifier set at all: a step that <em>is</em> a modifier (05
+        /// §5.1 attaches no modifier string to one) and a bare delay.
+        /// </summary>
+        [Fact]
+        public void Load_DrawsNoMarksOnAModifierKeyOrABareDelay()
+        {
+            var steps = Create();
+            var macro = new Macro();
+
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("lshft")) { UpDown = KeyDirection.Down });
+            macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
+
+            steps.Load(macro);
+
+            Assert.All(steps.Items, step =>
+            {
+                Assert.Empty(step.Modifiers);
+                Assert.False(step.HasModifiers);
+            });
+        }
+
+        /// <summary>
+        /// <c>held</c> is read off the modifier <b>flags</b>, not off a rendered string — a bit the
+        /// display drops is still a bit the step was struck with.
+        /// </summary>
+        [Fact]
+        public void Load_CallsAStepHeldWheneverItCarriesModifiers()
+        {
+            var steps = Create();
+            var macro = new Macro();
+
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("b"), MacroModifiers.LeftWin));
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("c")));
+
+            steps.Load(macro);
+
+            Assert.Equal(MacroInspectorStepViewModel.HeldAction, steps.Items[0].ActionText);
+            Assert.Equal(MacroInspectorStepViewModel.TapAction, steps.Items[1].ActionText);
         }
 
         /// <summary>

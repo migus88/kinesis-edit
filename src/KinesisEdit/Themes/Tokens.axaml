@@ -118,6 +118,17 @@
       <Color x:Key="BadgeLedColor">#B58CF6</Color>
       <SolidColorBrush x:Key="BadgeLedBrush" Color="{StaticResource BadgeLedColor}" />
 
+      <!-- The key struck in a macro step row. It is the ORCHID OF `BadgeMacro`, to the letter on
+           dark: purple already means "macro" in this app — it is the dot a cap wears when it
+           carries one — so the token in the step list and the mark on the cap say the same thing
+           in the same hue, and the row invents no fifth meaning. Not `Accent` (which has exactly
+           two sanctioned meanings, and neither is "this is the key"), not `StatusAdvisoryText`
+           (amber is the only advisory colour), not red or a link ramp. 6.2:1 on the panel, 5.3:1
+           on the raised face — above the muted text beside it (4.7:1) and well under the primary
+           step (14.7:1), which is the "slightly different" this is meant to be. -->
+      <Color x:Key="MacroStepKeyColor">#C77DD8</Color>
+      <SolidColorBrush x:Key="MacroStepKeyBrush" Color="{StaticResource MacroStepKeyColor}" />
+
       <!-- Elevation. Flat elevation is a 1px SurfaceLine border and no shadow at all; only
            popovers and modals cast one. The halos are spread-only shadows, never offset
            outlines: focus is 3px of accent at 28% alpha, a selected keycap 2px at 30%. -->
@@ -235,6 +246,14 @@
       <SolidColorBrush x:Key="BadgeLightingPreviewBrush" Color="{StaticResource BadgeLightingPreviewColor}" />
       <Color x:Key="BadgeLedColor">#B58CF6</Color>
       <SolidColorBrush x:Key="BadgeLedBrush" Color="{StaticResource BadgeLedColor}" />
+
+      <!-- The macro orchid, darkened for text on light — the same move the status hues make, and
+           for the same reason: `BadgeMacro` is a shape on a keycap and stays put, this is TYPE on
+           a near-white row and #C77DD8 reads at 2.9:1 there. Same hue (288°), 6.0:1 on the panel
+           and 5.2:1 on the raised face. The pair parts company across the variants exactly as
+           `StatusDemo` and `BadgeLed` do. -->
+      <Color x:Key="MacroStepKeyColor">#8E45A0</Color>
+      <SolidColorBrush x:Key="MacroStepKeyBrush" Color="{StaticResource MacroStepKeyColor}" />
 
       <!-- The scrim and the shadows are the same in both variants: they are the absence of
            light, and dimming a light window uses the same near-black at the same alpha. -->

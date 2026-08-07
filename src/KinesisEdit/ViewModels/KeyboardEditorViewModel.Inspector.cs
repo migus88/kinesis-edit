@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Model;
@@ -68,6 +69,48 @@ namespace KinesisEdit.ViewModels
         /// <c>_capture.Stop()</c> would deafen a macro that is recording on the Macros tab.
         /// </summary>
         private bool _isInspectorCapturing;
+
+        /// <summary>
+        /// <b>The stand-down seam</b> (issue #122, AC 3): the one entry point for "the user did
+        /// something else in the app, so the keyboard is not the macro's any more". Recording is the
+        /// only editor state that silently claims every keystroke in the window, so a user who has
+        /// moved on must never be left recording into a panel they are no longer looking at.
+        ///
+        /// <para>Driven from the view, which is where those interactions are observable
+        /// (<c>KeyboardEditorView</c>): the window losing focus (<c>Window.Deactivated</c> — an
+        /// OS-reserved chord like ⌘Tab never reaches the app at all, so this is what recovers from
+        /// one), a tunnelled pointer press anywhere but the panel's own record control
+        /// (<see cref="IsRecordingControl"/>), and focus landing in a text input — which used to
+        /// suspend capture <em>silently</em> and let the user type into a box while the banner still
+        /// said they were recording (docs/app/keystroke-capture.md).</para>
+        ///
+        /// <para>The existing stand-downs are untouched and still do their own work: a mode switch,
+        /// an editor-tab switch, a layer switch, a key change, a modal opening
+        /// (<see cref="DeactivateInspector"/>) and the panel's own Stop.</para>
+        ///
+        /// <para><b>Idempotent, and silent when nothing moved.</b> The guard is what keeps it from
+        /// raising <c>RecordingChanged</c> on every click of an editor that is not recording — which
+        /// would put the capture service's start/stop bookkeeping through a cycle per pointer press.</para>
+        /// </summary>
+        public void StopRecordingOnInteraction()
+        {
+            if (!Inspector.IsRecording)
+            {
+                return;
+            }
+
+            Inspector.Deactivate();
+        }
+
+        /// <summary>
+        /// Whether <paramref name="command"/> is the showing panel's own record/stop control, which
+        /// <see cref="StopRecordingOnInteraction"/> must leave alone — see
+        /// <see cref="KeyInspectorPanelViewModel.IsRecordingControl"/>.
+        /// </summary>
+        public bool IsRecordingControl(ICommand? command)
+        {
+            return Inspector.ActivePanel?.IsRecordingControl(command) == true;
+        }
 
         /// <summary>
         /// Builds the rail, its two mode panels and every subscription between them. Called from the

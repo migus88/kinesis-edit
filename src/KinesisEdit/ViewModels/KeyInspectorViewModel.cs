@@ -349,9 +349,30 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand<KeyInspectorTabViewModel> SelectModeCommand { get; }
 
         /// <summary>
-        /// The footer's <c>Revert key</c>: the editor's own <c>ResetKeyCommand</c>, which calls
-        /// <c>ClearRemap()</c> and deliberately not <c>Remap(OriginalKey)</c> — the latter would
-        /// also destroy the position's tap-and-hold and multi-modifier.
+        /// The footer's <c>Revert key</c> — <b>first refusal to the showing panel, then the
+        /// editor's own reset</b> (issue #122).
+        /// <para>
+        /// <see cref="KeyInspectorPanelViewModel.TryRevert"/> is asked first, because "revert this
+        /// key" means something the rail cannot know: on the Macro panel it is the position's
+        /// macros, whose whole state <see cref="ResetKeyCommand"/> leaves untouched. A panel that
+        /// answers false — every panel but Macro — leaves <see cref="ResetKeyCommand"/> to run
+        /// exactly as it always did, so the Remap and Tap&amp;hold footers are byte-for-byte what
+        /// they were.
+        /// </para>
+        /// <para>
+        /// It is still not a second reset path: nothing is reimplemented here and the editor's
+        /// command remains the only thing that clears a remap. It runs when it can, and it decides
+        /// for itself whether it can — which is also what this command's own enabled state mirrors.
+        /// </para>
+        /// </summary>
+        public IRelayCommand RevertKeyCommand { get; }
+
+        /// <summary>
+        /// The editor's own <c>ResetKeyCommand</c>, which calls <c>ClearRemap()</c> and deliberately
+        /// not <c>Remap(OriginalKey)</c> — the latter would also destroy the position's
+        /// tap-and-hold and multi-modifier. The footer reaches it through
+        /// <see cref="RevertKeyCommand"/>; it is exposed because the editor and the rail must
+        /// demonstrably share one reset.
         /// </summary>
         public IRelayCommand ResetKeyCommand { get; }
 
@@ -373,6 +394,7 @@ namespace KinesisEdit.ViewModels
         private readonly Dictionary<KeyInspectorMode, KeyInspectorPanelViewModel> _panels = [];
         private readonly EventHandler _panelRecordingChangedHandler;
         private readonly EventHandler _copyArmedChangedHandler;
+        private readonly EventHandler _resetAvailabilityChangedHandler;
         private IReadOnlyList<KeyInspectorTabViewModel> _tabs = [];
         private KeyInspectorPanelViewModel? _activePanel;
         private KeyboardKeyViewModel? _key;
@@ -414,12 +436,19 @@ namespace KinesisEdit.ViewModels
             SelectModeCommand = new RelayCommand<KeyInspectorTabViewModel>(SelectMode);
             CloseCommand = new RelayCommand(Close);
 
+            // The footer's own enabled state is the editor's, mirrored rather than restated: a
+            // panel's TryRevert is an alternative to ResetKeyCommand's action, never to its
+            // refusals (nothing selected, a locked position, a load or a save in flight).
+            RevertKeyCommand = new RelayCommand(RevertKey, () => ResetKeyCommand.CanExecute(null));
+
             _panelRecordingChangedHandler = (_, _) => RaiseRecordingChanged();
             _copyArmedChangedHandler = (_, _) => OnPropertyChanged(nameof(IsCopyArmed));
+            _resetAvailabilityChangedHandler = (_, _) => RevertKeyCommand.NotifyCanExecuteChanged();
 
-            // The command belongs to the editor, which owns this rail, so the two live and die
+            // The commands belong to the editor, which owns this rail, so the two live and die
             // together and there is nothing here to unsubscribe from later.
             CancelCopyKeyCommand.CanExecuteChanged += _copyArmedChangedHandler;
+            ResetKeyCommand.CanExecuteChanged += _resetAvailabilityChangedHandler;
 
             if (panels is not null)
             {
@@ -551,6 +580,24 @@ namespace KinesisEdit.ViewModels
             IsOpen = false;
 
             RaiseRecordingChanged();
+        }
+
+        /// <summary>
+        /// The footer's revert, in the one order that keeps both meanings: ask the showing panel,
+        /// and run the editor's reset only if it did not take it. See
+        /// <see cref="RevertKeyCommand"/>.
+        /// </summary>
+        private void RevertKey()
+        {
+            if (_activePanel?.TryRevert() == true)
+            {
+                return;
+            }
+
+            if (ResetKeyCommand.CanExecute(null))
+            {
+                ResetKeyCommand.Execute(null);
+            }
         }
 
         /// <summary>

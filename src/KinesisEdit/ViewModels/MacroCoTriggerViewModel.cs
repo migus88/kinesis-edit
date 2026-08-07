@@ -15,6 +15,15 @@ namespace KinesisEdit.ViewModels
     /// neither de-duplicates nor refuses (06 §5 counts populated slots, and a repeated token in a
     /// field file must survive a round trip).
     /// </para>
+    /// <para>
+    /// <b>It draws a mark, and keeps its caption.</b> Six two-line captions — <c>Left⏎Shift</c> …
+    /// <c>Right⏎Opt</c> — in a <c>WrapPanel</c> inside a 300 px rail is what the mark spelling of
+    /// <see cref="MacroModifierMarks"/> exists to fix: <see cref="Side"/> plus <see cref="Symbol"/>
+    /// is <c>R⇧</c>, one line, and a bare <c>⇧</c> for the left one — left is the unmarked side.
+    /// <see cref="Caption"/> stays, because a mark alone is not accessible text — it is the
+    /// toggle's tooltip, it is the only thing on a left toggle that says which side it is, and it
+    /// is what the view falls back to for a co-trigger key that names no modifier at all.
+    /// </para>
     /// </summary>
     public sealed class MacroCoTriggerViewModel : ViewModelBase
     {
@@ -55,8 +64,33 @@ namespace KinesisEdit.ViewModels
         /// <summary>The modifier key this toggle adds as a co-trigger (§5.1).</summary>
         public KeyDefinition Key { get; }
 
-        /// <summary>What the button reads, by the shared <see cref="KeyCaption"/> rule.</summary>
+        /// <summary>
+        /// The key's own caption, by the shared <see cref="KeyCaption"/> rule — two lines for every
+        /// one of the six (<c>Left⏎Shift</c>). It is the toggle's <b>tooltip</b> and its fallback
+        /// face, no longer its label; see <see cref="Symbol"/>.
+        /// </summary>
         public string Caption { get; }
+
+        /// <summary>
+        /// The <c>R</c> prefix of the mark — empty for a <b>left</b> modifier as well as for one
+        /// that names no side, because left is the unmarked case (see
+        /// <see cref="MacroModifierMarks.LeftSide"/>). It is a Latin letter and belongs in the
+        /// ordinary mono face: the key-symbol subset carries no letters, so a whole <c>R⇧</c> in
+        /// <c>.keySymbol</c> would fall back for its <c>R</c>.
+        /// </summary>
+        public string Side { get; }
+
+        /// <summary>
+        /// The mark itself — <c>⇧</c>, <c>⌃</c>, <c>⌥</c> — drawn in <c>.keySymbol</c>. Empty when
+        /// the key names no modifier, which is the only case <see cref="HasMark"/> is false for.
+        /// </summary>
+        public string Symbol { get; }
+
+        /// <summary>Whether this key resolved to a mark at all, and so is drawn as one.</summary>
+        public bool HasMark => Symbol.Length > 0;
+
+        /// <summary>Whether the mark carries a side letter to draw beside it.</summary>
+        public bool HasSide => Side.Length > 0;
 
         /// <summary>Whether the macro under edit currently carries this co-trigger.</summary>
         public bool IsOn
@@ -67,12 +101,31 @@ namespace KinesisEdit.ViewModels
 
         private bool _isOn;
 
-        /// <summary>Creates the toggle for one modifier key.</summary>
+        /// <summary>
+        /// Creates the toggle for one modifier key. The mark is resolved through the same bridge
+        /// the readers use — <see cref="MacroModifierCodes.TryFromKeyCode"/> then
+        /// <see cref="MacroModifierMarks.For"/> — and a key that names no modifier simply keeps its
+        /// caption rather than being refused: <see cref="CreateAll"/> builds only modifiers today,
+        /// and a toggle that threw on the day it did not would take the whole panel with it.
+        /// </summary>
         public MacroCoTriggerViewModel(KeyDefinition key, TokenDialect dialect)
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
 
             Caption = KeyCaption.For(key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
+
+            if (MacroModifierCodes.TryFromKeyCode(key.Code, out var modifier))
+            {
+                var mark = MacroModifierMarks.For(modifier);
+
+                Side = mark.Side;
+                Symbol = mark.Symbol;
+            }
+            else
+            {
+                Side = string.Empty;
+                Symbol = string.Empty;
+            }
         }
     }
 }
