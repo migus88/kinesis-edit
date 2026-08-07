@@ -32,8 +32,14 @@ namespace KinesisEdit.ViewModels
     /// <para><b><see cref="IsRecording"/> is honest, and that is load-bearing.</b> The rail folds it
     /// into the editor's <c>IsCaptureActive</c>, which is what suppresses ⌘S and the rest of the
     /// grammar; a panel that recorded without saying so would have its hold action eaten by an
-    /// accelerator. <see cref="KeystrokeTaken"/> is the other half of that contract — see
-    /// <see cref="ReceiveKeystroke"/>.</para>
+    /// accelerator.</para>
+    ///
+    /// <para><b>§11.1's two <c>Search</c> buttons open the shared picker <em>inside</em> the panel.</b>
+    /// The overlay nested a second modal over the first, which is why <c>EditorOverlayHost</c> had a
+    /// <c>ShowNested</c> at all; the rail nests nothing, so <see cref="Picker"/> is the same
+    /// <see cref="TokenPickerViewModel"/> the Remap panel hosts, shown in place of the fields for as
+    /// long as the pick lasts. It is what keeps a media key, a mouse button or a profile selector —
+    /// none of which a keyboard can press — assignable as a tap or a hold action.</para>
     ///
     /// <para><b>Two gates, and both refuse politely rather than disappearing.</b> The firmware gate
     /// of 09 §2 and the four pre-dialog checks of §11.1 (<see cref="TapAndHoldPrecheck"/>) are read
@@ -119,6 +125,12 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Hint of both token-picker actions (§11.1).</summary>
         public const string SearchHint = "Search for tokens";
+
+        /// <summary>§11.1's <c>Search</c>, which opens the picker over one of the two fields.</summary>
+        public const string SearchCaption = "Search…";
+
+        /// <summary>The way out of that pick without choosing anything.</summary>
+        public const string CancelSearchCaption = "Cancel";
 
         /// <summary>Validation for a delay outside the device's range (§11.1).</summary>
         public const string InvalidDelayMessage = "Please select a timing delay between 1ms and 999ms.";
@@ -371,6 +383,35 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// §11.6's catalog, hosted inside this panel for the two <c>Search</c> actions. The same
+        /// control the Remap panel shows and the macro-insertion modal wraps — one picker, three call
+        /// sites — over the shared session history, so an action picked here is offered by the rail's
+        /// <c>Recent</c> chip too.
+        /// </summary>
+        public TokenPickerViewModel Picker { get; }
+
+        /// <summary>
+        /// Whether the picker is showing in place of the two fields. It is drawn <em>instead of</em>
+        /// them, never beside them: 244 px of rail cannot hold a grouped list under two fields and a
+        /// slider, and a pick is one question with one answer.
+        /// </summary>
+        public bool IsPickerOpen
+        {
+            get => _isPickerOpen;
+            private set => SetProperty(ref _isPickerOpen, value);
+        }
+
+        /// <summary>
+        /// Which field the open pick will fill, in the same words its own label uses — so the picker
+        /// never leaves the user guessing which of the two they are choosing for.
+        /// </summary>
+        public string PickerFieldLabel
+        {
+            get => _pickerFieldLabel;
+            private set => SetProperty(ref _pickerFieldLabel, value);
+        }
+
+        /// <summary>
         /// What the last attempt to assign refused, or an empty string. §11.1's three validation
         /// messages and the locked-position refusal land here; nothing else does, and it never
         /// blocks anything but the write it belongs to.
@@ -431,14 +472,17 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand ArmHoldActionCommand { get; }
 
         /// <summary>
-        /// Asks for the token picker over the tap field (§11.1's <c>Search</c>, §11.6's catalog).
-        /// It raises <see cref="TokenPickerRequested"/> and writes nothing: in the rail there is no
-        /// nesting, so whoever hosts the picker calls <see cref="AssignAction"/> back.
+        /// Opens the token picker over the tap field (§11.1's <c>Search</c>, §11.6's catalog). It is
+        /// shown <b>inside</b> this panel — the rail nests nothing — and taking a row calls
+        /// <see cref="AssignAction"/> and closes it again.
         /// </summary>
         public IRelayCommand SearchTapActionCommand { get; }
 
         /// <summary>The same for the hold field.</summary>
         public IRelayCommand SearchHoldActionCommand { get; }
+
+        /// <summary>Leaves the pick without choosing anything; both fields keep what they had.</summary>
+        public IRelayCommand CloseSearchCommand { get; }
 
         /// <summary>The delay's Up step, clamped to the device's range (§11.1).</summary>
         public IRelayCommand IncreaseDelayCommand { get; }
@@ -462,34 +506,21 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public event EventHandler? Assigned;
 
-        /// <summary>
-        /// Raised when a record button asks for the token picker, naming the field it would fill.
-        /// The panel does not host the picker: the rail nests nothing, and the shared picker is
-        /// issue #92's Remap panel's. Nothing is armed while this is pending.
-        /// </summary>
-        public event EventHandler<TapAndHoldField>? TokenPickerRequested;
-
-        /// <summary>
-        /// Raised the moment a keystroke is actually consumed by a field. <b>This is the Escape
-        /// latch's signal.</b> The capture service previews key events on the <c>TopLevel</c>
-        /// <em>above</em> the editor's view, so on one Escape it runs first: the field takes the key
-        /// and disarms, and by the time the view's Escape handler runs the panel already looks idle.
-        /// Without a latch that one Escape would both fill the field and close the rail. The editor
-        /// records this and reads-and-clears it on the next key down
-        /// (docs/app/keyboard-editor.md, "Escape — the resolution").
-        /// </summary>
-        public event EventHandler? KeystrokeTaken;
-
         private readonly DeviceId _deviceId;
         private readonly FirmwareState _firmware;
         private readonly IUrlLauncher _urlLauncher;
         private readonly string? _supportUrl;
 
+        /// <summary>
+        /// How this board's files spell a token. A <b>device</b> fact
+        /// (<see cref="KeyboardLayout.DialectFor"/>), not a profile one, which is why it
+        /// is settled in the constructor and never re-read from a layout that may not exist yet.
+        /// </summary>
+        private readonly TokenDialect _dialect;
+
         private KeyboardKeyViewModel? _key;
         private KeyboardLayerViewModel? _layer;
         private KeyboardLayout? _layout;
-        private TokenDialect _dialect = TokenDialect.None;
-
         private KeyDefinition? _tapAction;
         private KeyDefinition? _holdAction;
         private int _delayMilliseconds;
@@ -497,6 +528,9 @@ namespace KinesisEdit.ViewModels
         private int _maximumDelayMilliseconds = FallbackMaximumDelayMilliseconds;
         private int? _defaultDelayMilliseconds;
         private TapAndHoldField _armedField;
+        private TapAndHoldField _pickerField;
+        private bool _isPickerOpen;
+        private string _pickerFieldLabel = string.Empty;
         private string _unavailableReason = NoSelectionMessage;
         private string _validationMessage = string.Empty;
         private string _budgetAdvisory = string.Empty;
@@ -528,18 +562,38 @@ namespace KinesisEdit.ViewModels
         /// Builds the panel for one open device. The device and its firmware are the editor's
         /// <c>DeviceSnapshot</c>, which is immutable for the life of the session — the gate can
         /// therefore be resolved once and asked about on every refresh without re-reading a drive.
+        /// <para>
+        /// The picker's catalog is built from the same fact:
+        /// <see cref="KeyboardLayout.DialectFor"/> over the device id, which is what
+        /// <c>KeyboardLayout.Dialect</c> itself is. That is why the panel can be constructed before a
+        /// profile has been read at all. <paramref name="recent"/> is the editor's session history,
+        /// shared with every other picker it hosts.
+        /// </para>
         /// </summary>
-        public TapAndHoldPanelViewModel(DeviceId deviceId, FirmwareState firmware, IUrlLauncher urlLauncher)
+        public TapAndHoldPanelViewModel(
+            DeviceId deviceId,
+            FirmwareState firmware,
+            IUrlLauncher urlLauncher,
+            RecentTokenStore? recent = null)
         {
             _deviceId = deviceId;
             _firmware = firmware;
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _supportUrl = FirmwareSupportUrls.FindUrl(deviceId);
+            _dialect = KeyboardLayout.DialectFor(deviceId);
+
+            Picker = new TokenPickerViewModel(_dialect, recent);
+
+            // Taking a row IS the answer: §11.6's "double-clicking an item accepts immediately", and
+            // ↵ on the highlighted row. The picker and this panel live and die together, so there is
+            // nothing to detach later.
+            Picker.Chosen += OnPickerChosen;
 
             ArmTapActionCommand = new RelayCommand(() => Arm(TapAndHoldField.Tap));
             ArmHoldActionCommand = new RelayCommand(() => Arm(TapAndHoldField.Hold));
-            SearchTapActionCommand = new RelayCommand(() => RequestPicker(TapAndHoldField.Tap));
-            SearchHoldActionCommand = new RelayCommand(() => RequestPicker(TapAndHoldField.Hold));
+            SearchTapActionCommand = new RelayCommand(() => OpenPicker(TapAndHoldField.Tap));
+            SearchHoldActionCommand = new RelayCommand(() => OpenPicker(TapAndHoldField.Hold));
+            CloseSearchCommand = new RelayCommand(ClosePicker);
             IncreaseDelayCommand = new RelayCommand(() => StepDelay(1));
             DecreaseDelayCommand = new RelayCommand(() => StepDelay(-1));
             AssignCommand = new RelayCommand(Assign, () => IsAvailable);
@@ -560,7 +614,6 @@ namespace KinesisEdit.ViewModels
             _key = key;
             _layer = layer;
             _layout = layout;
-            _dialect = layout?.Dialect ?? TokenDialect.None;
 
             ApplyCapability(layout?.Device.TapAndHold);
             ApplyAvailability();
@@ -570,11 +623,19 @@ namespace KinesisEdit.ViewModels
                 LoadFromModel();
             }
 
+            if (isNewKey)
+            {
+                // A pick opened for the position the user has just left has nothing to fill.
+                ClosePicker();
+            }
+
             if (!IsAvailable)
             {
                 // A gate that closed while a field was armed must not leave the app capturing for a
                 // panel that can no longer write anything.
                 ArmedField = TapAndHoldField.None;
+
+                ClosePicker();
             }
 
             BudgetAdvisory = FindBudgetAdvisory(advisories);
@@ -585,6 +646,8 @@ namespace KinesisEdit.ViewModels
         {
             ArmedField = TapAndHoldField.None;
             ValidationMessage = string.Empty;
+
+            ClosePicker();
         }
 
         /// <summary>
@@ -605,8 +668,6 @@ namespace KinesisEdit.ViewModels
             }
 
             AssignAction(_armedField, keystroke.Key);
-
-            KeystrokeTaken?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -773,17 +834,60 @@ namespace KinesisEdit.ViewModels
             ValidationMessage = string.Empty;
         }
 
-        private void RequestPicker(TapAndHoldField field)
+        /// <summary>
+        /// Shows §11.6's catalog over <paramref name="field"/>, in place of the two fields. Nothing
+        /// is nested and nothing is written: the pick is a step inside this panel, and the assignment
+        /// still lands only when <c>Assign</c> is pressed.
+        /// </summary>
+        private void OpenPicker(TapAndHoldField field)
         {
-            if (!IsAvailable)
+            if (!IsAvailable || field == TapAndHoldField.None)
             {
                 return;
             }
 
-            // The picker owns the keyboard while it is up, so nothing here may keep capturing.
+            // The picker's query box is a real TextBox, which suspends capture the moment it takes
+            // focus — so an armed field would be left waiting for a keypress that can never arrive.
             ArmedField = TapAndHoldField.None;
+            ValidationMessage = string.Empty;
 
-            TokenPickerRequested?.Invoke(this, field);
+            _pickerField = field;
+
+            PickerFieldLabel = field == TapAndHoldField.Tap ? TapFieldLabel : HoldFieldLabel;
+
+            Picker.Clear();
+            Picker.RequestFocus();
+
+            IsPickerOpen = true;
+        }
+
+        /// <summary>Takes the picked row into the field the pick was opened for, and closes it.</summary>
+        private void OnPickerChosen(KeyDefinition definition)
+        {
+            if (!IsPickerOpen)
+            {
+                return;
+            }
+
+            var field = _pickerField;
+
+            ClosePicker();
+
+            AssignAction(field, definition);
+
+            Picker.Remember(definition);
+        }
+
+        private void ClosePicker()
+        {
+            if (!_isPickerOpen)
+            {
+                return;
+            }
+
+            _pickerField = TapAndHoldField.None;
+
+            IsPickerOpen = false;
         }
 
         private void StepDelay(int step)

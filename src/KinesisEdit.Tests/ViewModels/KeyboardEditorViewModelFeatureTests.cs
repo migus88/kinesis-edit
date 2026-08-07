@@ -28,58 +28,6 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
-        public async Task TapAndHoldCommand_FollowsTheSelectionAndTheOpenPanel()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            Assert.False(editor.TapAndHoldCommand.CanExecute(null));
-
-            var key = SelectTapAndHoldTarget(editor);
-
-            Assert.True(editor.TapAndHoldCommand.CanExecute(null));
-
-            // A panel of its own owns the editor while it is open.
-            editor.ShowOverlay(new StubOverlay());
-
-            Assert.False(editor.TapAndHoldCommand.CanExecute(null));
-
-            editor.CloseOverlayCommand.Execute(null);
-
-            Assert.True(editor.TapAndHoldCommand.CanExecute(null));
-
-            editor.SelectKeyCommand.Execute(null);
-
-            Assert.Null(editor.SelectedKey);
-            Assert.False(editor.TapAndHoldCommand.CanExecute(null));
-            Assert.NotNull(key);
-        }
-
-        /// <summary>
-        /// specs/11-feature-dialogs.md §11.1 is a feature a device either has or has not, and
-        /// <c>TapAndHoldPrecheck</c>'s own contract says the caller asks that first. Without the
-        /// guard the panel opens on a board that states no delay range at all — the assignment it
-        /// writes is then reported as <c>TapAndHoldNotSupported</c> and blocks the entire save.
-        /// </summary>
-        [Fact]
-        public async Task TapAndHoldCommand_OnADeviceWithoutTheFeature_IsUnavailable()
-        {
-            _profiles.SessionToReturn = new FakeProfileSession(TestLayouts.CreateLayoutWithoutTapAndHold());
-
-            var editor = await CreateLoadedEditorAsync();
-
-            Assert.False(editor.Layout!.Device.TapAndHold.IsSupported);
-
-            SelectTapAndHoldTarget(editor);
-
-            Assert.False(editor.TapAndHoldCommand.CanExecute(null));
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            Assert.Null(editor.ActiveOverlay);
-            Assert.Empty(_notifications.MessageBoxes);
-        }
-
-        [Fact]
         public async Task FeatureCommands_WhileASaveIsInFlight_AreUnavailable()
         {
             var observed = new List<bool>();
@@ -89,7 +37,6 @@ namespace KinesisEdit.Tests.ViewModels
 
             _profiles.SessionToReturn!.DuringSave = () =>
             {
-                observed.Add(editor.TapAndHoldCommand.CanExecute(null));
                 observed.Add(editor.InsertDelayCommand.CanExecute(null));
                 observed.Add(editor.InsertSpecialActionCommand.CanExecute(null));
                 observed.Add(editor.ExportCommand.CanExecute(null));
@@ -98,225 +45,159 @@ namespace KinesisEdit.Tests.ViewModels
 
             await editor.SaveCommand.ExecuteAsync(null);
 
-            Assert.Equal(new[] { false, false, false, false, false }, observed);
-            Assert.True(editor.TapAndHoldCommand.CanExecute(null));
+            Assert.Equal(new[] { false, false, false, false }, observed);
             Assert.True(editor.ExportCommand.CanExecute(null));
             Assert.True(editor.ImportCommand.CanExecute(null));
         }
 
+        /// <summary>
+        /// §11.1 is a rail panel now, not a modal — so the firmware gate of 09 §2 is answered
+        /// <em>in place</em>. The panel is still rendered, which is the sanctioned exception to
+        /// "absent features are not shown": the user pointed at this tab.
+        /// </summary>
         [Fact]
-        public async Task TapAndHoldCommand_BelowTheFirmwareGate_RefusesWithTheGatesMessageAndOpensNothing()
+        public async Task TheTapAndHoldPanel_BelowTheFirmwareGate_RefusesInPlaceAndOpensNoDialog()
         {
-            // No version file at all: the RGB's tap-and-hold gate (09 §2) cannot be met by an
-            // unknown firmware version.
+            // No version file at all: the RGB's tap-and-hold gate cannot be met by an unknown
+            // firmware version.
             var editor = await CreateLoadedEditorAsync(TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb));
 
             SelectTapAndHoldTarget(editor);
 
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
+            var panel = OpenTapAndHoldPanel(editor);
 
-            var request = Assert.Single(_notifications.MessageBoxes);
+            Assert.False(panel.IsAvailable);
+            Assert.Equal(TapAndHoldPanelViewModel.FirmwareRefusalFor(DeviceId.FreestyleEdgeRgb), panel.UnavailableReason);
+            Assert.True(panel.CanUpdateFirmware);
 
-            Assert.Equal(TapAndHoldOverlayViewModel.OverlayTitle, request.Title);
-            Assert.Equal(TapAndHoldOverlayViewModel.FirmwareRefusalMessage, request.Message);
+            // Nothing modal happened: the rail is not an overlay and the gate raises no message box
+            // of its own any more.
+            Assert.Null(editor.ActiveOverlay);
+            Assert.Empty(_notifications.MessageBoxes);
+        }
+
+        [Fact]
+        public async Task TheTapAndHoldPanel_OnAnAlphanumericTopLayerKey_ShowsThePreCheckRefusalInPlace()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            SelectDigitOne(editor);
+
+            var panel = OpenTapAndHoldPanel(editor);
+
+            Assert.False(panel.IsAvailable);
             Assert.Equal(
-                FirmwareFeatureGate.UpdateFirmwareButtonCaption,
-                Assert.Single(request.CustomButtons).Caption);
-            Assert.Null(editor.ActiveOverlay);
+                "You cannot assign a Tap and Hold Action to these keys (A-Z, 0-9) on the Top Layer.",
+                panel.UnavailableReason);
+
+            // A pre-dialog refusal is not a firmware refusal, so there is nowhere to send the user.
+            Assert.False(panel.CanUpdateFirmware);
         }
 
         [Fact]
-        public async Task TapAndHoldCommand_ForAnAlphanumericKeyOnTheTopLayer_ShowsThePreCheckRefusal()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            AssertRefused(
-                editor,
-                "You cannot assign a Tap and Hold Action to these keys (A-Z, 0-9) on the Top Layer.");
-        }
-
-        [Fact]
-        public async Task TapAndHoldCommand_ForAKeyAlreadyAssignedOnTheOtherLayer_ShowsThePreCheckRefusal()
+        public async Task TheTapAndHoldPanel_WhenAssigned_WritesTheAssignmentAndRefreshesTheBoard()
         {
             var editor = await CreateLoadedEditorAsync();
             var key = SelectTapAndHoldTarget(editor);
+            var panel = OpenTapAndHoldPanel(editor);
 
-            AssignTapAndHold(editor.Layout!.Layers[1].FindByIndex(key.Index)!);
+            panel.AssignAction(TapAndHoldField.Tap, Gen1("a"));
+            panel.AssignAction(TapAndHoldField.Hold, Gen1("lctrl"));
+            panel.AssignCommand.Execute(null);
 
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            AssertRefused(editor, "You cannot assign a Tap and Hold Action to the same key in both layers.");
-        }
-
-        [Fact]
-        public async Task TapAndHoldCommand_WhenTheProfileHoldsTheMaximum_ShowsThePreCheckRefusal()
-        {
-            var editor = await CreateLoadedEditorAsync();
-            var key = SelectTapAndHoldTarget(editor);
-
-            FillTapAndHoldSlots(editor.Layout!, key.Index);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            AssertRefused(editor, "You have reached the maximum number of Tap and Hold actions for this Profile.");
-        }
-
-        [Fact]
-        public async Task TapAndHoldCommand_ForAMacroTriggerKey_ShowsThePreCheckRefusal()
-        {
-            var editor = await CreateLoadedEditorAsync();
-            var key = SelectTapAndHoldTarget(editor);
-
-            Assert.NotEqual(0, key.Key.AssignMacro(editor.Layout!.CreateMacro()));
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            AssertRefused(editor, "You cannot assign a Tap and Hold Action to a macro trigger key.");
-        }
-
-        [Fact]
-        public async Task TapAndHoldCommand_WhenAccepted_AppliesTheAssignmentAndRefreshesTheBoard()
-        {
-            var editor = await CreateLoadedEditorAsync();
-            var key = SelectTapAndHoldTarget(editor);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
-
-            Pick(overlay.SearchTapActionCommand, editor, Gen1("a"));
-            Pick(overlay.SearchHoldActionCommand, editor, Gen1("lctrl"));
-
-            overlay.AcceptCommand.Execute(null);
-
-            Assert.Null(editor.ActiveOverlay);
             Assert.True(key.Key.IsTapAndHold);
             Assert.Equal(Gen1("a"), key.Key.TapAction);
             Assert.Equal(Gen1("lctrl"), key.Key.HoldAction);
             Assert.Equal(1, editor.Layout!.TapAndHoldCount);
 
-            // The cap re-read the model even though nothing about its caption moved: Core
-            // announces nothing, so the refresh has to be unconditional.
+            // The Assigned hook is what makes this true: Core announces nothing, so the cap and
+            // every counter above it are re-read by hand.
+            Assert.True(key.IsTapAndHold);
             Assert.Equal(editor.Layout.ModifiedKeyCount, editor.ModifiedKeyCount);
+
+            // And the rail is still open on the same position afterwards — nothing about a write
+            // dismisses it.
+            Assert.True(editor.Inspector.IsOpen);
         }
 
         [Fact]
-        public async Task TapAndHoldCommand_AnArmedField_CapturesTheNextKeystroke()
+        public async Task TheTapAndHoldPanel_AnArmedField_TakesTheNextKeystrokeThroughTheEditorsRouter()
         {
             var editor = await CreateLoadedEditorAsync();
 
             SelectTapAndHoldTarget(editor);
 
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
+            var panel = OpenTapAndHoldPanel(editor);
 
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
-
-            // §11.1's fields are filled by a real keypress, and the editor stopped capturing on
-            // the way in — so arming is what has to turn the service back on.
+            // Capture belongs to the editor: the panel only says it is waiting for a keypress.
             Assert.False(_capture.IsCapturing);
 
-            overlay.ArmTapActionCommand.Execute(null);
+            panel.ArmTapActionCommand.Execute(null);
 
             Assert.True(_capture.IsCapturing);
+            Assert.True(editor.IsCaptureActive);
 
             _capture.RaiseKeystroke(Gen1("a"));
 
-            Assert.Equal(Gen1("a"), overlay.TapAction);
+            Assert.Equal(Gen1("a"), panel.TapAction);
 
-            // The field took its action, so nothing is armed any more and the keyboard goes back
-            // to the rest of the app.
+            // The field took its action, so nothing is armed and the keyboard goes back to the app.
             Assert.False(_capture.IsCapturing);
+            Assert.False(editor.IsCaptureActive);
+        }
 
-            overlay.CancelCommand.Execute(null);
+        /// <summary>
+        /// §11.1's <c>Search</c> used to nest a second modal over the first — the only consumer
+        /// <c>EditorOverlayHost.ShowNested</c> ever had. It is inline in the panel now, so nothing
+        /// is opened over anything.
+        /// </summary>
+        [Fact]
+        public async Task TheTapAndHoldPanel_Search_OpensThePickerInsideThePanelAndOpensNoOverlay()
+        {
+            var editor = await CreateLoadedEditorAsync();
 
+            SelectTapAndHoldTarget(editor);
+
+            var panel = OpenTapAndHoldPanel(editor);
+
+            panel.SearchHoldActionCommand.Execute(null);
+
+            Assert.True(panel.IsPickerOpen);
+            Assert.Equal(TapAndHoldPanelViewModel.HoldFieldLabel, panel.PickerFieldLabel);
             Assert.Null(editor.ActiveOverlay);
-            Assert.False(_capture.IsCapturing);
+            Assert.False(editor.HasActiveOverlay);
+
+            Pick(panel.Picker, Gen1("lctrl"));
+
+            Assert.False(panel.IsPickerOpen);
+            Assert.Equal(Gen1("lctrl"), panel.HoldAction);
+
+            // Nothing is written until Assign: the pick fills a field, it does not touch the model.
+            Assert.Equal(0, editor.Layout!.TapAndHoldCount);
         }
 
+        /// <summary>
+        /// The rail is not modal, so a panel that is merely <em>showing</em> must let a keystroke
+        /// fall through to the cap the user is remapping beside it. That is the one behavioural
+        /// difference from the overlay this replaced, and it is the difference this pins.
+        /// </summary>
         [Fact]
-        public async Task TapAndHoldCommand_TheSearchPicker_ClosesBackOntoTheTapAndHoldPanel()
+        public async Task AnUnarmedInspectorPanel_LetsTheKeystrokeReachTheListeningKey()
         {
             var editor = await CreateLoadedEditorAsync();
+            var key = SelectTapAndHoldTarget(editor);
 
-            SelectTapAndHoldTarget(editor);
+            OpenTapAndHoldPanel(editor);
 
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
+            editor.BeginRemapCommand.Execute(null);
 
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
+            Assert.True(editor.IsListening);
 
-            overlay.SearchTapActionCommand.Execute(null);
+            _capture.RaiseKeystroke(Gen1("f13"));
 
-            var picker = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-
-            Assert.Equal(SearchKeysOverlayViewModel.TapActionTitle, picker.Title);
-
-            // The picker is text entry, the panel under it is a keystroke sink: capture is
-            // suspended for exactly as long as the picker is up.
-            Assert.Equal(1, _capture.SuspendCount);
-            Assert.True(_capture.IsSuspended);
-
-            picker.SelectedEntry = FindEntry(picker, Gen1("a"));
-            picker.AcceptCommand.Execute(null);
-
-            Assert.Same(overlay, editor.ActiveOverlay);
-            Assert.Equal(Gen1("a"), overlay.TapAction);
-            Assert.Equal(1, _capture.ResumeCount);
-            Assert.False(_capture.IsSuspended);
-        }
-
-        [Fact]
-        public async Task TapAndHoldCommand_TheSearchPickerCancelled_ClosesBackOntoTheTapAndHoldPanelToo()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            SelectTapAndHoldTarget(editor);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
-
-            overlay.SearchHoldActionCommand.Execute(null);
-
-            var picker = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-
-            Assert.Equal(SearchKeysOverlayViewModel.HoldActionTitle, picker.Title);
-
-            editor.CloseOverlayCommand.Execute(null);
-
-            Assert.Same(overlay, editor.ActiveOverlay);
-            Assert.Null(overlay.HoldAction);
-            Assert.Equal(1, _capture.SuspendCount);
-            Assert.Equal(1, _capture.ResumeCount);
-
-            // ...and the restored panel is still the live one: a second picker nests just as well.
-            overlay.SearchHoldActionCommand.Execute(null);
-
-            Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-        }
-
-        [Fact]
-        public async Task ShowOverlay_WhileATapAndHoldPanelIsOpen_DetachesItsSearchHook()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            SelectTapAndHoldTarget(editor);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
-            var replacement = new StubOverlay();
-
-            editor.ShowOverlay(replacement);
-
-            // The replaced panel is not closed, so it can still raise its Search event — and must
-            // reach nobody, or it would steal the editor back from whatever replaced it.
-            overlay.SearchTapActionCommand.Execute(null);
-
-            Assert.Same(replacement, editor.ActiveOverlay);
+            Assert.True(key.Key.IsModified);
+            Assert.Equal(Gen1("f13").Code, key.Key.ModifiedKey!.Code);
+            Assert.False(editor.IsListening);
         }
 
         [Fact]
@@ -422,14 +303,21 @@ namespace KinesisEdit.Tests.ViewModels
 
             editor.InsertSpecialActionCommand.Execute(null);
 
-            var picker = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
+            var overlay = Assert.IsType<TokenPickerOverlayViewModel>(editor.ActiveOverlay);
 
-            Assert.Equal(SearchKeysOverlayViewModel.MacroTitle, picker.Title);
+            Assert.Equal(TokenPickerOverlayViewModel.MacroTitle, overlay.Title);
 
-            picker.ChooseCommand.Execute(FindEntry(picker, Gen1("f13")));
+            Pick(overlay.Picker, Gen1("f13"));
 
             Assert.Null(editor.ActiveOverlay);
             Assert.Equal(Gen1("f13"), Assert.Single(editor.MacroPanel!.EditedMacro!.Keystrokes).Key);
+
+            // One RecentTokenStore per editor: an action inserted into a macro here is offered by
+            // the key inspector's own Recent chip afterwards.
+            var remap = Assert.IsType<RemapPanelViewModel>(editor.Inspector.ActivePanel);
+
+            Assert.Same(overlay.Picker.Recent, remap.Picker.Recent);
+            Assert.True(remap.Picker.Recent.Contains(Gen1("f13")));
         }
 
         [Fact]
@@ -619,34 +507,6 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Dispose_WithANestedSearchPickerOpen_RestoresNothing()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            SelectTapAndHoldTarget(editor);
-
-            await editor.TapAndHoldCommand.ExecuteAsync(null);
-
-            var overlay = Assert.IsType<TapAndHoldOverlayViewModel>(editor.ActiveOverlay);
-
-            overlay.SearchTapActionCommand.Execute(null);
-
-            var picker = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-
-            editor.Dispose();
-
-            Assert.Null(editor.ActiveOverlay);
-            Assert.True(picker.IsClosed);
-            Assert.False(_capture.HasSubscribers);
-            Assert.False(_capture.IsSuspended);
-
-            // The panel underneath was never restored, and closing it now must not resurrect it.
-            overlay.Cancel();
-
-            Assert.Null(editor.ActiveOverlay);
-        }
-
-        [Fact]
         public async Task Dispose_WithAMacroInsertionPanelOpen_ClosesItAndDropsEveryHook()
         {
             var editor = await CreateLoadedEditorAsync();
@@ -673,40 +533,41 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, editor.MacroCount);
         }
 
-        /// <summary>Asserts the editor showed §11.1's refusal for a pre-dialog check and opened nothing.</summary>
-        private void AssertRefused(KeyboardEditorViewModel editor, string message)
+        /// <summary>
+        /// Puts the key inspector on its Tap &amp; hold mode and hands the panel back. The rail
+        /// exposes only the showing panel, so this is also what proves the tab reaches it.
+        /// </summary>
+        private static TapAndHoldPanelViewModel OpenTapAndHoldPanel(KeyboardEditorViewModel editor)
         {
-            var request = Assert.Single(_notifications.MessageBoxes);
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode != KeyInspectorMode.TapAndHold)
+                {
+                    continue;
+                }
 
-            Assert.Equal(TapAndHoldOverlayViewModel.OverlayTitle, request.Title);
-            Assert.Equal(message, request.Message);
-            Assert.Empty(request.CustomButtons);
-            Assert.Null(editor.ActiveOverlay);
+                editor.Inspector.SelectModeCommand.Execute(tab);
+
+                return Assert.IsType<TapAndHoldPanelViewModel>(editor.Inspector.ActivePanel);
+            }
+
+            throw new InvalidOperationException("The key inspector carries no Tap and hold tab.");
         }
 
-        private static KeySearchEntry FindEntry(SearchKeysOverlayViewModel picker, KeyDefinition definition)
+        /// <summary>Takes <paramref name="definition"/>'s row in <paramref name="picker"/>, as the pointer would.</summary>
+        private static void Pick(TokenPickerViewModel picker, KeyDefinition definition)
         {
-            foreach (var entry in picker.Results)
+            foreach (var row in picker.Rows)
             {
-                if (entry.Definition.Code == definition.Code)
+                if (row.Definition.Code == definition.Code)
                 {
-                    return entry;
+                    picker.ChooseCommand.Execute(row);
+
+                    return;
                 }
             }
 
-            throw new InvalidOperationException($"The picker lists no entry for key code {definition.Code}.");
-        }
-
-        private static void Pick(
-            CommunityToolkit.Mvvm.Input.IRelayCommand searchCommand,
-            KeyboardEditorViewModel editor,
-            KeyDefinition definition)
-        {
-            searchCommand.Execute(null);
-
-            var picker = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-
-            picker.ChooseCommand.Execute(FindEntry(picker, definition));
+            throw new InvalidOperationException($"The picker lists no row for key code {definition.Code}.");
         }
 
         private static KeyDefinition Gen1(string token)

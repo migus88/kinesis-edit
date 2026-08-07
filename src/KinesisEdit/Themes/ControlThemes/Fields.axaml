@@ -94,10 +94,10 @@
     from anywhere in the editor.
     ================================================================================================
 
-    Views/SearchKeysOverlayView.axaml wears it, through the `TextBox.searchField` bridge in
-    Styles/Buttons.axaml. That panel is otherwise still in its pre-redesign layout and is rebuilt on
-    this theme in a later issue; the query box came across early because the glyph, the geometry and
-    the ring are the theme's to own either way.
+    Views/TokenPickerView.axaml wears it, through the `TextBox.searchField` bridge in
+    Styles/Buttons.axaml — one control hosted three times over: inline in the key inspector's Remap
+    panel, inline in its Tap & hold panel, and inside the macro-insertion modal. It replaced the
+    Search Keys overlay this theme was originally written against.
 
     THE LEADING GLYPH is a Path, not the mockup's `⌕` character, and that is a considered deviation
     from docs/design/mockups.md's transcription:

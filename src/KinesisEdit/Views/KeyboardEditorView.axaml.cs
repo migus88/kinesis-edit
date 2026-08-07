@@ -163,12 +163,20 @@ namespace KinesisEdit.Views
         /// panel.
         /// </para>
         /// <para>
-        /// <b>The order is explicit: panel, then capture, then an armed copy.</b> `2b`'s grammar
-        /// says Escape "leaves capture mode first", so the listening key is cancelled before the
-        /// armed <c>Copy key…</c> pick — even though the editor never lets both be live at once
-        /// (arming a copy ends a listen, and starting a remap ends a copy), which is what keeps
-        /// this a stated order rather than a lucky one. A copy is armed by a click and finished by
-        /// a click, so nothing swallows the Escape that cancels it.
+        /// <b>The order is explicit: panel, then capture, then an armed copy, then the key
+        /// inspector.</b> `2b`'s grammar says Escape "leaves capture mode first", so the listening
+        /// key is cancelled before the armed <c>Copy key…</c> pick — even though the editor never
+        /// lets both be live at once (arming a copy ends a listen, and starting a remap ends a
+        /// copy), which is what keeps this a stated order rather than a lucky one. A copy is armed
+        /// by a click and finished by a click, so nothing swallows the Escape that cancels it.
+        /// </para>
+        /// <para>
+        /// <b>The rail is last, and that is the point of putting it in this list at all.</b> It is
+        /// not modal, so nothing about it belongs in gate 2 — but it is the widest thing on screen
+        /// that Escape can plausibly mean, so it goes behind everything narrower. The latch covers
+        /// it exactly as it covers a panel: a rail record button disarms as it takes the Escape it
+        /// was recording, and without the latch that one keypress would both fill the field and
+        /// dismiss the rail.
         /// </para>
         /// </summary>
         private static void HandleEscape(KeyboardEditorViewModel viewModel, KeyEventArgs e, bool takenByOverlay)
@@ -193,14 +201,23 @@ namespace KinesisEdit.Views
                 return;
             }
 
-            if (!viewModel.CancelCopyKeyCommand.CanExecute(null))
+            if (viewModel.CancelCopyKeyCommand.CanExecute(null))
+            {
+                e.Handled = true;
+
+                viewModel.CancelCopyKeyCommand.Execute(null);
+
+                return;
+            }
+
+            if (!viewModel.Inspector.IsOpen)
             {
                 return;
             }
 
             e.Handled = true;
 
-            viewModel.CancelCopyKeyCommand.Execute(null);
+            viewModel.Inspector.Close();
         }
 
         /// <summary>

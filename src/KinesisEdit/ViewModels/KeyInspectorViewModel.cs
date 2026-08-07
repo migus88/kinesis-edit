@@ -372,6 +372,11 @@ namespace KinesisEdit.ViewModels
             }
 
             RebuildTabs(supportsMultiModifiers: false);
+
+            // The rail opens on Remap, so the Remap panel is the showing one from the start.
+            // SelectedMode and ActivePanel must never disagree — a rail that named a mode while
+            // hosting nothing would be a state no refresh path produces and no view can draw.
+            MoveTo(_selectedMode);
         }
 
         /// <summary>
@@ -443,6 +448,20 @@ namespace KinesisEdit.ViewModels
             _isDismissed = false;
 
             IsOpen = _key is not null;
+        }
+
+        /// <summary>
+        /// Stands the showing panel down <b>without closing the rail</b>: whatever it had armed
+        /// stops, and nothing is written. It is what the editor calls wherever it takes the keyboard
+        /// back for itself — a layer switch, a section switch, a save, an import, a modal panel
+        /// opening over the board — where <see cref="Close"/> would be wrong, because the user never
+        /// dismissed anything and the rail must still be there when they come back.
+        /// </summary>
+        public void Deactivate()
+        {
+            _activePanel?.Deactivate();
+
+            RaiseRecordingChanged();
         }
 
         /// <summary>

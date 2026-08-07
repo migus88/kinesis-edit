@@ -5,10 +5,16 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The overlay host's own contract. The everyday paths — replace, suspend/resume, dismiss,
-    /// nest and restore — are exercised end to end through <c>KeyboardEditorViewModel</c>; what is
-    /// pinned here is the edges that never occur through the editor: bad arguments, a panel that
-    /// is already closed, and a host that has been shut down.
+    /// The overlay host's own contract. The everyday paths — replace, suspend/resume, dismiss —
+    /// are exercised end to end through <c>KeyboardEditorViewModel</c>; what is pinned here is the
+    /// edges that never occur through the editor: bad arguments, a panel that is already closed,
+    /// and a host that has been shut down.
+    /// <para>
+    /// <b>There is nothing about nesting left to test.</b> It had one consumer — §11.1's two Search
+    /// buttons over the Tap and Hold modal — and that modal is a key inspector panel now, hosting
+    /// its picker inline (issue #92). The host lost <c>ShowNested</c> with it rather than keeping
+    /// tested dead code.
+    /// </para>
     /// </summary>
     public sealed class EditorOverlayHostTests : IDisposable
     {
@@ -55,26 +61,6 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void ShowNested_WhenTheChildCannotOpen_LeavesNothingToRestore()
-        {
-            var parent = new StubOverlay();
-            var child = new StubOverlay();
-
-            child.Cancel();
-
-            _host.Show(parent);
-            _host.ShowNested(child, parent);
-
-            // The picker never went up, so the panel underneath is still the live one and closing
-            // the refused child must not put anything back over it.
-            Assert.Same(parent, _host.Active);
-
-            _host.Dismiss();
-
-            Assert.Null(_host.Active);
-        }
-
-        [Fact]
         public void Close_IsIdempotentAndRefusesEverythingAfterwards()
         {
             _host.Show(new StubOverlay());
@@ -104,12 +90,8 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public void Constructor_AndShow_RejectMissingArguments()
         {
-            var overlay = new StubOverlay();
-
             Assert.Throws<ArgumentNullException>(() => new EditorOverlayHost(null!));
             Assert.Throws<ArgumentNullException>(() => _host.Show(null!));
-            Assert.Throws<ArgumentNullException>(() => _host.ShowNested(null!, overlay));
-            Assert.Throws<ArgumentNullException>(() => _host.ShowNested(overlay, null!));
         }
 
         [Fact]

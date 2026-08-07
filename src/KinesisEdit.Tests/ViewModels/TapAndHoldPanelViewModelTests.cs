@@ -284,27 +284,32 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// The Escape latch's signal. The capture service previews above this view, so a field
-        /// disarms before the view's Escape handler runs; without a "the panel just took this one"
-        /// signal, one Escape would both fill the field and close the rail
-        /// (docs/app/keyboard-editor.md, "Escape — the resolution").
+        /// The panel raises no "I took that keystroke" signal of its own, and must not: the editor's
+        /// router latches the Escape flag <em>before</em> it dispatches to any sink, so a second
+        /// answer here would be a second thing to keep in step
+        /// (docs/app/keyboard-editor.md, "Escape — the resolution"). What the panel owes is an
+        /// honest <see cref="TapAndHoldPanelViewModel.WantsKeystrokes"/>, which is what the router
+        /// reads.
         /// </summary>
         [Fact]
-        public void KeystrokeTaken_IsRaisedOnlyWhenAFieldActuallyConsumedTheKey()
+        public void ReceiveKeystroke_TakesTheKeyOnlyWhileAFieldIsArmed()
         {
             var panel = CreateOpenPanel();
-            var taken = 0;
-
-            panel.KeystrokeTaken += (_, _) => taken++;
 
             panel.ReceiveKeystroke(Keystroke("a"));
 
-            Assert.Equal(0, taken);
+            Assert.Null(panel.TapAction);
+            Assert.Null(panel.HoldAction);
+            Assert.False(panel.WantsKeystrokes);
 
             panel.ArmHoldActionCommand.Execute(null);
+
+            Assert.True(panel.WantsKeystrokes);
+
             panel.ReceiveKeystroke(Keystroke("lctrl"));
 
-            Assert.Equal(1, taken);
+            Assert.Same(Gen1("lctrl"), panel.HoldAction);
+            Assert.False(panel.WantsKeystrokes);
         }
 
         [Theory]
@@ -447,41 +452,85 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// The rail nests nothing, so the two <c>Search</c> actions of §11.1 raise the intent and
-        /// stand the capture down; whoever hosts the shared token picker writes back through
-        /// <see cref="TapAndHoldPanelViewModel.AssignAction"/>.
+        /// The rail nests nothing, so §11.1's two <c>Search</c> actions open the shared picker
+        /// <em>inside</em> this panel — no second modal, and therefore no
+        /// <c>EditorOverlayHost.ShowNested</c>. Arming stands down with it: the picker's query box
+        /// is a real <c>TextBox</c>, which suspends capture the moment it takes focus.
         /// </summary>
         [Fact]
-        public void SearchTapActionCommand_RaisesTheIntentForThatFieldAndDisarmsCapture()
+        public void SearchTapActionCommand_OpensThePickerInPlaceAndDisarmsCapture()
         {
             var panel = CreateOpenPanel();
-            TapAndHoldField? requested = null;
-
-            panel.TokenPickerRequested += (_, field) => requested = field;
 
             panel.ArmTapActionCommand.Execute(null);
             panel.SearchTapActionCommand.Execute(null);
 
-            Assert.Equal(TapAndHoldField.Tap, requested);
+            Assert.True(panel.IsPickerOpen);
+            Assert.Equal(TapAndHoldPanelViewModel.TapFieldLabel, panel.PickerFieldLabel);
             Assert.False(panel.WantsKeystrokes);
         }
 
         [Fact]
-        public void SearchHoldActionCommand_WhenThePickerAnswers_WritesTheActionIntoTheHoldField()
+        public void SearchHoldActionCommand_WhenARowIsTaken_WritesTheActionIntoTheHoldFieldAndCloses()
         {
             var panel = CreateOpenPanel();
-            TapAndHoldField? requested = null;
-
-            panel.TokenPickerRequested += (_, field) => requested = field;
 
             panel.SearchHoldActionCommand.Execute(null);
 
-            Assert.Equal(TapAndHoldField.Hold, requested);
+            Assert.True(panel.IsPickerOpen);
+            Assert.Equal(TapAndHoldPanelViewModel.HoldFieldLabel, panel.PickerFieldLabel);
 
-            panel.AssignAction(requested!.Value, Gen1("lctrl"));
+            Choose(panel, Gen1("lctrl"));
 
+            Assert.False(panel.IsPickerOpen);
             Assert.Same(Gen1("lctrl"), panel.HoldAction);
             Assert.Null(panel.TapAction);
+
+            // Nothing was written: a pick fills a field, and only Assign touches the model.
+            Assert.True(panel.Picker.Recent.Contains(Gen1("lctrl")));
+        }
+
+        [Fact]
+        public void ThePicker_WhenCancelled_LeavesBothFieldsAlone()
+        {
+            var panel = CreateOpenPanel();
+
+            panel.AssignAction(TapAndHoldField.Hold, Gen1("lctrl"));
+            panel.SearchHoldActionCommand.Execute(null);
+            panel.CloseSearchCommand.Execute(null);
+
+            Assert.False(panel.IsPickerOpen);
+            Assert.Same(Gen1("lctrl"), panel.HoldAction);
+        }
+
+        [Fact]
+        public void ThePicker_WhenThePanelIsStoodDown_ClosesWithIt()
+        {
+            var panel = CreateOpenPanel();
+
+            panel.SearchTapActionCommand.Execute(null);
+
+            Assert.True(panel.IsPickerOpen);
+
+            panel.Deactivate();
+
+            Assert.False(panel.IsPickerOpen);
+        }
+
+        /// <summary>Takes <paramref name="definition"/>'s row in the panel's own picker.</summary>
+        private static void Choose(TapAndHoldPanelViewModel panel, KeyDefinition definition)
+        {
+            foreach (var row in panel.Picker.Rows)
+            {
+                if (row.Definition.Code == definition.Code)
+                {
+                    panel.Picker.ChooseCommand.Execute(row);
+
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException($"The picker lists no row for key code {definition.Code}.");
         }
 
         [Fact]

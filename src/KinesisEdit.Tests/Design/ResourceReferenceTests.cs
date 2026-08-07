@@ -57,7 +57,9 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("Themes/Controls.axaml", files.Keys);
             Assert.Contains("Views/KeyboardEditorView.axaml", files.Keys);
             Assert.Contains("Controls/KeyCapView.axaml", files.Keys);
-            Assert.True(files.Count >= 20, $"Only {files.Count} XAML sources are embedded.");
+            Assert.Contains("Views/KeyInspectorView.axaml", files.Keys);
+            Assert.Contains("Views/TokenPickerView.axaml", files.Keys);
+            Assert.True(files.Count >= 50, $"Only {files.Count} XAML sources are embedded.");
         }
 
         [AvaloniaFact]

@@ -461,8 +461,14 @@ namespace KinesisEdit.Tests.Design
             Assert.Null(editor.ActiveOverlay);
         }
 
+        /// <summary>
+        /// ⌘F has somewhere to write now. It used to open the §11.6 picker as a modal whose Ok
+        /// merely closed — a token with nowhere to go, recorded as deviation 23 until issue #92.
+        /// It puts the caret in the <b>key inspector's</b> field instead, where ↵ on a row assigns
+        /// to the selected position; and it opens nothing at all, because the rail is not modal.
+        /// </summary>
         [AvaloniaFact]
-        public async Task CommandF_OpensSearchKeysAndPutsTheCaretInItsField()
+        public async Task CommandF_PutsTheCaretInTheKeyInspectorsSearchFieldAndOpensNoOverlay()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -471,18 +477,20 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+
             Press(host, PhysicalKey.F, CommandModifier);
 
-            var overlay = Assert.IsType<SearchKeysOverlayViewModel>(editor.ActiveOverlay);
-
-            Assert.Equal(SearchKeysOverlayViewModel.DefaultTitle, overlay.Title);
+            Assert.Null(editor.ActiveOverlay);
+            Assert.False(editor.HasActiveOverlay);
+            Assert.True(editor.Inspector.IsOpen);
 
             host.Capture();
 
-            var panel = view.GetVisualDescendants().OfType<SearchKeysOverlayView>().Single();
-            var field = panel.GetVisualDescendants().OfType<TextBox>().Single();
+            var rail = view.GetVisualDescendants().OfType<KeyInspectorView>().Single();
+            var field = rail.GetVisualDescendants().OfType<TextBox>().Single();
 
-            Assert.True(field.IsFocused, "⌘F opened the picker without focusing its field.");
+            Assert.True(field.IsFocused, "⌘F did not focus the key inspector's search field.");
         }
 
         [AvaloniaFact]
@@ -566,6 +574,69 @@ namespace KinesisEdit.Tests.Design
             Press(host, PhysicalKey.Escape);
 
             Assert.Null(editor.ActiveOverlay);
+        }
+
+        /// <summary>
+        /// Escape's fourth and last stage. The rail is not modal, so it is not covered by the
+        /// panel branch — and it is the widest thing Escape can plausibly mean, so it goes behind
+        /// everything narrower: a listening key first, then an armed copy, then this.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task Escape_WithNothingNarrowerToCancel_ClosesTheKeyInspector()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            var key = editor.SelectedLayer!.Keys[0];
+
+            editor.SelectKeyCommand.Execute(key);
+
+            Assert.True(editor.Inspector.IsOpen);
+
+            Press(host, PhysicalKey.Escape);
+
+            Assert.False(editor.Inspector.IsOpen);
+
+            // The selection is untouched — Escape dismissed the rail, it did not deselect the cap —
+            // and clicking the same cap again brings the rail back rather than starting a remap
+            // only.
+            Assert.Same(key, editor.SelectedKey);
+
+            editor.SelectKeyCommand.Execute(key);
+
+            Assert.True(editor.Inspector.IsOpen);
+        }
+
+        [AvaloniaFact]
+        public async Task Escape_WithAKeyListeningAndTheRailOpen_CancelsTheListenFirst()
+        {
+            // The stated order, not a lucky one: capture is narrower than the rail, so the first
+            // Escape leaves listening and the rail is still there for the second.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+            editor.BeginRemapCommand.Execute(null);
+
+            Assert.True(editor.IsListening);
+            Assert.True(editor.Inspector.IsOpen);
+
+            Press(host, PhysicalKey.Escape);
+
+            Assert.False(editor.IsListening);
+            Assert.True(editor.Inspector.IsOpen);
+
+            Press(host, PhysicalKey.Escape);
+
+            Assert.False(editor.Inspector.IsOpen);
         }
 
         [AvaloniaTheory]
@@ -828,7 +899,7 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>
         /// A Tap and Hold-shaped panel whose field is armed for the next keystroke — and which
-        /// <b>disarms as it takes one</b>, exactly as <see cref="TapAndHoldOverlayViewModel"/>
+        /// <b>disarms as it takes one</b>, exactly as <see cref="TapAndHoldPanelViewModel"/>
         /// does. That is the whole reason the Escape defect existed: an empty
         /// <c>ReceiveKeystroke</c> leaves the panel looking armed, and the test never reaches the
         /// state the app is really in.

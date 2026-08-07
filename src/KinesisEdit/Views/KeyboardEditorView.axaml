@@ -219,8 +219,15 @@
           <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
           <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
             <!-- The board serves both tabs: the macro's trigger is the key selected on it, so the
-                 Macros tab docks its panel beside the picture rather than replacing it. -->
-            <Grid ColumnDefinitions="*,Auto"
+                 Macros tab docks its panel beside the picture rather than replacing it.
+
+                 THREE COLUMNS: the board, the 380px macro panel, and the 268px key inspector rail.
+                 Both side columns are Auto and both collapse themselves — the macro panel on the
+                 tab, the rail on the selection — so a column with nothing in it measures zero and
+                 the board takes the width back. There is deliberately NO clipping container between
+                 the rail and the board: ClipToBounds is false the whole way down the board chain
+                 (Controls/KeyboardView.axaml), and a Border here would start cutting caps off. -->
+            <Grid ColumnDefinitions="*,Auto,Auto"
                   IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros'}">
               <Grid Grid.Column="0" RowDefinitions="Auto,*">
                 <!--
@@ -510,6 +517,22 @@
                   </DataTemplate>
                 </ContentControl.ContentTemplate>
               </ContentControl>
+
+              <!-- The key inspector rail (mockups 1e/2a). It is NOT modal: no scrim, no overlay
+                   host, and the board to its left stays clickable the whole time it is open.
+
+                   NO GUTTER, unlike the macro panel beside it. The rail carries its own inset
+                   surface and a hairline down its left edge (`inspectorRail`), which is how mockup
+                   1e separates it — and every pixel spent on a margin here comes out of the board's
+                   column, where the legend row under the picture is already exactly as wide as its
+                   own counts and actions.
+
+                   IsVisible is bound HERE as well as inside the rail: the rail collapses its own
+                   frame, which is what makes it usable on its own, but only an invisible element
+                   lets this Auto column measure zero. -->
+              <views:KeyInspectorView Grid.Column="2"
+                                      DataContext="{Binding Inspector}"
+                                      IsVisible="{Binding IsOpen}" />
             </Grid>
 
             <!-- The lighting editor of specs/07-lighting.md §3/§4; the panels are the mode's, so this
@@ -524,12 +547,14 @@
           </Panel>
         </Panel>
 
-        <!-- STILL PROVISIONAL, and smaller than it was. `Reset Layer` has left for its real home,
-             the legend row under the board (issue #91), where it sits beside the counts it acts on
-             and takes the mockups' sentence case. What is left waits for the two issues that own
-             its real homes: `Reset Key` belongs to the key inspector's footer `Revert key`
-             (#92 — handoff § "Screens → 3. Layout tab"), and the four spec 11 buttons plus
-             Import/Export become inspector panels and editor-level actions with #92/#93.
+        <!-- STILL PROVISIONAL, and smaller again. Two more buttons have reached their real homes
+             with the key inspector rail (issue #92): `Reset Key` is now the rail footer's
+             `Revert key`, and `Tap and Hold` is a rail panel rather than a modal — both run the
+             very same commands from there. `Reset Layer` left earlier, for the legend row under the
+             board (#91).
+
+             What is left waits for #93, which owns the editor-level action bar: `Reset Layout`,
+             the two macro-insertion actions of §11.3/§11.6, and Import/Export.
 
              Nothing here is the design's shape — it exists so every action stays reachable and
              keeps working in the meantime, on every tab, which is why it sits under the whole
@@ -538,9 +563,7 @@
              Every button reports its own availability through its command's CanExecute, so there is
              no visibility logic here. -->
         <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
-          <Button Content="Reset Key" Command="{Binding ResetKeyCommand}" Margin="6,0,0,4" />
           <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
-          <Button Content="Tap and Hold" Command="{Binding TapAndHoldCommand}" Margin="6,0,0,4" />
           <Button Content="Insert Delay" Command="{Binding InsertDelayCommand}" Margin="6,0,0,4" />
           <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
           <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />

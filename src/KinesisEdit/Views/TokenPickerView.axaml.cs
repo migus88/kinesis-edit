@@ -23,8 +23,8 @@ namespace KinesisEdit.Views
     /// asks in its own constructor. A request made before this view exists survives as
     /// <see cref="TokenPickerViewModel.IsFocusPending"/> and is answered on attach — because
     /// <see cref="ViewLocator"/> materialises the view a layout pass after the command that asked
-    /// ran, so the caller has nothing to focus at the moment it runs. The precedent is
-    /// <c>SearchKeysOverlayView</c>, which focused on attach for exactly that reason.</para>
+    /// ran, so the caller has nothing to focus at the moment it runs. That is the same reason the
+    /// Search Keys overlay this replaced focused on attach rather than in its constructor.</para>
     ///
     /// <para><b>The keyboard grammar of a list.</b> ↑/↓ walk the results and ↵ takes the highlighted
     /// row; all three are marked handled so the editor's own arrow grammar does not move the board

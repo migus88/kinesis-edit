@@ -84,10 +84,22 @@ namespace KinesisEdit.Tests.Design
 
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
-                (typeof(TapAndHoldOverlayView).FullName!, "actionField", "TokenField"),
-                (typeof(TapAndHoldOverlayView).FullName!, "monoValue", "MonoValueField"),
                 (typeof(MacroDelayOverlayView).FullName!, "monoValue", "MonoValueField"),
-                (typeof(SearchKeysOverlayView).FullName!, "searchField", "SearchField")
+
+                // The key inspector rail (issue #92), which is where the two deleted overlays'
+                // roles now live — and where `FilterChip` finally got the call site #86 wrote it
+                // for. `recordAction` is the pair of red Record buttons; a missing bridge on either
+                // is invisible to every rendering test, because the control simply keeps Fluent's.
+                (typeof(TapAndHoldPanelView).FullName!, "actionField", "TokenField"),
+                (typeof(TapAndHoldPanelView).FullName!, "recordAction", "DiscardButton"),
+                (typeof(TapAndHoldPanelView).FullName!, "link", "LinkButton"),
+                (typeof(RemapPanelView).FullName!, "actionField", "TokenField"),
+                (typeof(RemapPanelView).FullName!, "recordAction", "DiscardButton"),
+                (typeof(TokenPickerView).FullName!, "searchField", "SearchField"),
+                (typeof(TokenPickerView).FullName!, "filterChip", "FilterChip"),
+                (typeof(KeyInspectorView).FullName!, "secondary", "SecondaryButton"),
+                (typeof(KeyInspectorView).FullName!, "ghost", "GhostButton"),
+                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton")
             })
             {
                 cases.Add(viewTypeName, className, themeKey);
@@ -279,21 +291,29 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheSearchKeysPicker_ThemesItsOwnRows()
+        public async Task TheTokenPicker_ThemesItsOwnRows()
         {
             // The blanket `ListBoxItem` style that used to do this leaked onto every list in the
             // app, including the segmented control's — and, being an app style, outranked their
             // container themes. The picker names its rows instead.
+            //
+            // It names them ONE BY ONE now, on ListBoxItems laid out by an ItemsControl, rather
+            // than through a ListBox.ItemContainerTheme: the result list is GROUPED, and a ListBox
+            // per group would be one independent selection per group. So there is no ListBox here
+            // at all, and the container theme is written on the row itself.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(SearchKeysOverlayView).FullName!);
+            var view = await scenes.CreateAsync(typeof(TokenPickerView).FullName!);
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            var list = Descendants<ListBox>(view).Single();
+            host.Capture();
 
-            Assert.Same(Theme("SelectableListRow"), list.ItemContainerTheme);
-            Assert.Same(Theme("SelectableListRow"), ContainerAt(list, 0).Theme);
+            var rows = Descendants<ListBoxItem>(view).ToArray();
+
+            Assert.Empty(Descendants<ListBox>(view));
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row => Assert.Same(Theme("SelectableListRow"), row.Theme));
         }
 
         [AvaloniaFact]
@@ -443,13 +463,16 @@ namespace KinesisEdit.Tests.Design
             // The Fn layer below the LED 1.0.44 gate (§3): the panel refuses it, so the segment must
             // not be left showing a layer nothing switched to. A pointer cannot reach a disabled
             // segment at all — this is the programmatic path, and it is the one that could desync.
+            //
+            // It builds its own editor, because the shared scene's device now carries a version
+            // file and therefore MEETS this gate: a scene that needs a refusal has to ask for one.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = await scenes.CreateGatedLightingAsync();
+            var view = new LightingTabView { DataContext = lighting };
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            var lighting = (LightingTabViewModel)view.DataContext!;
             var switcher = LightingLayerSwitchOf(view);
 
             Assert.True(lighting.Layers.Count >= 2, "The lighting scene rendered fewer than two layers.");

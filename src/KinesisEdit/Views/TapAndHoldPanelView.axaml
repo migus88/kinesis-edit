@@ -85,136 +85,182 @@
 
     <!-- ===== The two captures ================================================================= -->
     <StackPanel IsVisible="{Binding IsAvailable}">
-      <Border Classes="inspectorSection">
-        <StackPanel Spacing="8">
+      <!-- Hidden while §11.6's catalog is up: the pick is one question with one answer, and 244px
+           of rail cannot hold a grouped list under two fields and a slider. -->
+      <StackPanel IsVisible="{Binding !IsPickerOpen}">
+        <Border Classes="inspectorSection">
+          <StackPanel Spacing="8">
 
-          <!-- Tap. A Grid rather than a horizontal StackPanel: a StackPanel measures its children
-               with infinite width, so the field would never give the button room and a long token
-               would run off the 268px rail. -->
-          <StackPanel Spacing="4">
-            <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.TapFieldLabel}"
-                       Classes="body"
-                       TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <Border Grid.Column="0"
-                      Classes="actionField"
-                      ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.TapActionHint}"
-                      Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}">
-                <TextBlock Text="{Binding TapActionText}"
-                           Classes="monoValue"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center" />
-              </Border>
-              <Button Grid.Column="1"
-                      Classes="recordAction"
-                      Command="{Binding ArmTapActionCommand}">
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <Ellipse Classes="recordDot" VerticalAlignment="Center" />
-                  <!-- The 1.4s pulse (DurationRecordingPulse), reached by the class the listening
-                       cap and the recording macro banner already share — one looping animation in
-                       the whole app, and the budget allows exactly one. Bound rather than fixed, so
-                       it runs only while THIS field is the armed one. -->
-                  <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.RecordCaption}"
-                             Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}"
+            <!-- Tap. A Grid rather than a horizontal StackPanel: a StackPanel measures its children
+                 with infinite width, so the field would never give the button room and a long token
+                 would run off the 268px rail.
+
+                 §11.1's `Search` sits on the label line rather than beside the Record button: it is
+                 the second way to fill the same field, and a third control on the field row would
+                 leave the token itself too narrow to read. -->
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0"
+                           Text="{x:Static vm:TapAndHoldPanelViewModel.TapFieldLabel}"
+                           Classes="body"
+                           TextWrapping="Wrap" />
+                <Button Grid.Column="1"
+                        Classes="link"
+                        Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
+                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
+                        Command="{Binding SearchTapActionCommand}"
+                        VerticalAlignment="Top" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        Classes="actionField"
+                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.TapActionHint}"
+                        Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}">
+                  <TextBlock Text="{Binding TapActionText}"
+                             Classes="monoValue"
+                             TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-            </Grid>
-          </StackPanel>
+                </Border>
+                <Button Grid.Column="1"
+                        Classes="recordAction"
+                        Command="{Binding ArmTapActionCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Ellipse Classes="recordDot" VerticalAlignment="Center" />
+                    <!-- The 1.4s pulse (DurationRecordingPulse), reached by the class the listening
+                         cap and the recording macro banner already share — one looping animation in
+                         the whole app, and the budget allows exactly one. Bound rather than fixed, so
+                         it runs only while THIS field is the armed one. -->
+                    <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.RecordCaption}"
+                               Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </StackPanel>
 
-          <!-- Hold. Identical shape; the label is what says the two are different captures. -->
-          <StackPanel Spacing="4">
-            <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.HoldFieldLabel}"
-                       Classes="body"
-                       TextWrapping="Wrap" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <Border Grid.Column="0"
-                      Classes="actionField"
-                      ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.HoldActionHint}"
-                      Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}">
-                <TextBlock Text="{Binding HoldActionText}"
-                           Classes="monoValue"
-                           TextTrimming="CharacterEllipsis"
-                           VerticalAlignment="Center" />
-              </Border>
-              <Button Grid.Column="1"
-                      Classes="recordAction"
-                      Command="{Binding ArmHoldActionCommand}">
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <Ellipse Classes="recordDot" VerticalAlignment="Center" />
-                  <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.RecordCaption}"
-                             Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}"
+            <!-- Hold. Identical shape; the label is what says the two are different captures. -->
+            <StackPanel Spacing="4">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0"
+                           Text="{x:Static vm:TapAndHoldPanelViewModel.HoldFieldLabel}"
+                           Classes="body"
+                           TextWrapping="Wrap" />
+                <Button Grid.Column="1"
+                        Classes="link"
+                        Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
+                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
+                        Command="{Binding SearchHoldActionCommand}"
+                        VerticalAlignment="Top" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Border Grid.Column="0"
+                        Classes="actionField"
+                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.HoldActionHint}"
+                        Classes.armed="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}">
+                  <TextBlock Text="{Binding HoldActionText}"
+                             Classes="monoValue"
+                             TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
-            </Grid>
+                </Border>
+                <Button Grid.Column="1"
+                        Classes="recordAction"
+                        Command="{Binding ArmHoldActionCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Ellipse Classes="recordDot" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.RecordCaption}"
+                               Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </StackPanel>
+
+            <!-- Why the two are captured separately at all, verbatim from mockup 2h. -->
+            <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.CaptureRule}"
+                       Classes="meta muted"
+                       TextWrapping="Wrap" />
           </StackPanel>
+        </Border>
 
-          <!-- Why the two are captured separately at all, verbatim from mockup 2h. -->
-          <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.CaptureRule}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
+        <!-- ===== The delay ======================================================================
+             1-999 ms, opened on the device's own default (250 ms; 150 on the Advantage 360) — read
+             from TapAndHoldCapability, never a literal here.
 
-      <!-- ===== The delay ======================================================================
-           1-999 ms, opened on the device's own default (250 ms; 150 on the Advantage 360) — read
-           from TapAndHoldCapability, never a literal here.
+             KNOWN GAP: the slider keeps Fluent's 50px vertical extent. Tightening it means rewriting
+             `Grid#HorizontalTemplate`, which needs the template-part names the control-theme layer
+             refuses to hand out (Themes/ControlThemes/Fields.axaml, docs/app/design-system.md). -->
+        <Border Classes="inspectorSection">
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0"
+                         Text="{x:Static vm:TapAndHoldPanelViewModel.DelayLabel}"
+                         Classes="body"
+                         VerticalAlignment="Center" />
+              <!-- Mono: `250` is literally what `[t&h250]` carries in the layout file. -->
+              <TextBlock Grid.Column="1"
+                         Text="{Binding DelayReadout}"
+                         Classes="monoValue"
+                         VerticalAlignment="Center" />
+            </Grid>
 
-           KNOWN GAP: the slider keeps Fluent's 50px vertical extent. Tightening it means rewriting
-           `Grid#HorizontalTemplate`, which needs the template-part names the control-theme layer
-           refuses to hand out (Themes/ControlThemes/Fields.axaml, docs/app/design-system.md). -->
-      <Border Classes="inspectorSection">
-        <StackPanel Spacing="4">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0"
-                       Text="{x:Static vm:TapAndHoldPanelViewModel.DelayLabel}"
-                       Classes="body"
-                       VerticalAlignment="Center" />
-            <!-- Mono: `250` is literally what `[t&h250]` carries in the layout file. -->
-            <TextBlock Grid.Column="1"
-                       Text="{Binding DelayReadout}"
-                       Classes="monoValue"
-                       VerticalAlignment="Center" />
-          </Grid>
+            <!-- Bound to DelaySliderValue, not to DelayMilliseconds: a Slider coerces its Value into
+                 its own range and writes the coerced number back, which would silently rewrite an
+                 out-of-range delay from an older firmware's file the instant this panel drew it. -->
+            <Slider Minimum="{Binding MinimumDelayMilliseconds}"
+                    Maximum="{Binding MaximumDelayMilliseconds}"
+                    Value="{Binding DelaySliderValue}"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.DelayHint}" />
 
-          <!-- Bound to DelaySliderValue, not to DelayMilliseconds: a Slider coerces its Value into
-               its own range and writes the coerced number back, which would silently rewrite an
-               out-of-range delay from an older firmware's file the instant this panel drew it. -->
-          <Slider Minimum="{Binding MinimumDelayMilliseconds}"
-                  Maximum="{Binding MaximumDelayMilliseconds}"
-                  Value="{Binding DelaySliderValue}"
-                  TickFrequency="1"
-                  IsSnapToTickEnabled="True"
-                  ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.DelayHint}" />
+            <TextBlock Text="{Binding DelayDefaultCaption}"
+                       Classes="meta muted"
+                       IsVisible="{Binding HasDelayDefaultCaption}"
+                       TextWrapping="Wrap" />
 
-          <TextBlock Text="{Binding DelayDefaultCaption}"
-                     Classes="meta muted"
-                     IsVisible="{Binding HasDelayDefaultCaption}"
-                     TextWrapping="Wrap" />
+            <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.NoteText}"
+                       Classes="meta muted"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
 
-          <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.NoteText}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap" />
-        </StackPanel>
-      </Border>
+        <!-- ===== The write ======================================================================
+             No bottom hairline: this is the last block of the panel, and the rail's footer draws its
+             own line above itself. -->
+        <Border Classes="inspectorSection" BorderThickness="0">
+          <StackPanel Spacing="8">
 
-      <!-- ===== The write ======================================================================
-           No bottom hairline: this is the last block of the panel, and the rail's footer draws its
-           own line above itself. -->
-      <Border Classes="inspectorSection" BorderThickness="0">
+            <!-- §11.1's three validation messages and the locked-position refusal. Red, because this
+                 one really is a refusal to write rather than a note about a legal layout. -->
+            <TextBlock Text="{Binding ValidationMessage}"
+                       Classes="body statusError"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasValidationMessage}" />
+
+            <Button Classes="primaryAction"
+                    Content="{x:Static vm:TapAndHoldPanelViewModel.AssignCaption}"
+                    Command="{Binding AssignCommand}"
+                    HorizontalAlignment="Left" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== §11.6's catalog, INSIDE the panel ================================================
+           The overlay this replaced nested a second modal over the first, which is the only reason
+           EditorOverlayHost ever had a ShowNested. The rail nests nothing: this is the very same
+           TokenPickerViewModel the Remap panel hosts, shown in place of the fields until a row is
+           taken. It is what keeps a media key, a mouse button or a profile selector — none of which
+           a keyboard can press — assignable as a tap or a hold action. -->
+      <Border Classes="inspectorSection" BorderThickness="0" IsVisible="{Binding IsPickerOpen}">
         <StackPanel Spacing="8">
+          <!-- Which of the two fields this pick fills, in that field's own words. -->
+          <TextBlock Text="{Binding PickerFieldLabel}" Classes="body" TextWrapping="Wrap" />
 
-          <!-- §11.1's three validation messages and the locked-position refusal. Red, because this
-               one really is a refusal to write rather than a note about a legal layout. -->
-          <TextBlock Text="{Binding ValidationMessage}"
-                     Classes="body statusError"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding HasValidationMessage}" />
+          <ContentControl Content="{Binding Picker}" />
 
-          <Button Classes="primaryAction"
-                  Content="{x:Static vm:TapAndHoldPanelViewModel.AssignCaption}"
-                  Command="{Binding AssignCommand}"
+          <Button Classes="secondary"
+                  Content="{x:Static vm:TapAndHoldPanelViewModel.CancelSearchCaption}"
+                  Command="{Binding CloseSearchCommand}"
                   HorizontalAlignment="Left" />
         </StackPanel>
       </Border>
