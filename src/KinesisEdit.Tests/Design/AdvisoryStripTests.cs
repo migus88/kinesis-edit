@@ -4,6 +4,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using KinesisEdit.Core.Settings;
 using KinesisEdit.Services;
@@ -277,6 +278,60 @@ namespace KinesisEdit.Tests.Design
                 advisory.R > advisory.B,
                 $"The strip drew {advisory} once it had something to say, which is not an amber tint.");
             Assert.NotEqual(DesignTokens.ResolveBrushColor("StatusErrorBrush", variant), advisory);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheStrip_IsTheOpenSectionsWidthAndNotTheWindows(string variantName)
+        {
+            // Issue #128. The strip used to be a full-bleed row of the editor grid, so it ran on
+            // under the key inspector rail and read as chrome for the whole screen rather than as a
+            // note about the section it annotates. It is the section's column now — the same column
+            // the board and the action row live in — on all four tabs, which on Macros and Settings
+            // happens to be the whole window because those sections have no rail.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            var strip = view.GetVisualDescendants().OfType<AdvisoryStripView>().Single();
+
+            foreach (var tab in Enum.GetValues<EditorTab>())
+            {
+                editor.SelectedTab = tab;
+
+                Dispatcher.UIThread.RunJobs();
+                host.Capture();
+
+                Assert.Equal(SectionColumnOf(view).Bounds.Width, strip.Bounds.Width, precision: 3);
+            }
+
+            // ...and on the two tabs that have a rail, that is strictly narrower than the window: it
+            // stops at the seam, exactly where the board does.
+            foreach (var tab in new[] { EditorTab.Keys, EditorTab.Lighting })
+            {
+                editor.SelectedTab = tab;
+
+                Dispatcher.UIThread.RunJobs();
+                host.Capture();
+
+                var rail = view.GetVisualDescendants()
+                    .OfType<Control>()
+                    .Single(control => control.Classes.Contains("inspectorRail") && control.IsEffectivelyVisible);
+
+                Assert.True(
+                    strip.Bounds.Width < host.Window.ClientSize.Width,
+                    $"The strip is {strip.Bounds.Width} wide in a {host.Window.ClientSize.Width} window on {tab}.");
+                Assert.True(
+                    strip.TranslatePoint(new Point(strip.Bounds.Width, 0), host.Window)!.Value.X
+                        <= rail.TranslatePoint(default, host.Window)!.Value.X + 0.5,
+                    $"The strip runs past the rail's left edge on {tab}.");
+            }
         }
 
         [AvaloniaFact]
@@ -670,9 +725,13 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// The control the editor draws directly below the strip. The board, the inspector rail and
-        /// the legend row all live inside it, so its position is what "the design shifted" means.
-        /// Found by grid row rather than by type, so it survives whatever the tab is rebuilt into.
+        /// The control the editor draws directly below the strip. The board, the action row and the
+        /// legend row all live inside it, so its position is what "the design shifted" means. Found
+        /// by grid row rather than by type, so it survives whatever the tab is rebuilt into.
+        /// <para>
+        /// The inspector rail is <b>not</b> in it any more (issue #128): it is a column of the body
+        /// grid rather than a row of the content, which is exactly why it now runs the whole height.
+        /// </para>
         /// </summary>
         private static Control ContentBelowTheStrip(Control view)
         {
@@ -681,6 +740,18 @@ namespace KinesisEdit.Tests.Design
             var stripRow = Grid.GetRow(strip);
 
             return rows.Children.OfType<Control>().Single(child => Grid.GetRow(child) > stripRow);
+        }
+
+        /// <summary>
+        /// The open section's column of the editor's body grid — the seam's left-hand neighbour,
+        /// which holds the advisory strip over the padded content.
+        /// </summary>
+        private static Control SectionColumnOf(Control view)
+        {
+            var seam = view.GetVisualDescendants().OfType<GridSplitter>().Single();
+            var body = (Grid)seam.GetVisualParent()!;
+
+            return body.Children.OfType<Control>().Single(child => Grid.GetColumn(child) == 0);
         }
 
         private static ThemeVariant ToVariant(string name)

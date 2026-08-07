@@ -16,21 +16,45 @@
        specs/11-feature-dialogs.md rendered as an overlay over all of it. The picture itself is the
        generic KeyboardView; everything device-specific reaches it as data.
 
-       LAYOUT SHAPE, because two later issues build on it. The chrome is FULL-BLEED — the toolbar,
-       the tab bar and the Demo Mode bar run edge to edge — and only the content area below them is
-       padded. The root Panel with the overlay scrim as a sibling of the grid is load-bearing: the
-       spec 11 panels render into it.
+       LAYOUT SHAPE, AND IT IS THE WHOLE OF ISSUE #128's FIRST HALF. The chrome is FULL-BLEED — the
+       toolbar, the tab bar and the Demo Mode bar run edge to edge — and below it the screen is
+       split into COLUMNS rather than rows: the right-hand rail is one column that runs from the top
+       of the advisory row to the bottom of the window, and everything else — the advisory strip,
+       the board, the action row, the invalid-line block — lives in the column beside it.
 
          Row 0  toolbar        46  Home | device | mount path .......... Save | status chip
-         Row 1  tab bar        38  Layout Macros [Lighting] [Settings] ... LAYER (segments + kbd)
+         Row 1  tab bar        38  Layout Macros [Lighting] [Settings] ... profile · LAYER (segments)
          Row 2  Demo Mode bar      only in demo mode
-         Row 3  advisory strip 30  the open section's one calm sentence; collapses when it has none
-         Row 4  content            padded 24,16: the sections — the Layout/Macros board is the
-                                   keyboard canvas with its legend row under it, centred both
-                                   ways — then the provisional action row and the invalid-line
-                                   block -->
+         Row 3  the body           three columns:
+                  Col 0            the advisory strip (Auto) over the padded content (*)
+                  Col 1            the drag seam
+                  Col 2            the rail — key inspector on Keys, mode rail on Lighting
+
+       WHY THE BODY IS A GRID OF ITS OWN rather than four more rows of the root with the rail
+       spanning two of them. A Grid distributes a SPANNING child's desired size across the
+       definitions it spans, and only Auto ones can grow — so a rail spanning the advisory row and
+       the content row could push the 30px advisory row taller at a small window, and a full-bleed
+       toolbar spanning the star board column plus the Auto seam column could widen the seam. The
+       nested body has no spans at all, so neither distribution can happen, and the arrangement on
+       screen is exactly the one described above.
+
+       WHAT MOVED, AND WHY (issue #128):
+
+         · The advisory strip is the BOARD COLUMN's width, not the window's. It annotates the
+           section, and the section is what is left of the rail; a bar that ran on under the rail
+           read as chrome for the whole editor. Still ONE strip and one view model instance for all
+           four tabs (deviation 18) — its width changed, not its cardinality.
+         · The rail is OUTSIDE the padded content area, so the 16px the content is inset by no
+           longer shows as dead space above and below it.
+         · The provisional action row and the invalid-line block sit UNDER THE BOARD, inside the
+           board column, instead of under the board *and* the rail.
+         · On Macros and Settings the rail column and the seam collapse to zero width — both those
+           sections take the whole content width and always did.
+
+       The root Panel with the overlay scrim as a sibling of the grid is load-bearing: the spec 11
+       panels render into it. -->
   <Panel>
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
       <!-- ===== Row 0: the editor toolbar ====================================================
            It REPLACES the shell's app bar rather than sitting under it: the mockups draw exactly
@@ -40,6 +64,12 @@
            NO EJECT BUTTON, though mockup 1e draws one. "Nothing ejects implicitly" — eject is the
            dashboard card's own deliberate action (issue #88). Recorded as a deliberate deviation
            in docs/app/design-system.md.
+
+           NO PROFILE CAPTION EITHER, since issue #128. It used to be a muted `Profile 1` beside the
+           mount path — a read-only label for the one thing on this screen the user most wants to
+           change. The profile is a DROP-DOWN in the tab-bar row now, and a label repeating the
+           dropdown's own selection two rows above it would be the third place the app said the same
+           word.
 
            Home and the status chip come from the shell through `Shell` (IShellChrome), never from
            a $parent[MainWindow] lookup: every headless suite renders this view standalone, where
@@ -68,11 +98,6 @@
                        Classes="monoValue muted"
                        VerticalAlignment="Center"
                        IsVisible="{Binding HasMountPath}" />
-
-            <TextBlock Text="{Binding ProfileCaption}"
-                       Classes="meta muted"
-                       VerticalAlignment="Center"
-                       IsVisible="{Binding ProfileCaption, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
 
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -102,8 +127,8 @@
            The TabStrip control theme already carries the fixed 38 height, the inset face, the
            hairline under it, the padding and the 500-weight-plus-2px-accent-underline active state,
            so it is used as it is and paints the whole bar: it is stretched across the row and the
-           layer switcher is laid OVER its right end, rather than the bar being re-implemented as a
-           Border with a transparent strip inside it.
+           row's right-hand controls are laid OVER its right end, rather than the bar being
+           re-implemented as a Border with a transparent strip inside it.
 
            The strip carries only sections that work — a feature the board lacks is not rendered at
            all (EditorTabViewModel.CreateAll), which is why there is no longer a scoped TabStripItem
@@ -125,63 +150,137 @@
           </TabStrip.ItemTemplate>
         </TabStrip>
 
-        <!-- The layer switch, built from the model's layers, so it is two segments on a Freestyle
-             Edge RGB and five on an Advantage 360 (issue #41).
-
-             A ListBox rather than a row of buttons: the switch is one-of-N, which is what a
-             SelectingItemsControl is, and it buys the whole group one tab stop with arrow-key
-             movement inside it. `SelectedItem` reads the view model one way — the property is
-             read-only, and SelectLayer is the only thing allowed to move it — while the selection
-             change runs the very command the buttons used to.
-
-             NOT ON THE LIGHTING TAB. There are two different "layers" in this app and they are not
-             the same object: this one is the LAYOUT layer (layoutN.txt, what a key does), and the
-             Lighting tab has its own switch for the LED file's layer (ledN.txt, what a key looks
-             like). Drawn together they are two identical Top/Fn segment pairs a few hundred pixels
-             apart, and only one of them does anything while lighting is open — mockup 2f draws one
-             switch, relabelled "Lighting layer", and that is the tab's own. So the shell's yields
-             the row while Lighting has the screen, exactly as the whole app bar yields to the
-             editor's chrome (IShellChrome): one bar, one status chip, and now one layer switch. -->
+        <!-- The bar's right end: the profile the editor has open, then whichever layer switch the
+             open section owns. Horizontal, so nothing here can ever become a vertical StackPanel
+             above a board. -->
         <StackPanel Orientation="Horizontal"
-                    Spacing="8"
+                    Spacing="12"
                     Margin="0,0,12,0"
                     HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros,Settings'}">
-          <TextBlock Text="LAYER" Classes="sectionLabel" VerticalAlignment="Center" />
+                    VerticalAlignment="Center">
 
-          <ListBox Theme="{StaticResource SegmentedControl}"
-                   ItemsSource="{Binding Layers}"
-                   SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
-                   SelectionChanged="OnLayerSelectionChanged">
-            <ListBox.ItemTemplate>
-              <DataTemplate DataType="vm:KeyboardLayerViewModel">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
-                  <!-- The ⌥n legend of mockup 1f. The legend is display text; the accelerator it
-                       names is wired by the editor's keyboard grammar, which maps ⌥ to Alt on every
-                       platform (KinesisEdit.Input.EditorShortcuts).
+          <!-- ===== The profile picker (issue #128) ==========================================
+               A numbered profile is what the whole editor is looking at, and until now the only
+               way to change it was to close the board and come back. It is a drop-down rather than
+               another segmented switch because a device carries up to nine of them, and it is on
+               EVERY tab because a profile is not a layer: switching it reloads the layout, the led
+               file and the settings alike, so no section is unaffected by it.
 
-                       The ⌥ is DRAWN, not typed: U+2325 is in neither embedded IBM Plex family, so
-                       the character would be tofu on the one platform that shows it. The chip's
-                       Content is therefore a panel of mark-plus-text rather than a string — its
-                       template ends in a plain ContentPresenter, so this needs nothing from the
-                       ControlTheme and names no template part. Windows and Linux hide the mark and
-                       read `Alt+1`; the mark cannot inherit the chip's Foreground (an Icon paints
-                       from Stroke), which is what `Icon.kbdMark` in Styles/Editor.axaml is for. -->
-                  <ContentControl Classes="kbd" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="2">
-                      <controls:Icon Classes="kbdMark"
-                                     Data="{DynamicResource IconOption}"
-                                     IsVisible="{Binding ShowsOptionMark}"
-                                     VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding ShortcutHint}" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </ContentControl>
-                </StackPanel>
+               `SelectedItem` reads the view model ONE WAY — SelectProfileCommand is the only thing
+               allowed to move it, exactly as with the two switches beside it — and the selection
+               change runs that command through the code-behind. -->
+          <ComboBox ItemsSource="{Binding Profiles}"
+                    SelectedItem="{Binding SelectedProfile, Mode=OneWay}"
+                    SelectionChanged="OnProfileSelectionChanged"
+                    IsVisible="{Binding HasProfiles}"
+                    VerticalAlignment="Center">
+            <ComboBox.ItemTemplate>
+              <DataTemplate DataType="vm:ProfileOptionViewModel">
+                <TextBlock Text="{Binding Caption}" />
               </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <!-- The LAYOUT layer switch, built from the model's layers, so it is two segments on a
+               Freestyle Edge RGB and five on an Advantage 360 (issue #41).
+
+               A ListBox rather than a row of buttons: the switch is one-of-N, which is what a
+               SelectingItemsControl is, and it buys the whole group one tab stop with arrow-key
+               movement inside it. `SelectedItem` reads the view model one way — the property is
+               read-only, and SelectLayer is the only thing allowed to move it — while the selection
+               change runs the very command the buttons used to.
+
+               NOT ON THE LIGHTING TAB. There are two different "layers" in this app and they are
+               not the same object: this one is the LAYOUT layer (layoutN.txt, what a key does), and
+               the Lighting tab has the LED file's layer (ledN.txt, what a key looks like). Drawn
+               together they are two identical Top/Fn segment pairs a few hundred pixels apart, and
+               only one of them does anything while lighting is open — so this one yields the slot,
+               and the lighting switch below takes it. -->
+          <StackPanel Orientation="Horizontal"
+                      Spacing="8"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros,Settings'}">
+            <TextBlock Text="{x:Static views:KeyboardEditorView.LayerSwitchLabel}"
+                       Classes="sectionLabel"
+                       VerticalAlignment="Center" />
+
+            <ListBox Theme="{StaticResource SegmentedControl}"
+                     ItemsSource="{Binding Layers}"
+                     SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
+                     SelectionChanged="OnLayerSelectionChanged">
+              <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:KeyboardLayerViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
+                    <!-- The ⌥n legend of mockup 1f. The legend is display text; the accelerator it
+                         names is wired by the editor's keyboard grammar, which maps ⌥ to Alt on
+                         every platform (KinesisEdit.Input.EditorShortcuts).
+
+                         The ⌥ is DRAWN, not typed: U+2325 is in neither embedded IBM Plex family,
+                         so the character would be tofu on the one platform that shows it. The
+                         chip's Content is therefore a panel of mark-plus-text rather than a string
+                         — its template ends in a plain ContentPresenter, so this needs nothing from
+                         the ControlTheme and names no template part. Windows and Linux hide the
+                         mark and read `Alt+1`; the mark cannot inherit the chip's Foreground (an
+                         Icon paints from Stroke), which is what `Icon.kbdMark` in
+                         Styles/Editor.axaml is for. -->
+                    <ContentControl Classes="kbd" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="2">
+                        <controls:Icon Classes="kbdMark"
+                                       Data="{DynamicResource IconOption}"
+                                       IsVisible="{Binding ShowsOptionMark}"
+                                       VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ShortcutHint}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </ContentControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
+
+          <!-- ===== The LIGHTING layer switch (issue #128) ====================================
+               2f draws one switch on this screen, relabelled "Lighting layer", and it used to be
+               drawn by LightingTabView itself — above the board, inside the board column. That put
+               the editor's one switcher slot in two different places depending on the tab, and cost
+               the board a row of height it did not have at the window floor. It is the same slot as
+               the layout switch now, and it is still a DIFFERENT OBJECT: ledN.txt's layer, not
+               layoutN.txt's, which is why the label keeps saying so.
+
+               The Fn segment below the LED 1.0.44 gate stays visible and dimmed (specs/07 §3)
+               rather than being hidden — the layer exists — and the reason moved onto the switch as
+               its tooltip, because there is no room beside it in a 38px bar for the sentence
+               LightingTabView used to print. `ToolTip.ServiceEnabled` is what keeps an available
+               switch from opening an empty tip: LayerLockHint is the empty string when the gate is
+               open, and an empty string is not a null Tip. -->
+          <StackPanel Orientation="Horizontal"
+                      Spacing="8"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}">
+            <TextBlock Text="{x:Static views:KeyboardEditorView.LightingLayerSwitchLabel}"
+                       Classes="sectionLabel"
+                       VerticalAlignment="Center" />
+
+            <ListBox Theme="{StaticResource SegmentedControl}"
+                     ItemsSource="{Binding Lighting.Layers}"
+                     SelectedItem="{Binding Lighting.SelectedLayer, Mode=OneWay}"
+                     SelectionChanged="OnLightingLayerSelectionChanged"
+                     ToolTip.Tip="{Binding Lighting.LayerLockHint}"
+                     ToolTip.ServiceEnabled="{Binding !Lighting.IsLayerCustomizationAvailable}"
+                     VerticalAlignment="Center">
+              <!-- Scoped to this list, so it cannot outrank the layout switch's container theme. -->
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem" x:DataType="vm:LightingLayerViewModel">
+                  <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                </Style>
+              </ListBox.Styles>
+              <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:LightingLayerViewModel">
+                  <TextBlock Text="{Binding Caption}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
         </StackPanel>
       </Grid>
 
@@ -220,218 +319,254 @@
         </Grid>
       </Border>
 
-      <!-- ===== Row 3: the advisory strip ======================================================
-           One strip serves all four tabs: its sentence and its count are the *open* section's, and
-           the whole strip hides when that section has nothing to say — so this row is 30px or 0px
-           and the board below it never shifts as the user edits. The row is Auto rather than 30
-           because the `advisory_detail` preference lets the strip wrap to its full text and grow;
-           at its default (one trimmed line) the height is the same 30px it always was.
+      <!-- ===== Row 3: the body ================================================================
+           THREE COLUMNS: the section, the drag seam, and the rail beside them.
 
-           It is full-bleed like the chrome above it, and it sits above the content rather than
-           inside it because it belongs to the section, not to the board (mockup 1e draws it above
-           the board; the Macros and Settings tabs need the same strip). -->
-      <views:AdvisoryStripView Grid.Row="3" DataContext="{Binding AdvisoryStrip}" />
+           THE RAIL'S COLUMN IS WHERE ITS WIDTH LIVES (issue #119). It used to be a style setter on
+           `Border.inspectorRail`, and the rail used to collapse itself when nothing was selected so
+           this column measured zero — which is what made the board jump sideways to re-centre. The
+           rail is permanent now, and the width had to MOVE onto the column rather than be layered
+           over the setter: a GridSplitter resizes columns, and a local Width on the rail would have
+           outranked whatever the column said.
 
-      <!-- ===== Row 4: the content ============================================================
-           The only padded region; everything above it is full-bleed chrome. -->
-      <Grid Grid.Row="4" RowDefinitions="*,Auto,Auto" Margin="24,16">
+           The column is driven from code-behind (Views/InspectorRailColumn) rather than by a
+           binding, because a ColumnDefinition is a bare AvaloniaObject: it is in neither the
+           logical nor the visual tree, so it inherits no DataContext and a {Binding} on it has
+           nothing to resolve against.
 
-        <Panel Grid.Row="0">
-          <TextBlock Text="Loading profile..."
-                     Classes="body muted"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding IsLoading}" />
+           IT IS ONE COLUMN FOR BOTH RAILS SINCE ISSUE #128. Issue #124 had already given the two
+           rails one stored width, but they were still two columns in two grids — so the Lighting
+           tab's rail started under its own tab's padding and the two were only ever the same size
+           by arithmetic. There is one ColumnDefinition now and the rail's two faces are two
+           IsVisible-gated children of it, which is why switching between Keys and Lighting cannot
+           move the board by so much as a pixel. -->
+      <Grid x:Name="EditorColumns" Grid.Row="3" ColumnDefinitions="*,Auto,Auto">
 
-          <!-- A save is in flight: the picture stays on screen but nothing may be edited under it. -->
-          <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
-            <!-- THREE COLUMNS: the board, the drag seam, and the key inspector rail beside it.
-                 There is deliberately NO clipping container between the rail and the board:
-                 ClipToBounds is false the whole way down the board chain
-                 (Controls/KeyboardView.axaml), and a Border here would start cutting caps off.
+        <!-- ===== Column 0: the open section ===================================================
+             The advisory strip over the padded content. The strip is NOT full-bleed any more
+             (issue #128): it belongs to the section it annotates, and the section is what is left
+             of the rail. Its own 24px padding is the content grid's 24px inset, so the dot and the
+             sentence start on the same vertical line the board's own block does. -->
+        <Grid Grid.Column="0" RowDefinitions="Auto,*">
 
-                 THE RAIL'S COLUMN IS WHERE ITS WIDTH LIVES (issue #119). It used to be a style
-                 setter on `Border.inspectorRail`, and the rail used to collapse itself when nothing
-                 was selected so this column measured zero — which is what made the board jump
-                 sideways to re-centre. The rail is permanent now, and the width had to MOVE onto the
-                 column rather than be layered over the setter: a GridSplitter resizes columns, and a
-                 local Width on the rail would have outranked whatever the column said.
+          <!-- One strip serves all four tabs: its sentence and its count are the *open* section's,
+               and the whole strip empties when that section has nothing to say — but the ROW IS
+               RESERVED, NOT COLLAPSED (issue #119), so the board below it never shifts as the user
+               edits. The row is Auto rather than 30 because the `advisory_detail` preference lets
+               the strip wrap to its full text and grow; at its default (one trimmed line) the
+               height is the same 30px it always was. -->
+          <views:AdvisoryStripView Grid.Row="0" DataContext="{Binding AdvisoryStrip}" />
 
-                 The column is driven from code-behind (Views/InspectorRailColumn) rather than by a
-                 binding, because a ColumnDefinition is a bare AvaloniaObject: it is in neither the
-                 logical nor the visual tree, so it inherits no DataContext and a {Binding} on it
-                 has nothing to resolve against. That driver is SHARED with the Lighting tab's mode
-                 rail since issue #124 — the two rails are two contents of one resizable column
-                 reading one stored width — so the code-behind here does nothing but hand it the
-                 grid, follow the editor's rail model, and report the seam's drag.
+          <!-- The only padded region; everything above it is full-bleed chrome, and the rail beside
+               it carries its own inset surface instead. -->
+          <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto" Margin="24,16">
 
-                 THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to dock its
-                 editor beside this picture; it is a library now (mockup 1i) and takes the whole
-                 content area for itself, below. -->
-            <Grid x:Name="LayoutColumns"
-                  ColumnDefinitions="*,Auto,Auto"
-                  IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
-              <Grid Grid.Column="0" RowDefinitions="Auto,*">
-                <!--
-                  No "Esc cancels" here: while a key is listening the capture service swallows every
-                  physical key, Escape included, so Escape is assigned like any other key (a keyboard
-                  must be able to carry an Escape remap). Cancelling is therefore a pointer action.
-                -->
-                <StackPanel Grid.Row="0"
-                            Orientation="Horizontal"
-                            Spacing="12"
-                            Margin="0,0,0,8"
-                            VerticalAlignment="Center"
-                            IsVisible="{Binding IsListening}">
-                  <!-- The banner pulses with the cap it belongs to; the class is bound rather than
-                       fixed so the animation only runs while something is actually listening. -->
-                  <TextBlock Text="Press a key to assign it to the highlighted key."
-                             Classes="control statusWarning"
-                             Classes.recording="{Binding IsListening}"
-                             VerticalAlignment="Center" />
-                  <Button Content="Cancel"
-                          Command="{Binding CancelRemapCommand}"
-                          VerticalAlignment="Center" />
-                </StackPanel>
+            <Panel Grid.Row="0">
+              <TextBlock Text="Loading profile..."
+                         Classes="body muted"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsLoading}" />
 
-                <!-- The keyboard canvas and its legend row, centred as one block in the content
-                     area (handoff § "Screens → 3. Layout tab": "Content = keyboard canvas
-                     (centered, both split halves as separate panels with 26px gutter) + legend
-                     row"). The two share one container so the row is exactly as wide as the board
-                     and its ends line up with the board's, which is how mockups 1e/2a draw it.
+              <!-- A save is in flight: the picture stays on screen but nothing may be edited under
+                   it. The rail carries the same gate on its own host, because it is no longer
+                   inside this Panel. -->
+              <Panel IsVisible="{Binding !IsLoading}" IsEnabled="{Binding !IsBusy}">
+                <!-- The Layout tab: the keyboard canvas and its legend row. There is deliberately
+                     NO clipping container anywhere between here and a cap: ClipToBounds is false
+                     the whole way down the board chain (Controls/KeyboardView.axaml), and a Border
+                     here would start cutting caps off.
 
-                     IT IS A GRID, AND NOT A StackPanel, AND THAT IS THE WHOLE OF ISSUE #123's
-                     SECOND HALF. A vertically-oriented StackPanel measures its children with
-                     double.PositiveInfinity down its own stack axis — so the BoardScaleHost inside
-                     the picture saw no vertical constraint at all, took its scale from the width
-                     alone, and reported a block taller than the slot it had been given. Nothing
-                     clips on this chain (deliberately, for the focus halo), so the excess was
-                     PAINTED OVER the action row beneath rather than cut — at 1600x520 the legend
-                     row landed 18px past the bottom edge of the window. A star row hands the
-                     picture the height that is actually there, minus the legend,
-                     which is what "scale the whole board uniformly to fit the content area"
-                     (handoff § "Avalonia implementation notes") asks for.
+                     THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to
+                     dock its editor beside this picture; it is a library now (mockup 1i) and takes
+                     the whole content area for itself. -->
+                <Grid RowDefinitions="Auto,*"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
+                  <!--
+                    No "Esc cancels" here: while a key is listening the capture service swallows
+                    every physical key, Escape included, so Escape is assigned like any other key (a
+                    keyboard must be able to carry an Escape remap). Cancelling is therefore a
+                    pointer action.
+                  -->
+                  <StackPanel Grid.Row="0"
+                              Orientation="Horizontal"
+                              Spacing="12"
+                              Margin="0,0,0,8"
+                              VerticalAlignment="Center"
+                              IsVisible="{Binding IsListening}">
+                    <!-- The banner pulses with the cap it belongs to; the class is bound rather
+                         than fixed so the animation only runs while something is actually
+                         listening. -->
+                    <TextBlock Text="Press a key to assign it to the highlighted key."
+                               Classes="control statusWarning"
+                               Classes.recording="{Binding IsListening}"
+                               VerticalAlignment="Center" />
+                    <Button Content="Cancel"
+                            Command="{Binding CancelRemapCommand}"
+                            VerticalAlignment="Center" />
+                  </StackPanel>
 
-                     RULE: no vertically-oriented StackPanel may be an ancestor of a
-                     BoardScaleHost. KeyboardViewTests walks the real views and fails if one is.
+                  <!-- The keyboard canvas and its legend row, centred as one block in the content
+                       area (handoff § "Screens → 3. Layout tab": "Content = keyboard canvas
+                       (centered, both split halves as separate panels with 26px gutter) + legend
+                       row"). The two share one container so the row is exactly as wide as the board
+                       and its ends line up with the board's, which is how mockups 1e/2a draw it.
 
-                     NO OUTER FRAME. The picture draws its own bordered section panels now
-                     (Controls/KeyboardView.axaml), so the `keyboardBoard` inset surround this used
-                     to carry would be a second frame around them; the canvas here is the content
-                     area itself. The Lighting tab keeps the surround, because its board sits inside
-                     a column of controls rather than on a canvas of its own. -->
-                <Grid Grid.Row="1"
-                      RowDefinitions="*,Auto"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center"
-                      IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-                  <controls:KeyboardView Grid.Row="0"
-                                         DataContext="{Binding SelectedLayer}"
-                                         HorizontalAlignment="Center"
-                                         KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
+                       IT IS A GRID, AND NOT A StackPanel, AND THAT IS THE WHOLE OF ISSUE #123's
+                       SECOND HALF. A vertically-oriented StackPanel measures its children with
+                       double.PositiveInfinity down its own stack axis — so the BoardScaleHost
+                       inside the picture saw no vertical constraint at all, took its scale from the
+                       width alone, and reported a block taller than the slot it had been given.
+                       Nothing clips on this chain (deliberately, for the focus halo), so the excess
+                       was PAINTED OVER the action row beneath rather than cut: at 1600x520 the
+                       legend row landed 18px past the bottom edge of the window. A star row hands
+                       the picture the height that is actually there, minus the legend, which is
+                       what "scale the whole board uniformly to fit the content area" (handoff §
+                       "Avalonia implementation notes") asks for.
 
-                  <!-- ~14px below the board, as the mock spaces it. The row counts the state of
-                       the layer on screen and carries `Copy key…` and `Reset layer`. -->
-                  <views:BoardLegendView Grid.Row="1"
-                                         DataContext="{Binding BoardLegend}"
-                                         Margin="0,14,0,0" />
+                       RULE: no vertically-oriented StackPanel may be an ancestor of a
+                       BoardScaleHost. KeyboardViewTests walks the real views and fails if one is.
+
+                       NO OUTER FRAME. The picture draws its own bordered section panels
+                       (Controls/KeyboardView.axaml), so the `keyboardBoard` inset surround this
+                       used to carry would be a second frame around them; the canvas here is the
+                       content area itself. -->
+                  <Grid Grid.Row="1"
+                        RowDefinitions="*,Auto"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+                    <controls:KeyboardView Grid.Row="0"
+                                           DataContext="{Binding SelectedLayer}"
+                                           HorizontalAlignment="Center"
+                                           KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
+
+                    <!-- ~14px below the board, as the mock spaces it. The row counts the state of
+                         the layer on screen and carries `Copy key…` and `Reset layer`. -->
+                    <views:BoardLegendView Grid.Row="1"
+                                           DataContext="{Binding BoardLegend}"
+                                           Margin="0,14,0,0" />
+                  </Grid>
                 </Grid>
-              </Grid>
 
-              <!-- The seam. 6px of hit target over a 1px hairline, all of it the `RailSplitter`
-                   control theme's; this file names a class and nothing else. It sits in its own
-                   Auto column so the board's `*` and the rail's fixed width are the only two things
-                   sharing the row, which is what makes the splitter's "the right column is fixed, so
-                   resize only the right column" behaviour the one that fires. -->
-              <GridSplitter Grid.Column="1"
-                            Classes="railSplitter"
-                            DragDelta="OnRailSplitterDragged"
-                            DragCompleted="OnRailSplitterReleased" />
+                <!-- The Macros tab (mockup 1i) — a library, not an editor, and since issue #93 it
+                     takes the whole content area rather than docking beside the board. It draws no
+                     board of its own: `Pick another key` and `＋ Record a macro` both leave for the
+                     Layout tab, where the board and the one recording surface in this app are.
 
-              <!-- The key inspector rail (mockups 1e/2a). It is NOT modal: no scrim, no overlay
-                   host, and the board to its left stays clickable the whole time.
+                     A bare content host, exactly as the key inspector hosts its own panels, because
+                     ViewLocator resolves MacroLibraryViewModel to Views/MacroLibraryView by name. -->
+                <ContentControl Content="{Binding MacroLibraryPanel}"
+                                IsVisible="{Binding IsMacroLibraryVisible}" />
 
-                   NO GUTTER. The rail carries its own inset surface and a hairline down its left
-                   edge (`inspectorRail`), which is how mockup 1e separates it — and every pixel
-                   spent on a margin here comes out of the board's column, where the legend row under
-                   the picture is already exactly as wide as its own counts and actions.
+                <!-- The lighting editor of specs/07-lighting.md §3/§4. Since issue #128 this is the
+                     lighting BOARD COLUMN alone — the mode rail beside it is the editor's own rail
+                     column, and the lighting layer switch is in the tab-bar row. -->
+                <ContentControl Content="{Binding Lighting}"
+                                IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}" />
 
-                   NO IsVisible EITHER (issue #119). The rail is permanent: with nothing selected it
-                   draws its empty state rather than vanishing, so this column never measures zero
-                   and the board never shifts under the pointer. -->
-              <views:KeyInspectorView Grid.Column="2" DataContext="{Binding Inspector}" />
-            </Grid>
+                <!-- The keyboard settings of specs/08-settings.md §5; the rows are the device's, so
+                     this is one ContentControl and the panel decides what it shows. -->
+                <ContentControl Content="{Binding Settings}"
+                                IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Settings}" />
+              </Panel>
+            </Panel>
 
-            <!-- The Macros tab (mockup 1i) — a library, not an editor, and since issue #93 it takes
-                 the whole content area rather than docking beside the board. It draws no board of
-                 its own: `Pick another key` and `＋ Record a macro` both leave for the Layout tab,
-                 where the board and the one recording surface in this app are.
+            <!-- STILL PROVISIONAL, and it sits under the BOARD now rather than under the board and
+                 the rail together (issue #128): it is the section's action row, and the rail is not
+                 part of the section.
 
-                 A bare content host, exactly as the key inspector hosts its own panels, because
-                 ViewLocator resolves MacroLibraryViewModel to Views/MacroLibraryView by name. -->
-            <ContentControl Content="{Binding MacroLibraryPanel}"
-                            IsVisible="{Binding IsMacroLibraryVisible}" />
+                 Two more buttons have reached their real homes with the key inspector rail (issue
+                 #92): `Reset Key` is now the rail footer's `Revert key`, and `Tap and Hold` is a
+                 rail panel rather than a modal — both run the very same commands from there.
+                 `Reset Layer` left earlier, for the legend row under the board (#91).
 
-            <!-- The lighting editor of specs/07-lighting.md §3/§4; the panels are the mode's, so this
-                 is one ContentControl and the panel decides what it shows. -->
-            <ContentControl Content="{Binding Lighting}"
-                            IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}" />
+                 `Insert Delay` left with issue #93: §11.3 is edited in place on the key inspector's
+                 Macro panel now, so there is no command left for a button here to run.
 
-            <!-- The keyboard settings of specs/08-settings.md §5; the rows are the device's, so this
-                 is one ContentControl and the panel decides what it shows. -->
-            <ContentControl Content="{Binding Settings}"
-                            IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Settings}" />
-          </Panel>
+                 What is left waits for the rest of #93, which owns the editor-level action bar:
+                 `Reset Layout`, §11.6's macro-insertion picker, and Import/Export.
+
+                 Nothing here is the design's shape — it exists so every action stays reachable and
+                 keeps working in the meantime, on every tab.
+
+                 Every button reports its own availability through its command's CanExecute, so
+                 there is no visibility logic here. -->
+            <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
+              <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
+              <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
+              <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />
+              <Button Content="Import" Command="{Binding ImportCommand}" Margin="6,0,0,4" />
+            </WrapPanel>
+
+            <!-- Lines of the loaded file the parser could not apply (specs/04-layout-files.md
+                 §5.2). They are collapsed by default but never dropped silently. -->
+            <Expander Grid.Row="2"
+                      Margin="0,12,0,0"
+                      HorizontalAlignment="Stretch"
+                      IsVisible="{Binding HasInvalidLines}">
+              <Expander.Header>
+                <TextBlock Text="Some lines of this profile could not be applied"
+                           Classes="control statusWarning" />
+              </Expander.Header>
+              <ItemsControl ItemsSource="{Binding InvalidLineMessages}" MaxHeight="160">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="2" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="x:String">
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Classes="monoValueSmall muted" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+          </Grid>
+        </Grid>
+
+        <!-- ===== Column 1: the seam ===========================================================
+             6px of hit target over a 1px hairline, all of it the `RailSplitter` control theme's;
+             this file names a class and nothing else. It sits in its own Auto column so the
+             section's `*` and the rail's fixed width are the only two things sharing the row, which
+             is what makes the splitter's "the right column is fixed, so resize only the right
+             column" behaviour the one that fires.
+
+             It goes with the rail on the two tabs that have none: an Auto column whose only child
+             is invisible measures zero, so the section really does get the whole width. -->
+        <GridSplitter Grid.Column="1"
+                      Classes="railSplitter"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Lighting'}"
+                      DragDelta="OnRailSplitterDragged"
+                      DragCompleted="OnRailSplitterReleased" />
+
+        <!-- ===== Column 2: the rail ===========================================================
+             Two faces of one column: the KEY INSPECTOR on the Keys tab (mockups 1e/2a) and the
+             LIGHTING MODE RAIL on the Lighting tab (mockup 2f). Neither is modal — no scrim, no
+             overlay host, and the board to their left stays clickable the whole time.
+
+             NO GUTTER. The rail carries its own inset surface and a hairline down its left edge
+             (`inspectorRail`), which is how mockup 1e separates it — and every pixel spent on a
+             margin here comes out of the section's column.
+
+             NO IsVisible ON THE KEY INSPECTOR ITSELF for a selection (issue #119): the rail is
+             permanent on the tab it belongs to, and with nothing selected it draws its empty state
+             rather than vanishing, so this column never measures zero and the board never shifts
+             under the pointer. What IS gated is which of the two rails the column is showing, and
+             whether the column exists at all — Macros and Settings have no rail, and the code-behind
+             collapses the column to zero for them by watching this host's IsVisible. -->
+        <Panel x:Name="RailHost"
+               Grid.Column="2"
+               IsEnabled="{Binding !IsBusy}"
+               IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Lighting'}">
+          <views:KeyInspectorView
+              DataContext="{Binding Inspector}"
+              IsVisible="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}" />
+
+          <views:LightingModeRailView
+              DataContext="{Binding Lighting}"
+              IsVisible="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Lighting}" />
         </Panel>
-
-        <!-- STILL PROVISIONAL, and smaller again. Two more buttons have reached their real homes
-             with the key inspector rail (issue #92): `Reset Key` is now the rail footer's
-             `Revert key`, and `Tap and Hold` is a rail panel rather than a modal — both run the
-             very same commands from there. `Reset Layer` left earlier, for the legend row under the
-             board (#91).
-
-             `Insert Delay` left with issue #93: §11.3 is edited in place on the key inspector's
-             Macro panel now, so there is no command left for a button here to run.
-
-             What is left waits for the rest of #93, which owns the editor-level action bar:
-             `Reset Layout`, §11.6's macro-insertion picker, and Import/Export.
-
-             Nothing here is the design's shape — it exists so every action stays reachable and
-             keeps working in the meantime, on every tab, which is why it sits under the whole
-             content area rather than under the board.
-
-             Every button reports its own availability through its command's CanExecute, so there is
-             no visibility logic here. -->
-        <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
-          <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
-          <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
-          <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />
-          <Button Content="Import" Command="{Binding ImportCommand}" Margin="6,0,0,4" />
-        </WrapPanel>
-
-        <!-- Lines of the loaded file the parser could not apply (specs/04-layout-files.md §5.2). They
-             are collapsed by default but never dropped silently. -->
-        <Expander Grid.Row="2"
-                  Margin="0,12,0,0"
-                  HorizontalAlignment="Stretch"
-                  IsVisible="{Binding HasInvalidLines}">
-          <Expander.Header>
-            <TextBlock Text="Some lines of this profile could not be applied"
-                       Classes="control statusWarning" />
-          </Expander.Header>
-          <ItemsControl ItemsSource="{Binding InvalidLineMessages}" MaxHeight="160">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Spacing="2" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="x:String">
-                <TextBlock Text="{Binding}" TextWrapping="Wrap" Classes="monoValueSmall muted" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </Expander>
       </Grid>
     </Grid>
 

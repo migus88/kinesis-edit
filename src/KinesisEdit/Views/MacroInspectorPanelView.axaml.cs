@@ -52,6 +52,18 @@ namespace KinesisEdit.Views
     /// drag state is dropped. Below the threshold nothing is taken and the press is the ordinary
     /// click that selects the step.
     /// </para>
+    /// <para>
+    /// <b>4. What the drag looks like (issue #128).</b> It used to show only where the drop would
+    /// land, so the step being carried was invisible and nothing in the list moved until the pointer
+    /// came up — "the view is only updated after the movement". From the threshold the source row now
+    /// wears <see cref="MacroInspectorStepViewModel.IsDragSource"/> and dims in place, and a
+    /// <b>ghost</b> — the same row face, on the popover elevation — is written to <c>DragLayer</c>
+    /// at the pointer on every move. The ghost is <c>IsHitTestVisible="False"</c>, which is not a
+    /// nicety: the drop row is found by hit-testing the release <em>position</em>, so a hittable
+    /// ghost would sit under the pointer and answer every one of those tests itself. Neither state
+    /// animates — the ghost is pinned to the pointer, and a transition on its position would make it
+    /// lag the very gesture it exists to show — so nothing was added to <c>Themes/Motion.axaml</c>.
+    /// </para>
     /// </summary>
     public partial class MacroInspectorPanelView : UserControl
     {
@@ -68,8 +80,24 @@ namespace KinesisEdit.Views
         /// <summary>Where that press landed, in this panel's coordinates — what the threshold measures from.</summary>
         private Point _dragOrigin;
 
+        /// <summary>
+        /// Where inside the pressed row that press landed. The ghost is offset by it, so the row
+        /// keeps the same relation to the pointer it had when it was picked up rather than jumping
+        /// its own corner under the cursor.
+        /// </summary>
+        private Point _dragGrabOffset;
+
         /// <summary>The row currently wearing the drop ring, or null.</summary>
         private MacroInspectorStepViewModel? _dropTarget;
+
+        /// <summary>The row being carried — the one wearing <c>IsDragSource</c> — or null.</summary>
+        private MacroInspectorStepViewModel? _dragSource;
+
+        /// <summary>The row the pointer went down on, or null. Not yet carried; see <see cref="_dragSource"/>.</summary>
+        private MacroInspectorStepViewModel? _pressedStep;
+
+        /// <summary>How wide that row was, so the ghost is a copy of it rather than a shrink-wrapped label.</summary>
+        private double _pressedRowWidth;
 
         /// <summary>Creates the panel view.</summary>
         public MacroInspectorPanelView()
@@ -105,13 +133,26 @@ namespace KinesisEdit.Views
                 return;
             }
 
+            var position = e.GetPosition(this);
+
             _dragFromPosition = step.Position;
-            _dragOrigin = e.GetPosition(this);
+            _dragOrigin = position;
+            _pressedStep = step;
+
+            // Measured on the press rather than on the threshold: by the time the gesture is a drag
+            // the pointer has left the row, and the ghost has to be the row as it was picked up.
+            if (FindStepRoot(e.Source as Control) is { } row
+                && row.TranslatePoint(new Point(0, 0), this) is { } origin)
+            {
+                _dragGrabOffset = position - origin;
+                _pressedRowWidth = row.Bounds.Width;
+            }
         }
 
         /// <summary>
         /// Follows the carried step: takes the capture once the press has travelled far enough to be
-        /// a drag, and rings the row the drop would land on.
+        /// a drag, lifts the source row into the ghost, keeps the ghost under the pointer, and rings
+        /// the row the drop would land on.
         /// </summary>
         private void OnPointerMovedOverStep(object? sender, PointerEventArgs e)
         {
@@ -131,6 +172,11 @@ namespace KinesisEdit.Views
             {
                 e.Pointer.Capture(this);
             }
+
+            // Idempotent: the first move past the threshold lifts the row, every later one only
+            // moves the ghost it produced.
+            ShowDragSource(_pressedStep);
+            MoveGhostTo(position);
 
             ShowDropTarget(FindStepAt(position));
         }
@@ -177,13 +223,71 @@ namespace KinesisEdit.Views
             return Math.Abs(delta.X) >= DragThresholdPixels || Math.Abs(delta.Y) >= DragThresholdPixels;
         }
 
-        /// <summary>Drops the armed position and the ring; every end of a gesture goes through it.</summary>
+        /// <summary>
+        /// Drops the armed position, the ring and the carried row; every end of a gesture goes
+        /// through it — the release, a capture lost to anything else, and the next press.
+        /// </summary>
         private void Disarm()
         {
             _dragFromPosition = 0;
             _dragOrigin = default;
+            _dragGrabOffset = default;
+            _pressedStep = null;
+            _pressedRowWidth = 0;
 
             ShowDropTarget(null);
+            ShowDragSource(null);
+        }
+
+        /// <summary>
+        /// Lifts <paramref name="step"/> out of the list: the row itself dims through
+        /// <see cref="MacroInspectorStepViewModel.IsDragSource"/> and the ghost takes its face and
+        /// its width. Null puts it back. Called on every move, so it does nothing when the state has
+        /// not changed.
+        /// </summary>
+        private void ShowDragSource(MacroInspectorStepViewModel? step)
+        {
+            if (ReferenceEquals(_dragSource, step))
+            {
+                return;
+            }
+
+            if (_dragSource is not null)
+            {
+                _dragSource.IsDragSource = false;
+            }
+
+            _dragSource = step;
+
+            if (_dragSource is not null)
+            {
+                _dragSource.IsDragSource = true;
+            }
+
+            DragGhostContent.Content = _dragSource;
+
+            if (_pressedRowWidth > 0)
+            {
+                DragGhost.Width = _pressedRowWidth;
+            }
+
+            DragGhost.IsVisible = _dragSource is not null;
+        }
+
+        /// <summary>
+        /// Pins the ghost to the pointer, keeping the grab point the press had inside the row. Set
+        /// directly rather than through a transition: the ghost <em>is</em> the pointer's position
+        /// made visible, and anything easing towards it would lag the gesture.
+        /// </summary>
+        private void MoveGhostTo(Point position)
+        {
+            if (_dragSource is null)
+            {
+                return;
+            }
+
+            Canvas.SetLeft(DragGhost, position.X - _dragGrabOffset.X);
+            Canvas.SetTop(DragGhost, position.Y - _dragGrabOffset.Y);
         }
 
         /// <summary>
@@ -236,6 +340,26 @@ namespace KinesisEdit.Views
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The whole row a hit landed in — the <b>outermost</b> control still bound to that step, and
+        /// so the one whose bounds are the row's. <see cref="FindStep"/> stops at the first match,
+        /// which inside a templated button is a text run; the ghost needs the row.
+        /// </summary>
+        private static Control? FindStepRoot(Control? hit)
+        {
+            Control? root = null;
+
+            for (var control = hit; control is not null; control = control.GetVisualParent() as Control)
+            {
+                if (control.DataContext is MacroInspectorStepViewModel)
+                {
+                    root = control;
+                }
+            }
+
+            return root;
         }
     }
 }

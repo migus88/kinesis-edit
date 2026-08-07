@@ -750,6 +750,291 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(2, selectedRuns);
         }
 
+        /// <summary>
+        /// Issue #128, the reported defect: <i>"the view is only updated after the movement. I want
+        /// to see a draggable element while I drag."</i> The drop ring said where the step would
+        /// land and nothing at all said <b>what</b> was being carried, so until the pointer came up
+        /// the list looked inert. From the 4 px threshold the source row dims in place and a copy of
+        /// it rides the pointer.
+        /// <para>
+        /// Driven through Avalonia's own input pipeline, because everything asserted here lives in
+        /// the view: a view-model test of <c>MoveStep</c> passes with no ghost at all.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheCarriedStep_LiftsIntoAGhostThatTracksThePointer(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            var ghost = GhostOf(view);
+
+            Assert.False(ghost.IsEffectivelyVisible);
+            Assert.All(panel.Steps.Items, step => Assert.False(step.IsDragSource));
+
+            var from = RowBodyPointOf(host, view, 1);
+
+            host.Window.MouseMove(from);
+            host.Window.MouseDown(from, MouseButton.Left);
+
+            // UNDER THE THRESHOLD NOTHING LIFTS. A user who taps a row to point ⌥↑↓ at it must not
+            // see the row flicker out from under them.
+            host.Window.MouseMove(from + new Point(2, 0), RawInputModifiers.LeftMouseButton);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(ghost.IsEffectivelyVisible);
+            Assert.All(panel.Steps.Items, step => Assert.False(step.IsDragSource));
+
+            var overThird = RowBodyPointOf(host, view, 3);
+
+            host.Window.MouseMove(overThird, RawInputModifiers.LeftMouseButton);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // The carried row, and ONLY it.
+            Assert.Equal([true, false, false], panel.Steps.Items.Select(step => step.IsDragSource));
+            Assert.True(ghost.IsEffectivelyVisible);
+
+            // MANDATORY, and not a nicety: the drop row is found by hit-testing the pointer's
+            // position against the live tree, so a hittable ghost would answer every one of those
+            // tests itself and the drag would land on nothing.
+            Assert.False(ghost.IsHitTestVisible);
+
+            // It carries the row's own face rather than a second, drifting copy of it.
+            Assert.Contains(
+                panel.Steps.Items[0].TokenText,
+                ghost.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text));
+
+            var left = Canvas.GetLeft(ghost);
+            var top = Canvas.GetTop(ghost);
+            var overSecond = RowBodyPointOf(host, view, 2);
+
+            host.Window.MouseMove(overSecond, RawInputModifiers.LeftMouseButton);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // IT FOLLOWS THE POINTER rather than snapping to a row: it keeps the grab point the
+            // press had inside the row, so the ghost's own movement is exactly the pointer's.
+            Assert.Equal(left + (overSecond.X - overThird.X), Canvas.GetLeft(ghost), 1);
+            Assert.Equal(top + (overSecond.Y - overThird.Y), Canvas.GetTop(ghost), 1);
+
+            host.Window.MouseUp(overSecond, MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // ...and both are gone the moment the gesture ends. The reorder still happened.
+            Assert.False(ghost.IsEffectivelyVisible);
+            Assert.All(panel.Steps.Items, step => Assert.False(step.IsDragSource));
+            Assert.Equal(["[s]", "[e]", "[t]"], TokensOf(panel));
+        }
+
+        /// <summary>
+        /// A capture stolen mid-gesture — a flyout, a window deactivation — drops the drag, and the
+        /// ghost has to go with it. Without this the panel would be left with a floating copy of a
+        /// row over a list that is not being dragged.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task TheGhost_IsDroppedWhenTheCaptureIsLost()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, "Dark");
+
+            host.Capture();
+
+            var ghost = GhostOf(view);
+            var from = RowBodyPointOf(host, view, 1);
+
+            host.Window.MouseMove(from);
+            host.Window.MouseDown(from, MouseButton.Left);
+            host.Window.MouseMove(RowBodyPointOf(host, view, 3), RawInputModifiers.LeftMouseButton);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(ghost.IsEffectivelyVisible);
+
+            using var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, isPrimary: true);
+
+            view.RaiseEvent(new PointerCaptureLostEventArgs(view, pointer));
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(ghost.IsEffectivelyVisible);
+            Assert.All(panel.Steps.Items, step => Assert.False(step.IsDragSource));
+
+            // And the stale gesture cannot fire on the next unrelated release.
+            host.Window.MouseUp(RowBodyPointOf(host, view, 3), MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["[e]", "[s]", "[t]"], TokensOf(panel));
+        }
+
+        /// <summary>
+        /// Issue #128's other half: the chord composer. It is <b>closed at rest</b> — the rail is
+        /// 300 px wide and the picker alone is most of a screenful — and discloses the eight sided
+        /// modifier marks plus the same key search the rail's Remap panel hosts.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheChordComposer_IsClosedAtRest_AndDisclosesItsMarksAndItsPicker(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, VisibleTextsOf(view));
+            Assert.Contains(MacroInspectorPanelViewModel.ComposeChordCaption, VisibleTextsOf(view));
+
+            // Closed: nothing of the picker is on screen, and in particular its search field is not
+            // — the Steps panel's own "there is no visible TextBox until the delay editor opens"
+            // rule has to survive the composer being added beside it.
+            Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+            Assert.DoesNotContain(MacroInspectorPanelViewModel.ComposerHint, VisibleTextsOf(view));
+
+            panel.ToggleComposerCommand.Execute(null);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Contains(MacroInspectorPanelViewModel.ComposerHint, VisibleTextsOf(view));
+            Assert.Contains(MacroInspectorPanelViewModel.HideComposerCaption, VisibleTextsOf(view));
+
+            var toggles = view.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.DataContext is MacroChordModifier)
+                .ToArray();
+
+            // `⇧ R⇧ ⌃ R⌃ ⌥ R⌥ ⌘ R⌘` — the step list's own spelling, left unmarked and only the
+            // right side spelled, with the words in the tooltip because a mark alone is not
+            // accessible text.
+            Assert.Equal(
+                ["⇧", "R⇧", "⌃", "R⌃", "⌥", "R⌥", "⌘", "R⌘"],
+                toggles.Select(toggle => string.Concat(VisibleRunsOf(toggle).Select(run => run.Text))));
+            Assert.Equal("Left Ctrl", toggles[2].GetValue(ToolTip.TipProperty));
+
+            // The mark is in the third family; the `R` beside it is not, because the key-symbol
+            // subset carries no Latin letters.
+            foreach (var toggle in toggles)
+            {
+                var runs = VisibleRunsOf(toggle);
+
+                Assert.Contains("keySymbol", runs[^1].Classes);
+
+                if (runs.Length > 1)
+                {
+                    Assert.DoesNotContain("keySymbol", runs[0].Classes);
+                }
+            }
+
+            // The picker is really there, and it is the app's own — one implementation, now four
+            // call sites.
+            Assert.Single(view.GetVisualDescendants().OfType<TokenPickerView>());
+            Assert.Single(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+        }
+
+        /// <summary>
+        /// The whole point of the composer, at the glass: <c>Ctrl+1</c> — which macOS keeps for
+        /// itself and no capture can ever hear — authored with two clicks and written as a step.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task TheChordComposer_AuthorsCtrl1_WithoutAKeypress()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, "Dark");
+
+            host.Capture();
+
+            panel.ToggleComposerCommand.Execute(null);
+
+            Dispatcher.UIThread.RunJobs();
+
+            var control = view.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => button.DataContext is MacroChordModifier { Modifier: MacroModifiers.LeftControl });
+
+            control.Command!.Execute(control.CommandParameter);
+
+            panel.ChordPicker.Query = "1";
+            panel.ChordPicker.SelectedRow = panel.ChordPicker.Rows.Single(
+                row => ReferenceEquals(row.Definition, KeyRegistry.FindByToken("1", TokenDialect.Gen1)));
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var insert = Assert.Single(
+                view.GetVisualDescendants().OfType<Button>(),
+                button => button.IsEffectivelyVisible
+                          && ReferenceEquals(button.Command, panel.InsertChordCommand));
+
+            insert.Command!.Execute(null);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var step = Assert.Single(panel.Steps.Items, item => item.TokenText == "[1]");
+
+            Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(step.Modifiers).Symbol);
+            Assert.Contains("[1]", VisibleTextsOf(view));
+        }
+
+        /// <summary>
+        /// The sentence that says why the composer exists, on the panel and beside the rule it
+        /// qualifies. Read off the glass, because a string constant nobody draws helps nobody.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task TheOsReservedNote_IsDrawnBesideTheCaptureRule()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = new MacroInspectorPanelView { DataContext = await scenes.CreateMacroInspectorPanelAsync() };
+
+            using var host = Show(view, "Dark");
+
+            host.Capture();
+
+            var texts = VisibleTextsOf(view);
+
+            Assert.Contains(MacroInspectorPanelViewModel.CaptureRule, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.OsReservedNote, texts);
+        }
+
+        /// <summary>The floating copy of the carried row, hidden except while a drag is in flight.</summary>
+        private static Border GhostOf(Control view)
+        {
+            return Assert.Single(
+                view.GetVisualDescendants().OfType<Border>(),
+                border => border.Classes.Contains("macroStepGhost"));
+        }
+
         private static void SelectMacroMode(KeyboardEditorViewModel editor)
         {
             SelectMode(editor, KeyInspectorMode.Macro);

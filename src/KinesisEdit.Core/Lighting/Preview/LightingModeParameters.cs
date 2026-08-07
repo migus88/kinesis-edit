@@ -57,6 +57,7 @@ namespace KinesisEdit.Core.Lighting.Preview
                 AcceptsSpeed = definition.WritesSpeed,
                 HasPerKeyColors = definition.HasPerKeyColors,
                 Directions = directions,
+                AcceptsPaint = LightingPaintModes.AcceptsPaint(mode),
                 RendersPaintDirectly = LightingPaintModes.RendersPaintDirectly(mode),
                 Summary = LightingModeSummaryBuilder.Build(
                     acceptsEffectColor,
@@ -91,6 +92,15 @@ namespace KinesisEdit.Core.Lighting.Preview
         public IReadOnlyList<LightingDirection> Directions { get; init; } = [];
 
         /// <summary>
+        /// Whether a paint gesture on a layer in this mode can reach the file at all —
+        /// <see cref="LightingPaintModes.AcceptsPaint"/>, i.e. false for exactly Disable and Pitch
+        /// Black, whose layers have no file body under specs/07-lighting.md §2.2 (an empty section
+        /// and a token that is never written). It is why the colour picker is not drawn in them:
+        /// there is no effect to show a colour through and no line for one to land on.
+        /// </summary>
+        public bool AcceptsPaint { get; init; }
+
+        /// <summary>
         /// Whether the preview draws the layer's per-key painted colours rather than ignoring
         /// them — <see cref="LightingPaintModes.RenderedDirectly"/>.
         /// </summary>
@@ -112,7 +122,12 @@ namespace KinesisEdit.Core.Lighting.Preview
         /// </summary>
         public required string Summary { get; init; }
 
-        /// <summary>Whether any colour swatch applies, i.e. whether the colour picker has a target.</summary>
+        /// <summary>
+        /// Whether any colour swatch applies, i.e. whether the colour picker has a target of its
+        /// own. It <b>implies <see cref="AcceptsPaint"/></b> — the two modes that accept no paint
+        /// write no colour line either (§2.2), so a swatch is never on screen while the picker is
+        /// not.
+        /// </summary>
         public bool AcceptsAnyColor => AcceptsEffectColor || AcceptsBaseColor;
 
         /// <summary>Whether the direction control applies at all.</summary>

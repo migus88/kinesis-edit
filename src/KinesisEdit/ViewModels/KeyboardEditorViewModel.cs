@@ -704,6 +704,12 @@ namespace KinesisEdit.ViewModels
             ImportCommand = new AsyncRelayCommand(ImportAsync, () => CanImport());
             CloseOverlayCommand = new RelayCommand(_overlays.Dismiss, () => ActiveOverlay is not null);
 
+            // The profile picker (KeyboardEditorViewModel.Profiles.cs). Built here, from device
+            // facts alone and before the first SelectTab below, for the same reason the tab strip
+            // is: which profiles a board has is not something a load discovers.
+            Profiles = BuildProfileOptions();
+            SelectProfileCommand = new AsyncRelayCommand<ProfileOptionViewModel>(SelectProfileAsync, CanSelectProfile);
+
             // The legend row is a projection, not a decision: it holds the shown layer's five
             // counts and runs two of this class's commands. Built here so it exists before the
             // first SelectTab/SelectLayer, both of which refresh it.
@@ -801,7 +807,9 @@ namespace KinesisEdit.ViewModels
         /// The unsaved-changes guard of docs/design/handoff.md §2 ("leaving via Home asks once
         /// (modal) unless opted out"), asked by the shell before Home or another device replaces
         /// this editor. The question itself is <see cref="UnsavedChangesPrompt"/>'s, so this board
-        /// and the pedal ask it in the same words.
+        /// and the pedal ask it in the same words, and asking it is
+        /// <see cref="ConfirmDiscardingUnsavedWorkAsync"/>'s — the profile picker asks the same one
+        /// before a switch.
         /// <para>
         /// A save in flight refuses outright, without a question — but with a toast, for the same
         /// reason the pedal editor does it (docs/app/savant-elite.md, decision 5): leaving would
@@ -828,33 +836,7 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
-            // Demo mode leaves silently, and the test is explicit rather than falling out of
-            // IsDirty. A demo session is a real session over the fixture drive, so an edit really
-            // does make it dirty — but Save can never run there (03 §3.5), so the question would
-            // offer an answer that does nothing and a Discard for work that was never going
-            // anywhere. A load that produced no session still reports itself clean below.
-            if (IsDemoMode || !IsDirty)
-            {
-                return true;
-            }
-
-            // Asked once and carried: it picks the box — a read-only profile can hold edits it can
-            // never write, and offering it a Save would be a question with no working answer — and
-            // it is also what Yes meant, which is a different button in each of the two shapes.
-            var canSave = CanSave();
-
-            var outcome = await TryShowMessageBoxAsync(
-                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave, canSuppress: true))
-                .ConfigureAwait(true);
-
-            return UnsavedChangesPrompt.Interpret(outcome, canSave) switch
-            {
-                // Only a save that actually landed lets the navigation through: a failed one would
-                // discard the very work the question was about.
-                UnsavedChangesAnswer.Save => await TrySaveAsync().ConfigureAwait(true),
-                UnsavedChangesAnswer.Discard => true,
-                _ => false
-            };
+            return await ConfirmDiscardingUnsavedWorkAsync().ConfigureAwait(true);
         }
 
         /// <summary>
@@ -1012,6 +994,11 @@ namespace KinesisEdit.ViewModels
             Layout = outcome.Layout;
             ProfileCaption = outcome.Session is null ? string.Empty : BuildProfileCaption(outcome.Session.ProfileNumber);
             InvalidLineMessages = BuildInvalidLineMessages(outcome.Session);
+
+            // Which profile the picker reports is read off the session that just arrived
+            // (KeyboardEditorViewModel.Profiles.cs), so a first load, an import and a profile
+            // switch all announce it from one place.
+            RefreshSelectedProfile();
 
             Layers = outcome.Layout is not null && _visual is not null
                 ? KeyboardLayerViewModel.BuildAll(outcome.Layout, _visual, outcome.Session?.Lighting)
@@ -1919,6 +1906,53 @@ namespace KinesisEdit.ViewModels
             return outcome.Result == MessageBoxResult.Yes;
         }
 
+        /// <summary>
+        /// The unsaved-changes question itself, and the one reading of its answer: <b>true means
+        /// the caller may go ahead and abandon the open profile</b> — because there was nothing to
+        /// lose, because the user discarded it, or because a save actually landed. A failed save is
+        /// false: letting the caller through after one would discard the very work the question was
+        /// asked about.
+        /// <para>
+        /// It is a method rather than two copies because it now has <b>two</b> callers.
+        /// <see cref="ConfirmCloseAsync"/> asks it before Home or another device replaces this
+        /// editor, and the profile picker asks it before a switch
+        /// (<c>KeyboardEditorViewModel.Profiles.cs</c>): opening a different profile abandons the
+        /// open one exactly as leaving does, so it asks the same question in the same words rather
+        /// than growing a second, differently-shaped one — which is the same reasoning that put the
+        /// strings in <see cref="UnsavedChangesPrompt"/> in the first place.
+        /// </para>
+        /// <para>
+        /// Demo mode answers true silently, and the test is explicit rather than falling out of
+        /// <see cref="IsDirty"/>. A demo session is a real session over the fixture drive, so an
+        /// edit really does make it dirty — but Save can never run there (03 §3.5), so the question
+        /// would offer an answer that does nothing and a Discard for work that was never going
+        /// anywhere. A load that produced no session reports itself clean anyway.
+        /// </para>
+        /// </summary>
+        private async Task<bool> ConfirmDiscardingUnsavedWorkAsync()
+        {
+            if (IsDemoMode || !IsDirty)
+            {
+                return true;
+            }
+
+            // Asked once and carried: it picks the box — a read-only profile can hold edits it can
+            // never write, and offering it a Save would be a question with no working answer — and
+            // it is also what Yes meant, which is a different button in each of the two shapes.
+            var canSave = CanSave();
+
+            var outcome = await TryShowMessageBoxAsync(
+                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave, canSuppress: true))
+                .ConfigureAwait(true);
+
+            return UnsavedChangesPrompt.Interpret(outcome, canSave) switch
+            {
+                UnsavedChangesAnswer.Save => await TrySaveAsync().ConfigureAwait(true),
+                UnsavedChangesAnswer.Discard => true,
+                _ => false
+            };
+        }
+
         private bool CanSave()
         {
             // Demo mode never writes (03 §3.5), and the Advantage 360's factory profile is
@@ -2124,6 +2158,11 @@ namespace KinesisEdit.ViewModels
             OpenSearchCommand.NotifyCanExecuteChanged();
             ExportCommand.NotifyCanExecuteChanged();
             ImportCommand.NotifyCanExecuteChanged();
+
+            // Unlike the tab strip, the profile picker's rows really do come and go with the
+            // editor's state: a switch is refused while a save or a load is running and while a
+            // feature panel is open, and all three of those flags land here.
+            SelectProfileCommand.NotifyCanExecuteChanged();
         }
 
         /// <summary>

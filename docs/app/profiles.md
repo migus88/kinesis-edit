@@ -86,6 +86,16 @@ read. Because of this, no session can ever exist with `ProfileNumber == 0` — `
 profile 0" branch and the same check inside `Save`/`SaveAs` are the same shared guard, exercised
 directly through `Load` and through `SaveAs(0, ...)` from a session loaded at any other profile.
 
+**The guard is unreachable from the app, and that is on purpose rather than by luck.** Every
+`NumberedProfiles` scheme in `DeviceCatalog` — the Advantage 360's included — runs
+`FirstProfileNumber = 1` to `LastProfileNumber = 9`, so the editor's profile drop-down, which is
+built from that range verbatim, offers **1–9 and never a `Profile 0` row**: a row whose only possible
+outcome is `ProfileReadOnlyException` would violate the design's "absent, never disabled" law. The
+app-side flag is still implemented (`ProfileOptionViewModel.IsReadOnly`, asked of Core's own
+`profileNumber == 0 && HasReadOnlyFactoryProfile` rule and enforced by the picker's `CanExecute`), so
+a scheme that ever did start at 0 gets a refusal rather than an error dialog; it is exercised through
+a synthetic device, because no shipped one produces it.
+
 ## Save sequence (`Save` and `SaveAs` share one private method)
 
 1. Profile-0 guard (above).
@@ -178,7 +188,22 @@ keyboard editor ([keyboard-editor.md](keyboard-editor.md)), which loads
 and `PlanExport` from the feature panels ([feature-dialogs.md](feature-dialogs.md)). Import is gated
 on `CanSave` — the same flag that keeps the Adv360 factory profile read-only, so the editor never
 even reaches Core's guard — while an export only needs a session to exist, which excludes demo mode.
-`SaveAs` and `IsDirty` still have no consumer.
+
+**`Load` has a second consumer since issue #128**: the editor's profile drop-down calls it again, on
+the same factory, for another number, and hands the result to the same `Apply` the first load uses
+([keyboard-editor.md](keyboard-editor.md) § "The profile picker"). Two things follow that this module
+is the right place to state. The switch **writes nothing** — it is a read, so nothing here changes
+and no `Save`/`SaveAs` path is involved. And the outgoing session is simply dropped once the incoming
+one exists: `IProfileSession` is not `IDisposable`, because `ProfileSession` holds parsed lines and
+no handle, reading and writing one `IVDriveFileService` call at a time. The editor guards for the day
+that stops being true (`if (session is IDisposable)`), and the profile switch is the only path in the
+app that abandons a live session at all.
+
+`IsDirty` is the toolbar `Save`'s amber and the unsaved-changes guard's question
+(`KeyboardEditorViewModel.RefreshDirtyState`), so the seam's one remaining unconsumed member is
+Core's **`SaveAs`** — the app has no Save-As, no New and no free-named backup file (see "Deliberately
+not here"), and the *settings* half of `SaveAs`'s startup pairing is reached instead through the
+Settings tab's active-profile slider ([settings.md](settings.md)).
 
 ## Deliberately not here
 

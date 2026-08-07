@@ -44,6 +44,16 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(
                 "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.",
                 MacroInspectorPanelViewModel.CaptureRule);
+
+            // Issue #128: the honest sentence about what recording CANNOT do. It names the user's
+            // own example, it does not blame the app — the chord is taken above the application and
+            // never delivered — and it points at the composer, which is the way to author one.
+            Assert.Contains("Ctrl+1", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
+            Assert.Contains("system", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
+            Assert.Contains(
+                MacroInspectorPanelViewModel.ComposeChordCaption,
+                MacroInspectorPanelViewModel.OsReservedNote,
+                StringComparison.Ordinal);
             Assert.Equal("Playback speed", MacroInspectorPanelViewModel.SpeedMeterLabel);
             Assert.Equal("this macro", MacroInspectorPanelViewModel.MacroLengthMeterLabel);
             Assert.Equal("layout keystrokes", MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
@@ -638,6 +648,236 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(panel.IsRecordingControl(null));
         }
 
+        // ===== The chord composer (issue #128) ================================================
+        // The chords a user cannot record — `Ctrl+1` switches desktop on macOS, and a hotkey utility
+        // can claim any other — are consumed above the application and never delivered to it, so
+        // they are unreachable by capture at any price. These cover the way round that: authoring
+        // the chord instead of pressing it.
+
+        [Fact]
+        public void TheComposer_IsClosedAtRest_AndOffersEverySidedModifier()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.False(scene.Panel.IsComposerOpen);
+            Assert.Equal(MacroInspectorPanelViewModel.ComposeChordCaption, scene.Panel.ComposerToggleCaption);
+
+            // Ctrl, Shift, Alt and Cmd, each in the two spellings 05 §5.1 distinguishes. The generic
+            // codes are deliberately absent: capture always reports a side, and authoring a set that
+            // does not say which side it means would write a worse macro than recording produces.
+            Assert.Equal(
+                [
+                    MacroModifiers.LeftShift,
+                    MacroModifiers.RightShift,
+                    MacroModifiers.LeftControl,
+                    MacroModifiers.RightControl,
+                    MacroModifiers.LeftAlt,
+                    MacroModifiers.RightAlt,
+                    MacroModifiers.LeftWin,
+                    MacroModifiers.RightWin
+                ],
+                scene.Panel.ChordModifiers.Select(modifier => modifier.Modifier));
+
+            Assert.All(scene.Panel.ChordModifiers, modifier => Assert.False(modifier.IsOn));
+
+            // Left is the unmarked side; only the right-hand four spell an `R`.
+            Assert.Equal(4, scene.Panel.ChordModifiers.Count(modifier => modifier.HasSide));
+        }
+
+        [Fact]
+        public void TheComposer_InsertsTheTickedModifiersWithTheChosenKey()
+        {
+            // THE USER'S OWN EXAMPLE. `Ctrl+1` cannot be recorded on macOS at any price — the window
+            // server switches desktop and the app is never told — so this is the case the whole
+            // feature exists for, and it is authored without a keypress.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.PickChordKey("1");
+
+            Assert.True(scene.Panel.InsertChordCommand.CanExecute(null));
+
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            var keystroke = Assert.Single(scene.CurrentMacro!.Keystrokes);
+
+            Assert.Equal("1", keystroke.Key.GetToken(TokenDialect.Gen1));
+            Assert.Equal(MacroModifiers.LeftControl, keystroke.Modifiers);
+
+            // ...and the step list shows it exactly as a recorded chord would: `[1] ⌃ held`.
+            var step = Assert.Single(scene.Panel.Steps.Items);
+
+            Assert.Equal("[1]", step.TokenText);
+            Assert.Equal(MacroInspectorStepViewModel.HeldAction, step.ActionText);
+            Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(step.Modifiers).Symbol);
+        }
+
+        [Fact]
+        public void TheComposer_CreatesTheMacroOnTheFirstInsert_JustAsRecordingDoes()
+        {
+            // "There is no Assign button" cuts both ways: the composer is a way of making a step, so
+            // it has to be able to make the FIRST one on a position that carries no macro at all.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Null(scene.CurrentMacro);
+
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.PickChordKey("1");
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            Assert.NotNull(scene.CurrentMacro);
+            Assert.Equal(1, scene.Layout.MacroCount);
+        }
+
+        [Fact]
+        public void TheComposer_StaysOpenAndTicked_SoARunOfChordsIsOnePickEach()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+
+            scene.PickChordKey("1");
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            scene.PickChordKey("2");
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            Assert.True(scene.Panel.IsComposerOpen);
+            Assert.Equal(MacroModifiers.LeftControl, scene.Panel.ComposedModifiers);
+            Assert.Equal(["[1]", "[2]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+        }
+
+        [Fact]
+        public void TickingAModifierTwice_TakesItOffAgain()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+
+            scene.TickChordModifier(MacroModifiers.RightAlt);
+
+            Assert.Equal(MacroModifiers.RightAlt, scene.Panel.ComposedModifiers);
+            Assert.True(scene.FindChordModifier(MacroModifiers.RightAlt).IsOn);
+
+            scene.TickChordModifier(MacroModifiers.RightAlt);
+
+            Assert.Equal(MacroModifiers.None, scene.Panel.ComposedModifiers);
+            Assert.False(scene.FindChordModifier(MacroModifiers.RightAlt).IsOn);
+        }
+
+        [Fact]
+        public void TheComposer_IsReachableOnlyWhereAMacroCanBeOpen()
+        {
+            // The composer is a second way to make a step, so it is available exactly where making
+            // one is: nothing selected, a modifier position (05 §5.3) or a device without macros and
+            // the panel draws its refusal instead.
+            var panel = Create();
+
+            Assert.False(panel.ToggleComposerCommand.CanExecute(null));
+            Assert.False(panel.InsertChordCommand.CanExecute(null));
+
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbLeftShiftKeyIndex);
+
+            Assert.False(scene.Panel.IsAvailable);
+            Assert.False(scene.Panel.ToggleComposerCommand.CanExecute(null));
+
+            scene.Panel.ToggleComposerCommand.Execute(null);
+
+            Assert.False(scene.Panel.IsComposerOpen);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.True(scene.Panel.ToggleComposerCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void InsertChord_WithNoKeyPicked_CannotRunAndWritesNothing()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+
+            Assert.False(scene.Panel.HasComposedKey);
+            Assert.False(scene.Panel.InsertChordCommand.CanExecute(null));
+
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            Assert.Null(scene.CurrentMacro);
+        }
+
+        [Fact]
+        public void TheComposer_ClosesAndForgetsTheChord_WhenTheSelectionMoves()
+        {
+            // A half-composed chord belongs to the position it was started on, exactly as a
+            // half-recorded step does — and a modifier left ticked would silently attach itself to
+            // the next chord on the next key.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.PickChordKey("1");
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.False(scene.Panel.IsComposerOpen);
+            Assert.Equal(MacroModifiers.None, scene.Panel.ComposedModifiers);
+            Assert.False(scene.Panel.HasComposedKey);
+        }
+
+        [Fact]
+        public void ThePreview_ReadsBackWhatWouldBeWritten_AndNeverWhatWasMerelyTicked()
+        {
+            // 05 §5.1 attaches no modifier string to a key that is itself a modifier, and Keystroke
+            // enforces it on assignment. A preview built from the ticked set rather than from the
+            // resulting keystroke would promise a chord the file cannot hold.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+
+            scene.PickChordKey("1");
+
+            Assert.Equal("[1]", scene.Panel.ComposedTokenText);
+            Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(scene.Panel.ComposedMarks).Symbol);
+
+            scene.PickChordKey("lshft");
+
+            Assert.Equal("[lshft]", scene.Panel.ComposedTokenText);
+            Assert.Empty(scene.Panel.ComposedMarks);
+        }
+
+        [Fact]
+        public void TheComposer_RemembersWhatItInserted_ForTheRecentChip()
+        {
+            // One store per editor, shared by every picker it hosts: a chord built here is one chip
+            // away in the rail's own Remap picker afterwards.
+            var recent = new RecentTokenStore();
+            var scene = new Scene(this, recent);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.OpenComposer();
+            scene.PickChordKey("1");
+            scene.Panel.InsertChordCommand.Execute(null);
+
+            Assert.Contains(recent.Entries, entry => entry.GetToken(TokenDialect.Gen1) == "1");
+        }
+
         /// <summary>One keystroke as the capture service would hand it over.</summary>
         private static CapturedKeystroke Captured(string token)
         {
@@ -695,7 +935,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             private readonly KeyboardLayerViewModel _layer;
 
-            public Scene(MacroInspectorPanelViewModelTests owner)
+            public Scene(MacroInspectorPanelViewModelTests owner, RecentTokenStore? recentTokens = null)
             {
                 Device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
                 Layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
@@ -706,7 +946,7 @@ namespace KinesisEdit.Tests.ViewModels
                     Core.Geometry.Visual.VisualCatalog.FreestyleEdgeRgb,
                     null)[0];
 
-                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library);
+                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library, recentTokens);
             }
 
             public void Select(int keyIndex)
@@ -739,6 +979,39 @@ namespace KinesisEdit.Tests.ViewModels
                 }
 
                 Panel.Deactivate();
+            }
+
+            /// <summary>Discloses the chord composer through its own command, as the button does.</summary>
+            public void OpenComposer()
+            {
+                Panel.ToggleComposerCommand.Execute(null);
+            }
+
+            /// <summary>Ticks one modifier through the command the toggle runs.</summary>
+            public void TickChordModifier(MacroModifiers modifier)
+            {
+                Panel.ToggleChordModifierCommand.Execute(FindChordModifier(modifier));
+            }
+
+            /// <summary>The toggle carrying <paramref name="modifier"/>, rebuilt on every tick.</summary>
+            public MacroChordModifier FindChordModifier(MacroModifiers modifier)
+            {
+                return Panel.ChordModifiers.First(toggle => toggle.Modifier == modifier);
+            }
+
+            /// <summary>
+            /// Highlights the catalog row for <paramref name="token"/> through the picker's own
+            /// query and selection, rather than reaching past it — the picker is what the user
+            /// drives, and a test that set the definition directly would not notice a catalog that
+            /// no longer offers the key.
+            /// </summary>
+            public void PickChordKey(string token)
+            {
+                var definition = TestLayouts.Gen1Key(token);
+
+                Panel.ChordPicker.Query = token;
+                Panel.ChordPicker.SelectedRow = Panel.ChordPicker.Rows.First(
+                    row => ReferenceEquals(row.Definition, definition));
             }
         }
     }

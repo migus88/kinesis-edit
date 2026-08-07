@@ -30,9 +30,24 @@ namespace KinesisEdit.Views
     public partial class KeyboardEditorView : UserControl
     {
         /// <summary>
-        /// Which column of the Layout tab's grid the rail sits in — board, seam, rail. The width is
-        /// carried by the <b>column</b> since issue #119, because that is what a
-        /// <see cref="GridSplitter"/> resizes.
+        /// The label over the <b>layout</b> layer switch — the mockups' "Layer", uppercased because
+        /// <c>sectionLabel</c> is authored that way and Avalonia has no text-transform.
+        /// </summary>
+        public const string LayerSwitchLabel = "LAYER";
+
+        /// <summary>
+        /// The label over the <b>lighting</b> layer switch (mockup 2f relabels it "Lighting
+        /// layer"). It shares the tab bar's one switcher slot with
+        /// <see cref="LayerSwitchLabel"/> and must stay distinguishable from it: the two are
+        /// different objects — <c>ledN.txt</c>'s layer against <c>layoutN.txt</c>'s.
+        /// </summary>
+        public const string LightingLayerSwitchLabel = "LIGHTING LAYER";
+
+        /// <summary>
+        /// Which column of the editor's body grid the rail sits in — section, seam, rail. The width
+        /// is carried by the <b>column</b> since issue #119, because that is what a
+        /// <see cref="GridSplitter"/> resizes, and since issue #128 it is <b>one</b> column for both
+        /// rails rather than one per tab.
         /// </summary>
         private const int RailColumnIndex = 2;
 
@@ -45,10 +60,17 @@ namespace KinesisEdit.Views
         private const RoutingStrategies FocusRoutes = RoutingStrategies.Tunnel | RoutingStrategies.Bubble;
 
         /// <summary>
-        /// The rail column's driver. It is the <b>same</b> mechanism the Lighting tab's mode rail
-        /// runs on since issue #124 — the two rails are two contents of one resizable column — and
-        /// it reads <see cref="InspectorRailColumn.WidthSource.Effective"/> here, because this is
-        /// the tab whose Macro panel is entitled to the handoff's 300 px.
+        /// The rail column's driver — <b>one</b> of them since issue #128, because there is one
+        /// column. The Lighting tab's mode rail used to drive a column of its own out of
+        /// <see cref="LightingTabView"/>; the two rails are two <c>IsVisible</c>-gated children of
+        /// this column now, so the width they already shared (issue #124) is the same
+        /// <see cref="ColumnDefinition"/> as well as the same number.
+        /// <para>
+        /// It reads <see cref="InspectorRailColumn.WidthSource.Effective"/>, so the Macro panel's
+        /// 300 px floor applies to the column whichever rail is in it. That is deliberate: one
+        /// column has one width, and a column that changed width as the user switched tabs would
+        /// move the board — the very defect issues #119 and #124 exist to prevent.
+        /// </para>
         /// </summary>
         private readonly InspectorRailColumn _railColumn;
 
@@ -74,8 +96,9 @@ namespace KinesisEdit.Views
 
             _railColumn = new InspectorRailColumn(
                 this,
-                LayoutColumns,
+                EditorColumns,
                 RailColumnIndex,
+                RailHost,
                 InspectorRailColumn.WidthSource.Effective);
 
             // Tunneling, as in MessageBoxView: Escape must leave the listening state whatever
@@ -636,6 +659,65 @@ namespace KinesisEdit.Views
             }
 
             viewModel.SelectLayerCommand.Execute(layer);
+        }
+
+        /// <summary>
+        /// The <b>lighting</b> layer switch, which shares the tab bar's switcher slot with the
+        /// layout one since issue #128 and is a different object entirely: it moves
+        /// <c>ledN.txt</c>'s layer, not <c>layoutN.txt</c>'s. Everything switching one means —
+        /// re-reading the mode, the colours, the speed and the direction off the new layer's state,
+        /// and emptying the paint selection — lives in
+        /// <see cref="ViewModels.LightingTabViewModel.SelectLayerCommand"/>, so that is what runs.
+        /// <para>
+        /// The panel refuses a layer the firmware gates off — the Fn layer below LED 1.0.44
+        /// (specs/07 §3) — so the control is put back on whatever it kept rather than left showing a
+        /// layer nothing switched to. Guarded by the comparison, which is what stops the assignment
+        /// re-entering this handler.
+        /// </para>
+        /// </summary>
+        private void OnLightingLayerSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (DataContext is not KeyboardEditorViewModel viewModel || sender is not SelectingItemsControl list)
+            {
+                return;
+            }
+
+            var lighting = viewModel.Lighting;
+
+            if (list.SelectedItem is LightingLayerViewModel layer)
+            {
+                lighting.SelectLayerCommand.Execute(layer);
+            }
+
+            if (!ReferenceEquals(list.SelectedItem, lighting.SelectedLayer))
+            {
+                list.SelectedItem = lighting.SelectedLayer;
+            }
+        }
+
+        /// <summary>
+        /// The profile drop-down (issue #128). Same shape as the two switches beside it: the
+        /// selection is read one way, and choosing an entry runs the editor's own command rather
+        /// than writing the property — loading another profile is a whole session's worth of work
+        /// (layout, led file and settings), and a setter is not where that belongs.
+        /// <para>
+        /// <c>CanExecute</c> is honoured rather than assumed, so a profile that cannot be opened —
+        /// a save in flight, a demo board with one fixture — leaves the drop-down where it was
+        /// instead of showing a selection nothing acted on.
+        /// </para>
+        /// </summary>
+        private void OnProfileSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (DataContext is not KeyboardEditorViewModel viewModel
+                || (sender as SelectingItemsControl)?.SelectedItem is not ProfileOptionViewModel profile)
+            {
+                return;
+            }
+
+            if (viewModel.SelectProfileCommand.CanExecute(profile))
+            {
+                viewModel.SelectProfileCommand.Execute(profile);
+            }
         }
 
         /// <inheritdoc cref="OnLayerSelectionChanged" />

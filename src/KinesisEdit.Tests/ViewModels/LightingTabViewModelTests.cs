@@ -102,28 +102,184 @@ namespace KinesisEdit.Tests.ViewModels
                     mode.Summary));
         }
 
+        [AvaloniaFact]
+        public void SelectedModeOption_IsTheRowTheDropdownShows_AndFollowsTheLayer()
+        {
+            // The mode rail is a ComboBox since issue #128, and a selector needs an ITEM rather
+            // than the enum SelectedMode carries. The two can never disagree: both are written in
+            // the same two places (ReadFromState and SelectMode).
+            var tab = CreateAttachedTab();
+
+            Assert.NotNull(tab.SelectedModeOption);
+            Assert.Equal(tab.SelectedMode, tab.SelectedModeOption!.Mode);
+
+            SelectMode(tab, LightingMode.Rebound);
+
+            Assert.Same(tab.Modes.Single(mode => mode.Mode == LightingMode.Rebound), tab.SelectedModeOption);
+
+            tab.SelectLayerCommand.Execute(tab.Layers[1]);
+
+            Assert.Equal(LightingMode.Disabled, tab.SelectedModeOption!.Mode);
+        }
+
+        [AvaloniaFact]
+        public void SelectModeCommand_ForTheModeAlreadyOpen_WritesNothingAndAnnouncesNothing()
+        {
+            // A ComboBox raises SelectionChanged while it BINDS, so this command runs whenever the
+            // tab is shown — not only when the user picks a mode. Without the identity guard,
+            // merely opening the Lighting tab announced a write and turned the editor's Save amber
+            // over a profile nobody had edited.
+            var tab = CreateAttachedTab();
+            var changes = 0;
+
+            SelectMode(tab, LightingMode.Wave);
+
+            tab.ModelChanged += (_, _) => changes++;
+
+            SelectMode(tab, LightingMode.Wave);
+
+            Assert.Equal(0, changes);
+            Assert.Equal(LightingMode.Wave, tab.SelectedMode);
+        }
+
+        [AvaloniaFact]
+        public void ModeWithNoRowOnThisFirmware_LeavesTheDropdownEmptyButStillNamesItself()
+        {
+            // A led file may carry a mode the device's own menu does not offer — Ripple below the
+            // KBD 1.0.121 / LED 1.0.58 gate (§3). The dropdown then has nothing to select, and its
+            // placeholder is ModeCaption, so the layer still says what it is set to.
+            var lighting = new LightingModel();
+
+            lighting.TopLayer.Mode = LightingMode.Ripple;
+
+            var tab = CreateAttachedTab(CreateSnapshot(keyboardFirmware: "1.0.120"), lighting);
+
+            Assert.Equal(LightingMode.Ripple, tab.SelectedMode);
+            Assert.Null(tab.SelectedModeOption);
+            Assert.Equal(LightingModeCaptions.For(LightingMode.Ripple), tab.ModeCaption);
+        }
+
         [AvaloniaTheory]
-        [InlineData(LightingMode.Disabled, false, false, false, false, false)]
-        [InlineData(LightingMode.Freestyle, true, false, false, false, true)]
-        [InlineData(LightingMode.Monochrome, true, false, false, false, false)]
-        [InlineData(LightingMode.Breathe, true, false, true, false, true)]
-        [InlineData(LightingMode.Spectrum, false, false, true, false, false)]
-        [InlineData(LightingMode.Wave, false, false, true, true, false)]
-        [InlineData(LightingMode.Reactive, true, true, true, false, false)]
-        [InlineData(LightingMode.Ripple, true, true, true, false, false)]
-        [InlineData(LightingMode.Fireball, true, true, true, false, false)]
-        [InlineData(LightingMode.Starlight, true, true, true, false, false)]
-        [InlineData(LightingMode.Rebound, true, true, true, true, false)]
-        [InlineData(LightingMode.Loop, true, true, true, true, false)]
-        [InlineData(LightingMode.Pulse, false, false, true, false, false)]
-        [InlineData(LightingMode.Rain, true, true, true, false, false)]
+        [InlineData(LightingMode.Reactive)]
+        [InlineData(LightingMode.Ripple)]
+        [InlineData(LightingMode.Fireball)]
+        [InlineData(LightingMode.Starlight)]
+        [InlineData(LightingMode.Rebound)]
+        [InlineData(LightingMode.Loop)]
+        [InlineData(LightingMode.Rain)]
+        [InlineData(LightingMode.Monochrome)]
+        [InlineData(LightingMode.Freestyle)]
+        [InlineData(LightingMode.Breathe)]
+        [InlineData(LightingMode.Wave)]
+        [InlineData(LightingMode.Spectrum)]
+        [InlineData(LightingMode.Pulse)]
+        [InlineData(LightingMode.Disabled)]
+        public void EveryRenderedProperty_CarriesAHintForTheSelectedMode(LightingMode mode)
+        {
+            // Issue #128, item 4: every property the rail draws explains itself in place. The hints
+            // are per MODE and per PROPERTY — the question that prompted them was "what is the
+            // difference between Effect and Base color in reactive mode", which one sentence per
+            // property could not have answered.
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, mode);
+
+            Assert.NotEmpty(tab.ModeHint);
+            Assert.Equal(LightingHintCatalog.ForMode(mode), tab.ModeHint);
+
+            if (tab.Parameters.AcceptsEffectColor)
+            {
+                Assert.NotEmpty(tab.EffectColor.Hint);
+            }
+
+            if (tab.Parameters.AcceptsBaseColor)
+            {
+                Assert.NotEmpty(tab.BaseColor.Hint);
+                Assert.NotEqual(tab.EffectColor.Hint, tab.BaseColor.Hint);
+            }
+
+            if (tab.Parameters.AcceptsSpeed)
+            {
+                Assert.NotEmpty(tab.SpeedHint);
+            }
+
+            if (tab.Parameters.AcceptsDirection)
+            {
+                Assert.NotEmpty(tab.DirectionHint);
+            }
+
+            // The picker is on screen in every mode whose paint can reach the file, because a
+            // colour paints the layer's own keys whatever effect is running over them — so its
+            // line has two forms and, wherever it is drawn, always one of them.
+            if (tab.Parameters.AcceptsPaint)
+            {
+                Assert.Equal(
+                    tab.Parameters.AcceptsAnyColor
+                        ? LightingHintCatalog.PickerWithSwatchHint
+                        : LightingHintCatalog.PickerPaintOnlyHint,
+                    tab.PickerHint);
+            }
+        }
+
+        [AvaloniaFact]
+        public void TheReactiveHints_SayWhichColourIsTheFlashAndWhichIsTheRest()
+        {
+            // The literal question issue #128 was raised over, and the answer specs/07-lighting.md
+            // §2.2 gives: Reactive writes `[reactive]>[R][G][B][spdN]` over a `[mono]>[R][G][B]`
+            // base line, and §3 says it "lights keys on key-press over the base color".
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, LightingMode.Reactive);
+
+            Assert.Contains("strike", tab.EffectColor.Hint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("rest", tab.BaseColor.Hint, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [AvaloniaTheory]
+        [InlineData(LightingMode.Freestyle, LightingColorSlotViewModel.PaintColorCaption)]
+        [InlineData(LightingMode.Breathe, LightingColorSlotViewModel.PaintColorCaption)]
+        [InlineData(LightingMode.Monochrome, LightingColorSlotViewModel.EffectColorCaption)]
+        [InlineData(LightingMode.Reactive, LightingColorSlotViewModel.EffectColorCaption)]
+        [InlineData(LightingMode.Loop, LightingColorSlotViewModel.EffectColorCaption)]
+        public void TheEffectSwatch_IsCalledPaintColourWhereTheFileCarriesNoEffectLine(
+            LightingMode mode,
+            string caption)
+        {
+            // specs/07-lighting.md §2.2 writes no effect-colour line for the per-key modes: their
+            // body is per-key lines, so the swatch there is literally "the colour you paint with"
+            // (§4) and "Effect Color" would name a line the file will never carry. The verdict is
+            // the catalog's WritesEffectColor flag, never a list restated in the app.
+            var tab = CreateAttachedTab();
+
+            SelectMode(tab, mode);
+
+            Assert.Equal(caption, tab.EffectColor.Caption);
+            Assert.Equal(LightingColorSlotViewModel.BaseColorCaption, tab.BaseColor.Caption);
+        }
+
+        [AvaloniaTheory]
+        [InlineData(LightingMode.Disabled, false, false, false, false, false, false)]
+        [InlineData(LightingMode.Freestyle, true, false, false, false, true, true)]
+        [InlineData(LightingMode.Monochrome, true, false, false, false, false, true)]
+        [InlineData(LightingMode.Breathe, true, false, true, false, true, true)]
+        [InlineData(LightingMode.Spectrum, false, false, true, false, false, true)]
+        [InlineData(LightingMode.Wave, false, false, true, true, false, true)]
+        [InlineData(LightingMode.Reactive, true, true, true, false, false, true)]
+        [InlineData(LightingMode.Ripple, true, true, true, false, false, true)]
+        [InlineData(LightingMode.Fireball, true, true, true, false, false, true)]
+        [InlineData(LightingMode.Starlight, true, true, true, false, false, true)]
+        [InlineData(LightingMode.Rebound, true, true, true, true, false, true)]
+        [InlineData(LightingMode.Loop, true, true, true, true, false, true)]
+        [InlineData(LightingMode.Pulse, false, false, true, false, false, true)]
+        [InlineData(LightingMode.Rain, true, true, true, false, false, true)]
         public void Parameters_ForEachMode_MatchTheSpecTable(
             LightingMode mode,
             bool acceptsEffectColor,
             bool acceptsBaseColor,
             bool acceptsSpeed,
             bool acceptsDirection,
-            bool hasPerKeyColors)
+            bool hasPerKeyColors,
+            bool acceptsPaint)
         {
             // The §3 "Which parameter panels each mode shows" table, with the Fireball row's
             // "no direction UI on RGB" already applied — asked of the tab, so that this asserts the
@@ -143,6 +299,11 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(hasPerKeyColors, tab.Parameters.HasPerKeyColors);
             Assert.Equal(acceptsEffectColor, tab.EffectColor.IsVisible);
             Assert.Equal(acceptsBaseColor, tab.BaseColor.IsVisible);
+
+            // The colour picker's own gate, and the one that is not about the effect at all: Off
+            // writes no file body (§2.2), so a colour picked in it reaches nothing — every other
+            // mode here can hold paint whether or not it has a swatch.
+            Assert.Equal(acceptsPaint, tab.Parameters.AcceptsPaint);
 
             // ...and the paint controls are NOT among the things the mode decides: the colours they
             // manage are the layer's, so every one of them is reachable in every mode.
@@ -167,6 +328,11 @@ namespace KinesisEdit.Tests.ViewModels
         [AvaloniaFact]
         public void Directions_AreAlwaysTheFourArrows_WithTheModesOwnMarkedAvailable()
         {
+            // The LIST is still four long — one entry per LightingDirection, each carrying Core's
+            // verdict — and it is what SelectDirectionCommand validates against. Since issue #128
+            // the rail DRAWS only the available ones (see LightingTabTests); the two are separate
+            // claims on purpose, because a write must be refused whether or not a control was ever
+            // rendered for it.
             var tab = CreateAttachedTab();
 
             SelectMode(tab, LightingMode.Wave);
@@ -183,8 +349,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void Directions_ForRebound_KeepFourSlotsAndRelabelTheTwoItOffers()
+        public void Directions_ForRebound_KeepFourEntriesAndRelabelTheTwoItOffers()
         {
+            // Only the two it offers are renamed: calling an unusable arrow "Horizontal" would say
+            // the mode has two horizontals. The other two are never drawn (issue #128), so their
+            // captions only ever reach a tooltip that is not shown.
             var tab = CreateAttachedTab();
 
             SelectMode(tab, LightingMode.Rebound);
@@ -210,8 +379,9 @@ namespace KinesisEdit.Tests.ViewModels
         [AvaloniaFact]
         public void Directions_ForFireballOnTheRgb_AreAllFourAndNoneAvailable()
         {
-            // The row never changes shape (mockup 2f); a mode with no direction at all is four
-            // struck-through arrows, not an empty gap.
+            // Fireball carries a direction token in the file but has no direction panel on the RGB
+            // (§3), so all four entries exist and none is available — which is what makes
+            // AcceptsDirection false and takes the whole block off the rail (issue #128).
             var tab = CreateAttachedTab(CreateSnapshot(keyboardFirmware: "1.0.121", ledFirmware: "1.0.58"));
 
             SelectMode(tab, LightingMode.Fireball);
@@ -563,8 +733,12 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void PaintSelectionCommand_ReAppliesThePickersColourToASelectionMadeAfterwards()
+        public void ASelectionMadeAfterTheColour_IsPaintedByTheGestureThatMadeIt()
         {
+            // THE FLOW THE `Apply` BUTTON EXISTED FOR (issue #124), now done by the gesture itself
+            // (issue #128). The picker only writes on ColorChanged, so a colour chosen BEFORE the
+            // keys were picked had no way to land: that one gap is what the footer button was for,
+            // and it was the last control on the rail that had to be pressed to commit anything.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
@@ -573,10 +747,98 @@ namespace KinesisEdit.Tests.ViewModels
             SelectMode(tab, LightingMode.Freestyle);
 
             tab.Picker.Color = new LedColor(9, 9, 9);
+
+            Assert.Empty(lighting.TopLayer.KeyColors);
+
             tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
-            tab.PaintSelectionCommand.Execute(null);
 
             Assert.Equal(new LedColor(9, 9, 9), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
+
+            // ...and the write is announced, or the editor's Save stays grey over an edited profile.
+            var changes = 0;
+
+            tab.ModelChanged += (_, _) => changes++;
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+
+            Assert.Equal(1, changes);
+            Assert.Equal(new LedColor(9, 9, 9), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("2").Code]);
+
+            // The command itself survives the button, because it is still the honest name for "put
+            // this colour on everything selected" and it is what Clear is built out of.
+            tab.Picker.Color = new LedColor(1, 1, 1);
+            tab.PaintSelectionCommand.Execute(null);
+
+            Assert.Equal(2, lighting.TopLayer.KeyColors.Count);
+            Assert.All(lighting.TopLayer.KeyColors.Values, color => Assert.Equal(new LedColor(1, 1, 1), color));
+        }
+
+        [AvaloniaFact]
+        public void SelectAllKeysCommand_WithAColourAlreadyInThePicker_PaintsNothing()
+        {
+            // THE NAMED TRAP of issue #128, and the reason a paint gesture is three commands rather
+            // than a subscription to LightingPaintSelection.Changed: "Select all" plus a held colour
+            // would repaint the whole layer in one click, with nothing but Reset All to undo it —
+            // exactly the regression #124 removed when ApplyZoneCommand became SelectZoneCommand.
+            var lighting = new LightingModel();
+            var tab = CreateAttachedTab(lighting: lighting);
+            var changes = 0;
+
+            SelectMode(tab, LightingMode.Freestyle);
+
+            tab.Picker.Color = new LedColor(200, 30, 30);
+            tab.ModelChanged += (_, _) => changes++;
+
+            tab.SelectAllKeysCommand.Execute(null);
+
+            Assert.Equal(tab.Board!.Keys.Count, tab.Selection.Count);
+            Assert.Empty(lighting.TopLayer.KeyColors);
+            Assert.Equal(0, changes);
+        }
+
+        [AvaloniaFact]
+        public void APaintGesture_PaintsOnlyWhatItAdded_SoAClearIsNotUndoneByTheNextClick()
+        {
+            // Painting the WHOLE selection on every gesture would make one more click re-colour the
+            // keys Clear had just erased — the selection stays after a Clear on purpose (§4's
+            // erase is about colour, not about the selection).
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab();
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Freestyle);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.Picker.Color = new LedColor(255, 0, 0);
+            tab.ClearKeyColorsCommand.Execute(null);
+
+            Assert.Empty(lighting.TopLayer.KeyColors);
+            Assert.Equal(1, tab.Selection.Count);
+
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+
+            // Only the newly clicked key is painted; the cleared one stays cleared.
+            Assert.Single(lighting.TopLayer.KeyColors);
+            Assert.Contains(TestLayouts.Gen1Key("2").Code, lighting.TopLayer.KeyColors.Keys);
+        }
+
+        [AvaloniaFact]
+        public void AShiftClickRun_PaintsTheKeysItAdded()
+        {
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab();
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Freestyle);
+
+            tab.Picker.Color = new LedColor(4, 5, 6);
+            tab.SelectKeyCommand.Execute(boards[0].Keys[3]);
+            tab.ExtendSelectionCommand.Execute(boards[0].Keys[6]);
+
+            Assert.Equal(4, tab.Selection.Count);
+            Assert.Equal(4, lighting.TopLayer.KeyColors.Count);
+            Assert.All(lighting.TopLayer.KeyColors.Values, color => Assert.Equal(new LedColor(4, 5, 6), color));
         }
 
         [AvaloniaFact]
@@ -725,11 +987,12 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void SelectZoneCommand_SelectsEveryKeyOfTheZone_AndPaintsNothing()
+        public void SelectZoneCommand_SelectsEveryKeyOfTheZone_AndPaintsThem()
         {
-            // Issue #124 split the zone gesture in two: a zone SELECTS, Apply commits. The colour is
-            // put in the picker first, so that a zone click that painted anything would show up here
-            // as a non-empty map rather than as a difference nobody notices.
+            // A zone button is a user pointing at a named set of keys on the board, so it is one of
+            // the three direct paint gestures (issue #128) and commits on the spot — the Apply that
+            // #124 split it from is gone. `Select all` is deliberately NOT one of them; see
+            // SelectAllKeysCommand_WithAColourAlreadyInThePicker_PaintsNothing.
             var lighting = new LightingModel();
             var tab = CreateAttachedTab(lighting: lighting);
 
@@ -740,7 +1003,6 @@ namespace KinesisEdit.Tests.ViewModels
 
             tab.SelectZoneCommand.Execute(numbers);
 
-            Assert.Empty(lighting.TopLayer.KeyColors);
             Assert.Equal(numbers.KeyCodes.Count, tab.Selection.Count);
             Assert.True(numbers.IsSelected);
             Assert.All(
@@ -748,13 +1010,38 @@ namespace KinesisEdit.Tests.ViewModels
                 keyCode => Assert.True(
                     tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == keyCode).IsLightingSelected));
 
-            // ...and Apply is what writes.
-            tab.PaintSelectionCommand.Execute(null);
-
             Assert.Equal(numbers.KeyCodes.Count, lighting.TopLayer.KeyColors.Count);
             Assert.All(
                 numbers.KeyCodes,
                 keyCode => Assert.Equal(new LedColor(12, 34, 56), lighting.TopLayer.KeyColors[keyCode]));
+        }
+
+        [AvaloniaFact]
+        public void SelectZoneCommand_TakingAZoneBackOut_PaintsNothing()
+        {
+            // The other half of the toggle. Only what a gesture ADDS is painted, so the click that
+            // deselects a zone writes nothing at all — and the colours it left behind stay, because
+            // erasing is `Clear`'s job and not a side effect of letting go of a selection.
+            var lighting = new LightingModel();
+            var tab = CreateAttachedTab(lighting: lighting);
+
+            SelectMode(tab, LightingMode.Freestyle);
+            tab.Picker.Color = new LedColor(12, 34, 56);
+
+            var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+
+            tab.SelectZoneCommand.Execute(wasd);
+
+            var painted = new Dictionary<int, LedColor>(lighting.TopLayer.KeyColors);
+            var changes = 0;
+
+            tab.ModelChanged += (_, _) => changes++;
+            tab.SelectZoneCommand.Execute(wasd);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.Equal(0, changes);
+            Assert.Equal(painted.Count, lighting.TopLayer.KeyColors.Count);
+            Assert.All(painted, entry => Assert.Equal(entry.Value, lighting.TopLayer.KeyColors[entry.Key]));
         }
 
         [AvaloniaFact]
@@ -783,11 +1070,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             tab.SelectZoneCommand.Execute(function);
 
-            Assert.Empty(lighting.FnLayer.KeyColors);
             Assert.Equal(function.KeyCodes.Count, tab.Selection.Count);
-
-            tab.PaintSelectionCommand.Execute(null);
-
             Assert.Equal(function.KeyCodes.Count, lighting.FnLayer.KeyColors.Count);
             Assert.Contains(TestLayouts.Gen1Key("mute").Code, lighting.FnLayer.KeyColors.Keys);
             Assert.Contains(TestLayouts.Gen1Key("next").Code, lighting.FnLayer.KeyColors.Keys);
@@ -898,25 +1181,30 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void PaintSelectionCommand_PaintsTheSelectionWithThePickersColour()
+        public void PaintSelectionCommand_PaintsTheWholeSelectionWithThePickersColour()
         {
-            // Apply is a re-apply too: the colour already in the picker lands on a selection made
-            // after it was chosen, which is the whole select-a-zone-then-apply flow.
+            // It has no button since issue #128, but it is still the panel's "put this colour on
+            // everything selected" — the whole selection, not only what the last gesture added —
+            // and Clear is built out of it.
             var lighting = new LightingModel();
             var tab = CreateAttachedTab(lighting: lighting);
 
             SelectMode(tab, LightingMode.Freestyle);
-            tab.Picker.Color = new LedColor(9, 90, 190);
             tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
 
-            Assert.Empty(lighting.TopLayer.KeyColors);
+            tab.Picker.Color = new LedColor(9, 90, 190);
+            tab.SelectAllKeysCommand.Execute(null);
+
+            // "Select all" paints nothing, so only WASD carries a colour at this point.
+            Assert.Equal(4, lighting.TopLayer.KeyColors.Count);
 
             tab.PaintSelectionCommand.Execute(null);
 
-            Assert.Equal(4, lighting.TopLayer.KeyColors.Count);
             Assert.All(
-                lighting.TopLayer.KeyColors.Values,
-                color => Assert.Equal(new LedColor(9, 90, 190), color));
+                tab.Board!.Keys,
+                key => Assert.Equal(
+                    new LedColor(9, 90, 190),
+                    lighting.TopLayer.KeyColors[key.Key.OriginalKey.Code]));
         }
 
         [AvaloniaFact]

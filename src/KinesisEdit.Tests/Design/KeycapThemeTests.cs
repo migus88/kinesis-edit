@@ -64,11 +64,17 @@ namespace KinesisEdit.Tests.Design
         private const int OutsideProbe = -2;
 
         /// <summary>
-        /// How far inside the cap's edge the selection ring is sampled. The outer pixel column is
-        /// the cap's own 1px border; column 1 is the first of the face, and the ring's 2px covers
-        /// both.
+        /// How far inside the cap's edge the selection ring's <b>accent band</b> is sampled. The
+        /// outer pixel column is the cap's own 1px border; column 1 is the first of the face, and
+        /// the band covers both.
         /// </summary>
         private const int InsideProbe = 1;
+
+        /// <summary>
+        /// The third column in, where the ring's contrasting hairline is drawn — the half of the
+        /// band that carries the signal when the key is lit a blue the accent cannot beat.
+        /// </summary>
+        private const int HairlineProbe = 2;
 
         /// <summary>
         /// Slack allowed when comparing an arranged legend against the height its text needs.
@@ -325,9 +331,10 @@ namespace KinesisEdit.Tests.Design
         [InlineData("Light")]
         public void ASelectedCap_RingsItselfWithoutReachingItsNeighbour(string variantName)
         {
-            // Selection's 2px ring is drawn INWARD from the cap's edge, which is what leaves the 4px
+            // Selection's 3px ring is drawn INWARD from the cap's edge, which is what leaves the 4px
             // gap between caps free for the focus halo — and is the whole reason the two can be told
-            // apart when they are both on.
+            // apart when they are both on. The band grew from 2px to 3px with issue #128 and stayed
+            // inward, so this is the same claim it always was.
             var variant = ToVariant(variantName);
             var cap = Cap(variant, "selected");
 
@@ -335,11 +342,18 @@ namespace KinesisEdit.Tests.Design
 
             var ring = RingOf(cap).BoxShadow;
 
-            Assert.Equal(1, ring.Count);
-            Assert.Equal(DesignTokens.ResolveColor("AccentKeyHaloColor", variant), ring[0].Color);
-            Assert.Equal(2, ring[0].Spread);
+            // TWO shadows, and the order is load-bearing: Skia draws outer box shadows in list
+            // order, so the 1px hairline listed second lands ON TOP of the inner pixel of the 3px
+            // accent spread rather than under it. Swap them and the ring is a plain accent band.
+            Assert.Equal(2, ring.Count);
+            Assert.Equal(DesignTokens.ResolveColor("AccentKeyRingColor", variant), ring[0].Color);
+            Assert.Equal(3, ring[0].Spread);
+            Assert.Equal(DesignTokens.ResolveColor("KeycapRingEdgeColor", variant), ring[1].Color);
+            Assert.Equal(1, ring[1].Spread);
             Assert.Equal(0, ring[0].OffsetX);
             Assert.Equal(0, ring[0].OffsetY);
+            Assert.Equal(0, ring[1].OffsetX);
+            Assert.Equal(0, ring[1].OffsetY);
 
             var frame = host.Capture();
             var origin = OriginOf(host, cap);
@@ -350,12 +364,16 @@ namespace KinesisEdit.Tests.Design
                 DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant),
                 FramePixels.At(frame, (int)origin.X + OutsideProbe, row));
 
-            // ...and the ring inside it, over the selected face.
+            // ...the accent band inside it, OPAQUE — not a wash over the selected face, which is
+            // exactly what stopped reading on a lit cap (#128)...
             AssertClose(
-                Composite(
-                    DesignTokens.ResolveBrushColor("AccentKeyHaloBrush", variant),
-                    DesignTokens.ResolveBrushColor("SurfaceKeySelectedBrush", variant)),
+                DesignTokens.ResolveBrushColor("AccentKeyRingBrush", variant),
                 FramePixels.At(frame, (int)origin.X + InsideProbe, row));
+
+            // ...and the contrasting hairline one pixel further in.
+            AssertClose(
+                DesignTokens.ResolveBrushColor("KeycapRingEdgeBrush", variant),
+                FramePixels.At(frame, (int)origin.X + HairlineProbe, row));
         }
 
         [AvaloniaTheory]
@@ -426,17 +444,21 @@ namespace KinesisEdit.Tests.Design
             var halo = RootOf(cap).BoxShadow;
             var ring = RingOf(cap).BoxShadow;
 
-            // Exactly one each: the failure this guards is the two collapsing onto one element,
-            // where they would sum into a single denser band instead of a concentric pair.
+            // One halo, and the ring's own two: the failure this guards is the two STATES
+            // collapsing onto one element, where they would sum into a single denser band instead
+            // of a concentric pair. The ring's two are one state's two tones, not two states.
             Assert.Equal(1, halo.Count);
-            Assert.Equal(1, ring.Count);
+            Assert.Equal(2, ring.Count);
 
-            // The design draws them 3px at 28% outward and 2px at 30% inward, which is what keeps
-            // them legible as two marks rather than as one thick one.
+            // 3px at 28% outward, 3px opaque inward, which is what keeps them legible as two marks
+            // rather than as one thick one — and they are now told apart by ALPHA as well as by
+            // which side of the edge they fall on.
             Assert.Equal(3, halo[0].Spread);
-            Assert.Equal(2, ring[0].Spread);
+            Assert.Equal(3, ring[0].Spread);
             Assert.Equal(DesignTokens.ResolveColor("AccentFocusHaloColor", variant), halo[0].Color);
-            Assert.Equal(DesignTokens.ResolveColor("AccentKeyHaloColor", variant), ring[0].Color);
+            Assert.Equal(DesignTokens.ResolveColor("AccentKeyRingColor", variant), ring[0].Color);
+            Assert.Equal(255, ring[0].Color.A);
+            Assert.NotEqual(255, halo[0].Color.A);
         }
 
         [AvaloniaTheory]
@@ -575,12 +597,22 @@ namespace KinesisEdit.Tests.Design
             var inset = ring.TranslatePoint(new Point(0, 0), cap)
                 ?? throw new InvalidOperationException("The ring is not in the cap's visual tree.");
 
-            // Two pixels in, exactly as on a cap with a 1px border, so the 2px spread lands on the
-            // cap's outer 2px in both cases.
-            Assert.Equal(2, inset.X);
-            Assert.Equal(2, inset.Y);
-            Assert.Equal(cap.Bounds.Width - 4, ring.Bounds.Width);
-            Assert.Equal(1, ring.BoxShadow.Count);
+            // Three pixels in, exactly as on a cap with a 1px border, so the 3px spread lands on
+            // the cap's outer 3px in both cases.
+            Assert.Equal(3, inset.X);
+            Assert.Equal(3, inset.Y);
+            Assert.Equal(cap.Bounds.Width - 6, ring.Bounds.Width);
+            Assert.Equal(2, ring.BoxShadow.Count);
+
+            // The PAINT ring moves with it, and for a reason that is not symmetry: the two boards
+            // share their cap view models, so a listening cap can be paint-selected as well, and a
+            // ring left behind by the thicker border would float on exactly the cap being pressed.
+            var paintRing = PaintRingOf(cap);
+            var paintInset = paintRing.TranslatePoint(new Point(0, 0), cap)
+                ?? throw new InvalidOperationException("The paint ring is not in the cap's visual tree.");
+
+            Assert.Equal(inset, paintInset);
+            Assert.Equal(ring.Bounds, paintRing.Bounds);
 
             var edge = EdgePixel(host, cap);
             var unselected = Cap(variant, "listening");
@@ -1240,7 +1272,7 @@ namespace KinesisEdit.Tests.Design
 
             Assert.True(cap.Focus(NavigationMethod.Tab), "The cap refused keyboard focus.");
 
-            Assert.Equal(1, RingOf(cap).BoxShadow.Count);
+            Assert.Equal(2, RingOf(cap).BoxShadow.Count);
             Assert.Equal(1, RootOf(cap).BoxShadow.Count);
             Assert.True(RemapBarOf(cap).IsVisible, "The bar went away under a selection ring.");
             Assert.Equal(DesignTokens.Resolve("SurfaceKeySelectedBrush", variant), cap.Background);
@@ -1568,7 +1600,7 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains("paintSelected", cap.Classes);
             Assert.DoesNotContain("selected", cap.Classes);
-            Assert.Equal(1, PaintRingOf(cap).BoxShadow.Count);
+            Assert.Equal(2, PaintRingOf(cap).BoxShadow.Count);
             Assert.Equal(0, RingOf(cap).BoxShadow.Count);
 
             model.IsLightingSelected = false;
@@ -1609,23 +1641,25 @@ namespace KinesisEdit.Tests.Design
 
             var ring = PaintRingOf(cap).BoxShadow;
 
-            Assert.Equal(1, ring.Count);
-            Assert.Equal(DesignTokens.ResolveColor("AccentKeyHaloColor", variant), ring[0].Color);
-            Assert.Equal(2, ring[0].Spread);
+            Assert.Equal(2, ring.Count);
+            Assert.Equal(DesignTokens.ResolveColor("AccentKeyRingColor", variant), ring[0].Color);
+            Assert.Equal(3, ring[0].Spread);
+            Assert.Equal(DesignTokens.ResolveColor("KeycapRingEdgeColor", variant), ring[1].Color);
+            Assert.Equal(1, ring[1].Spread);
             Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), cap.BorderBrush);
 
             // The inspector's ring is untouched: this cap is not the selected key.
             Assert.Equal(0, RingOf(cap).BoxShadow.Count);
 
             // ...and it lands INSIDE the cap's own edge, like the ring it copies: the outermost
-            // pixel column differs from a bare cap's, and the ring's bounds sit 2px in, which is
-            // what keeps a 2px spread off the neighbour 4px away.
+            // pixel column differs from a bare cap's, and the ring's bounds sit 3px in, which is
+            // what keeps a 3px spread off the neighbour 4px away.
             var inset = PaintRingOf(cap).TranslatePoint(new Point(0, 0), cap)
                 ?? throw new InvalidOperationException("The ring is not in the cap's visual tree.");
 
-            Assert.Equal(2, inset.X);
-            Assert.Equal(2, inset.Y);
-            Assert.Equal(cap.Bounds.Width - 4, PaintRingOf(cap).Bounds.Width);
+            Assert.Equal(3, inset.X);
+            Assert.Equal(3, inset.Y);
+            Assert.Equal(cap.Bounds.Width - 6, PaintRingOf(cap).Bounds.Width);
 
             var bare = Cap(variant);
 
@@ -1650,12 +1684,12 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
 
-            Assert.Equal(1, RingOf(cap).BoxShadow.Count);
-            Assert.Equal(1, PaintRingOf(cap).BoxShadow.Count);
+            Assert.Equal(2, RingOf(cap).BoxShadow.Count);
+            Assert.Equal(2, PaintRingOf(cap).BoxShadow.Count);
             Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), cap.BorderBrush);
 
             // The two rings are concentric with each other rather than stacked outward, so the band
-            // is the cap's own outer 2px and no wider than one selection's would be.
+            // is the cap's own outer 3px and no wider than one selection's would be.
             Assert.Equal(RingOf(cap).Bounds, PaintRingOf(cap).Bounds);
 
             // Focus still owns the border and adds its halo outside both.
@@ -1680,6 +1714,78 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(0, PaintRingOf(cap).BoxShadow.Count);
             Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), cap.BorderBrush);
+        }
+
+        /// <summary>
+        /// The saturated colours a key can actually be lit, chosen so that each of the ring's two
+        /// tones is the one carrying the signal in at least one row. <c>#FFFFFF</c> swallows the
+        /// near-black hairline and the accent has to carry it; <c>#5B9DF9</c> is the accent's own
+        /// hue and the hairline has to carry that one. A ring painted in a single colour — of any
+        /// alpha, of any hue — fails one row or the other, which is the whole argument for two.
+        /// </summary>
+        public static TheoryData<string> LedFills()
+        {
+            return new TheoryData<string> { "#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FFFFFF", "#5B9DF9" };
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(LedFills))]
+        public void APaintSelectedCap_OverASaturatedLedColour_IsUnmistakable(string fill)
+        {
+            // THE DEFECT OF ISSUE #128, at the glass, on the surface it was reported on. Everything
+            // the object graph could say about the paint selection was already true and asserted —
+            // the class was written, the ring part carried a shadow, the border took the accent —
+            // and the user still could not see that Q and S were selected, because the ring was
+            // 30 % of blue laid over a face the led file had painted #A41010. Nothing but a
+            // rendered pixel can tell the two apart, so this reads the band itself.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                AssertTheRingReadsOverTheFace(fill, variant, paintSelection: true);
+            }
+        }
+
+        [AvaloniaTheory]
+        [MemberData(nameof(LedFills))]
+        public void ASelectedCap_OverASaturatedLedColour_IsUnmistakable(string fill)
+        {
+            // The same claim for the inspector's selection, and it is not a duplicate: the two
+            // boards render the SAME cap view models, so `.selected` lands on a lit face whenever
+            // the key the rail is talking about is one the Lighting tab is drawing. It owns its own
+            // ring part, so nothing but a test holds the two in step.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                AssertTheRingReadsOverTheFace(fill, variant, paintSelection: false);
+            }
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheRingOnALitCap_StopsAtTheCapsOwnEdge(string variantName)
+        {
+            // The other half of "unmistakable": louder must not mean wider. The band is opaque now,
+            // so a spread that reached outward would land squarely on the neighbouring cap's face
+            // 4 px away rather than tinting the gap — and on the Lighting board that neighbour is
+            // somebody's colour. Read on a lit cap because that is where the opaque ring lives.
+            var variant = ToVariant(variantName);
+            var view = KeyCap(showsLighting: true, paint: "#FF0000");
+
+            using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
+
+            Live(view);
+
+            ((KeyboardKeyViewModel)view.DataContext!).IsLightingSelected = true;
+
+            var frame = host.Capture();
+            var origin = OriginOf(host, view);
+            var row = FaceRow(host, view);
+
+            for (var offset = -3; offset < 0; offset++)
+            {
+                AssertClose(
+                    DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant),
+                    FramePixels.At(frame, (int)origin.X + offset, row));
+            }
         }
 
         [AvaloniaTheory]
@@ -1735,6 +1841,93 @@ namespace KinesisEdit.Tests.Design
             using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
 
             Assert.Equal(DesignTokens.Resolve("TextPrimaryBrush", variant), CaptionOf(view).Foreground);
+        }
+
+        /// <summary>
+        /// Fails unless a cap lit <paramref name="fill"/> and wearing one of the two selections is
+        /// visibly different from an identical cap that is not — everywhere in the band, and by a
+        /// long way somewhere in it — while the face itself is left alone.
+        /// </summary>
+        private static void AssertTheRingReadsOverTheFace(string fill, ThemeVariant variant, bool paintSelection)
+        {
+            var selected = KeyCap(showsLighting: true, paint: fill);
+            var bare = KeyCap(showsLighting: true, paint: fill);
+
+            using var selectedHost = ThemedHost.Show(selected, variant, HostWidth, HostHeight);
+            using var bareHost = ThemedHost.Show(bare, variant, HostWidth, HostHeight);
+
+            // Both of them, and after Show: a Button with no Command is `:disabled`, `:disabled`
+            // takes both rings AND the cap's border role, and the comparison would then be between
+            // two dead caps rather than between a selected key and a live one.
+            Live(selected);
+            Live(bare);
+
+            var model = (KeyboardKeyViewModel)selected.DataContext!;
+
+            if (paintSelection)
+            {
+                model.IsLightingSelected = true;
+            }
+            else
+            {
+                model.IsSelected = true;
+            }
+
+            var band = BandSamples(selectedHost, selected);
+            var unselected = BandSamples(bareHost, bare);
+            var face = Softened(fill);
+
+            // Every pixel of the 3px band moved. A ring that only repainted the cap's own 1px
+            // border would pass a "something changed" test and still be the thin line the user
+            // could not see.
+            for (var column = 0; column < band.Count; column++)
+            {
+                Assert.True(
+                    Distance(band[column], unselected[column]) > 40,
+                    $"Column {column} of a {(paintSelection ? "paint-" : string.Empty)}selected cap lit "
+                    + $"{fill} ({variant}) painted {band[column]}, near enough the unselected cap's "
+                    + $"{unselected[column]}.");
+            }
+
+            // ...and somewhere in it the ring is a long way from the colour the key is lit, which
+            // is the claim a translucent accent could not make: over #A41010 it painted a red.
+            var contrast = band.Max(sample => Distance(sample, face));
+
+            Assert.True(
+                contrast >= 150,
+                $"The ring on a cap lit {fill} ({variant}) is only {contrast} from its own face — "
+                + $"the band painted {string.Join(", ", band)} against {face}.");
+
+            // ...while the face is untouched: the ring is a band at the edge, not a tint over the
+            // key, and the Lighting board exists to show the colour that is on file.
+            AssertClose(
+                face,
+                FramePixels.At(
+                    selectedHost.Capture(),
+                    (int)OriginOf(selectedHost, selected).X + 5,
+                    FaceRow(selectedHost, selected)));
+        }
+
+        /// <summary>The cap's outer three pixel columns, at <see cref="FaceRow"/>.</summary>
+        private static IReadOnlyList<Color> BandSamples(ThemedHost host, KeyCapView view)
+        {
+            var frame = host.Capture();
+            var origin = OriginOf(host, view);
+            var row = FaceRow(host, view);
+
+            return Enumerable.Range(0, 3)
+                .Select(column => FramePixels.At(frame, (int)origin.X + column, row))
+                .ToArray();
+        }
+
+        /// <summary>
+        /// A row across the cap that is clear of both its rounded corners (radius 4) and of the
+        /// caption's own line, so a sample of the left edge reads the ring and the face and never a
+        /// glyph. <see cref="MidRow"/> is the caption's row and cannot be used for this.
+        /// </summary>
+        private static int FaceRow(ThemedHost host, KeyCapView view)
+        {
+            return (int)OriginOf(host, view).Y + 6;
         }
 
         /// <summary>Fails unless all four badges are drawn on <paramref name="cap"/>.</summary>

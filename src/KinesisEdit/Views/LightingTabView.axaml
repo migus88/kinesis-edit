@@ -6,28 +6,38 @@
              xmlns:views="clr-namespace:KinesisEdit.Views"
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
-             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="596"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="596"
              x:Class="KinesisEdit.Views.LightingTabView"
              x:DataType="vm:LightingTabViewModel">
   <!--
     The editor's Lighting tab, as design mockup 2f redraws it: THE MODE IS RENDERED ON THE BOARD,
-    not named in a dropdown. Three columns — the board, the drag seam, and the mode rail — and the
-    board animates the selected effect at its real speed and direction while the rail is scrubbed.
+    not named in a dropdown. The board animates the selected effect at its real speed and direction
+    while the rail beside it is scrubbed.
 
-    THE COLUMNS ARE THE KEYS TAB'S, DELIBERATELY (issue #124). Same `* | Auto | Auto` shape, same
-    `GridSplitter.railSplitter`, same `Views/InspectorRailColumn` driving the rail's column from
-    code-behind, and NO GUTTER on the board's column — the rail carries its own inset surface and a
-    hairline down its left edge, and every pixel spent on a margin here comes out of the board's
-    column. That last part is the whole point: `BoardScaleHost` resolves the picture's scale from
-    the width it is offered, so two tabs whose board columns are offered different widths draw the
-    same board at two different sizes. They are the same width now.
+    THIS FILE IS THE BOARD COLUMN, AND NOTHING ELSE (issue #128). It used to own the whole screen —
+    its own `* | Auto | Auto` columns, its own `GridSplitter`, its own hosting of
+    LightingModeRailView, and its own copy of the layer switch. All four moved into
+    KeyboardEditorView, for one reason each:
 
-    THE BOARD IS THE SCREEN'S SUBJECT, so it gets the canvas and everything else sits around it: the
-    layer switch above it, its own header naming what it is showing, and the paint line under it.
-    There is no `keyboardBoard` surround any more — the picture draws its own bordered section
-    panels (Controls/KeyboardView.axaml), and an inset frame around them was the visible double
-    frame issue #91 removed from the Layout canvas. This board now sits on a canvas of its own for
-    exactly the same reason that one does.
+      the columns    the rail is now ONE column of the editor, shared with the key inspector, so
+                     that switching tabs cannot move the board by a pixel. Issue #124 had already
+                     given the two rails one stored width; two grids meant they still only matched
+                     by arithmetic.
+      the seam       goes with the column it resizes.
+      the rail       is the editor's, drawn beside whichever section is open.
+      the switch     is in the tab bar's one switcher slot, beside the profile picker, where the
+                     layout layer switch is on the other three tabs. It cost this column a row of
+                     height it does not have at the window floor, and it put the editor's switcher
+                     in two different places depending on the tab.
+
+    WHAT IS LEFT is the picture, its header, the paint line and the zones — the board and the
+    statements about it — laid out in the content column the editor hands this view.
+
+    THE BOARD IS THE SCREEN'S SUBJECT, so it gets the canvas and everything else sits around it:
+    its own header naming what it is showing, and the paint line under it. There is no
+    `keyboardBoard` surround — the picture draws its own bordered section panels
+    (Controls/KeyboardView.axaml), and an inset frame around them was the visible double frame issue
+    #91 removed from the Layout canvas.
 
     WHAT IS *NOT* HERE. No mode name, no parameter, no direction set, no zone and no speed bound is
     spelled in this file: LightingTabViewModel asks Core for every one of them
@@ -36,243 +46,173 @@
     elapsed seconds to AdvancePreview — including the reduce-motion decision, which the view model
     re-reads on every call.
   -->
-  <Grid x:Name="LightingColumns" ColumnDefinitions="*,Auto,Auto">
+  <Grid RowDefinitions="Auto,*">
 
-    <!-- ===== The board ======================================================================= -->
-    <Grid Grid.Column="0" RowDefinitions="Auto,*">
+    <!-- Demo mode: everything is explorable, nothing is written (03 §3.5). -->
+    <Border Grid.Row="0"
+            Classes="card"
+            Margin="0,0,0,10"
+            IsVisible="{Binding HasStatusMessage}">
+      <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
+    </Border>
 
-      <!-- The layer switch, relabelled "Lighting layer" (2f) — the two layers a led file describes
-           are not the layout's five, and the switch says which of the two is being lit. The Fn
-           segment is shown and dimmed below the LED 1.0.44 gate rather than hidden, because the
-           layer exists and the reason is printed beside it. -->
-      <StackPanel Grid.Row="0" Spacing="8">
-        <!-- Demo mode: everything is explorable, nothing is written (03 §3.5). -->
-        <Border Classes="card" IsVisible="{Binding HasStatusMessage}">
-          <TextBlock Text="{Binding StatusMessage}" Classes="body muted" TextWrapping="Wrap" />
-        </Border>
+    <!-- The picture, centred as one block with the line that names it. `BoardHeader` is the whole
+         point of this screen: "Wave · live preview" while it animates, "Wave · preview" while
+         reduce-motion holds it on the effect's first frame. Sans — the mode's name is the app's own
+         caption for it, not a token out of the file.
 
-        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
-          <TextBlock Grid.Column="0"
-                     Text="{x:Static views:LightingTabView.LayerSwitchLabel}"
-                     Classes="sectionLabel"
-                     VerticalAlignment="Center" />
+         The caps draw the LIT face (ShowsLighting) and NOT the state badges: the remap bar, the
+         macro dot, the tap-and-hold corner and the advisory bar all report the *layout*, and this
+         board cannot edit one. The two tabs render the same layer and the same cap view models;
+         only what each picture draws differs.
 
-          <!-- The same segmented control the Keys tab's layer switch is, for the same reason: one
-               of N, one tab stop. `SelectedItem` reads the panel one way — SelectLayer owns that
-               property — and the selection change runs the command the pills used to. -->
-          <ListBox Grid.Column="1"
-                   Theme="{StaticResource SegmentedControl}"
-                   ItemsSource="{Binding Layers}"
-                   SelectedItem="{Binding SelectedLayer, Mode=OneWay}"
-                   SelectionChanged="OnLayerSelectionChanged"
-                   VerticalAlignment="Center">
-            <!-- Scoped to this list, so it cannot outrank another one's container theme. -->
-            <ListBox.Styles>
-              <Style Selector="ListBoxItem" x:DataType="vm:LightingLayerViewModel">
-                <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
-              </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-              <DataTemplate DataType="vm:LightingLayerViewModel">
-                <TextBlock Text="{Binding Caption}" />
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+         CENTRED, LIKE THE KEYS BOARD — and the argument this reverses is recorded rather than
+         deleted, because it was right when it was written. This block used to be anchored to the
+         TOP of the column with a 20 px inset, on a frame's finding: the paint line appeared and
+         disappeared with the mode, so every time the rail's selection crossed between Wave and
+         Freestyle the row under the picture came or went and slid a centred board about 70 px.
+         Top-anchoring made the board's position independent of what was drawn beneath it.
 
-          <TextBlock Grid.Column="2"
-                     Text="{Binding LayerLockHint}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding !IsLayerCustomizationAvailable}" />
-        </Grid>
-      </StackPanel>
+         THAT CAUSE IS GONE. The paint line and the zones are on screen in EVERY mode now (see the
+         two blocks below, and LightingTabTests.ThePaintLine_IsOnScreen_WhateverTheModeIs), so
+         nothing under the picture changes height as the rail is scrubbed and the anchoring was
+         outliving the defect it was added for. Issue #124 chose parity with the Keys board instead
+         — the same centred block in a column with no gutter — because switching tabs and finding
+         the same board in a different place, at a different size, is what a user actually notices.
 
-      <!-- The picture, centred as one block with the line that names it. `BoardHeader` is the whole
-           point of this screen: "Wave · live preview" while it animates, "Wave · preview" while
-           reduce-motion holds it on the effect's first frame. Sans — the mode's name is the app's
-           own caption for it, not a token out of the file.
+         WHAT THE REVERSAL DOES *NOT* TOUCH is the row structure beneath, and the distinction
+         matters: issue #123 replaced this block's StackPanel with the Grid below to stop the
+         picture overflowing its slot, and the Keys board it is now matching is itself a
+         `RowDefinitions="*,Auto"` Grid that is ALSO `VerticalAlignment="Center"`. Anchoring and
+         fitting are independent — the star row still hands the board the height that is actually
+         left, and centring only decides where the finished block sits in the column. Turning this
+         back into a centred StackPanel would reintroduce #123's defect *and* fail the rule it left
+         behind.
 
-           The caps draw the LIT face (ShowsLighting) and NOT the state badges: the remap bar, the
-           macro dot, the tap-and-hold corner and the advisory bar all report the *layout*, and this
-           board cannot edit one. The two tabs render the same layer and the same cap view models;
-           only what each picture draws differs.
+         A GRID, NOT A StackPanel (issue #123). A vertically-oriented StackPanel measures its
+         children with double.PositiveInfinity down its own axis, so the picture's BoardScaleHost
+         took its scale from the width alone and the block overflowed the slot — painted over its
+         neighbours rather than cut, because nothing on the board chain clips. The board sits in the
+         one star row and is therefore fitted to the height that is left after the header and the
+         two rows beneath it. -->
+    <Grid Grid.Row="1"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
+      <!-- The board's row carries a FLOOR, and the long form is what it takes to say so. The three
+           Auto rows are measured before the star one and take everything they ask for, and on this
+           screen they ask for a lot: at the 720x480 minimum the header, the paint line and the
+           wrapped zone buttons want most of the column, which left the picture a few pixels tall.
+           Below HeightBoardMin the board stops giving way and the zone row - the bottom-most and
+           least urgent thing on the screen - runs past the column instead. -->
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" MinHeight="{StaticResource HeightBoardMin}" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
 
-           CENTRED, LIKE THE KEYS BOARD — and the argument this reverses is recorded rather than
-           deleted, because it was right when it was written. This block used to be anchored to the
-           TOP of the column with a 20 px inset, on a frame's finding: the paint line appeared and
-           disappeared with the mode, so every time the rail's selection crossed between Wave and
-           Freestyle the row under the picture came or went and slid a centred board about 70 px.
-           Top-anchoring made the board's position independent of what was drawn beneath it.
+      <TextBlock Grid.Row="0"
+                 Text="{Binding BoardHeader}"
+                 Classes="cardTitle"
+                 HorizontalAlignment="Center"
+                 Margin="0,0,0,10" />
 
-           THAT CAUSE IS GONE. The paint line and the zones are on screen in EVERY mode now (see the
-           two blocks below, and LightingTabTests.ThePaintLine_IsOnScreen_WhateverTheModeIs), so
-           nothing under the picture changes height as the rail is scrubbed and the anchoring was
-           outliving the defect it was added for. Issue #124 chose parity with the Keys board
-           instead — the same centred block in a column with no gutter — because switching tabs and
-           finding the same board in a different place, at a different size, is what a user actually
-           notices.
+      <controls:KeyboardView Grid.Row="1"
+                             DataContext="{Binding Board}"
+                             HorizontalAlignment="Center"
+                             ShowsLighting="True"
+                             ShowsStateBadges="False"
+                             KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectKeyCommand}" />
 
-           WHAT THE REVERSAL DOES *NOT* TOUCH is the row structure beneath, and the distinction
-           matters: issue #123 replaced this block's StackPanel with the Grid below to stop the
-           picture overflowing its slot, and the Keys board it is now matching is itself a
-           `RowDefinitions="*,Auto"` Grid that is ALSO `VerticalAlignment="Center"`. Anchoring and
-           fitting are independent — the star row still hands the board the height that is actually
-           left, and centring only decides where the finished block sits in the column. Turning this
-           back into a centred StackPanel would reintroduce #123's defect *and* fail the rule it
-           left behind.
+      <!-- ===== The paint line ==============================================================
+           2f's "Paint · 2 keys selected" with "Select all" and "Clear". It sits directly under the
+           picture, exactly as the Layout tab's legend row does and for the same reason: it is a
+           statement ABOUT the board, so it is the board's own width and its ends line up with the
+           board's ends.
 
-           A GRID, NOT A StackPanel (issue #123). A vertically-oriented StackPanel measures its
-           children with double.PositiveInfinity down its own axis, so the picture's BoardScaleHost
-           took its scale from the width alone and the block overflowed the slot — painted over its
-           neighbours rather than cut, because nothing on the board chain clips. The board sits in
-           the one star row and is therefore fitted to the height that is left after the header and
-           the two rows beneath it. The former `Spacing="10"` is spelled into each row's own margin
-           so the rhythm is unchanged: 10 under the header, 10+4 above the paint line, 10+8 above
-           the zones. (The 20 px top inset that used to sit on this Grid went with the anchoring;
-           the Keys block carries no such inset either.) -->
-      <Grid Grid.Row="1"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-        <!-- The board's row carries a FLOOR, and the long form is what it takes to say so. The
-             three Auto rows are measured before the star one and take everything they ask for, and
-             on this screen they ask for a lot: at the 720x480 minimum the header, the paint line
-             and the wrapped zone buttons want 231 of the column's 235px, which left the picture
-             four pixels tall. Below HeightBoardMin the board stops giving way and the zone row -
-             the bottom-most and least urgent thing on the screen - runs past the column instead,
-             exactly as it does today at that window. -->
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="*" MinHeight="{StaticResource HeightBoardMin}" />
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+           IT IS ON SCREEN WHATEVER THE MODE IS, and 2f is the proof: the board it draws this row on
+           is running WAVE, which ignores paint. The painted colours belong to the layer rather than
+           to the effect over them — "the colors are still on file" — and the 40% paint layer exists
+           precisely so they can be seen and edited under a mode that will not use them. A row that
+           came and went with the mode would take the controls off the one screen the design chose
+           to illustrate them on. Whether this board can paint at all is settled by the tab existing
+           (LightingTabViewModel.IsSupported); the mode must not answer it twice.
 
-        <TextBlock Grid.Row="0"
-                   Text="{Binding BoardHeader}"
-                   Classes="cardTitle"
-                   HorizontalAlignment="Center"
-                   Margin="0,0,0,10" />
+           `Clear` turns the selected keys OFF rather than black, which is why the swatch rule
+           beside it matters: an unlit key is hatched, never black. -->
+      <Grid Grid.Row="2"
+            ColumnDefinitions="Auto,*,Auto,Auto"
+            ColumnSpacing="8"
+            Margin="0,14,0,0">
+        <TextBlock Grid.Column="0"
+                   Text="{Binding Selection.Caption}"
+                   Classes="body"
+                   VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1"
+                   Text="{x:Static views:LightingTabView.HatchRule}"
+                   Classes="meta muted"
+                   TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center"
+                   Margin="8,0,0,0" />
+        <Button Grid.Column="2"
+                Classes="secondary"
+                Content="{x:Static vm:LightingPaintSelection.SelectAllCaption}"
+                Command="{Binding SelectAllKeysCommand}" />
+        <Button Grid.Column="3"
+                Classes="secondary"
+                Content="{x:Static vm:LightingPaintSelection.ClearCaption}"
+                Command="{Binding ClearKeyColorsCommand}" />
+      </Grid>
 
-        <controls:KeyboardView Grid.Row="1"
-                               DataContext="{Binding Board}"
-                               HorizontalAlignment="Center"
-                               ShowsLighting="True"
-                               ShowsStateBadges="False"
-                               KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectKeyCommand}" />
+      <!-- ===== The zones ===================================================================
+           §4's named colour zones and the "Reset All" that erases every per-key colour: the bulk
+           versions of the paint line above, so they sit with it rather than at the far end of the
+           column — and on screen under the same rule, for the same reason. The whole block is one
+           fixed set of chips whatever the mode is, which is what lets the block above be centred
+           without the board moving as the rail is scrubbed.
 
-        <!-- ===== The paint line ==============================================================
-             2f's "Paint · 2 keys selected" with "Select all" and "Clear". It sits directly under
-             the picture, exactly as the Layout tab's legend row does and for the same reason: it is
-             a statement ABOUT the board, so it is the board's own width and its ends line up with
-             the board's ends.
+           THEY ARE NOT FREE, and the note that used to say they were was written when the board was
+           measured against infinite height. This row is an Auto row above a star one, so every line
+           the zone buttons wrap onto is a line the picture does not get; at the 720x480 minimum
+           that is what takes the board down to its HeightBoardMin floor. A field that appears or
+           vanishes with the mode still moves only itself — the block above is one fixed set of rows
+           — but one that WRAPS now resizes the board with it.
 
-             IT IS ON SCREEN WHATEVER THE MODE IS, and 2f is the proof: the board it draws this row
-             on is running WAVE, which ignores paint. The painted colours belong to the layer rather
-             than to the effect over them — "the colors are still on file" — and the 40% paint layer
-             exists precisely so they can be seen and edited under a mode that will not use them. A
-             row that came and went with the mode would take the controls off the one screen the
-             design chose to illustrate them on. Whether this board can paint at all is settled by
-             the tab existing (LightingTabViewModel.IsSupported); the mode must not answer it twice.
+           A ZONE SELECTS; IT DOES NOT PAINT (issue #124). `SelectZoneCommand` toggles the zone's
+           keys in the paint selection and writes no colour at all — Apply, in the rail's footer, is
+           the commit. The button therefore has a selected face, bound to the view model's
+           `IsSelected`, which follows the selection from any source (a cap click, "Select all",
+           another zone). The face itself is the `ToggleSegment` control theme's, reached through
+           the `zoneButton` bridge in Styles/Buttons.axaml: a zone is an independent latch rather
+           than one-of-a-selection, which is the shape that theme was written for. -->
+      <Grid Grid.Row="3"
+            ColumnDefinitions="*,Auto"
+            ColumnSpacing="8"
+            Margin="0,18,0,0">
+        <ItemsControl Grid.Column="0" ItemsSource="{Binding Zones}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:LightingZoneViewModel">
+              <Button Classes="zoneButton"
+                      Classes.selected="{Binding IsSelected}"
+                      Content="{Binding Caption}"
+                      Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectZoneCommand}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
-             `Clear` turns the selected keys OFF rather than black, which is why the swatch rule
-             beside it matters: an unlit key is hatched, never black. -->
-        <Grid Grid.Row="2"
-              ColumnDefinitions="Auto,*,Auto,Auto"
-              ColumnSpacing="8"
-              Margin="0,14,0,0">
-          <TextBlock Grid.Column="0"
-                     Text="{Binding Selection.Caption}"
-                     Classes="body"
-                     VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1"
-                     Text="{x:Static views:LightingTabView.HatchRule}"
-                     Classes="meta muted"
-                     TextTrimming="CharacterEllipsis"
-                     VerticalAlignment="Center"
-                     Margin="8,0,0,0" />
-          <Button Grid.Column="2"
-                  Classes="secondary"
-                  Content="{x:Static vm:LightingPaintSelection.SelectAllCaption}"
-                  Command="{Binding SelectAllKeysCommand}" />
-          <Button Grid.Column="3"
-                  Classes="secondary"
-                  Content="{x:Static vm:LightingPaintSelection.ClearCaption}"
-                  Command="{Binding ClearKeyColorsCommand}" />
-        </Grid>
-
-        <!-- ===== The zones ===================================================================
-             §4's named colour zones and the "Reset All" that erases every per-key colour: the bulk
-             versions of the paint line above, so they sit with it rather than at the far end of the
-             column — and on screen under the same rule, for the same reason. The whole block is one
-             fixed set of chips whatever the mode is, which is what lets the block above be centred
-             without the board moving as the rail is scrubbed.
-
-             THEY ARE NOT FREE, and the note that used to say they were was written when the board
-             was measured against infinite height. This row is an Auto row above a star one, so
-             every line the zone buttons wrap onto is a line the picture does not get; at the
-             720x480 minimum that is what takes the board down to its HeightBoardMin floor. A field
-             that appears or vanishes with the mode still moves only itself — the block above is one
-             fixed set of rows — but one that WRAPS now resizes the board with it.
-
-             A ZONE SELECTS; IT DOES NOT PAINT (issue #124). `SelectZoneCommand` toggles the zone's
-             keys in the paint selection and writes no colour at all — Apply, in the rail's footer,
-             is the commit. The button therefore has a selected face, bound to the view model's
-             `IsSelected`, which follows the selection from any source (a cap click, "Select all",
-             another zone). The face itself is the `ToggleSegment` control theme's, reached through
-             the `zoneButton` bridge in Styles/Buttons.axaml: a zone is an independent latch rather
-             than one-of-a-selection, which is the shape that theme was written for. -->
-        <Grid Grid.Row="3"
-              ColumnDefinitions="*,Auto"
-              ColumnSpacing="8"
-              Margin="0,18,0,0">
-          <ItemsControl Grid.Column="0" ItemsSource="{Binding Zones}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel Orientation="Horizontal" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:LightingZoneViewModel">
-                <Button Classes="zoneButton"
-                        Classes.selected="{Binding IsSelected}"
-                        Content="{Binding Caption}"
-                        Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectZoneCommand}"
-                        CommandParameter="{Binding}" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <Button Grid.Column="1"
-                  Classes="secondary"
-                  Content="{x:Static vm:LightingTabViewModel.ResetAllCaption}"
-                  Command="{Binding ResetAllCommand}"
-                  VerticalAlignment="Top" />
-        </Grid>
+        <Button Grid.Column="1"
+                Classes="secondary"
+                Content="{x:Static vm:LightingTabViewModel.ResetAllCaption}"
+                Command="{Binding ResetAllCommand}"
+                VerticalAlignment="Top" />
       </Grid>
     </Grid>
-
-    <!-- The seam. The Keys tab's, verbatim: 6px of hit target over a 1px hairline, all of it the
-         `RailSplitter` control theme's, and this file names a class and nothing else. It sits in
-         its own Auto column so the board's `*` and the rail's fixed width are the only two things
-         sharing the row, which is what makes the splitter's "the right column is fixed, so resize
-         only the right column" behaviour the one that fires. -->
-    <GridSplitter Grid.Column="1"
-                  Classes="railSplitter"
-                  DragDelta="OnRailSplitterDragged"
-                  DragCompleted="OnRailSplitterReleased" />
-
-    <!-- ===== The mode rail ===================================================================
-         Its own view, over this very DataContext: the rail is a column with a header, a scrolled
-         list, a disclosed picker and a pinned parameter footer, and folding all of that into this
-         file would bury the board it is beside.
-
-         ITS WIDTH IS THIS COLUMN'S, not the rail's own (issue #124). LightingModeRailView used to
-         set `WidthInspectorRailWide` on its Border; a local value outranks whatever the column
-         says, and a GridSplitter resizes a column — so the two would have disagreed the moment the
-         seam above was dragged. The column is driven from the code-behind's InspectorRailColumn,
-         off the very same InspectorRailWidthViewModel the Keys tab's rail reads. -->
-    <views:LightingModeRailView Grid.Column="2" />
   </Grid>
 </UserControl>
