@@ -4,8 +4,10 @@ using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.SavantElite;
+using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Discovery;
+using KinesisEdit.Core.VDrive.Io;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.Tests.ViewModels;
@@ -294,12 +296,19 @@ namespace KinesisEdit.Tests.Design
             // The readout ticker is parked and the clock stands still: a scene renders one frame,
             // and a ticker firing behind it would be a property change from a thread-pool thread
             // for a string that cannot have changed.
+            //
+            // The Settings screen's appliers are recorded rather than run, exactly as the
+            // standalone Settings scene builds them: a scene must not repaint the session it is
+            // being rendered in, and ThemeApplier writes to the one Application every other scene
+            // shares. The shell disposes the screen it is given.
             var shell = new MainWindowViewModel(
                 dashboard,
                 monitor,
                 new DeviceSessionManager(settings),
                 _notifications,
                 editors,
+                new SettingsScreenViewModel(new FakeHostPreferencesStore(), _ => { }, _ => { }),
+                new HelpScreenViewModel(_urlLauncher),
                 new FakeSystemClock(),
                 new FakeUiDispatcher(),
                 _neverPolls);
@@ -413,16 +422,25 @@ namespace KinesisEdit.Tests.Design
 
             if (viewType == typeof(KeyboardEditorView))
             {
-                var device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess);
+                // The real demo path, not a fake one. Demo mode is no longer "an editor with no
+                // session": it reads the bundled fixture v-Drive through the production parsers
+                // (docs/app/app-shell.md, "The demo v-Drive"). A scene built on
+                // FakeProfileSessionFactory would stage an empty board the app can no longer
+                // produce, and every guard over the Demo Mode bar would be asserting against
+                // fiction — which is exactly what a frame capture of this scene revealed.
+                var demoFiles = new DemoVDriveFileService(new VDriveFileService());
+                var device = DeviceSnapshot.CreateDemo(
+                    DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb),
+                    new DemoDeviceProvider());
                 var editor = new KeyboardEditorViewModel(
                     device,
-                    _profiles,
-                    TestDevices.CreateSettingsService(_files),
+                    new ProfileSessionFactory(demoFiles),
+                    new SettingsServiceAdapter(new SettingsService(demoFiles)),
                     _capture,
                     _notifications,
                     _folderPicker,
                     _filePicker,
-                    _files,
+                    demoFiles,
                     _urlLauncher,
                     OpenSessionFor(device));
 

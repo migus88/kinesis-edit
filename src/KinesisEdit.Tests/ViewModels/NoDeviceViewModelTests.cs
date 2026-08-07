@@ -364,7 +364,43 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(DeviceId.Advantage360, snapshot.DeviceId);
             Assert.True(snapshot.IsDemoMode);
             Assert.True(snapshot.Firmware.IsDemoMode);
+
+            // No fixtures for this board, so no drive and an empty editor — exactly as before.
             Assert.Null(snapshot.Location);
+        }
+
+        [Fact]
+        public void LaunchDemoModeCommand_ForABoardWithDemoContent_CarriesItsSyntheticDrive()
+        {
+            // The empty state is the second of the two places a demo snapshot is born, and it has
+            // to answer the same way the detection loop does: the picked board opens over the
+            // fixture v-Drive, unwritable, so its editor loads a real profile and saves nothing.
+            var viewModel = CreateViewModel(out _, out var demoRequests, out _);
+            viewModel.SelectedDevice = DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb);
+
+            viewModel.LaunchDemoModeCommand.Execute(null);
+
+            var snapshot = Assert.Single(demoRequests);
+
+            Assert.True(snapshot.IsDemoMode);
+            Assert.Equal(DemoVDrive.GetRootPath(DeviceId.FreestyleEdgeRgb), snapshot.Location?.RootPath);
+            Assert.False(snapshot.Location!.IsWritable);
+        }
+
+        [Fact]
+        public void LaunchDemoModeCommand_AsksTheDemoGateAboutThePickRatherThanNamingABoard()
+        {
+            // Nothing on this screen knows which board has fixtures, and that is the invariant:
+            // the gate is asked about whatever is picked, and a gate that answers for nothing
+            // produces the location-less snapshot every board used to get.
+            var demoDevices = new FakeDemoDeviceProvider();
+            var viewModel = CreateViewModel(out _, out var demoRequests, out _, demoDevices: demoDevices);
+
+            viewModel.SelectedDevice = DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb);
+            viewModel.LaunchDemoModeCommand.Execute(null);
+
+            Assert.Equal(DeviceId.FreestyleEdgeRgb, Assert.Single(demoDevices.AskedFor));
+            Assert.Null(Assert.Single(demoRequests).Location);
         }
 
         [Fact]
@@ -455,7 +491,8 @@ namespace KinesisEdit.Tests.ViewModels
             out FakeUrlLauncher urlLauncher,
             out List<DeviceSnapshot> demoRequests,
             out ScanCounter scanCounter,
-            int completedRefreshBaseline = 0)
+            int completedRefreshBaseline = 0,
+            IDemoDeviceProvider? demoDevices = null)
         {
             urlLauncher = new FakeUrlLauncher();
             demoRequests = [];
@@ -467,7 +504,8 @@ namespace KinesisEdit.Tests.ViewModels
                 urlLauncher,
                 requests.Add,
                 counter.IncrementAsync,
-                completedRefreshBaseline);
+                completedRefreshBaseline,
+                demoDevices: demoDevices);
         }
 
         private sealed class ScanCounter

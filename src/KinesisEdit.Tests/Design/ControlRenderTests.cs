@@ -251,14 +251,55 @@ namespace KinesisEdit.Tests.Design
                 DesignTokens.ResolveBrushColor("SurfaceRaisedBrush", variant),
                 PixelInside(host, window, home));
 
-            // Settings and Help stay unavailable (#96) and must read as *unavailable nav* rather
-            // than as the same thing Home is: a different face, not merely a different label.
+            // Settings and Help are live nav now (#96) and must read as *available and elsewhere*:
+            // enabled, unselected, and wearing neither Home's raised face nor the recessed one a
+            // dead pill used to have. There are exactly three pills and this is the other two.
+            Assert.Equal(3, pills.Count);
+
             foreach (var pill in pills.Where(pill => !Equals(pill.Content, "Home")))
             {
-                Assert.False(pill.IsEffectivelyEnabled, $"{pill.Content} is not implemented yet and must not read as live nav.");
+                Assert.True(pill.IsEffectivelyEnabled, $"{pill.Content} is a navigation and must read as live nav.");
+                Assert.DoesNotContain(":disabled", pill.Classes);
                 Assert.DoesNotContain("selected", pill.Classes);
-                Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), pill.Background);
+                Assert.NotEqual(DesignTokens.Resolve("SurfaceRaisedBrush", variant), pill.Background);
+                Assert.NotEqual(DesignTokens.Resolve("SurfaceInsetBrush", variant), pill.Background);
             }
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheSettingsNavPill_OnTheSettingsScreen_WearsTheActiveNavFace(string variantName)
+        {
+            // The same claim as Home's, for the pill that used to be permanently dead: the selected
+            // face has to be reachable on its own screen, which is only true while the command that
+            // takes you there stays runnable once you have arrived.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var shell = scenes.CreateShell();
+            var window = new MainWindow(shell, new Services.FakeNotificationService());
+
+            using var host = ThemedHost.Show(window, variant);
+
+            await shell.SettingsCommand.ExecuteAsync(null);
+
+            host.Capture();
+
+            var settings = NavPillsOf(window).Single(pill => Equals(pill.Content, "Settings"));
+            var home = NavPillsOf(window).Single(pill => Equals(pill.Content, "Home"));
+
+            Assert.True(settings.IsEffectivelyEnabled);
+            Assert.Contains("selected", settings.Classes);
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", variant), settings.Background);
+
+            AssertClose(
+                DesignTokens.ResolveBrushColor("SurfaceRaisedBrush", variant),
+                PixelInside(host, window, settings));
+
+            // And Home gives the face up, so exactly one pill ever says "you are here".
+            Assert.DoesNotContain("selected", home.Classes);
         }
 
         [AvaloniaFact]

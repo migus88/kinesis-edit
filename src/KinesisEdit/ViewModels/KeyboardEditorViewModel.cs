@@ -41,11 +41,17 @@ namespace KinesisEdit.ViewModels
             "Demo Mode — no keyboard attached. Nothing you change here is written anywhere.";
 
         /// <summary>
-        /// The Demo Mode bar's one action (mockup 1f), verbatim; it runs the shell's Home. The
-        /// mockup's other action — <c>Export layout to file…</c> — is deliberately not rendered:
-        /// demo mode opens no session, so <c>CanExport</c> is false for exactly as long as the bar
-        /// is on screen, and a control that can never become live is not shown at all.
+        /// The Demo Mode bar's first action (mockup 1f), verbatim; it opens the §11.5 export panel.
+        /// <para>
+        /// It is rendered — and live. Demo mode now opens a real session over the fixture drive, and
+        /// an export writes to a folder the user picked rather than to the v-Drive, so nothing about
+        /// 03 §3.5 stands in its way. This is where a user with no hardware gets something out of
+        /// the app, which is exactly why the mockup draws it here.
+        /// </para>
         /// </summary>
+        public const string DemoModeExportCaption = "Export layout to file…";
+
+        /// <summary>The Demo Mode bar's second action (mockup 1f), verbatim; it runs the shell's Home.</summary>
         public const string DemoModeConnectCaption = "Connect a device";
 
         /// <summary>Title of the dialog raised when the profile cannot be read from the drive.</summary>
@@ -130,12 +136,18 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The open drive's mount path, shown in mono beside the device name because it is a value
-        /// that exists verbatim on the machine. Empty in demo mode and on a device with no
-        /// location, which is what <see cref="HasMountPath"/> hides.
+        /// that exists verbatim on the machine. Empty on a device with no location.
         /// </summary>
         public string MountPath => Device.Location?.RootPath ?? string.Empty;
 
-        /// <summary>Whether there is a mount path worth printing.</summary>
+        /// <summary>
+        /// Whether there is a mount path worth printing. <b>Never in demo mode</b>, and that is
+        /// load-bearing twice over: a demo board's location is the synthetic
+        /// <c>kinesis-edit://demo/…</c> root, which is neither a place on this machine nor
+        /// something the mono slot is allowed to hold (mono is reserved for values that exist
+        /// verbatim in a config file or on disk) — and printing any path beside a session that
+        /// writes nowhere would claim the opposite of what the Demo Mode bar promises.
+        /// </summary>
         public bool HasMountPath => !IsDemoMode && MountPath.Length > 0;
 
         /// <summary>
@@ -151,8 +163,12 @@ namespace KinesisEdit.ViewModels
         /// leaves Save grey while the user has unsaved work.
         /// </para>
         /// <para>
-        /// Always false in demo mode and after a load that produced no session: there is nothing to
-        /// write, and Save is unavailable there anyway (03 §3.5).
+        /// Always false after a load that produced no session — a board with no drive and no demo
+        /// content — because there is nothing to compare against. In <b>demo mode it is genuinely
+        /// true</b> once the fixture profile is edited: the session is real, so the amber Save
+        /// reports honestly that the model has moved, even though Save itself is refused (03 §3.5).
+        /// <see cref="ConfirmCloseAsync"/> therefore tests demo mode on its own rather than leaning
+        /// on this.
         /// </para>
         /// </summary>
         public bool IsDirty
@@ -738,9 +754,12 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
-            // Demo mode and a load that produced no session both report themselves clean (there is
-            // nothing to write), so they leave without a word.
-            if (!IsDirty)
+            // Demo mode leaves silently, and the test is explicit rather than falling out of
+            // IsDirty. A demo session is a real session over the fixture drive, so an edit really
+            // does make it dirty — but Save can never run there (03 §3.5), so the question would
+            // offer an answer that does nothing and a Discard for work that was never going
+            // anywhere. A load that produced no session still reports itself clean below.
+            if (IsDemoMode || !IsDirty)
             {
                 return true;
             }
@@ -876,9 +895,14 @@ namespace KinesisEdit.ViewModels
         {
             try
             {
-                // Demo mode never touches the drive (03 §3.5), and a device with no location has
-                // no file to read either: both edit a factory-default model in memory.
-                if (IsDemoMode || Device.Location is null)
+                // A device with no location has no file to read: it edits a factory-default model
+                // in memory. Demo mode is deliberately *not* asked about here — a demo board with
+                // fixtures carries the synthetic DemoVDrive location (docs/app/app-shell.md, "The
+                // demo v-Drive") and is loaded through this very path, by a file service that
+                // serves the fixtures and refuses every write back to them. What demo mode forbids
+                // is writing (03 §3.5), which CanSave and CanImport still answer; refusing to read
+                // is what left demo mode showing an empty board.
+                if (Device.Location is null)
                 {
                     return new LoadOutcome { Layout = KeyboardLayout.Create(Device.DeviceId) };
                 }
@@ -1551,8 +1575,12 @@ namespace KinesisEdit.ViewModels
 
         private bool CanExport()
         {
-            // Demo mode reads no profile at all, so there is nothing to serialize (03 §3.5).
-            return _session is not null && !IsDemoMode && !IsLoading && !IsBusy && ActiveOverlay is null;
+            // Deliberately not gated on demo mode. Export writes to a folder the user picked, never
+            // to the v-Drive (specs/11-feature-dialogs.md §11.5), so it breaks none of 03 §3.5's
+            // promise — and demo mode is where it is most useful, which is why mockup 1f puts it on
+            // the Demo Mode bar. The write is scoped away from the fixture drive by path, in
+            // DemoVDriveFileService, not by a mode flag here.
+            return _session is not null && !IsLoading && !IsBusy && ActiveOverlay is null;
         }
 
         /// <summary>

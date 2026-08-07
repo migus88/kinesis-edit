@@ -51,23 +51,30 @@
 
           <!-- Home / Settings / Help. Nav pills, whose active face is the raised neutral surface
                rather than the accent: "where you already are" is not one of the accent's two
-               meanings. Only Home has a selected state to bind - Settings and Help are their own
-               issue (#96) and stay unavailable, so they read as inactive nav rather than as
-               something that broke.
+               meanings. All three are real navigations now, so all three bind a selected state -
+               `CurrentView` is one of the dashboard, the open editor, Settings or Help, and the
+               editor is the only one of the four with no pill of its own.
 
-               Home is bound to a command that stays runnable on the dashboard, where it does
-               nothing. That is not slack: NavPill writes every selected setter as
+               Every one of them is bound to a command that stays runnable on its own screen, where
+               it does nothing. That is not slack: NavPill writes every selected setter as
                `.selected:not(:disabled)`, and a Button takes its enablement from its Command, so a
-               Home gated on "there is an editor to leave" would be disabled in exactly the state
-               `IsHomeSelected` is true and the active face would be unreachable. -->
+               pill gated on "you are somewhere else" would be disabled in exactly the state its
+               `Is…Selected` is true and the active face would be unreachable. The no-op lives in
+               `MainWindowViewModel.NavigateAsync`, not in the predicate. -->
 
           <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
             <Button Classes="navPill"
                     Content="Home"
                     Command="{Binding HomeCommand}"
                     Classes.selected="{Binding IsHomeSelected}" />
-            <Button Classes="navPill" Content="Settings" Command="{Binding SettingsCommand}" />
-            <Button Classes="navPill" Content="Help" Command="{Binding HelpCommand}" />
+            <Button Classes="navPill"
+                    Content="Settings"
+                    Command="{Binding SettingsCommand}"
+                    Classes.selected="{Binding IsSettingsSelected}" />
+            <Button Classes="navPill"
+                    Content="Help"
+                    Command="{Binding HelpCommand}"
+                    Classes.selected="{Binding IsHelpSelected}" />
           </StackPanel>
         </StackPanel>
 

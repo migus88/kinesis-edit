@@ -148,7 +148,7 @@ Nothing re-reads the OS to answer this, which matters because the macOS detector
 
 ## Deliberately not here
 
-- **No composition-root wiring, no Settings screen, no window-geometry capture.** This module is the store, the file and the two appliers; who builds them, who binds to them and who reads the live window's size are other parts of issue [#96](https://github.com/migus88/kinesis-edit/issues/96).
+- **No composition-root wiring, no Settings screen, no window-geometry capture — *in this module*.** All three now exist; they simply are not here, because this module is the store, the file and the two appliers. Who builds them is `App.axaml.cs` (inside the desktop-lifetime branch, before any window: it reads `Current` once and runs both appliers, so the first frame already wears them), who binds to them is `SettingsScreenViewModel`, and who reads the live window's size is `MainWindow.RestoreGeometry`/`PersistGeometry` — all three described in [app-shell.md](app-shell.md).
 - **No migration or schema version.** The file is net-new and the tolerant read is the migration strategy: an unknown key is ignored and a missing one is a default, so an older or newer file is always readable.
 - **No file watching.** One process owns this file; the store does not notice a hand edit made while the app is running, and picks it up on the next launch.
 - **No atomic write.** `File.WriteAllText`, not write-temp-then-rename. A truncated preferences file degrades to defaults on the next read rather than corrupting anything, which is the same cost as the failure the rename would have prevented.

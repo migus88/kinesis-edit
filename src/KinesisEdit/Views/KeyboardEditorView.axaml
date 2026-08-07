@@ -166,12 +166,11 @@
            Purple, not amber: "nothing is written" is its own state in the design's four-status
            vocabulary, and amber is reserved for advisories.
 
-           NO `Export layout to file…`, though mockup 1f draws one. Demo mode opens no session, so
-           CanExport is false for exactly as long as this bar is on screen — the two conditions are
-           mutually exclusive, and "a feature the device lacks is not rendered at all rather than
-           disabled" is the design law. Every other CanExecute-disabled control in this editor can
-           become live; that one could not. Export stays reachable from the action row below.
-           Recorded as a deliberate deviation in docs/app/keyboard-editor.md. -->
+           BOTH of mockup 1f's actions, in its order: `Export layout to file…` then
+           `Connect a device`. Export is live here — a demo board with fixtures opens a real session
+           over the synthetic v-Drive, and an export writes to a folder the user picked rather than
+           to the drive (specs/11-feature-dialogs.md §11.5), so 03 §3.5 is untouched by it. Save and
+           Import are the two that stay refused, and neither is drawn on this bar. -->
       <Border Grid.Row="2"
               Background="{DynamicResource StatusDemoTintBrush}"
               BorderBrush="{DynamicResource StatusDemoTintBorderBrush}"
@@ -186,6 +185,10 @@
                      VerticalAlignment="Center" />
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Content="{x:Static vm:KeyboardEditorViewModel.DemoModeExportCaption}"
+                    Classes="secondary"
+                    Command="{Binding ExportCommand}" />
+
             <Button Content="{x:Static vm:KeyboardEditorViewModel.DemoModeConnectCaption}"
                     Classes="secondary"
                     Command="{Binding Shell.HomeCommand}" />

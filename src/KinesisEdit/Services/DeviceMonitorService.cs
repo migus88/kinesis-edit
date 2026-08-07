@@ -86,6 +86,7 @@ namespace KinesisEdit.Services
         private readonly IVDriveFileService _fileService;
         private readonly IUiDispatcher _dispatcher;
         private readonly ISystemClock _clock;
+        private readonly IDemoDeviceProvider? _demoDevices;
         private readonly TimeSpan _refreshInterval;
         private readonly object _syncRoot = new();
         private readonly RefreshActivity _activity = new();
@@ -98,18 +99,26 @@ namespace KinesisEdit.Services
         /// this service), the file service used to re-read version files, the dispatcher that
         /// marshals <see cref="Updated"/> and <see cref="RefreshActivityChanged"/> onto the UI
         /// thread, and the clock that stamps <see cref="LastRefreshedUtc"/>.
+        /// <para>
+        /// <paramref name="demoDevices"/> is the gate every <b>undetected</b> device's snapshot is
+        /// offered a demo drive by — one poll builds one for each of the seven catalog boards, and
+        /// only the ones with fixtures may be given a location. Omit it for the real provider;
+        /// nothing here ever names a device.
+        /// </para>
         /// </summary>
         public DeviceMonitorService(
             VDriveMonitor monitor,
             IVDriveFileService fileService,
             IUiDispatcher dispatcher,
             ISystemClock clock,
-            TimeSpan? refreshInterval = null)
+            TimeSpan? refreshInterval = null,
+            IDemoDeviceProvider? demoDevices = null)
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            _demoDevices = demoDevices;
             _refreshInterval = refreshInterval ?? _defaultRefreshInterval;
 
             _monitor.StatusChanged += OnStatusChanged;
@@ -251,7 +260,10 @@ namespace KinesisEdit.Services
         {
             if (status.Location is null)
             {
-                return DeviceSnapshot.CreateDemo(device) with
+                // Every undetected board comes through here, so the demo gate is asked per device
+                // rather than per id: a board with fixtures gets the synthetic drive and opens a
+                // populated editor, and the six without keep the empty one they have always had.
+                return DeviceSnapshot.CreateDemo(device, _demoDevices) with
                 {
                     Status = status.Status
                 };

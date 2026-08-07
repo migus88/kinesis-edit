@@ -57,9 +57,50 @@ namespace KinesisEdit.Tests.Services
                 Assert.Equal(VDriveConnectionStatus.NotDetected, snapshot.Status);
                 Assert.Equal(VDriveHealth.Unknown, snapshot.Health);
                 Assert.True(snapshot.IsDemoMode);
-                Assert.Null(snapshot.Location);
                 Assert.False(snapshot.IsDetected);
             });
+        }
+
+        [Fact]
+        public void Refresh_WithoutDrives_AsksTheDemoGateAboutEveryUndetectedDeviceAndCarriesWhatItAnswers()
+        {
+            // The loop builds a demo snapshot for all seven catalog boards, so this is the one
+            // place where "offer demo content only where fixtures exist" is decided seven times a
+            // pass. The provider is asked about each of them, and only the one it answers for gets
+            // a drive — the other six keep the location-less snapshot they have always had, which
+            // is what stops their editors being pointed at files that are not there.
+            var demoDevices = new FakeDemoDeviceProvider(DeviceId.FreestyleEdgeRgb);
+
+            using var service = CreateService(demoDevices);
+
+            service.Refresh();
+
+            Assert.Equal(
+                service.Snapshots.Select(snapshot => snapshot.ScannedDeviceId).ToArray(),
+                demoDevices.AskedFor);
+
+            var demo = GetSnapshot(service, DeviceId.FreestyleEdgeRgb);
+
+            Assert.Equal(DemoVDrive.GetRootPath(DeviceId.FreestyleEdgeRgb), demo.Location?.RootPath);
+            Assert.False(demo.Location!.IsWritable);
+
+            Assert.All(
+                service.Snapshots.Where(snapshot => snapshot.ScannedDeviceId != DeviceId.FreestyleEdgeRgb),
+                snapshot => Assert.Null(snapshot.Location));
+        }
+
+        [Fact]
+        public void Refresh_WithoutDrives_WithAGateThatAnswersForNothing_LeavesEveryLocationNull()
+        {
+            // The other side of the same line, and the reason the gate is a collaborator rather
+            // than a lookup here: nothing in this service names a device, so a fixture set that
+            // shipped empty produces exactly the pre-demo-content behaviour for all seven boards.
+            using var service = CreateService(new FakeDemoDeviceProvider());
+
+            service.Refresh();
+
+            Assert.NotEmpty(service.Snapshots);
+            Assert.All(service.Snapshots, snapshot => Assert.Null(snapshot.Location));
         }
 
         [Fact]
@@ -626,6 +667,17 @@ namespace KinesisEdit.Tests.Services
                 new FakeUiDispatcher(),
                 clock,
                 _neverPolls);
+        }
+
+        private static DeviceMonitorService CreateService(IDemoDeviceProvider demoDevices)
+        {
+            return new DeviceMonitorService(
+                new VDriveMonitor(new FakeVDriveScanner(), _neverPolls),
+                new FakeVDriveFileService(),
+                new FakeUiDispatcher(),
+                new FakeSystemClock(),
+                _neverPolls,
+                demoDevices);
         }
 
         private static DeviceMonitorService CreateService(

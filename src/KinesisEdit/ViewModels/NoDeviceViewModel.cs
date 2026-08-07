@@ -259,6 +259,7 @@ namespace KinesisEdit.ViewModels
         private readonly IUrlLauncher _urlLauncher;
         private readonly Action<DeviceSnapshot> _demoModeRequested;
         private readonly Func<Task> _scanRequested;
+        private readonly IDemoDeviceProvider? _demoDevices;
         private readonly int _completedRefreshBaseline;
         private DevicePickerOption _selectedOption;
         private IReadOnlyList<ConnectionStep> _steps;
@@ -270,17 +271,23 @@ namespace KinesisEdit.ViewModels
         /// loop's completed-pass count at this moment — the zero the reassurance line counts up
         /// from. <paramref name="initialDevice"/> selects the initially shown board; the default is
         /// the Advantage2, which is also the row the picker tags "default".
+        /// <paramref name="demoDevices"/> is the gate the launched snapshot's drive comes from;
+        /// omit it for the real provider. <b>This screen never asks which board it is</b> — the
+        /// provider answers, and a board with no fixtures launches the empty demo editor it always
+        /// launched.
         /// </summary>
         public NoDeviceViewModel(
             IUrlLauncher urlLauncher,
             Action<DeviceSnapshot> demoModeRequested,
             Func<Task> scanRequested,
             int completedRefreshBaseline = 0,
-            DeviceId initialDevice = DefaultDevice)
+            DeviceId initialDevice = DefaultDevice,
+            IDemoDeviceProvider? demoDevices = null)
         {
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _demoModeRequested = demoModeRequested ?? throw new ArgumentNullException(nameof(demoModeRequested));
             _scanRequested = scanRequested ?? throw new ArgumentNullException(nameof(scanRequested));
+            _demoDevices = demoDevices;
             _completedRefreshBaseline = completedRefreshBaseline;
             _completedRefreshCount = completedRefreshBaseline;
 
@@ -346,7 +353,7 @@ namespace KinesisEdit.ViewModels
 
         private void LaunchDemoMode()
         {
-            _demoModeRequested(DeviceSnapshot.CreateDemo(SelectedDevice));
+            _demoModeRequested(DeviceSnapshot.CreateDemo(SelectedDevice, _demoDevices));
         }
 
         private void OpenTroubleshootingTips()
