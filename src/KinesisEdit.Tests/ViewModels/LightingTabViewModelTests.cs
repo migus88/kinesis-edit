@@ -130,6 +130,10 @@ namespace KinesisEdit.Tests.ViewModels
             // panel routes through Core rather than that Core is right about itself.
             var tab = CreateAttachedTab();
 
+            // One key selected, because Apply's own gate is the selection and the point below is
+            // that the MODE does not gate it. The selection survives a mode change on purpose.
+            tab.SelectKeyCommand.Execute(tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
             SelectMode(tab, mode);
 
             Assert.Equal(acceptsEffectColor, tab.Parameters.AcceptsEffectColor);
@@ -142,7 +146,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // ...and the paint controls are NOT among the things the mode decides: the colours they
             // manage are the layer's, so every one of them is reachable in every mode.
-            Assert.True(tab.ApplyZoneCommand.CanExecute(tab.Zones[0]));
+            Assert.True(tab.SelectZoneCommand.CanExecute(tab.Zones[0]));
             Assert.True(tab.ResetAllCommand.CanExecute(null));
             Assert.True(tab.PaintSelectionCommand.CanExecute(null));
             Assert.True(tab.ClearKeyColorsCommand.CanExecute(null));
@@ -549,7 +553,12 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(2, lighting.TopLayer.KeyColors.Count);
             Assert.Equal(new LedColor(0, 128, 255), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
             Assert.Equal(new LedColor(0, 128, 255), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("2").Code]);
-            Assert.Equal("#0080FF", boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            // The cap draws the SOFTENED face of that colour; the stored value asserted above is the
+            // one the file keeps. Both are checked here on purpose — this is the seam where the two
+            // could silently become one number again.
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 128, 255))),
+                boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
             Assert.Equal(1, changes);
         }
 
@@ -648,7 +657,9 @@ namespace KinesisEdit.Tests.ViewModels
             // controls' reachability is not: Wave shows it at 40% under the travelling effect.
             tab.AdvancePreview(0.1);
 
-            Assert.Equal("#010203", boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(1, 2, 3))),
+                boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
             Assert.Equal(
                 LightingEffectFrame.PaintOpacityDimmed,
                 boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintOpacity);
@@ -714,8 +725,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void ApplyZoneCommand_PaintsEveryKeyCodeOfTheZone()
+        public void SelectZoneCommand_SelectsEveryKeyOfTheZone_AndPaintsNothing()
         {
+            // Issue #124 split the zone gesture in two: a zone SELECTS, Apply commits. The colour is
+            // put in the picker first, so that a zone click that painted anything would show up here
+            // as a non-empty map rather than as a difference nobody notices.
             var lighting = new LightingModel();
             var tab = CreateAttachedTab(lighting: lighting);
 
@@ -724,7 +738,18 @@ namespace KinesisEdit.Tests.ViewModels
 
             var numbers = tab.Zones.Single(zone => zone.Caption == "Number");
 
-            tab.ApplyZoneCommand.Execute(numbers);
+            tab.SelectZoneCommand.Execute(numbers);
+
+            Assert.Empty(lighting.TopLayer.KeyColors);
+            Assert.Equal(numbers.KeyCodes.Count, tab.Selection.Count);
+            Assert.True(numbers.IsSelected);
+            Assert.All(
+                numbers.KeyCodes,
+                keyCode => Assert.True(
+                    tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == keyCode).IsLightingSelected));
+
+            // ...and Apply is what writes.
+            tab.PaintSelectionCommand.Execute(null);
 
             Assert.Equal(numbers.KeyCodes.Count, lighting.TopLayer.KeyColors.Count);
             Assert.All(
@@ -733,10 +758,12 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void ApplyZoneCommand_OnTheFnLayer_PaintsTheSamePhysicalPositions()
+        public void SelectZoneCommand_OnTheFnLayer_SelectsTheSamePhysicalPositions()
         {
             // Zone membership is authored against the top layer; on the Fn layer the same
-            // positions carry different memory keys (specs/07-lighting.md §2.4 item 6).
+            // positions carry different memory keys (specs/07-lighting.md §2.4 item 6). That
+            // resolution survived the select/apply split — it now happens on the way into the
+            // selection instead of on the way into the model.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab(TestDevices.CreateSnapshot(
@@ -754,7 +781,12 @@ namespace KinesisEdit.Tests.ViewModels
             // layer does not have.
             var function = tab.Zones.Single(zone => zone.Caption == "Function");
 
-            tab.ApplyZoneCommand.Execute(function);
+            tab.SelectZoneCommand.Execute(function);
+
+            Assert.Empty(lighting.FnLayer.KeyColors);
+            Assert.Equal(function.KeyCodes.Count, tab.Selection.Count);
+
+            tab.PaintSelectionCommand.Execute(null);
 
             Assert.Equal(function.KeyCodes.Count, lighting.FnLayer.KeyColors.Count);
             Assert.Contains(TestLayouts.Gen1Key("mute").Code, lighting.FnLayer.KeyColors.Keys);
@@ -767,6 +799,127 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
+        public void SelectZoneCommand_OnAZoneThatIsAlreadySelected_TakesItBackOut()
+        {
+            // The toggle is over the zone as a whole, so the same click that made a selection undoes
+            // it — which is what makes a mis-aimed zone recoverable without emptying everything.
+            var tab = CreateAttachedTab();
+            var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+
+            tab.SelectZoneCommand.Execute(wasd);
+
+            Assert.Equal(4, tab.Selection.Count);
+            Assert.True(wasd.IsSelected);
+
+            tab.SelectZoneCommand.Execute(wasd);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.False(wasd.IsSelected);
+        }
+
+        [AvaloniaFact]
+        public void SelectZoneCommand_OverAnotherZone_AddsToTheSelectionRatherThanReplacingIt()
+        {
+            var tab = CreateAttachedTab();
+            var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+            var arrows = tab.Zones.Single(zone => zone.Caption == "Arrow");
+
+            tab.SelectZoneCommand.Execute(wasd);
+            tab.SelectZoneCommand.Execute(arrows);
+
+            Assert.Equal(wasd.KeyCodes.Count + arrows.KeyCodes.Count, tab.Selection.Count);
+            Assert.True(wasd.IsSelected);
+            Assert.True(arrows.IsSelected);
+        }
+
+        [AvaloniaFact]
+        public void ZoneIsSelected_FollowsTheSelectionFromAnySource()
+        {
+            // The point of hanging it on LightingPaintSelection.Changed: a zone lights up because
+            // its keys are selected, however they came to be — not because its own button was
+            // pressed.
+            var tab = CreateAttachedTab();
+            var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+            var all = tab.Zones.Single(zone => zone.Caption == "All");
+
+            Assert.False(wasd.IsSelected);
+
+            // "Select all" is not a zone button and selects every zone's keys.
+            tab.SelectAllKeysCommand.Execute(null);
+
+            Assert.True(wasd.IsSelected);
+            Assert.True(all.IsSelected);
+
+            // A board click that takes one of WASD's keys back out unlights that zone — and only it.
+            var wKey = tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == wasd.KeyCodes[0]);
+
+            tab.SelectKeyCommand.Execute(wKey);
+
+            Assert.False(wasd.IsSelected);
+            Assert.False(all.IsSelected);
+            Assert.True(tab.Zones.Single(zone => zone.Caption == "Arrow").IsSelected);
+
+            // Emptying the selection unlights every one of them.
+            tab.SelectAllKeysCommand.Execute(null);
+            tab.SelectLayerCommand.Execute(tab.Layers[1]);
+
+            Assert.All(tab.Zones, zone => Assert.False(zone.IsSelected));
+        }
+
+        [AvaloniaFact]
+        public void PaintSelectionCommand_WithNothingSelected_IsDisabled()
+        {
+            var tab = CreateAttachedTab();
+
+            Assert.False(tab.PaintSelectionCommand.CanExecute(null));
+        }
+
+        [AvaloniaFact]
+        public void PaintSelectionCommand_AnnouncesItsGate_WhenTheSelectionMoves()
+        {
+            // The view binds IsEnabled to the command, so the gate has to announce itself or Apply
+            // stays grey over a board full of selected keys.
+            var tab = CreateAttachedTab();
+            var announced = 0;
+
+            tab.PaintSelectionCommand.CanExecuteChanged += (_, _) => announced++;
+
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+
+            Assert.True(announced > 0);
+            Assert.True(tab.PaintSelectionCommand.CanExecute(null));
+
+            announced = 0;
+
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+
+            Assert.True(announced > 0);
+            Assert.False(tab.PaintSelectionCommand.CanExecute(null));
+        }
+
+        [AvaloniaFact]
+        public void PaintSelectionCommand_PaintsTheSelectionWithThePickersColour()
+        {
+            // Apply is a re-apply too: the colour already in the picker lands on a selection made
+            // after it was chosen, which is the whole select-a-zone-then-apply flow.
+            var lighting = new LightingModel();
+            var tab = CreateAttachedTab(lighting: lighting);
+
+            SelectMode(tab, LightingMode.Freestyle);
+            tab.Picker.Color = new LedColor(9, 90, 190);
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+
+            Assert.Empty(lighting.TopLayer.KeyColors);
+
+            tab.PaintSelectionCommand.Execute(null);
+
+            Assert.Equal(4, lighting.TopLayer.KeyColors.Count);
+            Assert.All(
+                lighting.TopLayer.KeyColors.Values,
+                color => Assert.Equal(new LedColor(9, 90, 190), color));
+        }
+
+        [AvaloniaFact]
         public async Task ResetAllCommand_WhenConfirmed_ErasesEveryKeyColour()
         {
             _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = MessageBoxResult.Yes };
@@ -775,7 +928,8 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateAttachedTab(lighting: lighting);
 
             SelectMode(tab, LightingMode.Freestyle);
-            tab.ApplyZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.PaintSelectionCommand.Execute(null);
 
             Assert.NotEmpty(lighting.TopLayer.KeyColors);
 
@@ -797,7 +951,8 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateAttachedTab(lighting: lighting);
 
             SelectMode(tab, LightingMode.Freestyle);
-            tab.ApplyZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.PaintSelectionCommand.Execute(null);
 
             await tab.ResetAllCommand.ExecuteAsync(null);
 
@@ -816,7 +971,8 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateAttachedTab(lighting: lighting);
 
             SelectMode(tab, LightingMode.Freestyle);
-            tab.ApplyZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "WASD"));
+            tab.PaintSelectionCommand.Execute(null);
 
             SelectMode(tab, LightingMode.Spectrum);
 
@@ -1102,7 +1258,8 @@ namespace KinesisEdit.Tests.ViewModels
             // The Function zone lands on the Fn layer's media keys, which are exactly the eight
             // save-token exceptions of specs/07-lighting.md §2.4 item 7 — the hardest thing in the
             // file to round-trip.
-            tab.ApplyZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "Function"));
+            tab.SelectZoneCommand.Execute(tab.Zones.Single(zone => zone.Caption == "Function"));
+            tab.PaintSelectionCommand.Execute(null);
 
             var reloaded = LedFileParser.ParseRgb(LedFileSerializer.SerializeRgb(lighting));
 

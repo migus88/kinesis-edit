@@ -257,11 +257,13 @@
                  column rather than be layered over the setter: a GridSplitter resizes columns, and a
                  local Width on the rail would have outranked whatever the column said.
 
-                 The column is driven from code-behind (SyncRailColumn) rather than by a binding,
-                 because a ColumnDefinition is a bare AvaloniaObject: it is in neither the logical
-                 nor the visual tree, so it inherits no DataContext and a {Binding} on it has
-                 nothing to resolve against. The handler is the whole of what the code-behind does
-                 here besides the keyboard grammar, and it is two lines in each direction.
+                 The column is driven from code-behind (Views/InspectorRailColumn) rather than by a
+                 binding, because a ColumnDefinition is a bare AvaloniaObject: it is in neither the
+                 logical nor the visual tree, so it inherits no DataContext and a {Binding} on it
+                 has nothing to resolve against. That driver is SHARED with the Lighting tab's mode
+                 rail since issue #124 — the two rails are two contents of one resizable column
+                 reading one stored width — so the code-behind here does nothing but hand it the
+                 grid, follow the editor's rail model, and report the seam's drag.
 
                  THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to dock its
                  editor beside this picture; it is a library now (mockup 1i) and takes the whole

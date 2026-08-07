@@ -14,7 +14,7 @@ namespace KinesisEdit.Views
     /// <summary>
     /// The editor's Lighting tab (design mockup 2f): the board rendering the selected mode, the
     /// layer switch above it, the paint line under it and the mode rail beside it. Everything it
-    /// shows is bound; the code here is three behaviours markup cannot express.
+    /// shows is bound; the code here is four behaviours markup cannot express.
     /// <para>
     /// <b>The frame timer.</b> The board animates, which is the one per-frame repaint in the app
     /// (<c>DurationLightingPreviewFrame</c>, ~30 fps — Themes/Motion.axaml). The timer does nothing
@@ -39,6 +39,15 @@ namespace KinesisEdit.Views
     /// sees it and runs <see cref="LightingTabViewModel.ExtendSelectionCommand"/> instead of the
     /// toggle. Marking it handled is what stops the plain click running as well.
     /// </para>
+    /// <para>
+    /// <b>The mode rail's column.</b> Since issue #124 the rail is drag-adjustable and shares the
+    /// Keys tab's stored width, and a <c>ColumnDefinition</c> cannot be bound — see
+    /// <see cref="InspectorRailColumn"/>, which is the very driver
+    /// <see cref="KeyboardEditorView"/> uses. Its three trigger points all matter here, and the
+    /// third one especially: this tab is <b>hidden, never unloaded</b>, so it does not get a fresh
+    /// <c>OnAttachedToVisualTree</c> when the user comes back to it. The column keeps its width
+    /// because the subscription — and the column itself — outlive the visibility flip.
+    /// </para>
     /// </summary>
     public partial class LightingTabView : UserControl
     {
@@ -59,6 +68,13 @@ namespace KinesisEdit.Views
         /// </summary>
         private const string FrameIntervalKey = "DurationLightingPreviewFrame";
 
+        /// <summary>
+        /// Which column of this tab's grid the mode rail sits in — board, seam, rail. The same three
+        /// the Keys tab's content row has, and for the same reason: a <see cref="GridSplitter"/>
+        /// resizes a column, so that is where the width has to live.
+        /// </summary>
+        private const int RailColumnIndex = 2;
+
         /// <summary>~30 fps, the budget's own value, used only if the resource cannot be resolved.</summary>
         public static readonly TimeSpan DefaultFrameInterval = TimeSpan.FromMilliseconds(33);
 
@@ -73,12 +89,27 @@ namespace KinesisEdit.Views
 
         private readonly DispatcherTimer _frameTimer;
         private readonly List<Visual> _watchedVisuals = [];
+
+        /// <summary>
+        /// The mode rail's column driver. It reads
+        /// <see cref="InspectorRailColumn.WidthSource.Stored"/>, never the effective width: the
+        /// 300 px floor belongs to the Keys tab's Macro panel, and this tab has no macro panel to
+        /// widen for.
+        /// </summary>
+        private readonly InspectorRailColumn _railColumn;
+
         private long _lastTimestamp;
 
         /// <summary>Creates the lighting view and its (stopped) frame timer.</summary>
         public LightingTabView()
         {
             InitializeComponent();
+
+            _railColumn = new InspectorRailColumn(
+                this,
+                LightingColumns,
+                RailColumnIndex,
+                InspectorRailColumn.WidthSource.Stored);
 
             _frameTimer = new DispatcherTimer { Interval = DefaultFrameInterval };
             _frameTimer.Tick += OnFrame;
@@ -99,6 +130,10 @@ namespace KinesisEdit.Views
             base.OnAttachedToVisualTree(e);
 
             _frameTimer.Interval = ResolveFrameInterval();
+
+            // The two geometry tokens cannot be resolved before this view is in a tree, so the
+            // column's band is put on here as well as on every DataContext change.
+            _railColumn.Sync();
 
             WatchVisibilityChain();
             UpdatePreviewState();
@@ -188,8 +223,29 @@ namespace KinesisEdit.Views
             (DataContext as LightingTabViewModel)?.AdvancePreview(elapsedSeconds);
         }
 
+        /// <summary>
+        /// The seam is being dragged. The splitter has already moved the column, so all that is left
+        /// is to tell the shared width model — which clamps it, persists it, and pushes the clamped
+        /// result back onto <b>both</b> tabs' columns.
+        /// </summary>
+        private void OnRailSplitterDragged(object? sender, VectorEventArgs e)
+        {
+            _railColumn.Store();
+        }
+
+        /// <summary>
+        /// The seam was let go. The same write as the drag's, because a drag that is a single flick
+        /// can end without a delta ever being raised.
+        /// </summary>
+        private void OnRailSplitterReleased(object? sender, VectorEventArgs e)
+        {
+            _railColumn.Store();
+        }
+
         private void OnDataContextChanged(object? sender, EventArgs e)
         {
+            _railColumn.Follow((DataContext as LightingTabViewModel)?.Rail);
+
             UpdatePreviewState();
         }
 

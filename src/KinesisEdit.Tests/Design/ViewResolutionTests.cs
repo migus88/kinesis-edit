@@ -45,6 +45,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
             [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
+            [typeof(LightingZoneViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the zone buttons).",
             [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the mode rail's rows).",
             [typeof(LightingDirectionViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the four direction arrows).",
             [typeof(LightingSpeedSegmentViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the nine speed bars).",
@@ -64,6 +65,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingModeRailView.axaml.",
             [typeof(LightingSpeedViewModel)] = "Bound as SpeedControl.* inside Views/LightingModeRailView.axaml.",
             [typeof(LightingPaintSelection)] = "Bound as Selection.* inside Views/LightingTabView.axaml (the paint line under the board).",
+            [typeof(InspectorRailWidthViewModel)] = "Bound as Rail.* onto the rail ColumnDefinition of Views/KeyboardEditorView.axaml and Views/LightingTabView.axaml; it draws nothing itself.",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
             [typeof(MacroInspectorStepsViewModel)] = "Bound as Steps.* inside Views/MacroInspectorPanelView.axaml.",
             [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml, and as the three meters of Views/MacroLibraryView.axaml."

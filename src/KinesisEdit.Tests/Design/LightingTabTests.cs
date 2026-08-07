@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using KinesisEdit.Controls;
 using KinesisEdit.Core.Lighting;
 using KinesisEdit.Core.Lighting.Preview;
+using KinesisEdit.Services;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
@@ -244,7 +245,13 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(1, lighting.Selection.Count);
             Assert.True(key.HasPaintColor);
-            Assert.Equal("#57C4D8", key.PaintColorHex);
+
+            // The cap wears the SOFTENED colour, not the stored one (issue #124) — and the
+            // expectation is computed rather than written out, so a re-tune of the tint constants
+            // moves this test with the app instead of failing it.
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(87, 196, 216))),
+                key.PaintColorHex);
             Assert.Equal(LightingEffectFrame.PaintOpacityDimmed, key.PaintOpacity);
         }
 
@@ -362,8 +369,13 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheRail_IsTheWideInspectorColumn_AndCarriesTheRailsOwnHeading()
+        public async Task TheRail_IsTheEditorsOwnBoundedColumn_AndCarriesTheRailsOwnHeading()
         {
+            // It used to assert `WidthInspectorRailWide`, 300, set on the rail's own Border. Issue
+            // #124 moved the width onto the grid COLUMN — a GridSplitter resizes a column, and a
+            // local Width would have outranked it — and pointed that column at the very
+            // InspectorRailWidthViewModel the Keys tab's rail reads. So the rail opens at the
+            // user's stored width, inside the same band the key inspector's column carries.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
@@ -373,10 +385,243 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             var rail = Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
-            var expected = (double)DesignTokens.Resolve("WidthInspectorRailWide", ThemeVariant.Dark);
 
-            Assert.Equal(expected, rail.Bounds.Width);
+            Assert.True(
+                double.IsNaN(rail.Width),
+                "The mode rail still carries a Width of its own; the column owns it now.");
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
             Assert.Contains(LightingTabViewModel.ModeRailCaption, VisibleTexts(view));
+        }
+
+        [AvaloniaFact]
+        public async Task TheRailsColumn_IsBoundedByTheSameGeometryTokensAsTheKeyInspectors()
+        {
+            // The drag's own band, on this tab too: the column carries it, so the seam cannot be
+            // pulled outside it in the first place, and the view model clamps the stored number to
+            // the same two.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var column = RailColumnOf(view);
+
+            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMin", ThemeVariant.Dark), column.MinWidth);
+            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMax", ThemeVariant.Dark), column.MaxWidth);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, column.Width.Value);
+            Assert.True(
+                column.Width.IsAbsolute,
+                "The mode rail's column is not a fixed width; the splitter has nothing to resize.");
+        }
+
+        [AvaloniaFact]
+        public async Task DraggingTheLightingSeam_WidensTheRailAndStoresWhatTheUserChose()
+        {
+            // The whole mechanism end to end, through Avalonia's own input pipeline — a real press
+            // on the seam, a real move, a real release — exactly as EditorChromeTests drives the
+            // Keys tab's. Nothing here pokes the view model, because the failure this catches is a
+            // splitter resizing a column the rail does not live in, which every property-level
+            // assertion would miss.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var rail = Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
+            var seam = Assert.Single(Descendants<GridSplitter>(view));
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
+
+            const double pull = 60;
+
+            var grip = seam.TranslatePoint(new Point(seam.Bounds.Width / 2, seam.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The seam is not in the window's visual tree.");
+
+            host.Window.MouseMove(grip);
+            host.Window.MouseDown(grip, MouseButton.Left);
+            host.Window.MouseMove(grip - new Point(pull, 0), RawInputModifiers.LeftMouseButton);
+            host.Window.MouseUp(grip - new Point(pull, 0), MouseButton.Left);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // Left widens it: the rail is the right-hand column, so the seam moving left gives it
+            // room and the board's star column gives the room up.
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, lighting.Rail.Width);
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, rail.Bounds.Width);
+        }
+
+        [AvaloniaFact]
+        public async Task AStoredWidth_ReachesTheModeRailsColumn()
+        {
+            // The other direction, and the half a drag cannot prove: a width that arrives from the
+            // preference store — or from a drag on the OTHER tab's seam — has to land on this
+            // column, or the two rails would only agree until one of them was moved.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            lighting.Rail.Width = 420;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(420, RailBorderOf(view).Bounds.Width);
+
+            // ...and the macro panel's 300 px floor is NOT inherited here. The Keys tab's rail is
+            // entitled to it; this tab has no macro panel, so a narrow rail stays narrow.
+            lighting.Rail.Width = HostPreferences.MinimumInspectorRailWidth;
+            lighting.Rail.IsWide = true;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(HostPreferences.MinimumInspectorRailWidth, RailBorderOf(view).Bounds.Width);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheBoardBlock_IsCentredInItsColumn_LikeTheKeysBoard(string variantName)
+        {
+            // Issue #124, and it reverses a comment this file's own view used to carry: the block
+            // was anchored to the top of its column because the paint line came and went with the
+            // mode and slid a centred board ~70 px. That row is on screen in every mode now, so the
+            // cause is gone and the anchoring was outliving it. The measurement is off the glass —
+            // the gap above the block against the gap below it — because a VerticalAlignment that
+            // resolves and never reaches the arrange pass looks identical to a property test.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            host.Capture();
+
+            var block = BoardBlockOf(view);
+            var column = (Grid)block.GetVisualParent()!;
+            var top = block.TranslatePoint(default, column)!.Value.Y;
+            var above = top - column.RowDefinitions[0].ActualHeight;
+            var below = column.Bounds.Height - (top + block.Bounds.Height);
+
+            Assert.True(above > 1, $"The board block sits {above} from the top of its row; it is not centred.");
+            Assert.True(
+                Math.Abs(above - below) <= 1,
+                $"The board block has {above} above it and {below} below it; it is not centred.");
+
+            // ...and nothing under it overlaps it: the paint line and the zones are the last two
+            // children of the very block that was measured, so a collision would be a negative gap.
+            Assert.True(below >= 0, $"The board block overflows its row by {-below}.");
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task AZone_SelectsItsKeysAndShowsItsSelectedFace_WithoutPaintingAnything(string variantName)
+        {
+            // Issue #124 split one gesture in two. A zone used to paint on the spot, which left no
+            // way to say "these keys" without also committing a colour to them; it selects now, and
+            // Apply commits. The button therefore needs a face — it had none at all, because
+            // `Button.zoneButton` carried padding, a margin and a cursor and no ControlTheme.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, variant);
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            host.Capture();
+
+            var zone = lighting.Zones.First(entry => entry.KeyCodes.Count > 0);
+            var button = ZoneButtonFor(view, zone);
+
+            Assert.DoesNotContain("selected", button.Classes);
+
+            lighting.SelectZoneCommand.Execute(zone);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(zone.IsSelected);
+            Assert.Contains("selected", button.Classes);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.Background);
+
+            // The other half of the split, and the one a face cannot show: the keys are selected and
+            // NOTHING on the layer was painted.
+            Assert.Equal(zone.KeyCodes.Count, lighting.Selection.Count);
+            Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task Apply_SitsInTheRailFooter_IsGatedOnTheSelection_AndPaintsIt(string variantName)
+        {
+            // The commit of the select-then-apply flow (issue #124). It is the one control on this
+            // screen that can paint a selection made AFTER the colour was chosen — the picker paints
+            // live, but only what was selected while it was being dragged.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            host.Capture();
+
+            // It sits WITH Color / Speed / Direction — searched from the footer down rather than
+            // from the screen down, so a button that landed anywhere else would not be found.
+            var footer = Assert.Single(
+                Descendants<Border>(view),
+                border => border.Classes.Contains("inspectorFooter"));
+            var apply = Assert.Single(
+                Descendants<Button>(footer),
+                button => Equals(button.Content, LightingModeRailView.ApplyCaption));
+
+            // Nothing selected: the command cannot run, so the button is dead. No visibility logic
+            // decides that — CanExecute does.
+            Assert.False(lighting.Selection.HasSelection);
+            Assert.False(apply.IsEffectivelyEnabled);
+
+            // The colour is chosen FIRST, over an empty selection, so the live paint writes nothing.
+            lighting.Picker.Color = new LedColor(0, 0, 255);
+
+            Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
+
+            var zone = lighting.Zones.First(entry => entry.KeyCodes.Count > 0);
+
+            lighting.SelectZoneCommand.Execute(zone);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(apply.IsEffectivelyEnabled);
+            Assert.DoesNotContain(lighting.Board.Keys, key => key.HasPaintColor);
+
+            Click(host, apply);
+
+            Assert.Equal(zone.KeyCodes.Count, lighting.Board.Keys.Count(key => key.HasPaintColor));
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 0, 255))),
+                lighting.Board.Keys.First(key => key.HasPaintColor).PaintColorHex);
         }
 
         [AvaloniaFact]
@@ -710,6 +955,52 @@ namespace KinesisEdit.Tests.Design
 
             return board.TranslatePoint(default, view)
                 ?? throw new InvalidOperationException("The board is not in the tab's tree.");
+        }
+
+        /// <summary>The mode rail's own frame.</summary>
+        private static Border RailBorderOf(Control view)
+        {
+            return Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
+        }
+
+        /// <summary>
+        /// The rail's <see cref="ColumnDefinition"/> — where its width lives since issue #124,
+        /// reached through the seam exactly as <c>EditorChromeTests</c> reaches the Keys tab's.
+        /// </summary>
+        private static ColumnDefinition RailColumnOf(Control view)
+        {
+            var seam = Assert.Single(Descendants<GridSplitter>(view));
+            var grid = (Grid)seam.GetVisualParent()!;
+
+            return grid.ColumnDefinitions[Grid.GetColumn(RailBorderOf(view).FindAncestorOfType<LightingModeRailView>()!)];
+        }
+
+        /// <summary>
+        /// The centred block under the layer switch: the board header, the picture, the paint line
+        /// and the zones, as one thing. It is the <see cref="Grid"/> the board hangs off — a Grid
+        /// and not a <see cref="StackPanel"/> because issue #123 forbids a vertically-oriented
+        /// StackPanel above a <c>BoardScaleHost</c> (one measures its children against infinite
+        /// height, so the picture takes its scale from the width alone and overflows the slot).
+        /// Centring the block and fitting the board to its row are independent, and this helper
+        /// finding a Grid is what says so.
+        /// </summary>
+        private static Control BoardBlockOf(Control view)
+        {
+            var board = Descendants<KeyboardView>(view).FirstOrDefault()
+                ?? throw new InvalidOperationException("The lighting scene drew no board.");
+
+            return board.GetSelfAndVisualAncestors()
+                .OfType<Grid>()
+                .First(grid => grid.GetVisualParent() is Grid);
+        }
+
+        /// <summary>The chip drawn for one zone of the paint row.</summary>
+        private static Button ZoneButtonFor(Control view, LightingZoneViewModel zone)
+        {
+            return Descendants<Button>(view)
+                .Where(button => button.Classes.Contains("zoneButton"))
+                .FirstOrDefault(button => ReferenceEquals(button.DataContext, zone))
+                ?? throw new InvalidOperationException($"The paint row drew no chip for '{zone.Caption}'.");
         }
 
         private static Button[] DirectionSegments(Control view)

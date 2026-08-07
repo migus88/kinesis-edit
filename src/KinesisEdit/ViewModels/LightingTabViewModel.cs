@@ -238,6 +238,19 @@ namespace KinesisEdit.ViewModels
         public IReadOnlyList<LightingZoneViewModel> Zones { get; }
 
         /// <summary>
+        /// The width of the rail beside the board — the editor's <b>one</b> rail width object, so a
+        /// seam dragged here is the width the Keys tab's key inspector opens at and the other way
+        /// round (issue #124), persisted under the existing <c>inspectorRailWidth</c> preference.
+        /// <para>
+        /// <b>This tab binds <see cref="InspectorRailWidthViewModel.Width"/>, never
+        /// <see cref="InspectorRailWidthViewModel.EffectiveWidth"/>.</b> The 300 px floor is the
+        /// macro panel's entitlement and there is no macro panel on this tab; inheriting it would
+        /// widen this rail for a reason that does not exist here.
+        /// </para>
+        /// </summary>
+        public InspectorRailWidthViewModel Rail { get; }
+
+        /// <summary>
         /// The keys a colour, or a Clear, applies to — the lighting board's own multi-selection,
         /// which is <b>not</b> the editor's single selection (see
         /// <see cref="LightingPaintSelection"/>).
@@ -262,8 +275,12 @@ namespace KinesisEdit.ViewModels
         /// <summary>Sets the speed from one of the nine bars.</summary>
         public IRelayCommand<int> SetSpeedCommand { get; }
 
-        /// <summary>Paints the picker's color onto every key of a zone (§4).</summary>
-        public IRelayCommand<LightingZoneViewModel> ApplyZoneCommand { get; }
+        /// <summary>
+        /// Toggles a zone's keys in the paint selection (§4, issue #124). It <b>paints nothing</b>:
+        /// a zone is a way of selecting a set of positions, and <see cref="PaintSelectionCommand"/>
+        /// is the explicit commit.
+        /// </summary>
+        public IRelayCommand<LightingZoneViewModel> SelectZoneCommand { get; }
 
         /// <summary>Adds a key to the paint selection or takes it out — what a click on a cap runs.</summary>
         public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand { get; }
@@ -281,9 +298,19 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand ClearKeyColorsCommand { get; }
 
         /// <summary>
-        /// Paints the picker's current color onto the whole selection. Choosing a colour does this
-        /// on its own; the command is what re-applies the colour already in the picker to a
-        /// selection made afterwards.
+        /// <b>Apply</b> — paints the picker's current color onto the whole selection, and the rail
+        /// footer's own control since issue #124.
+        /// <para>
+        /// Dragging the picker still paints the selection live (see
+        /// <see cref="OnPickerColorChanged"/>), which was the user's explicit decision: this is the
+        /// commit for the select-a-zone-then-apply flow, and a re-apply of the picker's colour to a
+        /// selection made afterwards, not the only way a colour ever lands.
+        /// </para>
+        /// <para>
+        /// It is enabled exactly while something is selected — the one gate on the paint row, and it
+        /// is about the <i>selection</i> rather than the mode, so it does not break the rule below
+        /// that no paint control comes and goes with the effect.
+        /// </para>
         /// </summary>
         public IRelayCommand PaintSelectionCommand { get; }
 
@@ -342,17 +369,26 @@ namespace KinesisEdit.ViewModels
         /// drawn in. The shell passes the app's own instance, and only then is the Settings
         /// screen's reduce-motion preference live on this board.
         /// </param>
+        /// <param name="rail">
+        /// The editor's one rail width (issue #124). Optional, and null builds a store-less one of
+        /// its own: a panel built for a unit test or a design scene has no editor around it to share
+        /// with, and a rail that drags and forgets is the right degradation — the same shape the
+        /// editor's own <c>IHostPreferencesStore</c> already has.
+        /// </param>
         public LightingTabViewModel(
             DeviceSnapshot device,
             INotificationService notifications,
             IAppPreferencesStore preferences,
-            IMotionSettings? motionSettings = null)
+            IMotionSettings? motionSettings = null,
+            InspectorRailWidthViewModel? rail = null)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
             _motionSettings = motionSettings;
 
             ArgumentNullException.ThrowIfNull(preferences);
+
+            Rail = rail ?? new InspectorRailWidthViewModel();
 
             IsAvailable = IsSupported(device.Device);
             IsLayerCustomizationAvailable = LightingAvailability.IsFnLayerLightingAvailable(
@@ -388,13 +424,28 @@ namespace KinesisEdit.ViewModels
             // which is already "this board has per-key RGB", because that is what puts the tab on
             // screen at all (IsSupported). What the mode decides is how the paint is *drawn*:
             // directly, or at 40% under the effect (LightingModeParameters.RendersPaintDirectly).
-            ApplyZoneCommand = new RelayCommand<LightingZoneViewModel>(ApplyZone);
+            //
+            // Apply's CanExecute below is not an exception to that: it asks about the SELECTION,
+            // which is a fact about what the user pointed at, not about the effect running.
+            SelectZoneCommand = new RelayCommand<LightingZoneViewModel>(SelectZone);
             SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Toggle);
             ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Extend);
             SelectAllKeysCommand = new RelayCommand(Selection.SelectAll);
             ClearKeyColorsCommand = new RelayCommand(ClearKeyColors);
-            PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color));
+            // Apply's one gate is the selection, not the mode: painting nothing is not a paint, and
+            // a control that claims otherwise is a lie the user only finds out about by pressing it.
+            PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color), () => Selection.HasSelection);
             ResetAllCommand = new AsyncRelayCommand(ResetAllAsync);
+
+            // ONE SUBSCRIPTION, NOT A LIST OF CALL SITES, and subscribed after the commands exist
+            // because it re-asks one of them. The zone buttons' selected state and Apply's
+            // enablement are both functions of the whole selection, and the selection moves from six
+            // places (a click, a shift-click, "Select all", a zone, an emptying, a layer switch).
+            // Hanging both on the selection's own notification is what makes "they always agree with
+            // the board" true by construction rather than by a list somebody has to keep complete —
+            // the same reasoning as RefreshLegend on the Keys tab. The selection is this panel's own
+            // object and dies with it, so nothing detaches this.
+            Selection.Changed += OnSelectionChanged;
         }
 
         /// <summary>
@@ -806,32 +857,74 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Paints a whole zone. Zone membership is authored against the <b>top layer</b>, so on
-        /// the Fn layer every code is re-resolved to the same physical position first
-        /// (§2.4 item 6: "Fn-layer per-key lines address keys by top-layer position; the color is
-        /// applied to the same physical key on the Fn layer").
+        /// Toggles a whole zone in the paint selection, and <b>writes no colour</b>.
+        /// <para>
+        /// Zone buttons used to paint on the spot, which left no way to say "these keys" without
+        /// also committing a colour to them and no way to undo the commit but Reset All. Issue #124
+        /// splits the gesture in two: a zone is a selection, Apply
+        /// (<see cref="PaintSelectionCommand"/>) is the commit. Nothing about the zones' membership
+        /// changed with it.
+        /// </para>
+        /// <para>
+        /// The toggle is over the zone as a whole — a zone already entirely selected comes out, and
+        /// anything else goes fully in — so two zones can be built up into one selection and the
+        /// same click that made a zone takes it back. Zone membership is still authored against the
+        /// <b>top layer</b>, so on the Fn layer every code is re-resolved to the same physical
+        /// position first (§2.4 item 6: "Fn-layer per-key lines address keys by top-layer position;
+        /// the color is applied to the same physical key on the Fn layer").
+        /// </para>
         /// </summary>
-        private void ApplyZone(LightingZoneViewModel? zone)
+        private void SelectZone(LightingZoneViewModel? zone)
         {
-            var state = SelectedLayer?.State;
-
-            if (zone is null || state is null)
+            if (zone is null || SelectedLayer is null)
             {
                 return;
             }
 
-            var color = Picker.Color;
+            var keyCodes = ResolveZoneKeyCodes(zone);
+
+            if (Selection.ContainsAll(keyCodes))
+            {
+                Selection.DeselectByKeyCode(keyCodes);
+            }
+            else
+            {
+                Selection.SelectByKeyCode(keyCodes);
+            }
+        }
+
+        /// <summary>
+        /// The zone's key codes as the <b>shown layer</b> addresses them — the one place the §2.4
+        /// item 6 resolution is applied to a zone, so selecting one and lighting its button can
+        /// never disagree about which keys it means.
+        /// </summary>
+        private List<int> ResolveZoneKeyCodes(LightingZoneViewModel zone)
+        {
+            var keyCodes = new List<int>(zone.KeyCodes.Count);
 
             foreach (var topLayerKeyCode in zone.KeyCodes)
             {
                 if (ResolveKeyCode(topLayerKeyCode) is { } keyCode)
                 {
-                    state.SetKeyColor(keyCode, color);
+                    keyCodes.Add(keyCode);
                 }
             }
 
-            RefreshBoard();
-            RaiseModelChanged();
+            return keyCodes;
+        }
+
+        /// <summary>
+        /// The selection moved, from wherever. Two things follow it: Apply is enabled exactly while
+        /// something is selected, and every zone button lights up exactly while all of its keys are.
+        /// </summary>
+        private void OnSelectionChanged(object? sender, EventArgs e)
+        {
+            PaintSelectionCommand.NotifyCanExecuteChanged();
+
+            foreach (var zone in Zones)
+            {
+                zone.IsSelected = Selection.ContainsAll(ResolveZoneKeyCodes(zone));
+            }
         }
 
         private int? ResolveKeyCode(int topLayerKeyCode)
@@ -912,9 +1005,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Announces a write into the profile's lighting model. Every one of the write sites on
         /// this panel ends here — the mode, the speed, the direction, either colour swatch, the
-        /// painted selection, "Clear", a painted zone, "Reset All", and the direction
-        /// <b>normalization</b> of <see cref="RefreshDirections"/> — because
-        /// <see cref="ModelChanged"/> is what turns the editor's Save amber.
+        /// painted selection, "Clear", "Reset All", and the direction <b>normalization</b> of
+        /// <see cref="RefreshDirections"/> — because <see cref="ModelChanged"/> is what turns the
+        /// editor's Save amber.
+        /// <para>
+        /// A zone is <b>not</b> among them since issue #124: clicking one selects keys and writes
+        /// nothing, so it has nothing to announce. Applying to the selection is what writes.
+        /// </para>
         /// </summary>
         private void RaiseModelChanged()
         {
@@ -923,8 +1020,9 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Re-asks the one command whose availability the mode decides. The paint commands are
-        /// deliberately absent: they carry no gate at all, because the colours they manage are the
-        /// layer's rather than the effect's.
+        /// deliberately absent: none of them carries a gate the <i>mode</i> can move, because the
+        /// colours they manage are the layer's rather than the effect's. Apply's own gate is the
+        /// selection, and it is re-asked from <see cref="OnSelectionChanged"/> instead.
         /// </summary>
         private void NotifyCommands()
         {

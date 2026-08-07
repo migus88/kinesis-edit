@@ -36,14 +36,15 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>, 300 px in
         /// docs/design/handoff.md § Geometry). A <b>floor</b> on
-        /// <see cref="EffectiveInspectorRailWidth"/>, never a replacement — see there.
+        /// <see cref="EffectiveInspectorRailWidth"/>, never a replacement — see
+        /// <see cref="InspectorRailWidthViewModel.EffectiveWidth"/>.
         /// <para>
-        /// Written as a plain number rather than read out of <c>Themes/Geometry.axaml</c>: a view
-        /// model may not depend on Avalonia resources (app-shell.md invariant 8), and the token and
-        /// this constant are pinned to each other by a test.
+        /// The number itself moved to <see cref="InspectorRailWidthViewModel"/> with the rest of the
+        /// width state (issue #124); this stays as the name the editor's own callers and tests know
+        /// it by, so the rehoming changed no public contract of this class.
         /// </para>
         /// </summary>
-        public const double MacroInspectorRailWidth = 300;
+        public const double MacroInspectorRailWidth = InspectorRailWidthViewModel.MacroRailWidth;
 
         /// <summary>
         /// The Demo Mode bar's copy, verbatim from mockup 1f. Purple, never amber: demo mode is its
@@ -446,16 +447,17 @@ namespace KinesisEdit.ViewModels
         public bool IsListening => ListeningKey is not null;
 
         /// <summary>
-        /// How wide the user has dragged the key inspector rail, in DIPs — clamped into
-        /// <see cref="HostPreferences.MinimumInspectorRailWidth"/>…<see cref="HostPreferences.MaximumInspectorRailWidth"/>
-        /// on the way in and <b>persisted per user</b> (docs/app/host-preferences.md), so the width
-        /// survives a restart and follows the person rather than the board.
-        /// <para>
-        /// <b>Setting the same width again costs nothing</b> — no notification, no write. The store
-        /// persists synchronously on every real change by design, and a splitter drag reports
-        /// continuously, so the no-op guard is what turns a drag into one write at its commit rather
-        /// than one per pointer move. Nothing here is debounced.
-        /// </para>
+        /// The editor's one rail width — the object the Keys tab's key inspector and the Lighting
+        /// tab's mode rail are both drawn from (issue #124), handed to
+        /// <see cref="LightingTabViewModel"/> as the very same instance. The two properties below
+        /// delegate to it and are what this class's callers, its view and its tests still speak.
+        /// </summary>
+        public InspectorRailWidthViewModel Rail { get; }
+
+        /// <summary>
+        /// How wide the user has dragged the key inspector rail, in DIPs — clamped, persisted per
+        /// user, and free to set to the width it already has. Every one of those rules lives on
+        /// <see cref="InspectorRailWidthViewModel.Width"/>, which this forwards to verbatim.
         /// <para>
         /// The view binds the <b>column</b> to <see cref="EffectiveInspectorRailWidth"/>, never this:
         /// this is the user's number, that one is the number the rail is actually drawn at.
@@ -463,26 +465,22 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public double InspectorRailWidth
         {
-            get => _inspectorRailWidth;
-            set => SetInspectorRailWidth(value);
+            get => Rail.Width;
+            set => Rail.Width = value;
         }
 
         /// <summary>
         /// The width the rail is drawn at: the user's, or <b>at least</b> the 300 px the handoff
-        /// gives macro editing while the Macro panel is showing (<see cref="KeyInspectorViewModel.IsWide"/>).
+        /// gives macro editing while the Macro panel is showing. A floor and not an override — the
+        /// deviation of issue #119, spelled out on
+        /// <see cref="InspectorRailWidthViewModel.EffectiveWidth"/>.
         /// <para>
-        /// A <b>floor, not an override</b> — the deliberate deviation of issue #119. The macro width
-        /// was a style setter that replaced the rail's width outright, which would have yanked a user
-        /// who dragged to 420 back to 300 the moment they opened a macro. Taking the maximum honours
-        /// the handoff's 300 without undoing a drag.
-        /// </para>
-        /// <para>
-        /// It moves when <b>either</b> input moves, so both raise it: the setter above, and the
-        /// inspector's own <c>PropertyChanged</c> for <c>IsWide</c>.
+        /// It moves when <b>either</b> input moves, and both reach it through the rail object: the
+        /// setter above, and the inspector's <c>IsWide</c>, which
+        /// <see cref="OnInspectorPropertyChanged"/> pushes onto the rail.
         /// </para>
         /// </summary>
-        public double EffectiveInspectorRailWidth =>
-            Inspector.IsWide ? Math.Max(_inspectorRailWidth, MacroInspectorRailWidth) : _inspectorRailWidth;
+        public double EffectiveInspectorRailWidth => Rail.EffectiveWidth;
 
         /// <summary>Opens a section of the editor; a section this strip does not carry is refused.</summary>
         public IRelayCommand<EditorTabViewModel> SelectTabCommand { get; }
@@ -556,7 +554,6 @@ namespace KinesisEdit.ViewModels
         private readonly IVDriveFileService _files;
         private readonly IUrlLauncher _urlLauncher;
         private readonly IAppPreferencesStore _preferences;
-        private readonly IHostPreferencesStore? _hostPreferences;
         private readonly ProfileImporter _importer;
         private readonly EditorOverlayHost _overlays;
         private readonly KeyboardVisual? _visual;
@@ -574,7 +571,6 @@ namespace KinesisEdit.ViewModels
         private EditorAdvisories _advisories = EditorAdvisories.Empty;
         private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
-        private double _inspectorRailWidth = HostPreferences.DefaultInspectorRailWidth;
         private int _modifiedKeyCount;
         private int _macroCount;
         private bool _isLoading = true;
@@ -638,18 +634,21 @@ namespace KinesisEdit.ViewModels
             _files = files ?? throw new ArgumentNullException(nameof(files));
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _preferences = sessions?.Active?.Preferences ?? NullAppPreferencesStore.Instance;
-            _hostPreferences = hostPreferences;
             _importer = new ProfileImporter(filePicker);
             _overlays = new EditorOverlayHost(_capture);
 
-            // Read once, here, rather than followed: this editor is the only thing that writes the
-            // rail's width, so a Changed subscription could only ever tell it what it just did. The
-            // clamp is applied on the way in as well as on the way out, because a store handed a
-            // hand-built record can carry anything.
-            if (hostPreferences?.Current.InspectorRailWidth is { } storedRailWidth)
-            {
-                _inspectorRailWidth = HostPreferences.ClampInspectorRailWidth(storedRailWidth);
-            }
+            // THE RAIL'S WIDTH IS ONE NUMBER FOR THE WHOLE EDITOR, and it is built first because the
+            // Lighting tab below is handed this very instance (issue #124): the mode rail and the key
+            // inspector are two contents of one column, so a width dragged on either tab is the width
+            // the other opens at. It used to be three members of this class; a second tab could not
+            // reach them without either a second stored value or a back-reference to this editor.
+            Rail = new InspectorRailWidthViewModel(hostPreferences);
+
+            // The two width properties below delegate to it and re-announce it under their own
+            // names, so the rehoming changed nothing the view or a test can see. Never unsubscribed,
+            // unlike the inspector's handler: the rail is this editor's own, and a splitter that
+            // reports one last width after Dispose must still reach the column the view is holding.
+            Rail.PropertyChanged += OnRailPropertyChanged;
 
             // The board picture belongs to the device, not to the profile, so it is resolved once
             // and shared by every layer (docs/app/domain-data.md, "Visual geometry").
@@ -666,7 +665,10 @@ namespace KinesisEdit.ViewModels
             // read per frame rather than once, because since issue #96 the setting is a live user
             // preference (MotionPreferenceApplier) that the Settings screen can flip while this
             // editor is open, and IMotionSettings raises nothing when it moves.
-            Lighting = new LightingTabViewModel(device, notifications, _preferences, motionSettings);
+            //
+            // It is handed the SAME rail object this class delegates to — not a copy and not a
+            // second preference — so the two tabs' rails are one resizable column (issue #124).
+            Lighting = new LightingTabViewModel(device, notifications, _preferences, motionSettings, Rail);
 
             // The strip owns the projection and the Review walk; selecting what a note is about is
             // this class's, because the board and the macro panel are. Built before SelectTab
@@ -712,9 +714,10 @@ namespace KinesisEdit.ViewModels
             // SelectLayer below already runs that.
             Inspector = CreateInspector();
 
-            // EffectiveInspectorRailWidth has two inputs and the rail owns one of them: the Macro
-            // panel raises the floor to 300 the moment it shows. IsWide announces itself, so the
-            // width the column is bound to follows a mode switch without anything having to push it.
+            // EffectiveInspectorRailWidth has two inputs and the key inspector owns one of them: the
+            // Macro panel raises the floor to 300 the moment it shows. IsWide announces itself, so
+            // the width the column is bound to follows a mode switch without anything having to push
+            // it — the handler below is what carries that announcement onto the rail object.
             _inspectorPropertyChangedHandler = OnInspectorPropertyChanged;
 
             Inspector.PropertyChanged += _inspectorPropertyChangedHandler;
@@ -2070,48 +2073,37 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Takes a width from the splitter, clamps it into the band and persists it. The write goes
-        /// through <see cref="IHostPreferencesStore.Update"/>'s mutation function rather than a
-        /// whole record, so a theme or a window geometry written by another consumer a moment
-        /// earlier cannot be clobbered by this one (docs/app/host-preferences.md).
-        /// <para>
-        /// <b>An unchanged width returns before it writes.</b> That is the whole of the "do not
-        /// debounce" rule: the store persists synchronously on every real change, so what turns a
-        /// continuous drag into a single write at its commit is that every report of the width it
-        /// already has costs nothing. A width the clamp <em>moved</em> is still announced even when
-        /// the field did not change, or the column would keep drawing a width the model refused.
-        /// </para>
+        /// Re-announces the rail object's two widths under the names this class publishes, so that
+        /// moving the state onto <see cref="InspectorRailWidthViewModel"/> (issue #124) changed
+        /// nothing a binding or a test can see. The rail raises nothing for a width it already had,
+        /// which is what keeps the "one write per real change" rule intact through the forward.
         /// </summary>
-        private void SetInspectorRailWidth(double width)
+        private void OnRailPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            var clamped = HostPreferences.ClampInspectorRailWidth(width);
-
-            if (!SetProperty(ref _inspectorRailWidth, clamped, nameof(InspectorRailWidth)))
+            if (e.PropertyName is null or nameof(InspectorRailWidthViewModel.Width))
             {
-                if (clamped != width)
-                {
-                    OnPropertyChanged(nameof(InspectorRailWidth));
-                }
-
-                return;
+                OnPropertyChanged(nameof(InspectorRailWidth));
             }
 
-            OnPropertyChanged(nameof(EffectiveInspectorRailWidth));
-
-            _hostPreferences?.Update(preferences => preferences with { InspectorRailWidth = clamped });
+            if (e.PropertyName is null or nameof(InspectorRailWidthViewModel.EffectiveWidth))
+            {
+                OnPropertyChanged(nameof(EffectiveInspectorRailWidth));
+            }
         }
 
         /// <summary>
-        /// The rail's half of <see cref="EffectiveInspectorRailWidth"/>: the Macro panel raises the
-        /// floor to <see cref="MacroInspectorRailWidth"/> while it is showing, and nothing else in
-        /// the rail can move the width. A null property name is WPF/Avalonia's "everything changed"
-        /// and is taken to include this one.
+        /// The key inspector's half of <see cref="EffectiveInspectorRailWidth"/>: the Macro panel
+        /// raises the floor to <see cref="MacroInspectorRailWidth"/> while it is showing, and nothing
+        /// else in the rail can move the width. A null property name is WPF/Avalonia's "everything
+        /// changed" and is taken to include this one. It <b>pushes</b> rather than announces now:
+        /// <c>IsWide</c> is computed and re-raised on every mode switch, so the announcement is left
+        /// to the one object that knows whether the floor really moved.
         /// </summary>
         private void OnInspectorPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName is null or nameof(KeyInspectorViewModel.IsWide))
             {
-                OnPropertyChanged(nameof(EffectiveInspectorRailWidth));
+                Rail.IsWide = Inspector.IsWide;
             }
         }
 
