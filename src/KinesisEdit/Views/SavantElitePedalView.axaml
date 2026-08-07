@@ -85,7 +85,13 @@
                        Classes="pill statusWarning"
                        VerticalAlignment="Center"
                        IsVisible="{Binding HasUnsavedChanges}" />
-            <Button Content="Save" Command="{Binding SaveCommand}" Classes="primaryAction" />
+            <!-- Amber whenever the session is dirty: handoff.md §2 makes that a property of the
+                 editor shell, not of one board, so it holds here as well as on the keyboard. The
+                 view writes the class and nothing else; the ramp lives in PrimaryActionButton. -->
+            <Button Content="Save"
+                    Command="{Binding SaveCommand}"
+                    Classes="primaryAction"
+                    Classes.dirty="{Binding HasUnsavedChanges}" />
           </StackPanel>
         </Grid>
 

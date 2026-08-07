@@ -24,17 +24,21 @@ namespace KinesisEdit.Services
     /// </summary>
     public static class AppPreferenceCatalog
     {
-        /// <summary>Mockup 1j row 1. Forward-declared: the prompt itself is issue #52's.</summary>
+        /// <summary>
+        /// Mockup 1j row 1, and live since issue #52: the editors' leave-with-unsaved-changes
+        /// prompt (<see cref="UnsavedChangesPrompt"/>). The keyboard editor offers the opt-out;
+        /// the pedal editor does not, because it renders no Settings tab to un-tick it from.
+        /// </summary>
         public static AppPreferenceDescriptor UnsavedChangesWarning { get; } = new(
             SettingsKeys.UnsavedChangesMessage,
             "Warn before leaving with unsaved changes",
             "The Save / Discard / Cancel prompt shown when you leave a session that has edits you have not written to the drive.",
             AppPreferencePolarity.Suppression,
-            hasLiveConsumer: false,
+            hasLiveConsumer: true,
             settings => settings.IsUnsavedChangesWarningHidden,
             (settings, stored) => settings with { IsUnsavedChangesWarningHidden = stored });
 
-        /// <summary>Mockup 1j row 2. The first preference with a live consumer: the editor's layer reset.</summary>
+        /// <summary>Mockup 1j row 2. The editor's layer reset, in both its scopes.</summary>
         public static AppPreferenceDescriptor ResetLayerConfirmation { get; } = new(
             SettingsKeys.ResetLayerMessage,
             "Confirm before resetting a layer",

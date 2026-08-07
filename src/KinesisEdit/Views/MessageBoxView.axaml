@@ -21,7 +21,7 @@
        The mock's 26px "KinesisEdit" strip above the card is deliberately not drawn: it is the
        window chrome of a dialog window, and this is not one. The dialog's own title carries the
        identity instead. -->
-  <Border Classes="overlayCard modalCard" Width="330">
+  <Border Classes="overlayCard modalCard messageBoxCard" Classes.wide="{Binding IsWide}">
     <StackPanel Spacing="{DynamicResource Space12}">
       <!-- A Grid and not a horizontal StackPanel: a StackPanel measures its children with infinite
            width, so `TextWrapping="Wrap"` never fires and a one-line message walks straight out of
@@ -65,16 +65,28 @@
 
       <!-- The suppression opt-out reads as a field rather than as a bare check box (mockup 1k
            boxes it), so it cannot be mistaken for one of the answers. It is present only when the
-           request carries one of the twelve `*_msg` keys of specs/08-settings.md §3. -->
+           request carries one of the sixteen suppression keys described by `AppPreferenceCatalog`.
+
+           The caption is bound rather than static: most boxes say "Don't ask this again", but one
+           whose opt-out makes a promise has to say what it promises — the leave-with-unsaved
+           modal's "Don't ask again — always save on leaving". -->
       <Border Classes="suppressionRow" IsVisible="{Binding IsSuppressionAvailable}">
-        <CheckBox Content="{x:Static vm:MessageBoxViewModel.SuppressionCaption}"
+        <CheckBox Content="{Binding SuppressionCaption}"
                   IsChecked="{Binding IsSuppressChecked, Mode=TwoWay}" />
       </Border>
 
       <!-- Mockup 1k's order: the way out first, then the affirmatives, with the primary one last
            and on the accent. Custom buttons sit with the secondary answers - the only one in the
            app today is the firmware gate's "Update Firmware", which is an alternative to OK
-           rather than the expected answer. -->
+           rather than the expected answer. Mockup 1f's "Cancel · Discard · Save" is the same
+           order, read as Cancel -> No -> Yes.
+
+           EACH ANSWER'S ROLE CLASS IS BOUND, NEVER STATIC. A request may name one answer as the
+           one that loses data (mockup 1f's Discard), and that answer takes the red `discard`
+           theme instead of its usual one. Both classes have to be bound for that: a static
+           `secondary` beside a bound `discard` would leave two bridge styles setting `Theme` on
+           the same button, and which of them won would be an accident of declaration order.
+           Cancel is not among them - the way out of a dialog never loses data. -->
       <StackPanel Orientation="Horizontal"
                   Spacing="{DynamicResource Space8}"
                   HorizontalAlignment="Right">
@@ -99,17 +111,20 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Button Classes="secondary"
+        <Button Classes.secondary="{Binding !IsNoDestructive}"
+                Classes.discard="{Binding IsNoDestructive}"
                 Content="{Binding NoCaption}"
                 Command="{Binding NoCommand}"
                 IsVisible="{Binding ShowsNo}" />
         <Button x:Name="AcceptOk"
-                Classes="primaryAction"
+                Classes.primaryAction="{Binding !IsOkDestructive}"
+                Classes.discard="{Binding IsOkDestructive}"
                 Content="{Binding OkCaption}"
                 Command="{Binding OkCommand}"
                 IsVisible="{Binding ShowsOk}" />
         <Button x:Name="AcceptYes"
-                Classes="primaryAction"
+                Classes.primaryAction="{Binding !IsYesDestructive}"
+                Classes.discard="{Binding IsYesDestructive}"
                 Content="{Binding YesCaption}"
                 Command="{Binding YesCommand}"
                 IsVisible="{Binding ShowsYes}" />

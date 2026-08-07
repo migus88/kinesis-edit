@@ -39,7 +39,10 @@ namespace KinesisEdit.Tests.Design
         public void TheAffirmative_IsTheOnlyButtonOnTheAccent()
         {
             // The accent means selection/focus or "you changed this" — here, the answer the dialog
-            // expects. Every other answer is a secondary face.
+            // expects. On a box that names no destructive answer every other answer is secondary;
+            // the claim that survives a red Discard is the one about the accent, which is why the
+            // test below asserts only that half on the destructive card. Red is the error ramp,
+            // not the accent.
             using var host = Show(CreateViewModel(), out var view);
 
             var buttons = Buttons(view);
@@ -50,6 +53,57 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("primaryAction", affirmative.Classes);
             Assert.All(others, button => Assert.Contains("secondary", button.Classes));
             Assert.All(others, button => Assert.DoesNotContain("primaryAction", button.Classes));
+        }
+
+        [AvaloniaFact]
+        public void TheCard_TakesTheWideWidthOnlyWhenTheRequestAsksForIt()
+        {
+            // 330 is the ordinary box, 420 the leave-with-unsaved modal (docs/design/handoff.md).
+            // Measured off the laid-out card rather than off its Width property: the width comes
+            // from a style now, and a bridge that stopped matching would leave the property unset
+            // and the card stretched to the window.
+            using var ordinaryHost = Show(CreateViewModel(), out var ordinary);
+            using var wideHost = Show(new MessageBoxViewModel(CreateUnsavedChangesRequest()), out var wide);
+
+            Assert.Equal(330, Card(ordinary).Bounds.Width);
+            Assert.Equal(420, Card(wide).Bounds.Width);
+        }
+
+        [AvaloniaFact]
+        public void TheDestructiveAnswer_IsRedWhileTheAffirmativeKeepsTheAccent()
+        {
+            // Mockup 1f's "Cancel · Discard · Save": Discard loses data, so it is the app's one red
+            // button, and Save still commits — it must not lose the accent to it.
+            using var host = Show(new MessageBoxViewModel(CreateUnsavedChangesRequest()), out var view);
+
+            var buttons = Buttons(view);
+
+            Assert.Equal(["Cancel", "Discard", "Save"], buttons.Select(button => button.Content as string));
+
+            var discard = buttons[1];
+            var save = buttons[^1];
+
+            Assert.Contains("discard", discard.Classes);
+            Assert.DoesNotContain("secondary", discard.Classes);
+            Assert.Same(Theme("DiscardButton"), discard.Theme);
+
+            Assert.Contains("primaryAction", save.Classes);
+            Assert.DoesNotContain("discard", save.Classes);
+            Assert.Same(Theme("PrimaryActionButton"), save.Theme);
+
+            // The way out is neither: a Cancel that loses nothing may not read as the one that does.
+            Assert.Contains("secondary", buttons[0].Classes);
+            Assert.DoesNotContain("discard", buttons[0].Classes);
+        }
+
+        [AvaloniaFact]
+        public void TheSuppressionCaption_FollowsTheRequest()
+        {
+            using var host = Show(new MessageBoxViewModel(CreateUnsavedChangesRequest()), out var view);
+
+            var suppression = view.GetVisualDescendants().OfType<CheckBox>().Single();
+
+            Assert.Equal("Don't ask again — always save on leaving", suppression.Content as string);
         }
 
         [AvaloniaFact]
@@ -123,6 +177,25 @@ namespace KinesisEdit.Tests.Design
             });
         }
 
+        /// <summary>Mockup 1f's leave-with-unsaved modal — the wide card with a destructive answer.</summary>
+        private static MessageBoxRequest CreateUnsavedChangesRequest()
+        {
+            return new MessageBoxRequest
+            {
+                Title = "Save changes before leaving?",
+                Message = "You've edited 7 keys across 2 layers.",
+                Icon = MessageBoxIcon.Warning,
+                Buttons = MessageBoxButtons.YesNoCancel,
+                YesCaption = "Save",
+                NoCaption = "Discard",
+                IsWide = true,
+                DestructiveResult = MessageBoxResult.No,
+                SuppressionKey = NotificationKeys.UnsavedChanges,
+                SuppressionCaption = "Don't ask again — always save on leaving",
+                SuppressionResult = MessageBoxResult.Yes
+            };
+        }
+
         private static ThemedHost Show(MessageBoxViewModel viewModel, out MessageBoxView view)
         {
             var card = new MessageBoxView
@@ -148,6 +221,19 @@ namespace KinesisEdit.Tests.Design
                 .OfType<Button>()
                 .Where(button => button.GetType() == typeof(Button) && button.IsEffectivelyVisible)
                 .ToArray();
+        }
+
+        /// <summary>The card itself — the one border carrying the message box's own width class.</summary>
+        private static Border Card(MessageBoxView view)
+        {
+            return view.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(border => border.Classes.Contains("messageBoxCard"));
+        }
+
+        private static ControlTheme Theme(string key)
+        {
+            return (ControlTheme)DesignTokens.Resolve(key, ThemeVariant.Dark);
         }
     }
 }

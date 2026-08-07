@@ -708,6 +708,63 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// The unsaved-changes guard of docs/design/handoff.md §2 ("leaving via Home asks once
+        /// (modal) unless opted out"), asked by the shell before Home or another device replaces
+        /// this editor. The question itself is <see cref="UnsavedChangesPrompt"/>'s, so this board
+        /// and the pedal ask it in the same words.
+        /// <para>
+        /// A save in flight refuses outright, without a question — but with a toast, for the same
+        /// reason the pedal editor does it (docs/app/savant-elite.md, decision 5): leaving would
+        /// dispose this editor while <c>ProfileSession.Save</c> is still writing, and the write is
+        /// short enough that the navigation works the moment it finishes.
+        /// </para>
+        /// <para>
+        /// <b>What it cannot see:</b> the Settings tab. Settings are outside the session's dirty
+        /// comparison by design (docs/app/keyboard-editor.md, "Settings are outside the dirty
+        /// model"), so an unsaved settings row is invisible here — the tab has its own Save, and
+        /// giving this guard a second, differently-shaped question would be worse than the gap.
+        /// </para>
+        /// </summary>
+        public override async Task<bool> ConfirmCloseAsync()
+        {
+            if (IsBusy)
+            {
+                _notifications.ShowToast(new ToastRequest
+                {
+                    Title = UnsavedChangesPrompt.SaveInProgressTitle,
+                    Message = UnsavedChangesPrompt.SaveInProgressMessage
+                });
+
+                return false;
+            }
+
+            // Demo mode and a load that produced no session both report themselves clean (there is
+            // nothing to write), so they leave without a word.
+            if (!IsDirty)
+            {
+                return true;
+            }
+
+            // Asked once and carried: it picks the box — a read-only profile can hold edits it can
+            // never write, and offering it a Save would be a question with no working answer — and
+            // it is also what Yes meant, which is a different button in each of the two shapes.
+            var canSave = CanSave();
+
+            var outcome = await TryShowMessageBoxAsync(
+                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave, canSuppress: true))
+                .ConfigureAwait(true);
+
+            return UnsavedChangesPrompt.Interpret(outcome, canSave) switch
+            {
+                // Only a save that actually landed lets the navigation through: a failed one would
+                // discard the very work the question was about.
+                UnsavedChangesAnswer.Save => await TrySaveAsync().ConfigureAwait(true),
+                UnsavedChangesAnswer.Discard => true,
+                _ => false
+            };
+        }
+
+        /// <summary>
         /// Opens <paramref name="overlay"/> over the editor. Which command opens which panel is
         /// the feature's own business; the hosting itself — the swap, the capture suspension a
         /// text-entry panel needs, and the teardown on
@@ -1845,17 +1902,34 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// The <see cref="SaveCommand"/> target. It drops the answer on purpose: a button press has
+        /// nowhere to report a failure that <see cref="TrySaveAsync"/> has already put on screen.
+        /// <see cref="ConfirmCloseAsync"/> is the caller that needs it.
+        /// </summary>
+        private async Task SaveAsync()
+        {
+            await TrySaveAsync().ConfigureAwait(true);
+        }
+
+        /// <summary>
         /// Runs the save sequence off the UI thread between the loading indicator's show and hide,
         /// then reports its outcome: the violations that stopped it (04 §5.3), or the device's
         /// post-save refresh wording as a toast.
+        /// <para>
+        /// <b>True means the profile is on the drive</b>, and nothing else does. There are three
+        /// ways not to get there — a session that cannot be written right now, a throw, and
+        /// validation stopping the write — and the unsaved-changes guard has to tell all three
+        /// apart from success, because letting a navigation through after any of them would
+        /// discard the work the user asked to keep.
+        /// </para>
         /// </summary>
-        private async Task SaveAsync()
+        private async Task<bool> TrySaveAsync()
         {
             var session = _session;
 
             if (session is null || !CanSave())
             {
-                return;
+                return false;
             }
 
             CancelRemap();
@@ -1897,7 +1971,7 @@ namespace KinesisEdit.ViewModels
                     Icon = MessageBoxIcon.Error
                 }).ConfigureAwait(true);
 
-                return;
+                return false;
             }
 
             if (!result!.Success)
@@ -1909,7 +1983,7 @@ namespace KinesisEdit.ViewModels
                     Icon = MessageBoxIcon.Error
                 }).ConfigureAwait(true);
 
-                return;
+                return false;
             }
 
             // The profile is on the drive: Save goes back to accent. Set rather than re-read,
@@ -1933,6 +2007,8 @@ namespace KinesisEdit.ViewModels
                     Severity = Advisories.Total > 0 ? ToastSeverity.Advisory : ToastSeverity.Success
                 });
             }
+
+            return true;
         }
 
         private static string BuildViolationMessage(IReadOnlyList<ModelViolation> violations)
@@ -1947,16 +2023,22 @@ namespace KinesisEdit.ViewModels
             return string.Join(Environment.NewLine, lines);
         }
 
-        private async Task TryShowMessageBoxAsync(MessageBoxRequest request)
+        /// <summary>
+        /// Shows a box and returns its outcome, or <b>null</b> when it could not be put on screen.
+        /// Every caller that only reports something ignores the answer; the one caller that asks a
+        /// question — <see cref="ConfirmCloseAsync"/> — reads null as "the user did not answer".
+        /// </summary>
+        private async Task<MessageBoxOutcome?> TryShowMessageBoxAsync(MessageBoxRequest request)
         {
             try
             {
-                await _notifications.ShowMessageBoxAsync(request).ConfigureAwait(true);
+                return await _notifications.ShowMessageBoxAsync(request).ConfigureAwait(true);
             }
             catch (Exception)
             {
                 // A box that cannot be put on screen (the window is already gone) must not bring
                 // the app down; the editor state already carries the outcome.
+                return null;
             }
         }
 

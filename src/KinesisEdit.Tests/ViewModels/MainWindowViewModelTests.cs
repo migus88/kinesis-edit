@@ -1,10 +1,15 @@
+using Avalonia.Headless.XUnit;
+using Avalonia.Styling;
+using Avalonia.Threading;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive;
 using KinesisEdit.Core.VDrive.Discovery;
 using KinesisEdit.Services;
+using KinesisEdit.Tests.Headless;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
+using KinesisEdit.Views;
 
 namespace KinesisEdit.Tests.ViewModels
 {
@@ -22,14 +27,14 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
-        private readonly VDriveEjectNotifier _ejectNotifier;
         private readonly DashboardViewModel _dashboard;
         private readonly MainWindowViewModel _shell;
 
         public MainWindowViewModelTests()
         {
+            // Only the dashboard card ejects now that Home does not (docs/design/mockups.md §1l),
+            // so the notifier reaches the dashboard and never the shell.
             var ejectNotifier = new VDriveEjectNotifier(_ejectService, _notifications);
-            _ejectNotifier = ejectNotifier;
             _settings = TestDevices.CreateSettingsService(_fileService);
             _sessions = new DeviceSessionManager(_settings);
             _monitor = new DeviceMonitorService(
@@ -288,12 +293,13 @@ namespace KinesisEdit.Tests.ViewModels
 
             await save;
 
-            // Once the write is done the navigation goes through, with nothing left to ask.
+            // Once the write is done the navigation goes through, with nothing left to ask — and
+            // still nothing ejected: Home never ejects (docs/design/mockups.md §1l).
             await _shell.HomeCommand.ExecuteAsync(null);
 
             Assert.Null(_shell.Editor);
             Assert.Empty(_notifications.MessageBoxes);
-            Assert.Single(_ejectService.EjectedPaths);
+            Assert.Empty(_ejectService.EjectedPaths);
         }
 
         [Fact]
@@ -471,8 +477,418 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.IsType<EditorPlaceholderViewModel>(_shell.Editor);
         }
 
+        /// <summary>
+        /// Closing the window is the third way out of a session, and until now the only one that
+        /// asked nothing — <c>Dispose</c> runs from <c>desktop.Exit</c> and cannot await a dialog,
+        /// so quitting with unsaved edits dropped them silently. With nothing open there is still
+        /// nothing to ask: the app closes at once and no box is raised.
+        /// </summary>
         [Fact]
-        public async Task HomeCommand_AfterOpeningTheSavantElite2_ClosesTheEditorAndEjects()
+        public async Task ConfirmShutdownAsync_WithNoEditorOpen_ClosesWithoutAsking()
+        {
+            Assert.True(await _shell.ConfirmShutdownAsync());
+
+            Assert.Empty(_notifications.MessageBoxes);
+            Assert.False(_shell.IsBusy);
+        }
+
+        [Fact]
+        public async Task ConfirmShutdownAsync_WithACleanEditor_ClosesWithoutAskingTheUser()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.True(await shell.ConfirmShutdownAsync());
+
+            // The editor was asked — the shell never decides for it — and it had nothing to say.
+            Assert.Equal(1, editor.ConfirmCloseCount);
+            Assert.Empty(_notifications.MessageBoxes);
+
+            // Answering is the whole job: the teardown is still Dispose's, so a close the platform
+            // abandons after this leaves the session exactly as it was.
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.False(shell.IsBusy);
+        }
+
+        /// <summary>
+        /// The case the whole guard exists for: a dirty editor says no, so the window stays open —
+        /// and the app has to be as usable afterwards as it was before, not left half-shut with a
+        /// busy flag stuck on.
+        /// </summary>
+        [Fact]
+        public async Task ConfirmShutdownAsync_WhenTheEditorRefuses_KeepsTheWindowOpenAndTheShellUsable()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseResult = false
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var session = _sessions.Active;
+
+            Assert.False(await shell.ConfirmShutdownAsync());
+
+            Assert.Same(editor, shell.Editor);
+            Assert.Same(editor, shell.CurrentView);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.Same(session, _sessions.Active);
+            Assert.False(shell.IsBusy);
+            Assert.True(shell.HomeCommand.CanExecute(null));
+
+            // Still navigable: Configure opens another device once the editor lets go...
+            editor.ConfirmCloseResult = true;
+            editors.EditorToReturn = null;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.IsType<EditorPlaceholderViewModel>(shell.Editor);
+            Assert.Equal(1, editor.DisposeCount);
+
+            // ...Home still goes home...
+            await shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Null(shell.Editor);
+            Assert.Same(_dashboard, shell.CurrentView);
+
+            // ...and the next close attempt is not poisoned by the refused one.
+            Assert.True(await shell.ConfirmShutdownAsync());
+        }
+
+        /// <summary>
+        /// A confirmation that throws must not close the app. This mirrors
+        /// <c>ConfirmOpenAsync</c>: the failure is reported and answered "no", because losing work
+        /// because the *question* failed is the exact outcome the guard exists to prevent — and it
+        /// must not throw either, since the window's closing handler runs detached.
+        /// </summary>
+        [Fact]
+        public async Task ConfirmShutdownAsync_WhenTheConfirmationThrows_KeepsTheWindowOpen()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseExceptionToThrow = new InvalidOperationException("no window")
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.False(await shell.ConfirmShutdownAsync());
+
+            var box = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal(MainWindowViewModel.CloseFailureTitle, box.Title);
+            Assert.StartsWith(MainWindowViewModel.CloseFailureMessagePrefix, box.Message);
+            Assert.Contains("no window", box.Message);
+            Assert.Equal(MessageBoxIcon.Error, box.Icon);
+
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.False(shell.IsBusy);
+
+            // Nothing is wedged: once the editor can answer again, the app closes.
+            editor.ConfirmCloseExceptionToThrow = null;
+
+            Assert.True(await shell.ConfirmShutdownAsync());
+        }
+
+        /// <summary>
+        /// And a report that fails too is still not a reason to throw out of a method the closing
+        /// handler awaits — the box the shell wants to raise lives in the window that is closing.
+        /// </summary>
+        [Fact]
+        public async Task ConfirmShutdownAsync_WhenEvenTheFailureCannotBeReported_StillAnswersNo()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseExceptionToThrow = new InvalidOperationException("no window")
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            _notifications.MessageBoxExceptionToThrow = new InvalidOperationException("no host either");
+
+            Assert.False(await shell.ConfirmShutdownAsync());
+            Assert.False(shell.IsBusy);
+        }
+
+        /// <summary>
+        /// The branch a close makes reachable: <c>MessageBoxPresenter</c> answers immediately with
+        /// the request's escape outcome when the host window is gone, which during a shutdown it
+        /// may well be. That outcome is <c>Cancel</c>, every caller reads it as "the user did not
+        /// answer", and the safe reading of "did not answer" here is <b>do not close</b>. Driven
+        /// through the real presenter and the real notification service, because the value of the
+        /// test is that the chain resolves that way rather than that a fake was told to.
+        /// </summary>
+        [Fact]
+        public async Task ConfirmShutdownAsync_WhenTheQuestionNeverReachedTheScreen_KeepsTheWindowOpen()
+        {
+            var presenter = new MessageBoxPresenter(() => null);
+            var notifications = new NotificationService(presenter, _sessions);
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors, notifications);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseNotifications = notifications
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.False(await shell.ConfirmShutdownAsync());
+
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.False(shell.IsBusy);
+        }
+
+        /// <summary>
+        /// The window's guard cancels the close and re-issues it, and a user who clicks the close
+        /// button again while the prompt is up must not get a second prompt behind the first.
+        /// </summary>
+        [Fact]
+        public async Task ConfirmShutdownAsync_WhileTheFirstQuestionIsStillUp_AsksOnceAndAnswersNo()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var gate = new TaskCompletionSource();
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseGate = gate
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var first = shell.ConfirmShutdownAsync();
+
+            Assert.True(shell.IsBusy);
+            Assert.False(await shell.ConfirmShutdownAsync());
+            Assert.Equal(1, editor.ConfirmCloseCount);
+
+            gate.SetResult();
+
+            Assert.True(await first);
+            Assert.False(shell.IsBusy);
+
+            // And the second attempt, made after the first was answered, goes through normally.
+            Assert.True(await shell.ConfirmShutdownAsync());
+            Assert.Equal(2, editor.ConfirmCloseCount);
+        }
+
+        /// <summary>
+        /// Everything above proves what <see cref="MainWindowViewModel.ConfirmShutdownAsync"/>
+        /// <i>answers</i>. This proves the window <b>obeys</b> the answer, which is a different
+        /// claim and the one issue #52 is actually about — and it is not reachable from a view
+        /// model. <c>MainWindow.OnClosing</c> cancels the close, posts the question to the
+        /// dispatcher, and lets the re-issued close through on a latch; each of those three is a
+        /// place where the window could shut anyway, or refuse to shut forever, with
+        /// <c>ConfirmShutdownAsync</c> answering perfectly correctly throughout.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task ClosingTheWindow_WhenTheEditorRefuses_LeavesItOpen()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseResult = false
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var window = new MainWindow(shell, _notifications);
+
+            using var host = ThemedHost.Show(window, ThemeVariant.Dark);
+
+            window.Close();
+
+            await SettleClosingAsync();
+
+            Assert.True(window.IsVisible, "A refused close still shut the window.");
+            Assert.Equal(1, editor.ConfirmCloseCount);
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(0, editor.DisposeCount);
+
+            // Not a one-shot: the guard has to be there for the next attempt too.
+            window.Close();
+
+            await SettleClosingAsync();
+
+            Assert.True(window.IsVisible);
+            Assert.Equal(2, editor.ConfirmCloseCount);
+        }
+
+        /// <summary>
+        /// The latch's job. An approved close re-enters <c>OnClosing</c>, and without the latch
+        /// that second pass would cancel itself and ask again — a window that can never be shut.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task ClosingTheWindow_WhenTheEditorAgrees_ClosesItAndAsksExactlyOnce()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseResult = true
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var window = new MainWindow(shell, _notifications);
+
+            using var host = ThemedHost.Show(window, ThemeVariant.Dark);
+
+            window.Close();
+
+            await SettleClosingAsync();
+
+            Assert.False(window.IsVisible, "An approved close left the window open.");
+            Assert.Equal(1, editor.ConfirmCloseCount);
+        }
+
+        /// <summary>
+        /// The path taken by everyone who never opened a device — and the reason the question is
+        /// posted rather than started inline: a shell with nothing to ask answers synchronously, so
+        /// an inline continuation would re-enter <c>Close</c> mid-cancellation.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task ClosingTheWindow_WithNoEditorOpen_AsksNobodyAndCloses()
+        {
+            var window = new MainWindow(_shell, _notifications);
+
+            using var host = ThemedHost.Show(window, ThemeVariant.Dark);
+
+            window.Close();
+
+            await SettleClosingAsync();
+
+            Assert.False(window.IsVisible);
+            Assert.Empty(_notifications.MessageBoxes);
+        }
+
+        /// <summary>
+        /// Drains the posted question and whatever it awaited. Nothing the caller holds awaits the
+        /// close answer, so letting the loop run is the only way to observe it.
+        /// </summary>
+        private static async Task SettleClosingAsync()
+        {
+            for (var pass = 0; pass < 5; pass++)
+            {
+                Dispatcher.UIThread.RunJobs();
+
+                await Task.Yield();
+            }
+
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        /// <summary>
+        /// The top bar and the dashboard stay live behind a modal, so Configure is reachable while
+        /// the close prompt is up — and it must not open a session underneath the answer.
+        /// </summary>
+        [Fact]
+        public async Task OpenDevice_WhileTheCloseQuestionIsUp_IsIgnored()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var gate = new TaskCompletionSource();
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseGate = gate
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var session = _sessions.Active;
+            var shutdown = shell.ConfirmShutdownAsync();
+
+            editors.EditorToReturn = null;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.Same(editor, shell.Editor);
+            Assert.Same(session, _sessions.Active);
+            Assert.Equal(DeviceId.Tko, Assert.Single(editors.Requests).DeviceId);
+
+            gate.SetResult();
+
+            Assert.True(await shutdown);
+        }
+
+        /// <summary>
+        /// The guard does not replace the teardown. <c>Dispose</c> keeps closing the editor — it
+        /// has to stay correct for anything that tears the shell down without going through the
+        /// window's closing event — and stays idempotent after an approved shutdown.
+        /// </summary>
+        [Fact]
+        public async Task Dispose_AfterAnApprovedShutdown_ClosesTheEditorExactlyOnce()
+        {
+            var editors = new FakeEditorViewModelFactory();
+            var shell = CreateShell(editors);
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.True(await shell.ConfirmShutdownAsync());
+
+            shell.Dispose();
+
+            Assert.Equal(1, editor.DisposeCount);
+            Assert.Null(shell.Editor);
+            Assert.Null(editor.Shell);
+
+            shell.Dispose();
+
+            Assert.Equal(1, editor.DisposeCount);
+        }
+
+        [Fact]
+        public async Task HomeCommand_AfterOpeningTheSavantElite2_ClosesTheEditorAndEjectsNothing()
         {
             var snapshot = TestDevices.CreateSnapshot(DeviceId.SavantElite2);
             SetPedalFile(snapshot, "[lpedal]>[lmouse]");
@@ -483,7 +899,11 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(_shell.Editor);
             Assert.Same(_dashboard, _shell.CurrentView);
             Assert.Null(_sessions.Active);
-            Assert.Equal(snapshot.Location!.RootPath, Assert.Single(_ejectService.EjectedPaths));
+
+            // The pedal's one live file is written by Save, not by leaving, and the drive stays
+            // mounted until the user ejects it from the card (docs/design/mockups.md §1l).
+            Assert.Empty(_ejectService.EjectedPaths);
+            Assert.Empty(_notifications.Toasts);
         }
 
         [Fact]
@@ -576,22 +996,37 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(DeviceId.Tko, _shell.Editor!.Device.DeviceId);
         }
 
+        /// <summary>
+        /// docs/design/mockups.md §1l: "Home just goes home — it never ejects. Ejecting is its own
+        /// deliberate action on the dashboard card, so nothing is released behind the user's back."
+        /// A connected, writable device is the case that used to eject, so it is the one that pins
+        /// the rule: no eject call, and none of the two toasts <c>VDriveEjectNotifier</c> raises
+        /// around one either.
+        /// </summary>
         [Fact]
-        public async Task HomeCommand_AfterConfiguringAConnectedDevice_ClosesTheEditorAndEjects()
+        public async Task HomeCommand_AfterConfiguringAConnectedDevice_ClosesTheEditorAndEjectsNothing()
         {
             var snapshot = TestDevices.CreateSnapshot(DeviceId.Tko);
             _shell.OpenDevice(snapshot);
+
+            Assert.NotNull(snapshot.Location);
 
             await _shell.HomeCommand.ExecuteAsync(null);
 
             Assert.Null(_shell.Editor);
             Assert.Same(_dashboard, _shell.CurrentView);
             Assert.Null(_sessions.Active);
-            Assert.Equal(snapshot.Location!.RootPath, Assert.Single(_ejectService.EjectedPaths));
+            Assert.Empty(_ejectService.EjectedPaths);
+            Assert.Empty(_notifications.Toasts);
         }
 
+        /// <summary>
+        /// Demo mode no longer *decides* anything here — Home ejects in no mode at all — so this
+        /// only pins that the demo path did not grow an eject of its own on the way to the same
+        /// rule.
+        /// </summary>
         [Fact]
-        public async Task HomeCommand_InDemoMode_DoesNotEject()
+        public async Task HomeCommand_InDemoMode_ClosesTheEditorAndEjectsNothing()
         {
             _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess));
 
@@ -694,27 +1129,48 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.IsType<ReadOnlyAppPreferencesStore>(_sessions.Active.SuppressionStore);
         }
 
+        /// <summary>
+        /// Home no longer ejects, so the eject is no longer what a navigation waits on — but the
+        /// re-entrancy it used to demonstrate is still real and is now what the *question* creates:
+        /// Home puts a modal box on screen and the top bar stays live behind it, so a Configure
+        /// arriving in that window would open a second session underneath the answer.
+        /// </summary>
         [Fact]
-        public async Task OpenDevice_WhileHomeIsEjecting_IsIgnored()
+        public async Task OpenDevice_WhileHomeIsAskingToClose_IsIgnored()
         {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
             var gate = new TaskCompletionSource();
-            _ejectService.Gate = gate;
-            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Tko));
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseGate = gate
+            };
 
-            var home = _shell.HomeCommand.ExecuteAsync(null);
-            _shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+            editors.EditorToReturn = editor;
 
-            Assert.True(_shell.IsBusy);
-            Assert.Null(_shell.Editor);
-            Assert.Null(_sessions.Active);
-            Assert.False(_shell.HomeCommand.CanExecute(null));
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            editors.EditorToReturn = null;
+
+            var home = shell.HomeCommand.ExecuteAsync(null);
+
+            shell.OpenDevice(TestDevices.CreateSnapshot(DeviceId.Advantage2));
+
+            Assert.True(shell.IsBusy);
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(1, editor.ConfirmCloseCount);
+            Assert.Equal(DeviceId.Tko, Assert.Single(editors.Requests).DeviceId);
+            Assert.False(shell.HomeCommand.CanExecute(null));
 
             gate.SetResult();
             await home;
 
-            Assert.False(_shell.IsBusy);
-            Assert.Null(_shell.Editor);
-            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.False(shell.IsBusy);
+            Assert.Null(shell.Editor);
+            Assert.Null(_sessions.Active);
+            Assert.Same(_dashboard, shell.CurrentView);
         }
 
         [Fact]
@@ -982,18 +1438,20 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// A shell over the shared collaborators, with an editor factory of its own. The readout
+        /// A shell over the shared collaborators, with an editor factory of its own and — for the
+        /// one test that drives the real presenter — a notification service of its own. The readout
         /// ticker is parked: every test that cares about "refreshed Ns ago" moves the fake clock
         /// and reads the property, so a background timer would only add a race.
         /// </summary>
-        private MainWindowViewModel CreateShell(IEditorViewModelFactory editors)
+        private MainWindowViewModel CreateShell(
+            IEditorViewModelFactory editors,
+            INotificationService? notifications = null)
         {
             return new MainWindowViewModel(
                 _dashboard,
                 _monitor,
                 _sessions,
-                _notifications,
-                _ejectNotifier,
+                notifications ?? _notifications,
                 editors,
                 _clock,
                 new FakeUiDispatcher(),
