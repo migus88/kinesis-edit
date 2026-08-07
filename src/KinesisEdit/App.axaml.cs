@@ -37,6 +37,7 @@ namespace KinesisEdit
         private const string KeystrokeSpikeArgument = "--keystroke-spike";
 
         private DeviceMonitorService? _deviceMonitor;
+        private DeviceLivenessWatcher? _livenessWatcher;
         private AvaloniaKeystrokeCaptureService? _captureService;
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
@@ -119,7 +120,15 @@ namespace KinesisEdit
             // so live hardware is unaffected and a demo editor opens populated instead of failing
             // its profile load on a path the real service cannot resolve (docs/app/app-shell.md,
             // "The demo v-Drive").
-            var fileService = new DemoVDriveFileService(new VDriveFileService());
+            //
+            // The write-tracking decorator goes on the outside, so *every* v-Drive write in the
+            // app — profile saves, settings merges, the pedal file, an export — opens a bracket
+            // without any call site knowing it exists. DeviceLivenessWatcher below is the one
+            // reader: it skips a tick rather than stat a mount point mid-save.
+            var writeActivity = new VDriveWriteActivity();
+            var fileService = new WriteTrackingVDriveFileService(
+                new DemoVDriveFileService(new VDriveFileService()),
+                writeActivity);
             var monitor = new VDriveMonitor(new VDriveScanner(PlatformVolumeEnumerator.Create()));
 
             // One dispatcher for the whole shell: a scan runs off the UI thread, so both of the
@@ -127,6 +136,14 @@ namespace KinesisEdit
             var dispatcher = new AvaloniaUiDispatcher();
 
             _deviceMonitor = new DeviceMonitorService(monitor, fileService, dispatcher);
+
+            // Liveness, not discovery: it arms itself only once a pass has found a connected drive
+            // and asks for a rescan when one stops being mounted, so an eject or an unplug drops
+            // the card and flips an open editor's chip instead of leaving both describing a volume
+            // that is gone. Nothing here looks for a drive the app has not already seen — invariant
+            // 5 is unchanged, and with nothing connected no timer is armed at all. It lives here
+            // rather than on the dashboard so it runs with an editor open too.
+            _livenessWatcher = new DeviceLivenessWatcher(_deviceMonitor, new VolumeLivenessProbe(), writeActivity);
 
             // One settings service for the whole app: app_settings.txt must have a single reader
             // and a single writer, or the notification-suppression flags and the lighting pickers'
@@ -264,6 +281,10 @@ namespace KinesisEdit
         {
             _shell?.Dispose();
             _dashboard?.Dispose();
+
+            // Before the monitor it watches, which is the reverse of construction: the watcher
+            // unsubscribes and disarms its timer, so no tick can ask a disposed monitor to scan.
+            _livenessWatcher?.Dispose();
             _deviceMonitor?.Dispose();
 
             // After the shell, which closes the open editor first: the editor stops capture, this

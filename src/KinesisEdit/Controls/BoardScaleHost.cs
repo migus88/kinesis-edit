@@ -19,11 +19,15 @@ namespace KinesisEdit.Controls
     /// anything.
     /// </para>
     /// <para>
-    /// <b>There is deliberately no maximum scale.</b> The handoff states none, and the board is
-    /// vector all the way down — a transform is composed into the render pass, so a board at 3x is
-    /// drawn at 3x rather than magnified from a 1x raster. Capping it would leave a small board
-    /// marooned in the middle of a large window, which is precisely what "scale the whole board up
-    /// with available space" refuses.
+    /// <b>The ceiling is <see cref="MaxScale"/>, and this control carries no policy about it.</b>
+    /// It defaults to <see cref="double.PositiveInfinity"/> — the host on its own still grows the
+    /// board with every pixel on offer — and the view that hosts a real board is what sets one.
+    /// <c>Controls/KeyboardView.axaml</c> sets it from the <c>BoardScaleMax</c> geometry token
+    /// (1.5), because the handoff's "scale the whole board up with available space" was written for
+    /// a 1000px window and reads as absurd at 2560: the Freestyle Edge RGB's 695x196 picture was
+    /// drawn 2238x631, a wall of caps with 40px legends. The board is vector all the way down, so a
+    /// capped board is still <i>drawn</i> at its scale rather than magnified from a 1x raster; what
+    /// the cap buys is a picture that stays a keyboard.
     /// </para>
     /// <para>
     /// <b><see cref="Decorator.Padding"/> is not honoured.</b> This host adds no chrome of its own;
@@ -45,11 +49,29 @@ namespace KinesisEdit.Controls
         public static readonly DirectProperty<BoardScaleHost, double> ScaleProperty =
             AvaloniaProperty.RegisterDirect<BoardScaleHost, double>(nameof(Scale), host => host.Scale);
 
+        /// <summary>
+        /// The largest factor the child may be drawn at. Infinity by default, so the control itself
+        /// imposes nothing; a view sets it from the <c>BoardScaleMax</c> token.
+        /// </summary>
+        public static readonly StyledProperty<double> MaxScaleProperty =
+            AvaloniaProperty.Register<BoardScaleHost, double>(nameof(MaxScale), double.PositiveInfinity);
+
         /// <summary>The scale that fits the child, or 0 when there is nothing to draw or no room.</summary>
         public double Scale
         {
             get => _scale;
             private set => SetAndRaise(ScaleProperty, ref _scale, value);
+        }
+
+        /// <summary>
+        /// The ceiling the resolved scale is clamped to. A value that is not a positive, finite
+        /// number caps nothing — which is what the infinite default means, and what keeps a host
+        /// nobody has configured behaving exactly as it did before the property existed.
+        /// </summary>
+        public double MaxScale
+        {
+            get => GetValue(MaxScaleProperty);
+            set => SetValue(MaxScaleProperty, value);
         }
 
         /// <summary>
@@ -59,6 +81,12 @@ namespace KinesisEdit.Controls
         private readonly ScaleTransform _transform = new();
 
         private double _scale = 1;
+
+        /// <summary>A different ceiling is a differently sized picture, so it has to re-measure.</summary>
+        static BoardScaleHost()
+        {
+            AffectsMeasure<BoardScaleHost>(MaxScaleProperty);
+        }
 
         /// <summary>Creates the host with clipping off, which is not the framework default.</summary>
         public BoardScaleHost()
@@ -84,7 +112,7 @@ namespace KinesisEdit.Controls
             child.Measure(Size.Infinity);
 
             var natural = child.DesiredSize;
-            var scale = ResolveScale(availableSize, natural);
+            var scale = ResolveScale(availableSize, natural, MaxScale);
 
             return new Size(natural.Width * scale, natural.Height * scale);
         }
@@ -121,7 +149,7 @@ namespace KinesisEdit.Controls
                 return finalSize;
             }
 
-            var scale = ResolveScale(finalSize, natural);
+            var scale = ResolveScale(finalSize, natural, MaxScale);
 
             _transform.ScaleX = scale;
             _transform.ScaleY = scale;
@@ -142,12 +170,17 @@ namespace KinesisEdit.Controls
         }
 
         /// <summary>
-        /// The uniform factor that fits <paramref name="natural"/> into <paramref name="available"/>.
-        /// A dimension that cannot constrain — infinite, NaN, non-positive, or measured against a
-        /// natural extent of nothing — contributes no candidate, and with no candidate at all the
-        /// answer is 1: mock scale, never infinity.
+        /// The uniform factor that fits <paramref name="natural"/> into <paramref name="available"/>,
+        /// never above <paramref name="maxScale"/>. A dimension that cannot constrain — infinite,
+        /// NaN, non-positive, or measured against a natural extent of nothing — contributes no
+        /// candidate, and with no candidate at all the answer is 1: mock scale, never infinity.
+        /// <para>
+        /// The ceiling is applied last, to the fallback as well as to a fitted candidate: a host
+        /// that is told the board may never exceed 0.5x must not draw it at 1 because nothing
+        /// happened to constrain it.
+        /// </para>
         /// </summary>
-        private static double ResolveScale(Size available, Size natural)
+        private static double ResolveScale(Size available, Size natural, double maxScale)
         {
             var horizontal = IsUsable(available.Width) && IsUsable(natural.Width)
                 ? available.Width / natural.Width
@@ -155,9 +188,12 @@ namespace KinesisEdit.Controls
             var vertical = IsUsable(available.Height) && IsUsable(natural.Height)
                 ? available.Height / natural.Height
                 : double.PositiveInfinity;
-            var scale = Math.Min(horizontal, vertical);
+            var fitted = Math.Min(horizontal, vertical);
+            var scale = double.IsFinite(fitted) && fitted > 0 ? fitted : 1;
 
-            return double.IsFinite(scale) && scale > 0 ? scale : 1;
+            // A ceiling that is not itself a usable length caps nothing — the infinite default, and
+            // anything nonsensical, both leave the fitted answer alone rather than erasing the board.
+            return IsUsable(maxScale) ? Math.Min(scale, maxScale) : scale;
         }
 
         private static bool IsDrawable(Size size)
