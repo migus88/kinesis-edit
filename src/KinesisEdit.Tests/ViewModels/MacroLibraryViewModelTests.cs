@@ -75,7 +75,11 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
 
-            var caption = KeyCaption.For(scene.Key!.Key.TriggerKey, scene.Layout.Dialect, KeyCaption.IsMacOs);
+            var caption = KeyCaption.For(
+                scene.Key!.Key.TriggerKey,
+                scene.Layout.Dialect,
+                KeyCaption.IsMacOs,
+                EmbeddedFontGlyphCoverage.Instance);
 
             Assert.Equal($"Macros on {caption} · Freestyle Edge RGB", scene.Panel.Header);
         }

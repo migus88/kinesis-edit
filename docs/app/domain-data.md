@@ -78,6 +78,8 @@ Firmware minimums are data only (never compared here). File syntax is `[position
 
 `KeyDefinition` (record): `Code` (Windows VK < 256 or legacy internal ≥ 10000; §2), `Table` (`KeyTable` — enum values equal the spec table numbers 3.1–3.13), `Dialects` (`TokenDialects` flags = the spec's Family column), per-dialect file tokens `LegacyToken`/`Gen1Token`/`Gen2Token` stored in canonical casing (empty = absent in that dialect; only tokens ever appear on disk), display data (`DisplayText` with `\n` two-line captions, per-dialect + `MacDisplayText` overrides, `ShiftedValue`, `GlyphText` Unicode-glyph caption with `DisplayText` as fallback), `Flags` (`KeyDefinitionFlags`: `HiddenFromSearch`, `NotWritable`, `ConvertToUnicode`, `ShowShiftedValue`, `SingleEvent`). Helpers: `GetToken`, `HasToken`, `IsAvailableIn`, `GetDisplayText`.
 
+**`GlyphText` is advisory, not a caption the app must print.** 05 §3.7/§6 gate the glyph column on capability, and the app renders it only where its own type can (today: nowhere — none of the 23 glyph-carrying entries' 17 distinct glyphs is in an embedded face, so every one falls back to its plain caption). Core states the spec; the choice is the UI's — see [keyboard-editor.md](keyboard-editor.md), deviation 52.
+
 Per-table entry counts (pinned by tests):
 
 | 3.1 | 3.2 | 3.3 | 3.4 | 3.5 | 3.6 | 3.7 | 3.8 | 3.9 | 3.10 | 3.11 | 3.12 | 3.13 | Total |

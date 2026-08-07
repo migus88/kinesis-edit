@@ -35,6 +35,7 @@ namespaces and entry points. Three section headings recur and are worth knowing 
 | The panels still modal over the editor (Search Keys, Export) and Import | [feature-dialogs.md](feature-dialogs.md) |
 | The Savant Elite2 — `pedals.txt` and its pedal editor | [savant-elite.md](savant-elite.md) |
 | Colour/type/geometry/motion tokens, control themes, icons, **and how to test UI work** | [design-system.md](design-system.md) |
+| Whether the embedded fonts can actually print a glyph (`IGlyphCoverage`), and what a key cap falls back to when they cannot | [design-system.md](design-system.md), then [keyboard-editor.md](keyboard-editor.md) |
 
 ## Module inventory
 

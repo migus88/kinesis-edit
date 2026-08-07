@@ -3,6 +3,7 @@ using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Lighting;
 using KinesisEdit.Core.Lighting.Preview;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
@@ -76,7 +77,9 @@ namespace KinesisEdit.ViewModels
 
             var token = key.GetToken(dialect);
 
-            return token.Length > 0 ? "[" + token + "]" : KeyCaption.For(key, dialect, KeyCaption.IsMacOs);
+            return token.Length > 0
+                ? "[" + token + "]"
+                : KeyCaption.For(key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
         }
 
         /// <summary>The model object this cap edits.</summary>
@@ -525,7 +528,11 @@ namespace KinesisEdit.ViewModels
                 return legend;
             }
 
-            return KeyCaption.ForKey(Key, _dialect);
+            // The cap's own abbreviation, applied here and nowhere else: this is the one caption
+            // that has to survive a 28 px box. Everything that writes the key's name into prose —
+            // FormatToken above, the macro rows, the co-trigger caption, the library header —
+            // calls KeyCaption directly and keeps the full word.
+            return KeyCapCaption.For(KeyCaption.ForKey(Key, _dialect, EmbeddedFontGlyphCoverage.Instance));
         }
     }
 }

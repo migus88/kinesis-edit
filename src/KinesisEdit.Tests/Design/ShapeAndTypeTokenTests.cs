@@ -6,6 +6,9 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Geometry.Visual;
+using KinesisEdit.Core.Keys;
+using KinesisEdit.Services;
+using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
 
 namespace KinesisEdit.Tests.Design
@@ -383,6 +386,134 @@ namespace KinesisEdit.Tests.Design
             }
         }
 
+        [AvaloniaFact]
+        public void EveryResolvedKeyCaption_HasAGlyphInBothEmbeddedFamilies()
+        {
+            // The third glyph gate, and the one that closes docs/app/design-system.md's "live gap".
+            // The keycap gate above walks the *silkscreen* — legends authored in the visual catalog
+            // — but the caption a cap actually prints comes from the key table, through
+            // `KeyCaption`, and a remapped cap, a macro step and a co-trigger all read it. All 17
+            // of KeyRegistry's GlyphText values are in neither family, so before the capability
+            // gate landed this walk failed 23 entries over.
+            //
+            // It gates the *resolved caption*, not `GlyphText` itself: an unprintable glyph is now
+            // handled, so asserting the glyph column is covered would fail after the fix exactly as
+            // it did before it. Resolving instead covers GlyphText, MacDisplayText, the per-dialect
+            // display text and the token fallback in one walk.
+            var missing = new SortedSet<string>(StringComparer.Ordinal);
+            var resolved = 0;
+            var glyphsDropped = 0;
+
+            foreach (var entry in KeyRegistry.Entries)
+            {
+                foreach (var dialect in Enum.GetValues<TokenDialect>())
+                {
+                    foreach (var isMacOs in new[] { false, true })
+                    {
+                        var caption = KeyCaption.For(entry, dialect, isMacOs, EmbeddedFontGlyphCoverage.Instance);
+
+                        resolved++;
+
+                        if (entry.GlyphText.Length > 0 && !string.Equals(caption, entry.GlyphText, StringComparison.Ordinal))
+                        {
+                            glyphsDropped++;
+                        }
+
+                        CollectUncoveredCaptionRunes(entry, dialect, caption, missing);
+                    }
+                }
+            }
+
+            // Anti-vacuity, the shape the chrome gate uses: a floor proving the walk walked, and
+            // proof that the branch this issue added actually fired. Without the second, the gate
+            // passes trivially the day the probe starts answering "covered" for everything — which
+            // is precisely the failure mode a wrong FontManager call produces.
+            Assert.True(KeyRegistry.Entries.Count >= 1200, $"Only {KeyRegistry.Entries.Count} key-table entries were walked.");
+            Assert.True(resolved >= 9000, $"Only {resolved} captions were resolved; the walk found next to nothing.");
+            Assert.True(glyphsDropped > 0, "No entry fell off its glyph — the drop path never ran, so this gate proves nothing.");
+
+            Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
+        }
+
+        [AvaloniaFact]
+        public void TheResolvedCaptionWalk_ActuallyReportsAnUnprintableCaption()
+        {
+            // The walk's own probe, proved the way the chrome walk's is: a planted entry whose
+            // caption carries an uncovered rune has to be reported, and a covered one must not be.
+            var reported = new SortedSet<string>(StringComparer.Ordinal);
+            var planted = new KeyDefinition
+            {
+                Code = 999_999,
+                Table = KeyTable.SpecialActions,
+                Dialects = TokenDialects.All,
+                Gen1Token = "planted",
+                DisplayText = "moon ☾"
+            };
+
+            var caption = KeyCaption.For(planted, TokenDialect.Gen1, isMacOs: false, EmbeddedFontGlyphCoverage.Instance);
+
+            Assert.Equal("moon ☾", caption);
+
+            CollectUncoveredCaptionRunes(planted, TokenDialect.Gen1, caption, reported);
+
+            var line = Assert.Single(reported);
+            Assert.Contains("U+263E", line, StringComparison.Ordinal);
+            Assert.Contains("999999", line, StringComparison.Ordinal);
+
+            var covered = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredCaptionRunes(planted with { DisplayText = "Moon" }, TokenDialect.Gen1, "Moon", covered);
+            Assert.Empty(covered);
+        }
+
+        [AvaloniaFact]
+        public void TheResolvedCaptionGate_WouldHaveFailedOnTheUnconditionalGlyphRule()
+        {
+            // What the gate is worth is what it catches, so the caught state is reproduced here:
+            // a probe that answers "covered" to everything is exactly the rule this issue
+            // replaced — `GlyphText` returned first and unconditionally — and under it the play
+            // key captions as U+23EF, which no embedded face carries.
+            var play = KeyRegistry.FindByCode(0xB3)
+                ?? throw new InvalidOperationException("No key registered for the Play/Pause code.");
+
+            var unconditional = KeyCaption.For(play, TokenDialect.Gen1, isMacOs: false, FakeGlyphCoverage.CoveringEverything);
+
+            Assert.Equal(play.GlyphText, unconditional);
+
+            var reported = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredCaptionRunes(play, TokenDialect.Gen1, unconditional, reported);
+
+            var line = Assert.Single(reported);
+            Assert.Contains("U+23EF", line, StringComparison.Ordinal);
+
+            // And what it passes on now.
+            Assert.Equal(
+                "Play\nPause",
+                KeyCaption.For(play, TokenDialect.Gen1, isMacOs: false, EmbeddedFontGlyphCoverage.Instance));
+        }
+
+        /// <summary>
+        /// Reports every non-whitespace rune of one resolved caption that neither embedded family
+        /// can print. There is no allowlist here on purpose: a keycap caption is domain data, so a
+        /// gap is fixed by the caption rule (or by the key table), never excused.
+        /// </summary>
+        private static void CollectUncoveredCaptionRunes(
+            KeyDefinition key,
+            TokenDialect dialect,
+            string caption,
+            ICollection<string> missing)
+        {
+            foreach (var rune in caption.EnumerateRunes())
+            {
+                if (System.Text.Rune.IsWhiteSpace(rune) || IsCovered(rune))
+                {
+                    continue;
+                }
+
+                missing.Add(
+                    $"Key {key.Code} ({dialect}) captions as '{caption}': U+{rune.Value:X4} '{rune}' is in neither embedded IBM Plex family.");
+            }
+        }
+
         /// <summary>
         /// Every <c>const string</c> / <c>const char</c> in the app assembly, public or not, with
         /// the file it was authored in. Constants only: the alternative — reading captions off
@@ -544,28 +675,17 @@ namespace KinesisEdit.Tests.Design
         /// Whether <paramref name="rune"/> resolves to a real glyph in <b>both</b> embedded
         /// families, at every weight the type scale uses. A cap's legend can be set in either face,
         /// and a weight that lacks the glyph would substitute silently.
+        /// <para>
+        /// This delegates to the <b>production</b> probe rather than re-asking the font manager
+        /// itself. The app now makes a rendering decision on the same question
+        /// (<see cref="KeyCaption.For"/> drops an unprintable glyph, docs/app/keyboard-editor.md),
+        /// and two implementations of "can we print this" would eventually disagree — with the
+        /// gate passing while the screen drew tofu.
+        /// </para>
         /// </summary>
         private static bool IsCovered(System.Text.Rune rune)
         {
-            foreach (var familyKey in new[] { "FontSans", "FontMono" })
-            {
-                var family = (FontFamily)DesignTokens.Resolve(familyKey, ThemeVariant.Dark);
-
-                foreach (var weight in new[] { FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold })
-                {
-                    if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(family, FontStyle.Normal, weight), out var typeface))
-                    {
-                        return false;
-                    }
-
-                    if (!typeface.TryGetGlyph((uint)rune.Value, out _))
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
+            return EmbeddedFontGlyphCoverage.Instance.CanPrint(rune.ToString());
         }
 
         /// <summary>One authored display string, and where it was authored.</summary>
