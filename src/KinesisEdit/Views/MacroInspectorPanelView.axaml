@@ -164,8 +164,7 @@
                      on this view, whose DataContext is the panel. -->
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto"
                       ColumnSpacing="4"
-                      Background="Transparent"
-                      PointerPressed="OnStepPointerPressed">
+                      Background="Transparent">
                   <controls:Icon Grid.Column="0"
                                  Classes="dragHandle"
                                  Data="{DynamicResource IconDragHandle}"
@@ -181,15 +180,63 @@
                       <!-- Mono end to end: the number counts the file's own steps and the token is
                            literally what layoutN.txt carries. -->
                       <TextBlock Text="{Binding NumberText}" Classes="monoValueSmall muted" VerticalAlignment="Center" />
+
+                      <!-- THE KEY THAT WAS STRUCK IS TINTED. `MacroStepKeyBrush` is the macro
+                           badge's own orchid, darkened on light for type — purple already means
+                           "macro" in this app, so the cap's dot and this token say one thing in one
+                           hue, and the row invents no fifth meaning. Deliberately not the accent:
+                           that has exactly two, and a key token is neither. -->
                       <TextBlock Text="{Binding TokenText}"
                                  Classes="monoValue"
+                                 Foreground="{DynamicResource MacroStepKeyBrush}"
                                  IsVisible="{Binding HasToken}"
                                  TextTrimming="CharacterEllipsis"
                                  VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding ModifiersText}"
-                                 Classes="monoValueSmall muted"
-                                 IsVisible="{Binding HasModifiers}"
-                                 VerticalAlignment="Center" />
+
+                      <!-- The held modifiers as 2i's marks — `⇧`, `R⌃` — and NOT the file's `LS`,
+                           `LC`, `S ` codes, which are what goes on the drive rather than what a
+                           person reads (`Keystroke.FormatModifiers`, untouched).
+
+                           LEFT IS UNMARKED; ONLY THE RIGHT SIDE IS SPELLED. `LS` draws a bare `⇧`
+                           and `RS` draws `R⇧`, so the side run below is hidden for a left modifier
+                           — and for a generic one, which is why the two now draw alike. See
+                           `MacroModifierMarks.LeftSide` for the reasoning and the cost.
+
+                           UP TO TWO RUNS PER MODIFIER, IN TWO FACES. The key-symbol family is a
+                           19-codepoint subset with NO Latin letters, so the `R` side letter stays
+                           in the ordinary mono face and only the mark goes in `.keySymbol`; a whole
+                           `R⇧` set in that class would fall back to a system font for its `R`.
+                           `MacroModifierMarks.Split` hands the two out separately for exactly this,
+                           and the row binds to the parts rather than to the joined string. -->
+                      <ItemsControl ItemsSource="{Binding Modifiers}"
+                                    IsVisible="{Binding HasModifiers}"
+                                    VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="3" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:MacroModifierMarks+Mark">
+                            <!-- The tooltip is not decoration: only a RIGHT modifier spells its
+                                 side, so a bare mark is worn by the left one and the generic one
+                                 alike and the row cannot tell them apart. `Description` is where
+                                 the distinction the file really carries stays reachable. -->
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="{Binding Description}">
+                              <TextBlock Text="{Binding Side}"
+                                         Classes="monoValueSmall muted"
+                                         IsVisible="{Binding HasSide}"
+                                         VerticalAlignment="Center" />
+                              <TextBlock Text="{Binding Symbol}"
+                                         Classes="keySymbol muted"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
                       <TextBlock Text="{Binding ActionText}" Classes="meta muted" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
@@ -222,6 +269,23 @@
                           ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.RemoveStepHint}"
                           Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.RemoveStepCommand}"
                           CommandParameter="{Binding}" />
+
+                  <!-- WHERE THE DRAG WOULD LAND. A reorder with no feedback reads as broken even
+                       once it works, so the row under a carried step wears a ring while the
+                       pointer is over it.
+
+                       A RING, NOT A FILL: the selected row already takes `AccentSelectionFill`, and
+                       a drop target painted in it would be indistinguishable from the selection it
+                       is about to displace. Last child and `IsHitTestVisible=False`, so it draws
+                       over the row button's own face without ever becoming the thing the release
+                       hit-tests to. -->
+                  <Border Grid.Column="0"
+                          Grid.ColumnSpan="4"
+                          BorderBrush="{DynamicResource AccentBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{DynamicResource RadiusControl}"
+                          IsHitTestVisible="False"
+                          IsVisible="{Binding IsDropTarget}" />
                 </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -273,8 +337,15 @@
                 <TextBlock Text="{x:Static vm:MacroInspectorStepsViewModel.CustomDelayCaption}" Classes="meta muted" />
 
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                  <!-- A real TextBox, and that is correct here: the capture service stands down
-                       while focus sits in one, so the digits reach the field instead of the macro.
+                  <!-- A real TextBox, and that is correct here: focus landing in one ENDS the
+                       recording — the editor's `GotFocus` leg of `StopRecordingOnInteraction`
+                       stands the panel down and the banner goes with it — so the digits reach the
+                       field and the panel is never left claiming to record while the keyboard
+                       belongs to the box (docs/app/keystroke-capture.md, invariant 7: a surface
+                       that says it is capturing must never be wrong about it). The service's own
+                       auto-suspend on text focus still applies underneath, but it is silent, and a
+                       silent suspension is exactly what this panel must not rely on.
+
                        It is the opposite of an action field, which records a KEYPRESS and must
                        never be focusable. Mono — the count is written into the macro verbatim.
 
@@ -392,14 +463,49 @@
                   <WrapPanel />
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
+              <!-- THE SIX TOGGLES ARE MARKS, NOT CAPTIONS — `⇧ R⇧ ⌃ R⌃ ⌥ R⌥`. Six two-line
+                   captions (`Left⏎Shift` … `Right⏎Opt`) wrapped in a rail this narrow was the
+                   panel's tallest block for the least information in it; the marks are the step
+                   list's own spelling, one line each, and they cost nothing to read because the
+                   modifier is the whole of what the toggle says. With left unmarked they need
+                   260 px of the strip's 276 and all six sit on ONE row.
+
+                   UP TO TWO RUNS, IN TWO FACES, exactly as the step row above draws them: the
+                   key-symbol family is a 19-codepoint subset with NO Latin letters, so the `R`
+                   stays in the ordinary mono face and only the mark goes in `.keySymbol`. The left
+                   three spell no side and are a single run. `FontSizeKeySymbol` is derived to sit
+                   at `monoValueSmall`'s cap height, which is why that is the pairing here too.
+
+                   NEITHER RUN CARRIES A COLOUR, and that is the reason this site can be type at all
+                   while the layer chips' `⌥` stays a geometry: `ToggleSegment`'s `.selected` face
+                   sets `Foreground`, a TextBlock INHERITS it and an `Icon` (which paints from
+                   `Stroke`) cannot. A `muted` on either run would break the on-accent label.
+
+                   THE CAPTION IS THE TOOLTIP. A mark alone is not accessible text; with left
+                   unmarked it is also the only thing on a left toggle that says which side it is;
+                   and it is the fallback for any co-trigger key that names no modifier at all. -->
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:MacroCoTriggerViewModel">
                   <Button Classes="toggleSegment"
                           Classes.selected="{Binding IsOn}"
-                          Content="{Binding Caption}"
                           Margin="0,0,4,4"
+                          ToolTip.Tip="{Binding Caption}"
                           Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
-                          CommandParameter="{Binding}" />
+                          CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Side}"
+                                 Classes="monoValueSmall"
+                                 IsVisible="{Binding HasSide}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Symbol}"
+                                 Classes="keySymbol"
+                                 IsVisible="{Binding HasMark}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Caption}"
+                                 IsVisible="{Binding !HasMark}"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>

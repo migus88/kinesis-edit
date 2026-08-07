@@ -27,9 +27,20 @@ namespace KinesisEdit.Tests.ViewModels
                 "Named, so it can be picked for another key from this same dropdown.",
                 MacroInspectorPanelViewModel.ReuseNote);
             Assert.Equal("Also on ", MacroInspectorPanelViewModel.AlsoOnPrefix);
+
+            // A DELIBERATE deviation from mockup 2i, which ends the banner "Esc stops." (issue
+            // #122, AC 2): Escape is a remappable position, so a macro has to be able to record one
+            // — and a banner that offers it as the way out while the keystroke is being appended as
+            // a step is exactly the lie this panel's capture rules exist to avoid. The rest of the
+            // sentence is the mock's, verbatim.
             Assert.Equal(
-                "Recording into step 04 — your typing goes here, not into the app. Esc stops.",
+                "Recording into step 04 — your typing goes here, not into the app. "
+                + "Click Stop, or anywhere else, to finish.",
                 MacroInspectorPanelViewModel.BuildRecordingBanner("04"));
+            Assert.DoesNotContain(
+                "Esc",
+                MacroInspectorPanelViewModel.RecordingBannerFormat,
+                StringComparison.Ordinal);
             Assert.Equal(
                 "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.",
                 MacroInspectorPanelViewModel.CaptureRule);
@@ -428,6 +439,205 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("Sign-off block", scene.Panel.SelectedName!.Caption);
         }
 
+        // ===== Revert (issue #122, AC 1) =====================================================
+        // The rail's `Revert key` used to run the editor's ClearRemap(), which touches only the
+        // remap — so on this panel it did nothing at all, and nothing anywhere kept a "before".
+
+        [Fact]
+        public void TryRevert_PutsBackTheMacroThePositionHadWhenItWasSelected()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            // Leave and come back, so the baseline is "one step" rather than "no macro".
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            var speed = scene.Panel.Speed;
+            var otherSpeed = speed < scene.Panel.SpeedMaximum ? speed + 1 : speed - 1;
+
+            scene.Record("b", "c");
+
+            scene.Panel.Speed = otherSpeed;
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.Equal(3, scene.CurrentMacro!.Keystrokes.Count);
+            Assert.Equal(1, scene.CurrentMacro.CoTriggerCount);
+            Assert.Equal(otherSpeed, scene.CurrentMacro.Speed);
+
+            Assert.True(scene.Panel.TryRevert());
+
+            Assert.Single(scene.CurrentMacro!.Keystrokes);
+            Assert.Equal(0, scene.CurrentMacro.CoTriggerCount);
+            Assert.Equal(speed, scene.CurrentMacro.Speed);
+
+            // The panel re-read: the step list and the meters move with the model, or the revert is
+            // invisible until something else happens to refresh the rail.
+            Assert.Equal(1, scene.Panel.Steps.Count);
+            Assert.Equal(speed, scene.Panel.Speed);
+            Assert.False(scene.Panel.CoTriggers[0].IsOn);
+        }
+
+        [Fact]
+        public void TryRevert_OnAPositionThatCarriedNoMacro_LeavesItCarryingNone()
+        {
+            // "There was nothing before" is a state the baseline has to be able to hold: the macro
+            // this panel creates on the first keystroke is exactly what Revert has to undo.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+
+            Assert.NotNull(scene.CurrentMacro);
+
+            Assert.True(scene.Panel.TryRevert());
+
+            Assert.Null(scene.CurrentMacro);
+            Assert.Equal(0, scene.Panel.Steps.Count);
+            Assert.Equal(0, scene.Layout.MacroCount);
+        }
+
+        [Fact]
+        public void TryRevert_IsIdempotent()
+        {
+            // The baseline is read on restore, never consumed, and never re-taken there — so the
+            // second Revert lands on the same state as the first.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("b", "c");
+
+            Assert.True(scene.Panel.TryRevert());
+            Assert.Single(scene.CurrentMacro!.Keystrokes);
+
+            Assert.True(scene.Panel.TryRevert());
+            Assert.Single(scene.CurrentMacro!.Keystrokes);
+            Assert.Equal(1, scene.Panel.Steps.Count);
+        }
+
+        [Fact]
+        public void TheBaseline_SurvivesTheRefreshesTheUsersOwnEditsCause()
+        {
+            // The trap the panel contract warns about: Refresh runs on EVERY editor refresh, for
+            // every panel — so a snapshot taken unconditionally there is overwritten by the very
+            // edit the user wants undone, and Revert silently becomes a no-op again.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            scene.Panel.RecordCommand.Execute(null);
+
+            foreach (var token in new[] { "b", "c" })
+            {
+                scene.Panel.ReceiveKeystroke(Captured(token));
+
+                // What the editor's funnel does after every write this panel announces.
+                scene.Refresh();
+            }
+
+            scene.Panel.Deactivate();
+
+            Assert.Equal(3, scene.CurrentMacro!.Keystrokes.Count);
+
+            Assert.True(scene.Panel.TryRevert());
+
+            Assert.Single(scene.CurrentMacro!.Keystrokes);
+        }
+
+        [Fact]
+        public void TheBaseline_SurvivesDeactivate_BecauseAModeSwitchDoesNotMoveThePosition()
+        {
+            // Deactivate stands capture down; it does not change what this key held when it was
+            // clicked. A user who switched to Remap and back must still be able to revert.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+
+            scene.Panel.Deactivate();
+            scene.Refresh();
+
+            Assert.True(scene.Panel.TryRevert());
+            Assert.Null(scene.CurrentMacro);
+        }
+
+        [Fact]
+        public void TryRevert_RestoresEverySlotAndTheActiveOne()
+        {
+            // A key holds up to five macros, told apart by their co-triggers (06 §1), and the
+            // active slot is what the inspector edits. Restoring names the slot each macro came out
+            // of rather than re-assigning into the first free one, so a gap-carrying set comes back
+            // where the file put it.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            var key = scene.Key.Key;
+
+            key.SetMacro(1, scene.Layout.CreateMacro());
+            key.SetMacro(3, scene.Layout.CreateMacro());
+            key.ActiveMacroIndex = 3;
+
+            // A fresh selection, so the baseline is the two-slot state.
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            key.ClearMacros();
+
+            Assert.True(scene.Panel.TryRevert());
+
+            Assert.NotNull(key.GetMacro(1));
+            Assert.Null(key.GetMacro(2));
+            Assert.NotNull(key.GetMacro(3));
+            Assert.Equal(3, key.ActiveMacroIndex);
+        }
+
+        [Fact]
+        public void TryRevert_WithNothingSelected_RefusesSoTheFooterFallsThroughToTheEditor()
+        {
+            var panel = Create();
+
+            Assert.False(panel.TryRevert());
+
+            panel.Refresh(null, null, null, EditorAdvisories.Empty);
+
+            Assert.False(panel.TryRevert());
+        }
+
+        [Fact]
+        public void TryRevert_OnAPositionThatCannotCarryAMacro_Refuses()
+        {
+            // A modifier position (05 §5.3). There is no macro state to put back, so the footer must
+            // fall through to the editor's own reset rather than claim the action.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbLeftShiftKeyIndex);
+
+            Assert.False(scene.Panel.IsAvailable);
+            Assert.False(scene.Panel.TryRevert());
+        }
+
+        [Fact]
+        public void IsRecordingControl_NamesTheTwoButtonsThatArmCapture_AndNothingElse()
+        {
+            // What the editor's pointer stand-down asks before it ends a recording: the press that
+            // lands on Record/Stop must not be the press that stops it.
+            var panel = Create();
+
+            Assert.True(panel.IsRecordingControl(panel.RecordCommand));
+            Assert.True(panel.IsRecordingControl(panel.InsertStepCommand));
+            Assert.False(panel.IsRecordingControl(panel.ToggleCoTriggerCommand));
+            Assert.False(panel.IsRecordingControl(null));
+        }
+
         /// <summary>One keystroke as the capture service would hand it over.</summary>
         private static CapturedKeystroke Captured(string token)
         {
@@ -461,6 +671,27 @@ namespace KinesisEdit.Tests.ViewModels
             public MacroInspectorPanelViewModel Panel { get; }
 
             public KeyboardKeyViewModel Key { get; private set; } = null!;
+
+            /// <summary>
+            /// The macro the selected position is really carrying, read straight off the model
+            /// rather than off the panel — a revert that only moved the view models would pass a
+            /// test written against them.
+            /// </summary>
+            public Macro? CurrentMacro
+            {
+                get
+                {
+                    for (var slot = Core.Model.Macro.MinMacroIndex; slot <= Core.Model.Macro.MaxMacroIndex; slot++)
+                    {
+                        if (Key.Key.GetMacro(slot) is { } macro)
+                        {
+                            return macro;
+                        }
+                    }
+
+                    return null;
+                }
+            }
 
             private readonly KeyboardLayerViewModel _layer;
 

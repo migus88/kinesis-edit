@@ -49,6 +49,26 @@ namespace KinesisEdit.Tests.Design
                 "▾ on the Special Actions button; the pedal view is rebuilt by a later redesign issue.")
         ];
 
+        /// <summary>
+        /// The files allowed to author a <b>key-symbol</b> character — a mark out of
+        /// <c>FontKeySymbols</c>, the third embedded family, which no IBM Plex face carries.
+        /// <para>
+        /// This is <b>not</b> a deferral: the string is not waiting to become a geometry, it is
+        /// drawn in a face that can print it (<c>.keySymbol</c>, docs/app/design-system.md). It is
+        /// narrow in both directions all the same — a rune is forgiven only in a listed file
+        /// <em>and</em> only when the key-symbol family actually carries it, so a <c>☾</c> here
+        /// still fails and a <c>⌘</c> in a sans caption anywhere else still fails.
+        /// <see cref="EveryKeySymbolSite_StillAuthorsAMarkTheKeySymbolFamilyCarries"/> fails when a
+        /// site stops authoring marks and its entry is left behind.
+        /// </para>
+        /// </summary>
+        private static readonly IReadOnlyList<KeySymbolSite> KeySymbolSites =
+        [
+            new KeySymbolSite(
+                "ViewModels/MacroModifierMarks.cs",
+                "The 12 modifier marks of a macro step row (⇧ ⌃ ⌥ ⌘), drawn in the key-symbol face.")
+        ];
+
         [AvaloniaTheory]
         // Radii: panels and cards 8, controls 5, keycaps 4, kbd chips 3, pills round.
         [InlineData("RadiusPanel", 8)]
@@ -402,6 +422,51 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
+        public void EveryKeySymbolSite_StillAuthorsAMarkTheKeySymbolFamilyCarries()
+        {
+            // The reverse check on the key-symbol exemption, the shape
+            // `EveryDeferredChromeGlyph_IsStillNeededByItsView` uses: an exemption outlives the
+            // thing it excuses. When a site stops authoring marks — the panel moves to a geometry,
+            // the formatter is deleted — this fails and the entry goes with it.
+            var authored = AuthoredConstants().Concat(AuthoredDisplayAttributes()).ToList();
+
+            foreach (var site in KeySymbolSites)
+            {
+                var marks = authored
+                    .Where(text => string.Equals(text.Site, site.Site, StringComparison.Ordinal))
+                    .SelectMany(text => text.Text.EnumerateRunes())
+                    .Where(rune => !IsCovered(rune) && KeySymbolGlyphCoverage.Instance.CanPrint(rune.ToString()))
+                    .ToList();
+
+                Assert.True(
+                    marks.Count > 0,
+                    $"{site.Site} authors no character that needs the key-symbol family — drop the exemption ({site.Reason}).");
+            }
+        }
+
+        [AvaloniaFact]
+        public void TheKeySymbolExemption_ReachesOnlyItsOwnFileAndOnlyItsOwnMarks()
+        {
+            // Both halves of the narrowing, proved the way the deferral list's are. A ⌘ is
+            // forgiven in the formatter and nowhere else, and inside the formatter only a rune the
+            // third family can actually draw is forgiven — a ☾ there still fails, which is what
+            // stops the entry becoming a blanket permission for one file.
+            var site = Assert.Single(KeySymbolSites).Site;
+
+            var inItsOwnFile = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText(site, "WinMark", "⌘"), inItsOwnFile);
+            Assert.Empty(inItsOwnFile);
+
+            var elsewhere = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText("Views/Elsewhere.axaml", "Content", "⌘"), elsewhere);
+            Assert.Single(elsewhere);
+
+            var wrongGlyphInItsOwnFile = new SortedSet<string>(StringComparer.Ordinal);
+            CollectUncoveredChromeRunes(new AuthoredText(site, "Planted", "moon ☾"), wrongGlyphInItsOwnFile);
+            Assert.Single(wrongGlyphInItsOwnFile);
+        }
+
+        [AvaloniaFact]
         public void EveryResolvedKeyCaption_HasAGlyphInBothEmbeddedFamilies()
         {
             // The third glyph gate, and the one that closes docs/app/design-system.md's "live gap".
@@ -614,7 +679,10 @@ namespace KinesisEdit.Tests.Design
         {
             foreach (var rune in authored.Text.EnumerateRunes())
             {
-                if (System.Text.Rune.IsWhiteSpace(rune) || IsCovered(rune) || IsDeferred(authored.Site, rune))
+                if (System.Text.Rune.IsWhiteSpace(rune)
+                    || IsCovered(rune)
+                    || IsDeferred(authored.Site, rune)
+                    || IsKeySymbol(authored.Site, rune))
                 {
                     continue;
                 }
@@ -630,6 +698,17 @@ namespace KinesisEdit.Tests.Design
             return ChromeGlyphDeferrals.Any(
                 deferral => deferral.Codepoint == rune.Value
                     && string.Equals(deferral.Site, site, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// Whether <paramref name="rune"/> is a mark the key-symbol family carries, authored in a
+        /// file that draws in that family. Both halves are required: the exemption is per file, and
+        /// within a listed file it reaches only the runes the third family can actually print.
+        /// </summary>
+        private static bool IsKeySymbol(string site, System.Text.Rune rune)
+        {
+            return KeySymbolSites.Any(entry => string.Equals(entry.Site, site, StringComparison.Ordinal))
+                && KeySymbolGlyphCoverage.Instance.CanPrint(rune.ToString());
         }
 
         /// <summary>
@@ -714,5 +793,10 @@ namespace KinesisEdit.Tests.Design
         /// <param name="Codepoint">The character it exempts.</param>
         /// <param name="Reason">Why it is deferred rather than fixed.</param>
         private sealed record GlyphDeferral(string Site, int Codepoint, string Reason);
+
+        /// <summary>One file that authors marks drawn in the key-symbol family, and what they are.</summary>
+        /// <param name="Site">The one file the exemption applies to.</param>
+        /// <param name="Reason">Which marks it authors, and where they are drawn.</param>
+        private sealed record KeySymbolSite(string Site, string Reason);
     }
 }

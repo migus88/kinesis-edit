@@ -51,6 +51,30 @@
     <Setter Property="Foreground" Value="{DynamicResource TextBodyMutedBrush}" />
   </Style>
 
+  <!-- A CHARACTER THAT NAMES A PHYSICAL KEY - ⇧ ⌃ ⌥ ⌘ - drawn in the key-symbol face
+       (Themes/Typography.axaml, `FontKeySymbols`). Today: the held modifiers of a macro step row.
+
+       A role rather than a scale class, and here rather than in Typography, for the same reason
+       `.stepNumber` is: the published scale has no step for "a mark out of a third face", and what
+       this names is a *meaning* - a key, spelled - not a size. It sets the family and the derived
+       `FontSizeKeySymbol` step (see that resource for the cap-height arithmetic behind the 9) and
+       stops there. Weight is Normal because the family ships one face; asking for a bolder one
+       would have Avalonia synthesise or substitute it.
+
+       IT CARRIES NO COLOUR. A mark takes the row's own role, so a call site writes
+       `Classes="keySymbol muted"` and the mark reads exactly as quiet as the words beside it.
+
+       ONLY THE MARK GOES IN THIS CLASS. The `R` that prefixes a right-hand modifier is a Latin
+       letter and is NOT in the subset - it is drawn in the ordinary face beside the mark, which is
+       why `MacroModifierMarks` hands out the side letter and the mark as separate parts. A whole
+       `R⇧` set in this class would fall back to a system font for its `R`. (A left modifier is
+       unmarked and so is a single run; only the right side is spelled.) -->
+  <Style Selector=":is(TextBlock).keySymbol">
+    <Setter Property="FontFamily" Value="{DynamicResource FontKeySymbols}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeKeySymbol}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
   <!-- "Modified" / "EDITING: <input>": a short accent tag next to the thing it qualifies. The
        accent means "you changed this", which is exactly one of its two sanctioned meanings. -->
   <Style Selector=":is(TextBlock).badge">

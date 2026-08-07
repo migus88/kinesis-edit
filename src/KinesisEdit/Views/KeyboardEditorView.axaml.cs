@@ -24,8 +24,9 @@ namespace KinesisEdit.Views
     /// listening state, out of an armed <c>Copy key…</c> and finally out of the selection itself,
     /// the arrow/⌥n/⌘F/⌘S/⌘W table of docs/design/mockups.md <c>2b</c> — plus the two selection
     /// handlers that turn a segment or a tab being chosen back into the command the buttons they
-    /// replaced used to run, and the one thing a binding cannot do: the key inspector rail's
-    /// column width (see <see cref="SyncRailColumn"/>).
+    /// replaced used to run, the three <b>recording stand-down</b> handlers this view puts on the
+    /// window (see <see cref="AttachShellHandlers"/>), and the one thing a binding cannot do: the
+    /// key inspector rail's column width (see <see cref="SyncRailColumn"/>).
     /// </summary>
     public partial class KeyboardEditorView : UserControl
     {
@@ -37,15 +38,38 @@ namespace KinesisEdit.Views
         private const int RailColumnIndex = 2;
 
         /// <summary>
+        /// Phases the shell's focus handler is attached for. <see cref="InputElement.GotFocusEvent"/>
+        /// is registered as a bubbling event, which is the phase that actually delivers it to the
+        /// <see cref="TopLevel"/>; the tunnel flag is defensive, exactly as
+        /// <see cref="AvaloniaKeystrokeCaptureService"/> attaches its own.
+        /// </summary>
+        private const RoutingStrategies FocusRoutes = RoutingStrategies.Tunnel | RoutingStrategies.Bubble;
+
+        /// <summary>
         /// The view model the rail column is currently following, so its notification can be dropped
         /// again when the editor is replaced.
         /// </summary>
         private KeyboardEditorViewModel? _railWidthSource;
 
+        /// <summary>
+        /// The window the stand-down handlers are attached to, so the same instance is unhooked
+        /// again when this view leaves the tree — the shell reuses views, and a handler left on an
+        /// old window would keep answering for an editor that is gone.
+        /// </summary>
+        private TopLevel? _shell;
+
+        private readonly EventHandler<PointerPressedEventArgs> _shellPointerPressedHandler;
+        private readonly EventHandler<GotFocusEventArgs> _shellGotFocusHandler;
+        private readonly EventHandler _shellDeactivatedHandler;
+
         /// <summary>Creates the editor view.</summary>
         public KeyboardEditorView()
         {
             InitializeComponent();
+
+            _shellPointerPressedHandler = OnShellPointerPressed;
+            _shellGotFocusHandler = OnShellGotFocus;
+            _shellDeactivatedHandler = OnShellDeactivated;
 
             // Tunneling, as in MessageBoxView: Escape must leave the listening state whatever
             // has focus, instead of being swallowed by the focused key cap. handledEventsToo is
@@ -107,6 +131,8 @@ namespace KinesisEdit.Views
         {
             base.OnAttachedToVisualTree(e);
 
+            AttachShellHandlers();
+
             if (DataContext is KeyboardEditorViewModel editor)
             {
                 // The column definitions do not exist until the XAML has been loaded and this view
@@ -130,6 +156,145 @@ namespace KinesisEdit.Views
                     }
                 },
                 DispatcherPriority.Loaded);
+        }
+
+        /// <summary>Drops the stand-down handlers with the window they were put on.</summary>
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            DetachShellHandlers();
+
+            base.OnDetachedFromVisualTree(e);
+        }
+
+        /// <summary>
+        /// Puts the three <b>recording stand-down</b> handlers on the window (issue #122, AC 3).
+        /// <para>
+        /// On the window rather than on this view, because two of the three interactions happen
+        /// outside it: the editor draws the shell's one bar itself (<c>IShellChrome</c>), and a
+        /// window losing focus is a fact about the window. A tunnelled pointer press is what makes
+        /// the seam see the press <em>before</em> the control it lands on acts on it, and
+        /// <c>handledEventsToo</c> is what keeps a button's own handling from hiding it.
+        /// </para>
+        /// <para>
+        /// Nothing here consumes anything: the press still selects the cap, presses the button or
+        /// moves the caret it was aimed at. The handlers only answer "the keyboard is not the
+        /// macro's any more".
+        /// </para>
+        /// </summary>
+        private void AttachShellHandlers()
+        {
+            if (_shell is not null || TopLevel.GetTopLevel(this) is not { } shell)
+            {
+                return;
+            }
+
+            _shell = shell;
+
+            shell.AddHandler(
+                InputElement.PointerPressedEvent,
+                _shellPointerPressedHandler,
+                RoutingStrategies.Tunnel,
+                handledEventsToo: true);
+            shell.AddHandler(InputElement.GotFocusEvent, _shellGotFocusHandler, FocusRoutes, handledEventsToo: true);
+
+            if (shell is WindowBase window)
+            {
+                window.Deactivated += _shellDeactivatedHandler;
+            }
+        }
+
+        /// <summary>Takes them off again. Idempotent, and always off the window they went on.</summary>
+        private void DetachShellHandlers()
+        {
+            if (_shell is not { } shell)
+            {
+                return;
+            }
+
+            _shell = null;
+
+            shell.RemoveHandler(InputElement.PointerPressedEvent, _shellPointerPressedHandler);
+            shell.RemoveHandler(InputElement.GotFocusEvent, _shellGotFocusHandler);
+
+            if (shell is WindowBase window)
+            {
+                window.Deactivated -= _shellDeactivatedHandler;
+            }
+        }
+
+        /// <summary>
+        /// A pointer press anywhere in the app ends a macro recording — <b>except</b> on the
+        /// panel's own record control. Without that exemption the seam stands the recording down on
+        /// the very press that was meant to start it, and fights <c>Stop</c> into needing two
+        /// clicks: this handler runs on the tunnel, before the button has done anything, so the
+        /// toggle it then runs would simply turn recording back on.
+        /// </summary>
+        private void OnShellPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (DataContext is not KeyboardEditorViewModel viewModel
+                || IsRecordingControlUnder(e.Source as Visual, viewModel))
+            {
+                return;
+            }
+
+            viewModel.StopRecordingOnInteraction();
+        }
+
+        /// <summary>
+        /// Focus landing in a text input ends the recording too — <b>an explicit stand-down in
+        /// place of a silent suspension</b>. The capture service's own answer is to suspend while a
+        /// <see cref="TextBox"/> has focus (docs/app/keystroke-capture.md), which is right for a
+        /// dialog that needs real typing and wrong here: the panel would still say it was
+        /// recording while the keystrokes went into the box. Reachable in this editor through the
+        /// §11.3 delay editor's millisecond field, by click and by Tab alike — which is why it is a
+        /// focus handler and not merely a pointer one.
+        /// </summary>
+        private void OnShellGotFocus(object? sender, GotFocusEventArgs e)
+        {
+            if (DataContext is not KeyboardEditorViewModel viewModel || e.Source is not Visual focused)
+            {
+                return;
+            }
+
+            if (focused.GetSelfAndVisualAncestors().Any(element => element is TextBox))
+            {
+                viewModel.StopRecordingOnInteraction();
+            }
+        }
+
+        /// <summary>
+        /// The app lost focus. Capture is focused-window only, so a recording left armed here would
+        /// come back to life pointing at whatever the user does next — and the OS-reserved chords
+        /// that cause it (⌘Tab, ⌘Q, ⌘Space, ⌘H) never reach the app at all and can be neither
+        /// captured nor swallowed. This is what recovers from one cleanly.
+        /// </summary>
+        private void OnShellDeactivated(object? sender, EventArgs e)
+        {
+            (DataContext as KeyboardEditorViewModel)?.StopRecordingOnInteraction();
+        }
+
+        /// <summary>
+        /// Whether the press landed on the showing panel's record control. The question is asked of
+        /// the <b>command</b> a <see cref="Button"/> under the pointer runs rather than of a named
+        /// part: naming a template part outside <c>Themes/ControlThemes/</c> is a bug in this
+        /// codebase, and a panel is the only thing that knows which of its buttons arm capture.
+        /// </summary>
+        private static bool IsRecordingControlUnder(Visual? source, KeyboardEditorViewModel viewModel)
+        {
+            if (source is null)
+            {
+                return false;
+            }
+
+            foreach (var ancestor in source.GetSelfAndVisualAncestors())
+            {
+                if (ancestor is Button button && viewModel.IsRecordingControl(button.Command))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -231,9 +396,16 @@ namespace KinesisEdit.Views
         /// very defect this stage now avoids. Deselecting reaches the same end from the other side
         /// — the cap loses its ring, the rail falls to its empty state, and Escape still means
         /// "back out of the narrowest thing I am in". It is still last, and still behind everything
-        /// narrower. The latch covers it exactly as it covers a panel: a rail record button disarms
-        /// as it takes the Escape it was recording, and without the latch that one keypress would
-        /// both fill the field and drop the selection.
+        /// narrower.
+        /// </para>
+        /// <para>
+        /// <b>The latch is checked once, for the whole method (issue #122).</b> It used to gate only
+        /// the first stage, while the doc claimed it covered the last one "exactly as it covers a
+        /// panel" — and the last stage clears the selection, which refreshes the rail with a new
+        /// (null) key, which stands the recording down. So one Escape was appended as a macro step
+        /// <em>and</em> ended the recording that took it. Escape is a remappable position like any
+        /// other, so a macro must be able to record one: a keystroke somebody has already consumed
+        /// is not also a command, and nothing below this line runs for it.
         /// </para>
         /// <para>
         /// Nothing is handled when there is no selection, so Escape falls through untouched on an
@@ -243,9 +415,12 @@ namespace KinesisEdit.Views
         /// </summary>
         private static void HandleEscape(KeyboardEditorViewModel viewModel, KeyEventArgs e, bool takenByOverlay)
         {
-            if (!takenByOverlay
-                && !viewModel.IsOverlayAwaitingKeystroke
-                && viewModel.CloseOverlayCommand.CanExecute(null))
+            if (takenByOverlay)
+            {
+                return;
+            }
+
+            if (!viewModel.IsOverlayAwaitingKeystroke && viewModel.CloseOverlayCommand.CanExecute(null))
             {
                 e.Handled = true;
 

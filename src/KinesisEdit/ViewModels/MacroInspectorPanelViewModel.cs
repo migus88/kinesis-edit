@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Input;
@@ -48,6 +49,13 @@ namespace KinesisEdit.ViewModels
     /// mutation, so a panel that wrote from it would write on every counter refresh — and forever,
     /// because the write ends in another refresh. It must also survive a null key and the key it
     /// already had.</para>
+    ///
+    /// <para><b>It is the one panel that reverts itself</b> (<see cref="TryRevert"/>, issue #122).
+    /// The rail's <c>Revert key</c> runs the editor's <c>ClearRemap()</c>, which touches only the
+    /// remap and was therefore a no-op here; this panel takes first refusal and puts back the
+    /// <see cref="MacroKeySnapshot"/> it read when the inspector was pointed at the position. The
+    /// baseline is taken in <see cref="Refresh"/> and <b>only when the key identity changed</b> —
+    /// an unconditional snapshot would be overwritten by the very edit the user wants undone.</para>
     /// </summary>
     public sealed class MacroInspectorPanelViewModel : KeyInspectorPanelViewModel, IKeystrokeSink
     {
@@ -79,11 +87,19 @@ namespace KinesisEdit.ViewModels
         public const string RecordingCaption = "Stop";
 
         /// <summary>
-        /// The live capture banner, verbatim from mockup <c>2i</c>; <c>{0}</c> is the step the next
-        /// keystroke lands in, and it moves as the macro grows.
+        /// The live capture banner; <c>{0}</c> is the step the next keystroke lands in, and it moves
+        /// as the macro grows.
+        /// <para>
+        /// <b>A deliberate deviation from mockup <c>2i</c>, which ends the sentence "Esc stops."</b>
+        /// Escape is a remappable position like any other, so a macro has to be able to record one
+        /// (issue #122, AC 2) — and a banner that promises Escape as the way out while the keystroke
+        /// is being appended as a step is the very lie this panel's capture rules exist to avoid.
+        /// The replacement names what really ends a recording: the Stop button, or a click anywhere
+        /// else in the app.
+        /// </para>
         /// </summary>
         public const string RecordingBannerFormat =
-            "Recording into step {0} — your typing goes here, not into the app. Esc stops.";
+            "Recording into step {0} — your typing goes here, not into the app. Click Stop, or anywhere else, to finish.";
 
         /// <summary>What the capture actually does with what it hears, stated in the panel (2i).</summary>
         public const string CaptureRule =
@@ -315,6 +331,13 @@ namespace KinesisEdit.ViewModels
         private KeyboardLayerViewModel? _layer;
         private KeyboardLayout? _layout;
         private Macro? _macro;
+
+        /// <summary>
+        /// What the position's macros looked like when the inspector was pointed at it — see
+        /// <see cref="TryRevert"/>. Null while nothing is selected.
+        /// </summary>
+        private MacroKeySnapshot? _snapshot;
+
         private string _unavailableReason = NoSelectionMessage;
         private string _alsoOnText = string.Empty;
         private string _message = string.Empty;
@@ -385,24 +408,67 @@ namespace KinesisEdit.ViewModels
                 StopRecording();
 
                 Message = string.Empty;
+
+                // The revert baseline, and ONLY on a new key: Refresh runs after every edit of
+                // every path, so re-reading it here on a same-key refresh would replace the
+                // "before" with the "after" the moment the user typed a step.
+                TakeSnapshot();
             }
 
             SetUnavailableReason(EvaluateUnavailableReason());
 
-            _macro = ReadMacro();
-
-            Steps.Load(_macro);
-
-            LoadSpeedAndRepeat();
-            RefreshCoTriggers();
-            RefreshNames();
-            RefreshMeters();
-
-            OnPropertyChanged(nameof(RecordingBanner));
+            ReadFromModel();
 
             RecordCommand.NotifyCanExecuteChanged();
             InsertStepCommand.NotifyCanExecuteChanged();
             ToggleCoTriggerCommand.NotifyCanExecuteChanged();
+        }
+
+        /// <summary>
+        /// Puts the position's macros back the way this panel found them (issue #122, AC 1): the
+        /// steps, the active slot, the speed, the repeat factor and the co-triggers of every slot
+        /// the position carried when the inspector was pointed at it. A position that carried
+        /// nothing then is left carrying nothing.
+        ///
+        /// <para><b>It is idempotent.</b> Restoring clones out of the baseline rather than handing
+        /// it over, and the baseline is <em>never</em> re-taken here — so the second Revert lands on
+        /// the same state as the first.</para>
+        ///
+        /// <para><b>What the baseline outlives.</b> It is a fact about the <em>selection</em>, so it
+        /// survives <see cref="Deactivate"/> (a mode switch stands capture down; it does not move
+        /// the position) and it survives a save (saving writes the profile out, it does not change
+        /// what this key held when it was clicked). It is replaced when the selection moves to
+        /// another position — which a load or an import does too, because both rebuild every
+        /// <see cref="KeyboardKeyViewModel"/> and the next <see cref="Refresh"/> therefore arrives
+        /// with a new key.</para>
+        ///
+        /// <para>It refuses — and lets the footer fall through to the editor's <c>ResetKeyCommand</c>
+        /// — whenever there is nothing of this panel's to revert: no selection, no baseline, or a
+        /// position/device that cannot carry a macro at all.</para>
+        /// </summary>
+        public override bool TryRevert()
+        {
+            if (_snapshot is not { } snapshot || !IsAvailable || _key is not { } key)
+            {
+                return false;
+            }
+
+            snapshot.RestoreTo(key.Key, _layout);
+
+            Message = string.Empty;
+
+            ReadFromModel();
+
+            OnMacroWritten();
+
+            return true;
+        }
+
+        /// <inheritdoc />
+        public override bool IsRecordingControl(ICommand? command)
+        {
+            // Both, because both arm capture: `● Record` toggles it and `＋ insert step` starts it.
+            return ReferenceEquals(command, RecordCommand) || ReferenceEquals(command, InsertStepCommand);
         }
 
         /// <inheritdoc />
@@ -453,6 +519,37 @@ namespace KinesisEdit.ViewModels
             }
 
             return new Keystroke(captured.Key, modifiers);
+        }
+
+        /// <summary>
+        /// Re-reads everything the panel derives from the model, and writes nothing. It is the body
+        /// of <see cref="Refresh"/> and it is also what <see cref="TryRevert"/> runs after restoring
+        /// — a revert that left the step list and the meters showing the state it had just undone
+        /// would be a revert the user could not see.
+        /// </summary>
+        private void ReadFromModel()
+        {
+            _macro = ReadMacro();
+
+            Steps.Load(_macro);
+
+            LoadSpeedAndRepeat();
+            RefreshCoTriggers();
+            RefreshNames();
+            RefreshMeters();
+
+            OnPropertyChanged(nameof(RecordingBanner));
+        }
+
+        /// <summary>
+        /// Reads the revert baseline off the position now selected, or drops it when there is none.
+        /// Called from <see cref="Refresh"/> on a key change only; see <see cref="TryRevert"/>.
+        /// </summary>
+        private void TakeSnapshot()
+        {
+            _snapshot = _key is { } key
+                ? MacroKeySnapshot.Capture(key.Key, _layout, _layer?.Index ?? Macro.UnassignedIndex)
+                : null;
         }
 
         /// <summary>

@@ -64,6 +64,10 @@ namespace KinesisEdit.Tests.Design
         [InlineData("BadgeTapHold", "#35A26D", "#35A26D")]
         [InlineData("BadgeLightingPreview", "#57C4D8", "#57C4D8")]
         [InlineData("BadgeLed", "#B58CF6", "#B58CF6")]
+        // The key struck in a macro step row: the macro orchid, exactly `BadgeMacro` on dark and
+        // darkened for text on light, where #C77DD8 reads at 2.9:1. Deliberately not the accent
+        // (two sanctioned meanings, neither of them this) and not the advisory ramp.
+        [InlineData("MacroStepKey", "#C77DD8", "#8E45A0")]
         // Dimming a light window uses the same near-black at the same alpha.
         [InlineData("Scrim", "#9E080A0C", "#9E080A0C")]
         public void Role_InEachVariant_IsTheHandoffValue(string role, string dark, string light)
@@ -110,6 +114,66 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(
                 DesignTokens.ResolveColor("StatusDemoColor", ThemeVariant.Dark),
                 DesignTokens.ResolveColor("BadgeLedColor", ThemeVariant.Dark));
+        }
+
+        [AvaloniaFact]
+        public void TheMacroStepKeyTint_IsTheMacroBadgesOwnHue_AndPartsFromItOnLight()
+        {
+            // The same deliberate double-naming as the pair above, and the same reason it is worth
+            // pinning: purple already means "macro" in this app, so the token in a step row and the
+            // dot on the cap say one thing in one hue. They part company on light because a badge
+            // is a shape on a keycap and this is type on a near-white row — #C77DD8 reads at 2.9:1
+            // there, under any threshold worth having.
+            Assert.Equal(
+                DesignTokens.ResolveColor("BadgeMacroColor", ThemeVariant.Dark),
+                DesignTokens.ResolveColor("MacroStepKeyColor", ThemeVariant.Dark));
+
+            Assert.NotEqual(
+                DesignTokens.ResolveColor("BadgeMacroColor", ThemeVariant.Light),
+                DesignTokens.ResolveColor("MacroStepKeyColor", ThemeVariant.Light));
+        }
+
+        [AvaloniaTheory]
+        // The surfaces a macro step row can sit on, per variant.
+        [InlineData("SurfacePanel")]
+        [InlineData("SurfaceInset")]
+        [InlineData("SurfaceRaised")]
+        public void TheMacroStepKeyTint_StaysLegibleOnEveryRowSurface(string surface)
+        {
+            // The design law the hue was picked against: "slightly different", not a shout, and
+            // legible in both variants. So it must clear 4.5:1 on the faces a row is drawn on — and
+            // stay under the primary text step, or it would be the loudest thing in the row rather
+            // than a tint on it.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                var ground = DesignTokens.ResolveColor(surface + DesignTokens.ColorSuffix, variant);
+                var tint = Contrast(DesignTokens.ResolveColor("MacroStepKeyColor", variant), ground);
+                var primary = Contrast(DesignTokens.ResolveColor("TextPrimaryColor", variant), ground);
+
+                Assert.True(tint >= 4.5, $"MacroStepKey on {surface} ({variant}) is {tint:F2}:1.");
+                Assert.True(tint < primary, $"MacroStepKey on {surface} ({variant}) is louder than the primary text step.");
+            }
+        }
+
+        /// <summary>WCAG relative-luminance contrast ratio between two opaque colours.</summary>
+        private static double Contrast(Color first, Color second)
+        {
+            var a = Luminance(first);
+            var b = Luminance(second);
+
+            return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+        }
+
+        private static double Luminance(Color color)
+        {
+            return (0.2126 * Channel(color.R)) + (0.7152 * Channel(color.G)) + (0.0722 * Channel(color.B));
+        }
+
+        private static double Channel(byte value)
+        {
+            var channel = value / 255.0;
+
+            return channel <= 0.03928 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
         }
 
         private static void AssertRole(string role, ThemeVariant variant, string expected)

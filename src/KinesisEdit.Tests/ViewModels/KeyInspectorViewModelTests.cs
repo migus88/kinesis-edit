@@ -277,6 +277,75 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(scene.CancelCopyKeyCommand, scene.Inspector.CancelCopyKeyCommand);
         }
 
+        /// <summary>
+        /// Issue #122's first-refusal contract. "Revert this key" means something the rail cannot
+        /// know — on the Macro panel it is the position's macros, which the editor's reset does not
+        /// touch — so the showing panel is asked first and the editor's command runs only if it
+        /// declined.
+        /// </summary>
+        [Fact]
+        public void RevertKey_AsksTheShowingPanelFirst_AndStopsThereWhenItTakesIt()
+        {
+            var panel = new RecordingPanel(KeyInspectorMode.Macro) { CanRevert = true };
+            var scene = new Scene([panel]);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Inspector.SelectModeCommand.Execute(scene.Tab(KeyInspectorMode.Macro));
+
+            scene.Inspector.RevertKeyCommand.Execute(null);
+
+            Assert.Equal(1, panel.Reverts);
+            Assert.Equal(0, scene.ResetKeyRuns);
+        }
+
+        [Fact]
+        public void RevertKey_RunsTheEditorsOwnResetWhenThePanelRefuses()
+        {
+            // The Remap and Tap&hold panels answer false, and their footer must be byte-for-byte
+            // what it was: ClearRemap(), and deliberately not Remap(OriginalKey).
+            var panel = new RecordingPanel(KeyInspectorMode.Macro);
+            var scene = new Scene([panel]);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Inspector.SelectModeCommand.Execute(scene.Tab(KeyInspectorMode.Macro));
+
+            scene.Inspector.RevertKeyCommand.Execute(null);
+
+            Assert.Equal(1, panel.Reverts);
+            Assert.Equal(1, scene.ResetKeyRuns);
+        }
+
+        [Fact]
+        public void RevertKey_WithNoPanelForTheShowingMode_IsTheEditorsResetAlone()
+        {
+            var scene = new Scene();
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            scene.Inspector.RevertKeyCommand.Execute(null);
+
+            Assert.Equal(1, scene.ResetKeyRuns);
+        }
+
+        [Fact]
+        public void RevertKey_MirrorsTheEditorsOwnRefusals_RatherThanRestatingThem()
+        {
+            // Nothing selected, a locked position, a load or a save in flight: all of them are
+            // ResetKeyCommand's answers already, and a second set here would be a second thing to
+            // keep in step.
+            var scene = new Scene([new RecordingPanel(KeyInspectorMode.Macro) { CanRevert = true }]);
+
+            Assert.True(scene.Inspector.RevertKeyCommand.CanExecute(null));
+
+            scene.SetResetAvailable(false);
+
+            Assert.False(scene.Inspector.RevertKeyCommand.CanExecute(null));
+
+            scene.SetResetAvailable(true);
+
+            Assert.True(scene.Inspector.RevertKeyCommand.CanExecute(null));
+        }
+
         [Fact]
         public void TheArmedCopyState_IsReadOffTheCancelCommandRatherThanMirrored()
         {
@@ -558,7 +627,11 @@ namespace KinesisEdit.Tests.ViewModels
 
             public IRelayCommand CancelCopyKeyCommand { get; }
 
+            /// <summary>How often the editor's own reset really ran.</summary>
+            public int ResetKeyRuns { get; private set; }
+
             private bool _isCopyArmed;
+            private bool _canReset = true;
 
             public Scene(IEnumerable<KeyInspectorPanelViewModel>? panels = null)
                 : this(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb), VisualCatalog.FreestyleEdgeRgb, panels)
@@ -573,7 +646,7 @@ namespace KinesisEdit.Tests.ViewModels
                 Layout = layout;
                 Layer = KeyboardLayerViewModel.BuildAll(layout, visual, lighting: null)[0];
 
-                ResetKeyCommand = new RelayCommand(() => { });
+                ResetKeyCommand = new RelayCommand(() => ResetKeyRuns++, () => _canReset);
                 CopyKeyCommand = new RelayCommand(() => { });
                 CancelCopyKeyCommand = new RelayCommand(() => { }, () => _isCopyArmed);
 
@@ -612,6 +685,14 @@ namespace KinesisEdit.Tests.ViewModels
 
                 CancelCopyKeyCommand.NotifyCanExecuteChanged();
             }
+
+            /// <summary>Moves the editor's own refusal, which the footer's revert mirrors.</summary>
+            public void SetResetAvailable(bool canReset)
+            {
+                _canReset = canReset;
+
+                ResetKeyCommand.NotifyCanExecuteChanged();
+            }
         }
 
         /// <summary>A mode panel that records what the rail did to it and nothing else.</summary>
@@ -627,6 +708,12 @@ namespace KinesisEdit.Tests.ViewModels
 
             public int Deactivations { get; private set; }
 
+            /// <summary>How often the rail offered this panel first refusal on the revert.</summary>
+            public int Reverts { get; private set; }
+
+            /// <summary>What <see cref="TryRevert"/> answers — the whole point of the hook.</summary>
+            public bool CanRevert { get; set; }
+
             private bool _isRecording;
 
             public RecordingPanel(KeyInspectorMode mode)
@@ -641,6 +728,13 @@ namespace KinesisEdit.Tests.ViewModels
                 EditorAdvisories advisories)
             {
                 Refreshes++;
+            }
+
+            public override bool TryRevert()
+            {
+                Reverts++;
+
+                return CanRevert;
             }
 
             public override void Deactivate()
