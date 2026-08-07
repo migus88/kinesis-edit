@@ -44,5 +44,27 @@ namespace KinesisEdit.Services
         /// self-consistent.
         /// </summary>
         void Update(Func<AppSettings, AppSettings> mutate);
+
+        /// <summary>
+        /// The same, for the <c>macro_name_*</c> half of the file (issue #93). It is a second entry
+        /// point rather than a flag on <see cref="Update"/> because Core's writer is a second entry
+        /// point too: <c>SettingsService.SaveMacroNames</c> takes the profile number that scopes the
+        /// deletion, since one <c>app_settings.txt</c> carries nine profiles' names and saving one
+        /// must never remove another's. <c>SaveAppSettings</c> cannot reach a name at all.
+        /// <para>
+        /// <b>This path is driven by the editor's Save, not by the edit.</b> A rename marks the
+        /// session dirty and reaches the drive only when the profile does — the one deliberate
+        /// exception to docs/app/settings.md's rule that this file sits outside the dirty model
+        /// (docs/app/keyboard-editor.md). Swatches and suppression answers keep writing through
+        /// immediately, through <see cref="Update"/>.
+        /// </para>
+        /// </summary>
+        /// <param name="profileNumber">The layout profile whose names are being rewritten (1-9).</param>
+        /// <param name="mutate">
+        /// Applied to <see cref="Current"/>; hand it
+        /// <c>AppSettings.WithMacroNamesForProfile(profileNumber, …)</c>, whose tombstones are what
+        /// turn a rename, a delete and an unassignment into removals.
+        /// </param>
+        void UpdateMacroNames(int profileNumber, Func<AppSettings, AppSettings> mutate);
     }
 }

@@ -37,7 +37,6 @@ namespace KinesisEdit.Tests.ViewModels
 
             _profiles.SessionToReturn!.DuringSave = () =>
             {
-                observed.Add(editor.InsertDelayCommand.CanExecute(null));
                 observed.Add(editor.InsertSpecialActionCommand.CanExecute(null));
                 observed.Add(editor.ExportCommand.CanExecute(null));
                 observed.Add(editor.ImportCommand.CanExecute(null));
@@ -45,7 +44,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             await editor.SaveCommand.ExecuteAsync(null);
 
-            Assert.Equal(new[] { false, false, false, false }, observed);
+            Assert.Equal(new[] { false, false, false }, observed);
             Assert.True(editor.ExportCommand.CanExecute(null));
             Assert.True(editor.ImportCommand.CanExecute(null));
         }
@@ -201,36 +200,37 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task InsertDelayCommand_FollowsWhetherAMacroIsBeingEdited()
+        public async Task InsertSpecialActionCommand_FollowsWhetherAMacroIsBeingEdited()
         {
             var editor = await CreateLoadedEditorAsync();
 
             editor.SelectedTab = EditorTab.Macros;
 
             Assert.Null(editor.MacroPanel!.EditedMacro);
-            Assert.False(editor.InsertDelayCommand.CanExecute(null));
             Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
 
             SelectDigitOne(editor);
 
             Assert.NotNull(editor.MacroPanel.EditedMacro);
-            Assert.True(editor.InsertDelayCommand.CanExecute(null));
             Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
 
             editor.SelectKeyCommand.Execute(null);
 
-            Assert.False(editor.InsertDelayCommand.CanExecute(null));
             Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
         }
 
         /// <summary>
-        /// specs/11-feature-dialogs.md §11.3 and §11.6 insert into "the active macro". Selecting any
+        /// specs/11-feature-dialogs.md §11.6 inserts into "the active macro". Selecting any
         /// macro-capable key opens an unassigned draft, so on the Keys tab — where the macro panel
-        /// is not on screen at all — the two commands must stay dead: a token appended there lands
-        /// in a macro the user cannot see and never assigns.
+        /// is not on screen at all — the command must stay dead: a token appended there lands in a
+        /// macro the user cannot see and never assigns.
+        /// <para>
+        /// §11.3's insertion is no longer one of these: it is edited in place on the key inspector's
+        /// Macro panel (issue #93), so there is no delay command left to gate.
+        /// </para>
         /// </summary>
         [Fact]
-        public async Task InsertDelayCommand_OnTheKeysTabWithAMacroCapableKeySelected_IsUnavailable()
+        public async Task InsertSpecialActionCommand_OnTheKeysTabWithAMacroCapableKeySelected_IsUnavailable()
         {
             var editor = await CreateLoadedEditorAsync();
 
@@ -240,58 +240,15 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(editor.IsMacroPanelVisible);
             Assert.NotNull(editor.MacroPanel!.EditedMacro);
 
-            Assert.False(editor.InsertDelayCommand.CanExecute(null));
             Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
 
             editor.SelectedTab = EditorTab.Macros;
 
-            Assert.True(editor.InsertDelayCommand.CanExecute(null));
             Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
 
             editor.SelectedTab = EditorTab.Keys;
 
-            Assert.False(editor.InsertDelayCommand.CanExecute(null));
             Assert.False(editor.InsertSpecialActionCommand.CanExecute(null));
-        }
-
-        [Fact]
-        public async Task InsertDelayCommand_WhenAccepted_AppendsTheDelayToTheMacro()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            OpenMacroEditor(editor);
-
-            await editor.InsertDelayCommand.ExecuteAsync(null);
-
-            var overlay = Assert.IsType<MacroDelayOverlayViewModel>(editor.ActiveOverlay);
-
-            // The RGB is not gated for custom/random delays (09 §2 gates the Freestyle Edge/Pro
-            // only), so the panel opens with nothing said.
-            Assert.Empty(_notifications.MessageBoxes);
-
-            overlay.CustomDelayMilliseconds = 250;
-            overlay.AcceptCommand.Execute(null);
-
-            Assert.Null(editor.ActiveOverlay);
-            Assert.Equal(
-                MacroDelayTokens.ResolveCustom(250, TokenDialect.Gen1),
-                Assert.Single(editor.MacroPanel!.EditedMacro!.Keystrokes).Key);
-        }
-
-        [Fact]
-        public async Task InsertDelayCommand_WhenCancelled_AppendsNothing()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            OpenMacroEditor(editor);
-
-            await editor.InsertDelayCommand.ExecuteAsync(null);
-
-            editor.CloseOverlayCommand.Execute(null);
-
-            Assert.Null(editor.ActiveOverlay);
-            Assert.Empty(editor.MacroPanel!.Steps.Items);
-            Assert.Equal(1, _capture.ResumeCount);
         }
 
         [Fact]
@@ -440,10 +397,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(_notifications.MessageBoxes);
 
             // The rebuilt macro panel is wired up like the one it replaced: opening a macro on it
-            // still arms the two insertion commands.
+            // still arms the insertion command.
             OpenMacroEditor(editor);
 
-            Assert.True(editor.InsertDelayCommand.CanExecute(null));
             Assert.True(editor.InsertSpecialActionCommand.CanExecute(null));
         }
 
@@ -513,9 +469,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             OpenMacroEditor(editor);
 
-            await editor.InsertDelayCommand.ExecuteAsync(null);
+            editor.InsertSpecialActionCommand.Execute(null);
 
-            var overlay = Assert.IsType<MacroDelayOverlayViewModel>(editor.ActiveOverlay);
+            var overlay = Assert.IsType<TokenPickerOverlayViewModel>(editor.ActiveOverlay);
             var panel = editor.MacroPanel!;
 
             editor.Dispose();

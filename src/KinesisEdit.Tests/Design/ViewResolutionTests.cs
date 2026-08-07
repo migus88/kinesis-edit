@@ -43,6 +43,8 @@ namespace KinesisEdit.Tests.Design
             [typeof(MacroStepViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the recorded steps).",
             [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the co-trigger toggles).",
             [typeof(MacroListEntryViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the profile's macros).",
+            [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
+            [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
             [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the mode menu).",
             [typeof(LightingDirectionViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the direction toggles).",
@@ -62,7 +64,9 @@ namespace KinesisEdit.Tests.Design
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
             [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside Views/MacroPanelView.axaml.",
-            [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside Views/MacroPanelView.axaml."
+            [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside Views/MacroPanelView.axaml.",
+            [typeof(MacroInspectorStepsViewModel)] = "Bound as Steps.* inside Views/MacroInspectorPanelView.axaml.",
+            [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml."
         };
 
         /// <summary>Every concrete view model the app declares.</summary>

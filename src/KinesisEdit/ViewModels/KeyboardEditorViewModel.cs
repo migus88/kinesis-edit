@@ -463,9 +463,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
         public IAsyncRelayCommand SaveCommand { get; }
 
-        /// <summary>Opens the Macro Timing Delays panel and inserts its delay into the macro (11 §11.3).</summary>
-        public IAsyncRelayCommand InsertDelayCommand { get; }
-
         /// <summary>Opens Search Keys over the macro and inserts the picked action (11 §11.6).</summary>
         public IRelayCommand InsertSpecialActionCommand { get; }
 
@@ -617,7 +614,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
-            InsertDelayCommand = new AsyncRelayCommand(InsertDelayAsync, () => CanInsertIntoMacro());
             InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
             OpenSearchCommand = new RelayCommand(OpenSearch, () => CanOpenSearch());
             ExportCommand = new RelayCommand(OpenExport, () => CanExport());
@@ -920,6 +916,12 @@ namespace KinesisEdit.ViewModels
             Layers = outcome.Layout is not null && _visual is not null
                 ? KeyboardLayerViewModel.BuildAll(outcome.Layout, _visual, outcome.Session?.Lighting)
                 : [];
+
+            // Before the panels: a freshly parsed layout carries no macro names at all (they ride
+            // app_settings.txt, not layoutN.txt), and the library groups by name — so the stored
+            // names have to be stamped on before anything reads the library
+            // (KeyboardEditorViewModel.MacroLibrary.cs).
+            AttachMacroLibrary(outcome.Layout);
 
             AttachMacroPanel(outcome.Layout);
 
@@ -1423,30 +1425,6 @@ namespace KinesisEdit.ViewModels
             overlay.Closed += closed;
         }
 
-        private async Task InsertDelayAsync()
-        {
-            if (!CanInsertIntoMacro())
-            {
-                return;
-            }
-
-            var isAvailable = await MacroDelayOverlayViewModel
-                .EnsureFirmwareAvailableAsync(Device.DeviceId, Device.Firmware, _notifications, _urlLauncher)
-                .ConfigureAwait(true);
-
-            if (!isAvailable || !CanInsertIntoMacro())
-            {
-                return;
-            }
-
-            var overlay = new MacroDelayOverlayViewModel(Layout!.Dialect);
-
-            ShowMacroInsertOverlay(
-                overlay,
-                handler => overlay.Accepted += handler,
-                handler => overlay.Accepted -= handler);
-        }
-
         /// <summary>
         /// §11.6's <c>Search Keys (Macro)</c>: the same picker the key inspector hosts, wrapped in a
         /// modal because an insertion is a question with one answer that has to come back here. The
@@ -1653,8 +1631,10 @@ namespace KinesisEdit.ViewModels
             ModifiedKeyCount = Layout?.ModifiedKeyCount ?? 0;
             MacroCount = Layout?.MacroCount ?? 0;
 
-            // Order matters by one step: RebuildAdvisories pushes each layer's advisory count in,
-            // and the legend row reads it back off the layer.
+            // Order matters twice over: RebuildAdvisories pushes each layer's advisory count in and
+            // the legend row reads it back off the layer, and the library's snapshot has to be
+            // rebuilt before the legend pushes state into the rail, whose Macro panel reads it.
+            RefreshMacroLibrary();
             RebuildAdvisories();
             RefreshLegend();
             RefreshDirtyState();
@@ -1764,7 +1744,11 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RefreshDirtyState()
         {
-            IsDirty = _session?.IsDirty == true;
+            // A macro NAME is not in the layout file, so the session's own line comparison cannot
+            // see one move. It is still unsaved work the user would lose — hence the second term,
+            // the one deliberate exception to "app_settings.txt sits outside the dirty model"
+            // (KeyboardEditorViewModel.MacroLibrary.cs).
+            IsDirty = _session?.IsDirty == true || _hasUnsavedMacroNames;
         }
 
         /// <summary>
@@ -1986,6 +1970,12 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
+            // The macro names go to app_settings.txt now, and only now: a rename is part of this
+            // session's dirty model and reaches the drive when the profile does. It is written
+            // AFTER the layout landed, so a save that Core rejected cannot leave the file naming
+            // macros the drive does not have (KeyboardEditorViewModel.MacroLibrary.cs).
+            PersistMacroNames();
+
             // The profile is on the drive: Save goes back to accent. Set rather than re-read,
             // because the session's dirty baseline is the one captured at load and a save does not
             // move it (see RefreshDirtyState).
@@ -2055,7 +2045,6 @@ namespace KinesisEdit.ViewModels
             CopyKeyCommand.NotifyCanExecuteChanged();
             CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
-            InsertDelayCommand.NotifyCanExecuteChanged();
             InsertSpecialActionCommand.NotifyCanExecuteChanged();
             OpenSearchCommand.NotifyCanExecuteChanged();
             ExportCommand.NotifyCanExecuteChanged();

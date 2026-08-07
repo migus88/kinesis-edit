@@ -84,7 +84,6 @@ namespace KinesisEdit.Tests.Design
 
                 (typeof(LightingTabView).FullName!, "modeOption", "ModeOption"),
                 (typeof(LightingTabView).FullName!, "colorSlot", "SecondaryButton"),
-                (typeof(MacroDelayOverlayView).FullName!, "monoValue", "MonoValueField"),
 
                 // The key inspector rail (issue #92), which is where the two deleted overlays'
                 // roles now live — and where `FilterChip` finally got the call site #86 wrote it
@@ -99,7 +98,18 @@ namespace KinesisEdit.Tests.Design
                 (typeof(TokenPickerView).FullName!, "filterChip", "FilterChip"),
                 (typeof(KeyInspectorView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(KeyInspectorView).FullName!, "ghost", "GhostButton"),
-                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton")
+                (typeof(LockedKeyPanelView).FullName!, "secondary", "SecondaryButton"),
+
+                // The rail's Macro panel (issue #93). `monoValue` moved here from the deleted Macro
+                // Timing Delays modal — §11.3's millisecond field is the same typed value in the
+                // same mono face, now beside the step it belongs to — and `macroStepRow` is the
+                // step list's own row, which is a RowButton so hover, press and the selected face
+                // are the theme's rather than this panel's.
+                (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
+                (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
+                (typeof(MacroInspectorPanelView).FullName!, "toggleSegment", "ToggleSegment"),
+                (typeof(MacroInspectorPanelView).FullName!, "ghost", "GhostButton")
             })
             {
                 cases.Add(viewTypeName, className, themeKey);

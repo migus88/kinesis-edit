@@ -85,9 +85,38 @@ namespace KinesisEdit.Tests.Input
         public void Map_AnArrowWithAnyModifier_IsNotAMove(Key key)
         {
             Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(key, KeyModifiers.Shift, isMacOs: true));
-            Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(key, KeyModifiers.Alt, isMacOs: true));
             Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(key, KeyModifiers.Meta, isMacOs: true));
             Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(key, KeyModifiers.Control, isMacOs: false));
+
+            // ⌥ + an arrow is not a board move either — but two of the four now mean something
+            // else entirely (see below), so this case cannot assert None for all of them.
+            var withOption = EditorShortcuts.Map(key, KeyModifiers.Alt, isMacOs: true);
+
+            Assert.Equal(NavigationDirection.None, EditorShortcuts.ToDirection(withOption));
+        }
+
+        /// <summary>
+        /// Mockup <c>2i</c> adds one gesture to <c>2b</c>'s table: <c>⌥↑↓</c> reorders the macro step
+        /// the key inspector has selected. It is deliberately not a fifth and sixth board move —
+        /// <see cref="EditorShortcuts.ToDirection"/> answers <c>None</c> for both, so neither can
+        /// ever reach <c>KeyAdjacency</c>.
+        /// </summary>
+        [Fact]
+        public void Map_AltAndAVerticalArrow_ReordersAMacroStepOnEveryPlatform()
+        {
+            Assert.Equal(EditorShortcut.MoveStepUp, EditorShortcuts.Map(Key.Up, KeyModifiers.Alt, isMacOs: true));
+            Assert.Equal(EditorShortcut.MoveStepUp, EditorShortcuts.Map(Key.Up, KeyModifiers.Alt, isMacOs: false));
+            Assert.Equal(EditorShortcut.MoveStepDown, EditorShortcuts.Map(Key.Down, KeyModifiers.Alt, isMacOs: true));
+            Assert.Equal(EditorShortcut.MoveStepDown, EditorShortcuts.Map(Key.Down, KeyModifiers.Alt, isMacOs: false));
+        }
+
+        [Fact]
+        public void Map_AltAndAHorizontalArrow_IsNotInTheGrammar()
+        {
+            // The design names no gesture for them, and a shortcut nobody asked for steals a
+            // combination somebody else meant.
+            Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(Key.Left, KeyModifiers.Alt, isMacOs: true));
+            Assert.Equal(EditorShortcut.None, EditorShortcuts.Map(Key.Right, KeyModifiers.Alt, isMacOs: true));
         }
 
         [Theory]
@@ -198,11 +227,11 @@ namespace KinesisEdit.Tests.Input
         }
 
         [Fact]
-        public void TheGrammar_HasExactlyTheTwelveIntentsTheDesignLists()
+        public void TheGrammar_HasExactlyTheFourteenIntentsTheDesignLists()
         {
-            // 2b's table verbatim: four arrows, five layer jumps, ⌘F, ⌘S, ⌘W. A thirteenth intent
-            // is a design change, not a refactor.
-            Assert.Equal(13, Enum.GetValues<EditorShortcut>().Length);
+            // 2b's table verbatim — four arrows, five layer jumps, ⌘F, ⌘S, ⌘W — plus 2i's ⌥↑↓ pair.
+            // A fifteenth intent is a design change, not a refactor.
+            Assert.Equal(15, Enum.GetValues<EditorShortcut>().Length);
         }
     }
 }

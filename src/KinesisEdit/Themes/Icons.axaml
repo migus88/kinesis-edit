@@ -46,6 +46,8 @@
       IconRefresh        stroke only
       IconExternalLink   stroke only
       IconScanning       stroke only
+      IconDragHandle     fill only    - six dots; stroking them would draw six rings
+      IconInsert         stroke only
 
     Sizing hints are not re-declared here: `IconSize`, `IconStrokeThickness`, `SpinnerSize` and
     `SpinnerStrokeThickness` already live in Themes/Geometry.axaml.
@@ -174,4 +176,25 @@
        `Stretch="None"`, stroke `SpinnerStrokeThickness`, and rotate about (0.5, 0.5) for
        `DurationSpinnerRotation` (1.1s, linear, infinite - see Themes/Motion.axaml). -->
   <StreamGeometry x:Key="IconScanning">M 11.42,2.58 A 6.25,6.25 0 1 0 11.42,11.42</StreamGeometry>
+
+  <!-- Drag handle: the grip on a reorderable row (mockup 2i draws it as U+283F, "drag ⠿ · ⌥↑↓").
+       Six dots on two columns at x=6 and x=10 and three rows at y=4, 8 and 12, each a circle of
+       radius 1 - so the whole grip spans 5..11 across and 3..13 down, comfortably inside the box
+       and read at a glance as "grab me".
+
+       IT IS GEOMETRY BECAUSE IT HAS TO BE. U+283F is in NEITHER embedded IBM Plex family, so the
+       character would fall through to a platform substitute and tofu where there is none - the same
+       reason the record dot is an Ellipse and mockup 1e's `⌕` became a Path.
+
+       FILL ONLY. Stroking it would draw six thin rings instead of six dots. -->
+  <StreamGeometry x:Key="IconDragHandle">M 5,4 A 1,1 0 1 0 7,4 A 1,1 0 1 0 5,4 M 9,4 A 1,1 0 1 0 11,4 A 1,1 0 1 0 9,4 M 5,8 A 1,1 0 1 0 7,8 A 1,1 0 1 0 5,8 M 9,8 A 1,1 0 1 0 11,8 A 1,1 0 1 0 9,8 M 5,12 A 1,1 0 1 0 7,12 A 1,1 0 1 0 5,12 M 9,12 A 1,1 0 1 0 11,12 A 1,1 0 1 0 9,12</StreamGeometry>
+
+  <!-- Insert: the `＋` of the step editor's trailing "＋ insert step" row (mockup 2i). Two 8-unit
+       strokes crossing at the centre, spanning the same 4..12 as `IconClose` and
+       `IconExternalLink`, so the three read at one weight in a column of rows.
+
+       It is deliberately NOT `IconClose` rotated: they are the same two segments at different
+       angles, and a `+` that was authored as an `×` would be a dismiss mark wherever a style forgot
+       to rotate it. U+FF0B, the mock's own character, is in neither embedded family. -->
+  <StreamGeometry x:Key="IconInsert">M 8,4 L 8,12 M 4,8 L 12,8</StreamGeometry>
 </ResourceDictionary>

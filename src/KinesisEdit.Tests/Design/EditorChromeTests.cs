@@ -559,8 +559,9 @@ namespace KinesisEdit.Tests.Design
             // Issue #91 gave `Reset Layer` its home under the board, beside the counts it acts on,
             // and it took the mockups' sentence case with it (`Reset layer`). Issue #92 took two
             // more into the key inspector rail: `Reset Key` is its footer's `Revert key`, and
-            // `Tap and Hold` is a rail panel rather than a modal. What is left is #93's — the
-            // editor-level action bar.
+            // `Tap and Hold` is a rail panel rather than a modal. Issue #93 took `Insert Delay`:
+            // §11.3 is edited in place on the rail's Macro panel, so no command is left for a
+            // button here to run. What is left is the rest of #93's — the editor-level action bar.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -574,7 +575,7 @@ namespace KinesisEdit.Tests.Design
             var captions = provisional.Children.OfType<Button>().Select(button => button.Content as string).ToArray();
 
             Assert.Equal(
-                new[] { "Reset Layout", "Insert Delay", "Special Action", "Export", "Import" },
+                new[] { "Reset Layout", "Special Action", "Export", "Import" },
                 captions);
 
             // And no command moved owners with it: each new home runs the editor's own instance.

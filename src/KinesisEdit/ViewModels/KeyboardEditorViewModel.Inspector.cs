@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Model;
 
@@ -32,6 +33,18 @@ namespace KinesisEdit.ViewModels
         public KeyInspectorViewModel Inspector { get; }
 
         /// <summary>
+        /// <c>⌥↑</c> — moves the selected macro step one place earlier (mockup <c>2i</c>: "drag ⠿ ·
+        /// ⌥↑↓"). It is surfaced on the editor because that is where the grammar is dispatched from
+        /// (<c>KeyboardEditorView.OnPreviewKeyDown</c>): this app has no <c>KeyBinding</c>s and no
+        /// <c>KeyGesture</c>s anywhere, and a shortcut that only worked while the rail happened to
+        /// hold focus would not be one.
+        /// </summary>
+        public IRelayCommand MoveMacroStepUpCommand => _macroInspectorPanel.Steps.MoveStepUpCommand;
+
+        /// <summary><c>⌥↓</c> — moves the selected macro step one place later.</summary>
+        public IRelayCommand MoveMacroStepDownCommand => _macroInspectorPanel.Steps.MoveStepDownCommand;
+
+        /// <summary>
         /// The session's assignment history, behind the picker's <c>Recent</c> chip. <b>One store per
         /// editor</b>, shared by the rail's picker and the macro-insertion picker, so an action
         /// inserted into a macro is offered by the rail too. In memory and never persisted; see
@@ -41,10 +54,11 @@ namespace KinesisEdit.ViewModels
 
         private RemapPanelViewModel _remapPanel = null!;
         private TapAndHoldPanelViewModel _tapAndHoldPanel = null!;
+        private MacroInspectorPanelViewModel _macroInspectorPanel = null!;
         private EventHandler _inspectorRecordingChangedHandler = null!;
-        private EventHandler _inspectorMacroRequestedHandler = null!;
         private EventHandler _remapAssignedHandler = null!;
         private EventHandler _tapAndHoldAssignedHandler = null!;
+        private EventHandler _macroInspectorAssignedHandler = null!;
 
         /// <summary>
         /// Whether the capture service is running <b>because a rail panel asked for it</b>. It is the
@@ -80,23 +94,28 @@ namespace KinesisEdit.ViewModels
                 _urlLauncher,
                 _recentTokens);
 
+            // The Macro panel reaches the editor's ONE MacroLibrary through a function rather than a
+            // stored instance: the library arrives with the profile and is replaced by a load or an
+            // import, and two libraries over one layout would be two sources of truth.
+            _macroInspectorPanel = new MacroInspectorPanelViewModel(Device, _urlLauncher, () => MacroLibrary);
+
             _remapAssignedHandler = (_, _) => RefreshCounters();
             _tapAndHoldAssignedHandler = (_, _) => OnTapAndHoldAssigned();
+            _macroInspectorAssignedHandler = (_, _) => OnMacroInspectorAssigned();
 
             _remapPanel.Assigned += _remapAssignedHandler;
             _tapAndHoldPanel.Assigned += _tapAndHoldAssignedHandler;
+            _macroInspectorPanel.Assigned += _macroInspectorAssignedHandler;
 
             var inspector = new KeyInspectorViewModel(
                 ResetKeyCommand,
                 CopyKeyCommand,
                 CancelCopyKeyCommand,
-                [_remapPanel, _tapAndHoldPanel]);
+                [_remapPanel, _tapAndHoldPanel, _macroInspectorPanel]);
 
             _inspectorRecordingChangedHandler = (_, _) => OnInspectorRecordingChanged();
-            _inspectorMacroRequestedHandler = (_, _) => OnMacroRequested();
 
             inspector.RecordingChanged += _inspectorRecordingChangedHandler;
-            inspector.MacroRequested += _inspectorMacroRequestedHandler;
 
             return inspector;
         }
@@ -174,18 +193,22 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The rail's <c>Macro</c> tab was chosen. In-place macro editing is issue #93's (mockup
-        /// <c>2i</c>); here the tab bridges to the Macros tab, which is already about the selected
-        /// key — the board serves both sections and the macro's trigger <em>is</em> the selection.
+        /// The rail's Macro panel wrote to the profile's macros. Same shape as
+        /// <see cref="OnTapAndHoldAssigned"/>, and required for the same reason: Core announces
+        /// nothing, so the cap is re-read by hand (its macro dot) and then the funnel rebuilds the
+        /// counters, the library, the advisories, the legend and the dirty flag.
+        /// <para>
+        /// The Macros tab's own panel is re-read too, because it is a second view of the very macros
+        /// this one just moved.
+        /// </para>
         /// </summary>
-        private void OnMacroRequested()
+        private void OnMacroInspectorAssigned()
         {
-            if (SelectedKey is null)
-            {
-                return;
-            }
+            SelectedKey?.RefreshFromModel();
 
-            SelectTab(EditorTab.Macros);
+            _macroPanel?.RefreshFromModel();
+
+            RefreshCounters();
         }
 
         /// <summary>
@@ -240,10 +263,10 @@ namespace KinesisEdit.ViewModels
             Inspector.Close();
 
             Inspector.RecordingChanged -= _inspectorRecordingChangedHandler;
-            Inspector.MacroRequested -= _inspectorMacroRequestedHandler;
 
             _remapPanel.Assigned -= _remapAssignedHandler;
             _tapAndHoldPanel.Assigned -= _tapAndHoldAssignedHandler;
+            _macroInspectorPanel.Assigned -= _macroInspectorAssignedHandler;
 
             // Belt to that brace: a panel that never announced itself cannot leave a claim behind.
             if (_isInspectorCapturing)

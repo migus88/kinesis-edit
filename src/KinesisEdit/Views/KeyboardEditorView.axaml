@@ -327,8 +327,11 @@
              very same commands from there. `Reset Layer` left earlier, for the legend row under the
              board (#91).
 
-             What is left waits for #93, which owns the editor-level action bar: `Reset Layout`,
-             the two macro-insertion actions of §11.3/§11.6, and Import/Export.
+             `Insert Delay` left with issue #93: §11.3 is edited in place on the key inspector's
+             Macro panel now, so there is no command left for a button here to run.
+
+             What is left waits for the rest of #93, which owns the editor-level action bar:
+             `Reset Layout`, §11.6's macro-insertion picker, and Import/Export.
 
              Nothing here is the design's shape — it exists so every action stays reachable and
              keeps working in the meantime, on every tab, which is why it sits under the whole
@@ -338,7 +341,6 @@
              no visibility logic here. -->
         <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
           <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
-          <Button Content="Insert Delay" Command="{Binding InsertDelayCommand}" Margin="6,0,0,4" />
           <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
           <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />
           <Button Content="Import" Command="{Binding ImportCommand}" Margin="6,0,0,4" />

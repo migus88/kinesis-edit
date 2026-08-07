@@ -44,5 +44,11 @@ namespace KinesisEdit.Services
         {
             _settings.SaveAppSettings(location, settings);
         }
+
+        /// <inheritdoc />
+        public void SaveMacroNames(VDriveLocation location, AppSettings settings, int profileNumber)
+        {
+            _settings.SaveMacroNames(location, settings, profileNumber);
+        }
     }
 }

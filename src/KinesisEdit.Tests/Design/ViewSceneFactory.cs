@@ -689,11 +689,6 @@ namespace KinesisEdit.Tests.Design
                 return new ExportOverlayViewModel(null, _folderPicker, _files, _notifications);
             }
 
-            if (viewType == typeof(MacroDelayOverlayView))
-            {
-                return new MacroDelayOverlayViewModel(TokenDialect.Gen1);
-            }
-
             if (viewType == typeof(TokenPickerOverlayView))
             {
                 return new TokenPickerOverlayViewModel(TokenPickerOverlayViewModel.MacroTitle, TokenDialect.Gen1);
@@ -718,6 +713,14 @@ namespace KinesisEdit.Tests.Design
                 return await FindInspectorPanelAsync<TapAndHoldPanelViewModel>().ConfigureAwait(true);
             }
 
+            // The Macro panel (issue #93). It comes off the same open rail as its neighbours, on a
+            // position that already carries a macro — an empty step list would render a shape the
+            // mock is not about, and every frame captured off this scene would be of the wrong panel.
+            if (viewType == typeof(MacroInspectorPanelView))
+            {
+                return await CreateMacroInspectorPanelAsync().ConfigureAwait(true);
+            }
+
             // The picker itself, hosted by the Remap panel. It is the same instance the panel draws,
             // so the scene shows a picker over a real catalog rather than an empty one.
             if (viewType == typeof(TokenPickerView))
@@ -735,6 +738,55 @@ namespace KinesisEdit.Tests.Design
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The rail's Macro panel over a position that really carries a macro, recorded through the
+        /// panel's own capture path rather than written into the model behind its back — the library
+        /// and the dropdown are built off the editor's refresh funnel, and a scene that skipped it
+        /// would render a panel the app never produces.
+        /// </summary>
+        public async Task<MacroInspectorPanelViewModel> CreateMacroInspectorPanelAsync()
+        {
+            var editor = await CreateEditorWithInspectorAsync().ConfigureAwait(true);
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            // The KEY first, the MODE second, and the order is not cosmetic: a new selection puts
+            // the rail back on whichever mode that position already carries, so a tab chosen before
+            // the click is thrown away by the very next refresh.
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+
+            var panel = SelectMacroMode(editor);
+
+            panel.RecordCommand.Execute(null);
+
+            foreach (var token in new[] { "e", "s", "t" })
+            {
+                _capture.RaiseKeystroke(KeyRegistry.FindByToken(token, TokenDialect.Gen1)!);
+            }
+
+            panel.Deactivate();
+
+            return panel;
+        }
+
+        /// <summary>
+        /// Puts the open rail on its Macro mode and hands the panel back. The rail exposes only the
+        /// showing panel, so this is also what proves the tab reaches it.
+        /// </summary>
+        private static MacroInspectorPanelViewModel SelectMacroMode(KeyboardEditorViewModel editor)
+        {
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
+
+            return editor.Inspector.ActivePanel as MacroInspectorPanelViewModel
+                   ?? throw new InvalidOperationException("The key inspector hosts no MacroInspectorPanelViewModel.");
         }
 
         /// <summary>

@@ -36,6 +36,20 @@
     <Setter Property="BorderThickness" Value="1,0,0,0" />
   </Style>
 
+  <!-- 300 instead of 268 while the Macro panel is showing — the handoff states both widths
+       ("inspector rail: 268px wide on Layout, 300px on the macro-editing variant", mockup 2i) and
+       `WidthInspectorRailWide` has carried the second since issue #86 with nothing reaching it.
+
+       The class is written by the rail off ITS ACTIVE PANEL (KeyInspectorViewModel.IsWide ->
+       KeyInspectorPanelViewModel.WantsWideRail), not by the view: which modes are wide is a fact
+       about the panels, and a view that decided it would be a second place to keep in step.
+
+       It is a WIDTH change, not a transition. The motion budget lists no rail resize, and a tab
+       swap is 0 ms on purpose. -->
+  <Style Selector="Border.inspectorRail.wide">
+    <Setter Property="Width" Value="{DynamicResource WidthInspectorRailWide}" />
+  </Style>
+
   <!-- One block of the rail, separated from the next by a hairline rather than by a gap: the rail
        is 268 wide and a stack of bordered cards inside it would spend a quarter of that on frames.
        `PaddingInspectorSection` is the design's own inspector rhythm. -->
@@ -123,6 +137,50 @@
   <Style Selector="Border.pickerAdvisory">
     <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="9,7" />
+  </Style>
+
+  <!-- ===== The macro step editor =============================================================
+       The rows of mockup 2i's `Steps` list, inside the 300px rail. Each row is a Button on the
+       `RowButton` control theme (so hover, press and `.selected` are the theme's, not this file's)
+       carrying its number, its token, what it does and the delay behind it.
+
+       NOTHING HERE IS A GLYPH. The drag grip is `IconDragHandle` and the insert affordance
+       `IconInsert`, both drawn by the Icon control: U+283F and U+FF0B are in neither embedded IBM
+       Plex family, so the mock's own characters would tofu. The `×` on the delete button IS a
+       character — U+00D7 is Latin-1 and both families carry it. -->
+
+  <!-- The grip. TextMuted at rest, because it is an affordance rather than content; it is a FILL
+       mark (six dots), so the brush lands on Fill and never on Stroke. -->
+  <Style Selector="controls|Icon.dragHandle">
+    <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+    <Setter Property="Size" Value="12" />
+  </Style>
+
+  <!-- The `＋` of the trailing "insert step" row. Accent, because it is the one action in the list
+       that adds something; stroke only, or the cross would fill into a square. -->
+  <Style Selector="controls|Icon.insertMark">
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Size" Value="12" />
+  </Style>
+
+  <!-- One step row. It is a Button so the whole row is the hit target for selecting the step that
+       ⌥↑↓ moves; the theme is RowButton, which already carries the selected face. -->
+  <Style Selector="Button.macroStepRow">
+    <Setter Property="Theme" Value="{StaticResource RowButton}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="6,4" />
+  </Style>
+
+  <!-- The delay editor that opens over a row — §11.3 with its window taken off. The same inset
+       block the rest of the rail states a sub-panel in, so "this is about the row above" reads
+       without a frame. -->
+  <Style Selector="Border.macroDelayEditor">
+    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
     <Setter Property="Padding" Value="9,7" />
