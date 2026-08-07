@@ -149,10 +149,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task EntryText_ForASpace_ShowsTheOpenBoxSymbol()
+        public async Task EntryText_ForASpace_ShowsTheVisibleSpaceMark()
         {
             // 12 §5: the entry box makes a recorded space visible; the row memo keeps the raw
-            // token, which is what the file holds.
+            // token, which is what the file holds. The mark is `·` and not the spec's `␣` —
+            // U+2423 is in neither embedded family (see PedalEntryText).
             var editor = await LoadAsync("[lpedal]>");
 
             await BeginEditAsync(editor, LeftPedal);
@@ -161,7 +162,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             _capture.RaiseKeystroke(Key("space"));
 
-            Assert.Equal(new[] { "␣" }, editor.EntryItems);
+            Assert.Equal(new[] { "·" }, editor.EntryItems);
 
             editor.DoneCommand.Execute(null);
 

@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using KinesisEdit.Controls;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.SavantElite;
 using KinesisEdit.Core.VDrive.Discovery;
@@ -555,9 +556,37 @@ namespace KinesisEdit.Tests.Design
                 .ToArray();
 
             Assert.Equal(editor.Layers.Count, chips.Length);
+
+            // The chip hosts a mark-plus-text panel, not a string: U+2325 is in neither embedded
+            // IBM Plex family, so the ⌥ is `IconOption` geometry and only the number is type. The
+            // legend is therefore read out of the chip in two pieces.
             Assert.Equal(
                 editor.Layers.Select(layer => layer.ShortcutHint),
-                chips.Select(chip => chip.Content as string));
+                chips.Select(chip => Assert.Single(chip.GetVisualDescendants().OfType<TextBlock>()).Text));
+
+            var marks = chips
+                .Select(chip => Assert.Single(chip.GetVisualDescendants().OfType<Icon>()))
+                .ToArray();
+
+            Assert.All(marks, mark => Assert.Equal(DesignTokens.Resolve("IconOption", ToVariant(variantName)), mark.Data));
+
+            // Shown on macOS, where the legend reads `⌥1`; hidden on Windows and Linux, where it
+            // reads `Alt+1` and there is no Option key to name. Both branches are asserted against
+            // the platform the suite is running on, because `KeyCaption.IsMacOs` is resolved once
+            // per process and the binding is what is under test here.
+            Assert.All(marks, mark => Assert.Equal(KeyCaption.IsMacOs, mark.IsVisible));
+            Assert.All(
+                editor.Layers,
+                layer => Assert.Equal(KeyCaption.IsMacOs, layer.ShowsOptionMark));
+
+            if (KeyCaption.IsMacOs)
+            {
+                Assert.All(editor.Layers, layer => Assert.DoesNotContain("Alt", layer.ShortcutHint, StringComparison.Ordinal));
+            }
+            else
+            {
+                Assert.All(editor.Layers, layer => Assert.StartsWith("Alt+", layer.ShortcutHint, StringComparison.Ordinal));
+            }
         }
 
         [AvaloniaFact]
