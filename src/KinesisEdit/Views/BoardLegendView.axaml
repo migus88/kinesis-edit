@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="28"
+             x:Class="KinesisEdit.Views.BoardLegendView"
+             x:DataType="vm:BoardLegendViewModel">
+  <!--
+    The legend row under the keyboard canvas (mockups 1e/2a): a mono LEGEND label, then the five
+    key states each drawn as its own badge beside a live count, then the row's two actions.
+
+    THE SWATCHES ARE THE BADGE VOCABULARY, NOT DECORATION. Each one is the cap's own badge redrawn
+    at legend size, out of the same token brush — the accent bar a remapped cap wears along its
+    bottom edge, the macro dot, the tap-and-hold corner triangle, the amber advisory bar, the
+    hatched face of a position that is not yours to edit. That is the whole point of the row: it
+    teaches the board. If a badge's hue ever moves, it moves here too, because both name the token.
+
+    SIZES ARE LEGEND SIZES, HUES ARE TOKENS. The cap's badges are 2-6px marks tuned to a 30x26 cap
+    and would disappear in a text row, so the marks here are drawn a little larger; not one colour
+    is a literal.
+
+    THE COUNTS ARE SANS, THE LABEL IS MONO. "Mono is reserved for values that exist verbatim in the
+    config file" — a count of remapped keys is the app talking, so it is sans; LEGEND is a section
+    label, which the type scale defines as 10/600 uppercase mono.
+
+    SCOPE: the Layout/Macros board only. The Lighting tab's picture draws no state badges
+    (KeyboardView.ShowsStateBadges), so it counts no states either - the handoff's "every board view
+    carries a legend row" is honoured where state is on screen. Recorded in docs/app/keyboard-editor.md.
+  -->
+  <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+
+    <!-- ===== The counts ====================================================================== -->
+    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+      <TextBlock Text="{x:Static vm:BoardLegendViewModel.LegendLabel}"
+                 Classes="sectionLabel"
+                 VerticalAlignment="Center" />
+
+      <!-- Remapped: the 2px accent bar the cap carries across its bottom edge. Flat, not rounded —
+           the advisory bar below is the rounded one, and the two must stay tellable apart. -->
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Border Width="14"
+                Height="3"
+                Background="{DynamicResource AccentBrush}"
+                VerticalAlignment="Center" />
+        <TextBlock Text="{x:Static vm:BoardLegendViewModel.RemappedCaption}"
+                   Classes="meta muted"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding RemappedCount}" Classes="meta" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <!-- Macro: the cap's top-right dot. -->
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Ellipse Width="6"
+                 Height="6"
+                 Fill="{DynamicResource BadgeMacroBrush}"
+                 VerticalAlignment="Center" />
+        <TextBlock Text="{x:Static vm:BoardLegendViewModel.MacroCaption}"
+                   Classes="meta muted"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding MacroCount}" Classes="meta" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <!-- Tap-and-hold: the cap's bottom-right corner triangle, drawn the same way round. -->
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Path Data="M 0,8 L 8,8 L 8,0 Z"
+              Fill="{DynamicResource BadgeTapHoldBrush}"
+              VerticalAlignment="Center" />
+        <TextBlock Text="{x:Static vm:BoardLegendViewModel.TapAndHoldCaption}"
+                   Classes="meta muted"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding TapAndHoldCount}" Classes="meta" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <!-- Advisory: the cap's 12x3 rounded amber bar, at exactly its own size. Amber, and only
+           amber — an advisory is never red anywhere in this app. -->
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Border Width="{DynamicResource BadgeAdvisoryBarWidth}"
+                Height="{DynamicResource BadgeAdvisoryBarHeight}"
+                CornerRadius="{DynamicResource RadiusChip}"
+                Background="{DynamicResource StatusAdvisoryStrongBrush}"
+                VerticalAlignment="Center" />
+        <TextBlock Text="{x:Static vm:BoardLegendViewModel.AdvisoryCaption}"
+                   Classes="meta muted"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding AdvisoryCount}" Classes="meta" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <!-- Locked: a mini-cap wearing the hatch and the dashed border of a position that can never
+           be remapped. A Rectangle rather than a Border because only a shape can carry a dash
+           array, and the dash is half of what the design says "not yours to edit" with. -->
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Rectangle Width="12"
+                   Height="10"
+                   RadiusX="2"
+                   RadiusY="2"
+                   Fill="{DynamicResource HatchBrush}"
+                   Stroke="{DynamicResource SurfaceLineHighBrush}"
+                   StrokeThickness="1"
+                   StrokeDashArray="2,2"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{x:Static vm:BoardLegendViewModel.LockedCaption}"
+                   Classes="meta muted"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding LockedCount}" Classes="meta" VerticalAlignment="Center" />
+      </StackPanel>
+    </StackPanel>
+
+    <!-- ===== The copy prompt =================================================================
+         What an armed `Copy key…` is waiting for, and what it says when the picked target refuses.
+
+         ACCENT, NOT AMBER. The row is in an active editing mode, which is one of the accent's two
+         sanctioned meanings; amber means "an advisory, which never blocks", and a pick that is
+         waiting for a click is neither. `.badge` is the existing role for exactly this — a short
+         accent tag beside the thing it qualifies. -->
+    <TextBlock Grid.Column="1"
+               Text="{Binding CopyPrompt}"
+               Classes="badge"
+               Margin="16,0"
+               TextTrimming="CharacterEllipsis"
+               VerticalAlignment="Center"
+               IsVisible="{Binding IsPickingCopyTarget}" />
+
+    <!-- ===== The actions =====================================================================
+         Both bordered neutrals, on the shared SecondaryButton role. `Reset layer` lives here, next
+         to the counts it acts on, rather than in the provisional action row: sentence case, which
+         is a deliberate deviation from spec 10's verbatim `Reset Layer` (docs/app/keyboard-editor.md).
+
+         `Copy key…` is NOT the inspector's `Copy to…` of issue #92; it arms a pick on the board. -->
+    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <Button Classes="secondary"
+              Content="{x:Static vm:BoardLegendViewModel.CopyKeyCaption}"
+              Command="{Binding CopyKeyCommand}" />
+      <Button Classes="secondary"
+              Content="{x:Static vm:BoardLegendViewModel.ResetLayerCaption}"
+              Command="{Binding ResetLayerCommand}" />
+    </StackPanel>
+  </Grid>
+</UserControl>

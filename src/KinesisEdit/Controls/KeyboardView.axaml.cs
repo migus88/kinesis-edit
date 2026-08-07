@@ -12,6 +12,12 @@ namespace KinesisEdit.Controls
     /// generic component of the editor: it draws whatever layer it is given and reports clicks
     /// through <see cref="KeySelectedCommand"/>, which is how a cap reaches the editor's
     /// <c>SelectKeyCommand</c> without either the picture or the cap knowing the editor exists.
+    /// <para>
+    /// It draws one bordered panel per <see cref="ViewModels.KeyboardSectionViewModel"/> — a split
+    /// board is two, with the design's <c>GutterSplit</c> between them — and grows the finished
+    /// picture as a whole through a <see cref="BoardScaleHost"/>. The board itself is authored at
+    /// mock scale by <see cref="KeyboardPanel"/>, which scales nothing.
+    /// </para>
     /// </summary>
     public partial class KeyboardView : UserControl
     {
@@ -37,6 +43,22 @@ namespace KinesisEdit.Controls
         public static readonly StyledProperty<bool> ShowsLedStripsProperty =
             AvaloniaProperty.Register<KeyboardView, bool>(nameof(ShowsLedStrips));
 
+        /// <summary>
+        /// Whether this picture draws the <b>key-state badge vocabulary</b> — the remap bar, the
+        /// macro dot, the tap-and-hold triangle and the advisory bar of
+        /// <c>docs/design/handoff.md</c> § "Focus, selection, key badges". On by default, the
+        /// mirror image of <see cref="ShowsLedStripsProperty"/>: the Layout tab is the surface those
+        /// states belong to, so a board opts <i>out</i> rather than in.
+        /// <para>
+        /// It is a property of the picture for exactly the reason the LED row is — the Keys tab and
+        /// the Lighting tab render the <b>same</b> <see cref="ViewModels.KeyboardLayerViewModel"/>
+        /// and the same cap view models, so nothing on a cap's data could tell the two surfaces
+        /// apart. A lighting board is a readout of colour and says nothing about assignments.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<bool> ShowsStateBadgesProperty =
+            AvaloniaProperty.Register<KeyboardView, bool>(nameof(ShowsStateBadges), defaultValue: true);
+
         /// <summary>What a click on a key cap runs; the clicked key is the command parameter.</summary>
         public ICommand? KeySelectedCommand
         {
@@ -49,6 +71,13 @@ namespace KinesisEdit.Controls
         {
             get => GetValue(ShowsLedStripsProperty);
             set => SetValue(ShowsLedStripsProperty, value);
+        }
+
+        /// <inheritdoc cref="ShowsStateBadgesProperty" />
+        public bool ShowsStateBadges
+        {
+            get => GetValue(ShowsStateBadgesProperty);
+            set => SetValue(ShowsStateBadgesProperty, value);
         }
 
         /// <summary>Creates the keyboard picture.</summary>

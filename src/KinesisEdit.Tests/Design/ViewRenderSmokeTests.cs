@@ -68,7 +68,8 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("KeyboardSettingsView", names);
             Assert.Contains("SavantElitePedalView", names);
             Assert.Contains("KeyCapView", names);
-            Assert.True(names.Count >= 19, $"Only {names.Count} views were discovered.");
+            Assert.Contains("BoardLegendView", names);
+            Assert.True(names.Count >= 20, $"Only {names.Count} views were discovered.");
         }
 
         [AvaloniaFact]

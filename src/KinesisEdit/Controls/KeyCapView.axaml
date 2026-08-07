@@ -10,9 +10,14 @@
              ClipToBounds="False">
   <!-- One key cap. The cap is a Button so it is focusable and clickable without code-behind; all
        of its chrome comes from the KeyCapButton control theme in Themes/ControlThemes/Keycap.axaml,
-       which owns the template and the whole state matrix (selected / listening / modified /
-       locked). The click goes to the editor through the containing KeyboardView, so nothing here
-       knows what a remap is (specs/10-apps-and-ui.md, "Remap workflow").
+       which owns the template, the face ladder (selected / listening / locked) and the four state
+       badges (remap bar, macro dot, tap-and-hold corner, advisory bar). The click goes to the
+       editor through the containing KeyboardView, so nothing here knows what a remap is
+       (specs/10-apps-and-ui.md, "Remap workflow").
+
+       The classes below say what the KEY is; `stateBadges` says whether this SURFACE draws it, and
+       comes from ShowsStateBadge for the same reason the LED strip's row comes from ShowsLedStrip
+       — see the property's own summary. Both are read off this control rather than off the data.
 
        ClipToBounds is off on the way out as well as in: a focused cap casts a 3px halo past its own
        bounds into a grid whose caps are 4px apart, and a clip anywhere along the chain erases it. -->
@@ -21,22 +26,95 @@
           Classes.selected="{Binding IsSelected}"
           Classes.listening="{Binding IsListening}"
           Classes.modified="{Binding IsModified}"
+          Classes.macro="{Binding IsMacro}"
+          Classes.tapHold="{Binding IsTapAndHold}"
+          Classes.advisory="{Binding HasAdvisory}"
           Classes.locked="{Binding !CanEdit}"
+          Classes.stateBadges="{Binding $parent[controls:KeyCapView].ShowsStateBadge}"
           Command="{Binding $parent[controls:KeyboardView].KeySelectedCommand}"
           CommandParameter="{Binding}"
           ToolTip.Tip="{Binding Caption}">
-    <Grid RowDefinitions="*,Auto">
+    <!--
+      THE CAP'S VERTICAL BUDGET, which is the whole reason this grid is shaped the way it is.
+
+      A 1U cap is 30x26 at mock scale (KeycapPitchY 30 − KeycapGap 4), and the KeyCapButton theme
+      draws it with a 1px border and 2px of padding. That padding exists FOR THE BADGES — it is what
+      puts them the mockups' 2px inside the border — so it is not reduced; the grid steps back over
+      it instead with `Margin="0,-2"`, exactly as the caption below steps over it horizontally with
+      its own `Margin="-2,0"`. Nothing in the template moves, and the content box is the cap's whole
+      inner area: 28 wide x 24 tall.
+
+      Into those 24 go, at their natural (uncut) metrics — IBM Plex Sans is 1.3em tall, so a 9px
+      line is 11.7 and a 7px line is 9.1, and Avalonia rounds a desired size up to the DIP:
+
+          caption, one 9px line ......................... 12
+          caption, two 8px lines (stacked) .............. 21
+          silkscreen sub-legend, 7px .................... 10  − 2px of shared leading
+          LED strip ......................................  3  + 0px gap
+
+      which leaves the three boards this cap is ever drawn on:
+
+          Layout board .................. 12                 of 24   (12 spare)
+          Layout board, sub-legend ...... 12 − 2 + 10 = 20   of 24   ( 4 spare)
+          Layout board, stacked ......... 21                 of 24   ( 3 spare)
+          Lighting board ................ 12 + 3      = 15   of 24   ( 9 spare)
+          Lighting board, stacked ....... 21 + 3      = 24   of 24   ( 0 spare)
+
+      Two of those five needed a decision rather than an arrangement, and both are taken here: the
+      sub-legend is NOT DRAWN on a lighting board (it and the strip want the same band), and a
+      caption carrying its own line break steps down to `FontSizeKeycapLabelStacked`. The last row
+      is exact rather than comfortable, and the suite holds it: KeycapThemeTests asserts that no
+      legend on any of the three boards is arranged shorter than the text it holds actually needs.
+    -->
+    <Grid RowDefinitions="*,Auto,Auto" Margin="0,-2">
       <!-- A '\n' in the caption is a two-line cap (specs/05-key-model.md §1.1); wrapping is on so
-           long captions on a 1U cap break instead of being clipped mid-word. -->
+           long captions on a 1U cap break instead of being clipped mid-word. `stacked` is that same
+           fact as a class — see Styles/Keyboard.axaml for the step it takes and why.
+
+           `Margin="-2,0"` gives the caption back the 2px the theme pads the cap with, horizontally;
+           the grid's own `Margin="0,-2"` above does the other axis. At mock scale a 1U cap is 30
+           wide, so the padded box leaves 24px for a legend. "Pause" is a 1U key and sets exactly
+           24px at the 9/400 step, so it wrapped and the cap read "Paus". The badges keep their
+           inset; only the text spans the 28.
+
+           It stretches and centres its TEXT rather than centring the block, and that is the half
+           that actually fixed it: a non-stretched child is arranged at `min(available, desired)`,
+           so a caption that measures 24 is arranged at 24 however much room the negative margin
+           won it — and the wrap comes back on the fraction of a pixel. Stretch hands the line the
+           whole 28, and `TextAlignment` does the centring the alignment used to. -->
       <TextBlock Grid.Row="0"
                  Classes="keyCapText"
-                 Classes.modified="{Binding IsModified}"
                  Classes.locked="{Binding !CanEdit}"
+                 Classes.stacked="{Binding IsCaptionStacked}"
+                 Margin="-2,0"
                  Text="{Binding Caption}"
                  TextWrapping="Wrap"
                  TextAlignment="Center"
-                 HorizontalAlignment="Center"
+                 HorizontalAlignment="Stretch"
                  VerticalAlignment="Center" />
+
+      <!-- THE SECONDARY LEGEND — the shifted character or the device hotkey the board PRINTS under
+           the main one ('!', 'mute', 'scr lk'). It is silkscreen, so it never changes with a remap
+           and never notifies; a position whose print says nothing the caption does not carries
+           none, and the row then collapses to nothing so an ordinary cap keeps its legend centred.
+
+           UNDER THE CAPTION, CENTRED, which is how mockup 1e stacks the pair (`F1` over `mute`, a
+           column with `align-items: center`). The assignment leads and the silkscreen follows it:
+           what the key does now is the thing being read, and what the board printed on it is the
+           context. It used to be drawn above the caption, which inverted that.
+
+           NOT DRAWN AT ALL ON A LIGHTING BOARD. The strip below wants this same band, a 26px cap
+           has one band to give, and a lighting board is about colour — the same call, for the same
+           reason, that already hides the four state badges there (KeyCapView.ShowsStateBadge). The
+           `Panel` is what carries that half of the answer: an invisible panel takes no row, and the
+           legend's own emptiness check stays a plain binding rather than a converter over two. -->
+      <Panel Grid.Row="1" IsVisible="{Binding !$parent[controls:KeyCapView].ShowsLedStrip}">
+        <TextBlock Classes="keyCapSubText"
+                   Text="{Binding SecondaryLegend}"
+                   IsVisible="{Binding SecondaryLegend, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Top" />
+      </Panel>
 
       <!-- The key's LED colour (ledN.txt), shown as a strip rather than as the cap background so
            the cap's own state stays readable next to it. Three states, and they need two answers
@@ -57,12 +135,18 @@
            ever separate them. KeyboardView owns it and hands it to each cap it builds.
 
            The cap does not change size either way — KeyboardPanel lays every cap out from its unit
-           rectangle — but the caption's box inside it is 5px shorter on a lighting board, which is
-           the row this strip occupies. -->
-      <Border Grid.Row="1"
+           rectangle — but the caption's box inside it is 3px shorter on a lighting board, which is
+           the row this strip occupies.
+
+           NO TOP MARGIN, unlike the sub-legend above it: those 3px are the last three of the cap's
+           24 (see the budget at the top of this file), and a stacked caption needs the other 21
+           exactly. It reads as a gap anyway, because the caption's box ends below its last line's
+           ink by the font's own descent — about 1px at the stacked step, 2.5 at the full one — and
+           a one-line caption is centred in the 21 that are left, which puts 4px of air over it. -->
+      <Border Grid.Row="2"
               Height="3"
               CornerRadius="{DynamicResource RadiusChip}"
-              Margin="1,2,1,0"
+              Margin="1,0"
               ClipToBounds="True"
               IsVisible="{Binding $parent[controls:KeyCapView].ShowsLedStrip}"
               Background="{DynamicResource HatchBrush}">

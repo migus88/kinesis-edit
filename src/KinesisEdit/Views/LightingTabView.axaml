@@ -214,7 +214,13 @@
       <!-- Per-key colouring (§4): the same generic picture the Keys tab uses, with the click
            wired to the colour-assign command instead of the remap one — and with the LED strip
            asked for, which is what makes this picture a lighting surface and the Keys tab's not
-           (an unlit key hatches here and shows nothing at all there). -->
+           (an unlit key hatches here and shows nothing at all there).
+
+           AND WITH THE STATE BADGES OFF. A colouring board is about colour: the remap bar, the
+           macro dot, the tap-and-hold corner and the advisory bar all report the *layout*, and
+           this board cannot edit one — so they are not drawn here, and there is no legend row
+           counting them either (the counts follow the badges). The two pictures are the same
+           control over the same layer view models; only what each one draws differs. -->
       <StackPanel Spacing="8" IsVisible="{Binding Panels.ShowsPerKeyColors}">
         <TextBlock Text="Click a key to paint it with the selected colour; black erases it."
                    Classes="body muted" />
@@ -223,6 +229,7 @@
                 IsVisible="{Binding Board, Converter={x:Static data:ObjectConverters.IsNotNull}}">
           <controls:KeyboardView DataContext="{Binding Board}"
                                  ShowsLedStrips="True"
+                                 ShowsStateBadges="False"
                                  KeySelectedCommand="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).AssignKeyColorCommand}" />
         </Border>
       </StackPanel>

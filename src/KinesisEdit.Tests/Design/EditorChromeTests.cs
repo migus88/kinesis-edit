@@ -492,6 +492,38 @@ namespace KinesisEdit.Tests.Design
                 chips.Select(chip => chip.Content as string));
         }
 
+        [AvaloniaFact]
+        public async Task ResetLayer_HasLeftTheProvisionalActionRow_ForTheLegendRow()
+        {
+            // Issue #91 gave `Reset Layer` its real home under the board, beside the counts it acts
+            // on, and it took the mockups' sentence case with it (`Reset layer`). Everything else in
+            // the provisional row stays: #92 owns `Reset Key` (the inspector's `Revert key`) and
+            // #92/#93 own the feature buttons.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var provisional = Assert.Single(view.GetVisualDescendants().OfType<WrapPanel>());
+            var captions = provisional.Children.OfType<Button>().Select(button => button.Content as string).ToArray();
+
+            Assert.Equal(
+                new[] { "Reset Key", "Reset Layout", "Tap and Hold", "Insert Delay", "Special Action", "Export", "Import" },
+                captions);
+
+            // And the command did not move owners with it: the row runs the editor's own instance.
+            var row = Assert.Single(view.GetVisualDescendants().OfType<BoardLegendView>());
+            var moved = Assert.Single(
+                row.GetVisualDescendants().OfType<Button>(),
+                button => Equals(button.Content, BoardLegendViewModel.ResetLayerCaption));
+
+            Assert.Same(editor.ResetLayerCommand, moved.Command);
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]

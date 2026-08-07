@@ -88,6 +88,16 @@ namespace KinesisEdit.ViewModels
         /// <summary>The layer's key caps, in the model's key order.</summary>
         public IReadOnlyList<KeyboardKeyViewModel> Keys { get; }
 
+        /// <summary>
+        /// The board's drawn panels, ordered by <see cref="KeyboardSection.Index"/> — two of them on
+        /// a split board. Every entry of <see cref="Keys"/> appears in exactly one section, as the
+        /// <b>same instance</b>: the editor resolves a cap through the flat list and
+        /// <see cref="ApplyColorOverlays"/> writes through it, so a copy would leave the picture
+        /// showing state nothing updates. A section the layer has no key for is still listed, so the
+        /// panel roster is the board's and not the layout file's.
+        /// </summary>
+        public IReadOnlyList<KeyboardSectionViewModel> Sections { get; }
+
         /// <summary>Board width in key units — what the view scales by.</summary>
         public double BoardWidth { get; }
 
@@ -101,7 +111,61 @@ namespace KinesisEdit.ViewModels
             set => SetProperty(ref _isSelected, value);
         }
 
+        /// <summary>
+        /// How many of <b>this layer's</b> keys carry a remap — the legend row's "Remapped N"
+        /// (mockups 1e/2a). Recomputed by <see cref="RefreshCounts"/>, never by a key's own
+        /// notification: the counts are read once per edit, not once per cap.
+        /// </summary>
+        public int RemappedCount
+        {
+            get => _remappedCount;
+            private set => SetProperty(ref _remappedCount, value);
+        }
+
+        /// <summary>How many of this layer's keys carry at least one macro — "Macro N".</summary>
+        public int MacroCount
+        {
+            get => _macroCount;
+            private set => SetProperty(ref _macroCount, value);
+        }
+
+        /// <summary>How many of this layer's keys carry a tap-and-hold assignment — "Tap-and-hold N".</summary>
+        public int TapAndHoldCount
+        {
+            get => _tapAndHoldCount;
+            private set => SetProperty(ref _tapAndHoldCount, value);
+        }
+
+        /// <summary>
+        /// How many of this layer's positions can never be remapped (§5.3) — "Locked N". It is a
+        /// geometry fact and so never moves, but it is recomputed with the others rather than
+        /// becoming the one count with a different rule.
+        /// </summary>
+        public int LockedCount
+        {
+            get => _lockedCount;
+            private set => SetProperty(ref _lockedCount, value);
+        }
+
+        /// <summary>
+        /// How many of this layer's keys carry an advisory — "Advisory N" (mockup 2a counts it
+        /// beside the other four). Settable and <b>pushed in</b>, exactly like
+        /// <see cref="KeyboardKeyViewModel.HasAdvisory"/> on the cap: the fact lives in
+        /// <see cref="Advisories.EditorAdvisories"/>, outside <c>KeyboardKey</c>, so
+        /// <see cref="RefreshCounts"/> has nothing to read it from.
+        /// </summary>
+        public int AdvisoryCount
+        {
+            get => _advisoryCount;
+            set => SetProperty(ref _advisoryCount, value);
+        }
+
         private bool _isSelected;
+        private int _remappedCount;
+        private int _macroCount;
+        private int _tapAndHoldCount;
+        private int _lockedCount;
+        private int _advisoryCount;
 
         /// <summary>Joins one model layer to the device's board picture.</summary>
         public KeyboardLayerViewModel(
@@ -121,6 +185,9 @@ namespace KinesisEdit.ViewModels
             BoardWidth = visual.Width;
             BoardHeight = visual.Height;
             Keys = BuildKeys(layer, visual, dialect, colorOverlays);
+            Sections = BuildSections(visual, Keys);
+
+            RefreshCounts();
         }
 
         /// <summary>Returns the cap of the position with ordinal <paramref name="index"/>, or null.</summary>
@@ -144,6 +211,50 @@ namespace KinesisEdit.ViewModels
             {
                 key.RefreshFromModel();
             }
+
+            RefreshCounts();
+        }
+
+        /// <summary>
+        /// Recomputes the four model-derived counts of the legend row from the caps. Public because
+        /// a single-key edit refreshes only that cap (<see cref="KeyboardKeyViewModel.RefreshFromModel"/>)
+        /// and the layer's totals still have to follow; <see cref="AdvisoryCount"/> is not here
+        /// because nothing on the model carries it.
+        /// </summary>
+        public void RefreshCounts()
+        {
+            var remapped = 0;
+            var macros = 0;
+            var tapAndHold = 0;
+            var locked = 0;
+
+            foreach (var key in Keys)
+            {
+                if (key.IsModified)
+                {
+                    remapped++;
+                }
+
+                if (key.IsMacro)
+                {
+                    macros++;
+                }
+
+                if (key.IsTapAndHold)
+                {
+                    tapAndHold++;
+                }
+
+                if (!key.CanEdit)
+                {
+                    locked++;
+                }
+            }
+
+            RemappedCount = remapped;
+            MacroCount = macros;
+            TapAndHoldCount = tapAndHold;
+            LockedCount = locked;
         }
 
         /// <summary>
@@ -197,6 +308,37 @@ namespace KinesisEdit.ViewModels
             }
 
             return keys;
+        }
+
+        /// <summary>
+        /// Distributes the caps just built into the board's panels. It re-uses the instances rather
+        /// than building new ones — the whole point of the section list is that it is a second
+        /// <i>view</i> of <see cref="Keys"/>, not a second copy of it.
+        /// </summary>
+        private static IReadOnlyList<KeyboardSectionViewModel> BuildSections(
+            KeyboardVisual visual,
+            IReadOnlyList<KeyboardKeyViewModel> keys)
+        {
+            var members = new List<KeyboardKeyViewModel>[visual.Sections.Count];
+
+            for (var index = 0; index < members.Length; index++)
+            {
+                members[index] = new List<KeyboardKeyViewModel>();
+            }
+
+            foreach (var key in keys)
+            {
+                members[key.Section].Add(key);
+            }
+
+            var sections = new KeyboardSectionViewModel[visual.Sections.Count];
+
+            for (var index = 0; index < sections.Length; index++)
+            {
+                sections[index] = new KeyboardSectionViewModel(visual.Sections[index], members[index]);
+            }
+
+            return sections;
         }
     }
 }

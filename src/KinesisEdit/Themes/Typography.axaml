@@ -41,6 +41,31 @@
     <x:Double x:Key="FontSizeSectionLabel">10</x:Double>
     <x:Double x:Key="FontSizeKeycapLabel">9</x:Double>
 
+    <!-- The cap's PHYSICAL SECONDARY LEGEND - the silkscreen printed under the main one ('!',
+         'mute', 'scr lk'), not a second assignment. It is one step under the keycap label and,
+         like it, an authored size the whole board scales up as a unit (BoardScaleHost).
+
+         OFF THE PUBLISHED SCALE, and knowingly: the handoff's scale has no step for board
+         silkscreen, and `FontSizeKeycapLabel` (9) is the smallest step it declares. Mockup 1e sets
+         this legend at 6.5 against a 10px caption; the app sets 7 against 9 - the same ratio, one
+         notch more legible, and both pairs sit outside the scale for the same reason.
+         Recorded in docs/app/design-system.md. -->
+    <x:Double x:Key="FontSizeKeycapSubLegend">7</x:Double>
+
+    <!-- THE STACKED CAPTION - a caption that carries a line break of its own ('Caps\nLock',
+         'Page\nDown'; specs/05-key-model.md §1.1 authors nine of them on the Edge RGB). Also off
+         the published scale, and for a reason the handoff could not have anticipated: the MOCKUPS
+         NEVER DRAW A TWO-LINE CAP. They write `Caps` and `Shift` on one line at 9 (mockup 2a), and
+         30x26 is the box that fits ONE such line. The app's captions come from the domain data
+         instead, which spells them in two, and two 9px lines want 23.4px of a 24px content box -
+         everything else on the cap (the LED strip most of all) is then over the edge.
+
+         So a caption that needs two lines is drawn at the step that fits two lines. 8 keeps a full
+         point over the silkscreen's 7, which is what stops the two reading as the same class of
+         mark; the two never appear on one cap anyway (no \n caption on any board carries a
+         secondary legend). Recorded in docs/app/design-system.md. -->
+    <x:Double x:Key="FontSizeKeycapLabelStacked">8</x:Double>
+
     <!-- Not a step of the text scale: the "K" of the app mark, alone in the app at 700 and alone
          in being mono type that is not a value out of a config file. The handoff grants the
          weight to exactly this one glyph - "700 only for the tiny logo 'K'" - and draws it at
