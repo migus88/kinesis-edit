@@ -75,6 +75,59 @@
     <Setter Property="Theme" Value="{StaticResource TokenField}" />
   </Style>
 
+  <!-- ===== The token picker ==================================================================
+       The Remap panel's search field, chips and result rows (mockups 1e/2a), and the same picker
+       inside the macro-insertion modal. The catalog rows themselves wear the `SelectableListRow`
+       control theme, named directly by the view; what is left here is the chrome around them.
+
+       Nothing below carries a colour literal — every brush is a token — and nothing names a template
+       part: the picker is authored out of a Border, a TextBox, a WrapPanel of Buttons and an Icon,
+       each of which reaches its own ControlTheme through a class. -->
+
+  <!-- The `●` of the Record button. It is an Ellipse and not the mockup's U+25CF, for the same
+       reason mockup 1e's `⌕` became a Path: neither embedded IBM Plex family carries the codepoint,
+       so the character would fall through to a platform substitute and tofu where there is none.
+       StatusError, which handoff.md:82 names as "also the Record ● color". -->
+  <Style Selector="Ellipse.recordDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="{DynamicResource StatusErrorBrush}" />
+  </Style>
+
+  <!-- The `↵` of the selected row's `↵ assign` hint — drawn, not typed, for the same reason. It is
+       TextSecondary rather than the accent: the row it sits in is already filled with the 14%
+       accent selection tint, and AccentText is the colour that rides a SOLID accent fill (white on
+       the light variant), which on a tint is invisible. -->
+  <Style Selector="controls|Icon.assignHint">
+    <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Size" Value="12" />
+  </Style>
+
+  <!-- One block of the picker's result list: a counted header and its rows. The rows are inset from
+       the header so the grouping reads without a rule between the blocks — the rail is 268 px wide
+       and a stack of framed groups inside it would spend most of that on frames. -->
+  <Style Selector="Border.tokenPickerGroup">
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <!-- The result list is bounded rather than free: a dialect's catalog runs to a couple of hundred
+       rows, and an unbounded list would push the picker's own chips and counter out of the rail's
+       scroll long before the user reached the end of it. The pre-redesign picker capped its list the
+       same way, at the same order of height. -->
+  <Style Selector="ScrollViewer.tokenPickerResults">
+    <Setter Property="MaxHeight" Value="300" />
+  </Style>
+
+  <!-- The picker's inline advisory: amber, non-blocking, and the same tint block the rail states its
+       mode-switch warning in, so "the app noticed something" reads the same wherever it is said. -->
+  <Style Selector="Border.pickerAdvisory">
+    <Setter Property="Background" Value="{DynamicResource StatusAdvisoryTintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryTintBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="9,7" />
+  </Style>
+
   <!-- ===== Lighting mode menu ================================================================
        One full-width row per mode, the selected one accent-filled. `ModeOption` carries the rail's
        own 9x7 rhythm and its `.selected` face. -->
