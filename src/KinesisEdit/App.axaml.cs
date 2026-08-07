@@ -23,6 +23,13 @@ namespace KinesisEdit
     /// raise — the message box on the shell's overlay, the file pickers on its storage provider —
     /// are all reached through it. The <c>--keystroke-spike</c> argument replaces that whole graph
     /// with the self-contained <see cref="KeystrokeCaptureSpikeWindow"/>.
+    /// <para>
+    /// It is also the only thing in the app that names the real per-user preferences file
+    /// (<see cref="HostPreferencesPathProvider.CreateForCurrentPlatform"/>) and the only thing that
+    /// holds an <see cref="Application"/> to apply one against — so the stored theme and motion are
+    /// applied here, before any window exists, and the Settings screen reaches the two appliers
+    /// through delegates this root closes over (docs/app/host-preferences.md).
+    /// </para>
     /// </summary>
     public partial class App : Application
     {
@@ -34,6 +41,7 @@ namespace KinesisEdit
         private DashboardViewModel? _dashboard;
         private MainWindowViewModel? _shell;
         private IMotionSettings? _motionSettings;
+        private IHostPreferencesStore? _preferences;
 
         /// <summary>Loads the application XAML.</summary>
         public override void Initialize()
@@ -44,14 +52,33 @@ namespace KinesisEdit
         /// <summary>Builds the object graph, shows the shell, and arms the detection loop.</summary>
         public override void OnFrameworkInitializationCompleted()
         {
-            // Before any window exists, because the alias resources it writes are what the
-            // views' transitions bind to. Resolved once here and never re-read: the OS
-            // accessibility setting is a launch-time question (docs/app/design-system.md).
+            // Before any window exists, because the alias resources it writes are what the views'
+            // transitions bind to. The OS accessibility setting is still read exactly once —
+            // MotionSettings asks its detector in its constructor and keeps that answer forever as
+            // SystemReduceMotion — but it is no longer the last word: the desktop branch below
+            // resolves the *stored* motion preference against it, and the Settings screen may move
+            // that while the app is running (docs/app/host-preferences.md). This bare bind is what
+            // a session with no user behind it gets — the headless test harness boots this very
+            // App, and it has no desktop lifetime.
             _motionSettings = MotionSettings.CreateForCurrentPlatform();
             MotionResourceBinder.Apply(this, _motionSettings);
 
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
+                // The per-user preferences file, resolved and read here and nowhere else
+                // (host-preferences.md invariant 2). Deliberately inside the lifetime branch: a
+                // desktop app has a person behind it whose theme this is, and the headless suite —
+                // which boots this same App — has none, so it must never read or apply the
+                // developer's own file.
+                _preferences = new JsonHostPreferencesStore(HostPreferencesPathProvider.CreateForCurrentPlatform());
+
+                var storedPreferences = _preferences.Current;
+
+                // Both applied before any window is built, so the first frame is already wearing
+                // them rather than repainting one pass later.
+                ThemeApplier.Apply(this, storedPreferences.Theme);
+                MotionPreferenceApplier.Apply(this, _motionSettings, storedPreferences.Motion);
+
                 if (desktop.Args?.Contains(KeystrokeSpikeArgument) == true)
                 {
                     // `dotnet run --project src/KinesisEdit -- --keystroke-spike` opens the issue-#12
@@ -64,7 +91,9 @@ namespace KinesisEdit
                 {
                     var notifications = BuildServices(desktop);
 
-                    desktop.MainWindow = new MainWindow(_shell!, notifications);
+                    // The window restores its stored size, position and maximised state from the
+                    // same store, in its constructor — before anything is shown.
+                    desktop.MainWindow = new MainWindow(_shell!, notifications, _preferences);
                     desktop.Exit += OnExit;
 
                     // The shell never starts or stops polling itself; the composition root owns the
@@ -82,7 +111,13 @@ namespace KinesisEdit
 
         private INotificationService BuildServices(IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var fileService = new VDriveFileService();
+            // The demo decorator is *the* file service for the whole app, not a demo-only one. It
+            // serves reads of the synthetic kinesis-edit://demo/ drive from the embedded fixtures,
+            // refuses writes to it, and delegates every other path to the real service untouched —
+            // so live hardware is unaffected and a demo editor opens populated instead of failing
+            // its profile load on a path the real service cannot resolve (docs/app/app-shell.md,
+            // "The demo v-Drive").
+            var fileService = new DemoVDriveFileService(new VDriveFileService());
             var monitor = new VDriveMonitor(new VDriveScanner(PlatformVolumeEnumerator.Create()));
 
             // One clock and one dispatcher for the whole shell: the detection loop stamps its
@@ -126,7 +161,10 @@ namespace KinesisEdit
             // Both pickers defer their owner window exactly as the message-box presenter does:
             // the storage provider hangs off a TopLevel, and no window exists yet at this point.
             var editorFactory = new EditorViewModelFactory(
-                new ProfileSessionFactory(),
+                // The same demo-aware service: a profile session loaded for a demo device reads
+                // its layout, lighting and settings files through it, which is the whole of what
+                // makes demo mode a populated editor rather than an empty one.
+                new ProfileSessionFactory(fileService),
                 settings,
                 () => ResolveCaptureService(desktop),
                 notifications,
@@ -137,6 +175,20 @@ namespace KinesisEdit
                 urlLauncher,
                 sessions);
 
+            // The shell's own two screens, built once and owned by the shell — the Settings screen
+            // subscribes to the preferences store, so one per navigation would leave a listener
+            // behind on every visit; MainWindowViewModel.Dispose disposes it.
+            //
+            // The two appliers are passed as delegates rather than called by the screen: both need
+            // this Application and a view model may not have one (docs/app/app-shell.md,
+            // invariant 8). This is the only object in the app that can close over it.
+            var settingsScreen = new SettingsScreenViewModel(
+                _preferences!,
+                theme => ThemeApplier.Apply(this, theme),
+                motion => MotionPreferenceApplier.Apply(this, _motionSettings!, motion));
+
+            var helpScreen = new HelpScreenViewModel(urlLauncher);
+
             _dashboard = new DashboardViewModel(_deviceMonitor, ejectNotifier, urlLauncher);
             _shell = new MainWindowViewModel(
                 _dashboard,
@@ -144,6 +196,8 @@ namespace KinesisEdit
                 sessions,
                 notifications,
                 editorFactory,
+                settingsScreen,
+                helpScreen,
                 clock,
                 dispatcher);
 

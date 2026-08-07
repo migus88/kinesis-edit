@@ -1,0 +1,8 @@
+{lshft}{lctrl}{esc}>{s3}{x1}{-lctrl}{s}{+lctrl}{d500}{-lctrl}{r}{+lctrl}
+[prnt]>[home]
+[caps]>[lctrl]
+{m}>{s5}{x1}{-lshft}{k}{+lshft}{i}{n}{e}{s}{i}{s}
+[lspc]>[spc][t&h250][lctrl]
+fn {1}>{s5}{x1}{-lalt}{tab}{+lalt}
+fn [4]>[LED]
+fn [e]>[null]

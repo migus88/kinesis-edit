@@ -39,6 +39,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--The demo v-Drive: one curated set of real config files per device that demo mode can open,
+        read back by Services/DemoVDriveFixtures.cs through GetManifestResourceStream. Deliberately
+        EmbeddedResource and not AvaloniaResource — reading an AvaloniaResource needs AssetLoader,
+        which would drag the toolkit into a service and break invariant 8 of docs/app/app-shell.md.
+        The manifest name (KinesisEdit.Assets.Demo.<DeviceId>.<role>[.<file>].txt) is what the
+        fixture reader parses, so no fixture folder or file name may contain a dot of its own.-->
+    <EmbeddedResource Include="Assets/Demo/**/*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\KinesisEdit.Core\KinesisEdit.Core.csproj" />
   </ItemGroup>
 </Project>

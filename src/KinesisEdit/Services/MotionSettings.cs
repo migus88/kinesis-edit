@@ -5,6 +5,12 @@ namespace KinesisEdit.Services
     /// exactly once, in its constructor, and remembers the answer; nothing re-reads the OS while
     /// the app runs.
     /// <para>
+    /// The answer is remembered <b>twice</b>: <see cref="ReduceMotion"/> is the live switch every
+    /// style reads and anything may write, and <see cref="SystemReduceMotion"/> is the OS's answer,
+    /// frozen. That is what makes <see cref="MotionPreference.FollowSystem"/> reversible — see
+    /// <see cref="MotionPreferenceApplier"/>.
+    /// </para>
+    /// <para>
     /// Detection is never allowed to matter more than starting up: an unknown answer and a
     /// detector that throws both resolve to "motion on", which is the state the app was designed
     /// in. That is why the constructor swallows the exception rather than propagating it.
@@ -27,12 +33,21 @@ namespace KinesisEdit.Services
         /// <inheritdoc />
         public bool ReduceMotion { get; set; }
 
-        /// <summary>Resolves the initial value from <paramref name="detector"/>.</summary>
+        /// <inheritdoc />
+        public bool SystemReduceMotion { get; }
+
+        /// <summary>
+        /// Resolves the initial value from <paramref name="detector"/>, and keeps that answer
+        /// separately in <see cref="SystemReduceMotion"/> so a later
+        /// <see cref="MotionPreference.FollowSystem"/> can return to it without asking the OS
+        /// again.
+        /// </summary>
         public MotionSettings(IReduceMotionDetector detector)
         {
             ArgumentNullException.ThrowIfNull(detector);
 
-            ReduceMotion = ResolveInitialValue(detector);
+            SystemReduceMotion = ResolveInitialValue(detector);
+            ReduceMotion = SystemReduceMotion;
         }
 
         private static bool ResolveInitialValue(IReduceMotionDetector detector)

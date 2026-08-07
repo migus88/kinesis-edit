@@ -14,10 +14,27 @@ namespace KinesisEdit.Services
     public sealed record DeviceSnapshot
     {
         /// <summary>
+        /// The gate consulted when no provider is supplied. There is exactly one rule for "does
+        /// this board have demo content", and it is the embedded fixture set — so the default is
+        /// the real provider rather than "no location", which would leave the app's own demo mode
+        /// empty until a composition root remembered to wire something in.
+        /// </summary>
+        private static readonly IDemoDeviceProvider _defaultDemoDevices = new DemoDeviceProvider();
+
+        /// <summary>
         /// Creates the snapshot for a device opened without hardware (troubleshoot dialog
         /// "Launch in Demo Mode", specs/11-feature-dialogs.md §11.8).
+        /// <para>
+        /// <b>This is the one place a demo snapshot gets its drive.</b> Both producers — the empty
+        /// state's <i>Launch ‹device› in Demo Mode</i> and <see cref="DeviceMonitorService"/>'s
+        /// poll result for an undetected device — come through here, so the question "may this
+        /// board be edited without hardware" is asked once and answered by
+        /// <paramref name="demoDevices"/>. A board with no fixtures gets <see langword="null"/>,
+        /// which is exactly the snapshot this factory produced before demo content existed: no
+        /// location, nothing read, an empty editor.
+        /// </para>
         /// </summary>
-        public static DeviceSnapshot CreateDemo(DeviceDefinition device)
+        public static DeviceSnapshot CreateDemo(DeviceDefinition device, IDemoDeviceProvider? demoDevices = null)
         {
             ArgumentNullException.ThrowIfNull(device);
 
@@ -26,6 +43,7 @@ namespace KinesisEdit.Services
                 ScannedDeviceId = device.Id,
                 Device = device,
                 Status = VDriveConnectionStatus.NotDetected,
+                Location = (demoDevices ?? _defaultDemoDevices).TryCreateLocation(device),
                 Firmware = FirmwareState.FromVersionFile(VersionFileInfo.Empty, isDemoMode: true),
                 IsDemoMode = true,
                 Health = VDriveHealth.Unknown
@@ -58,7 +76,12 @@ namespace KinesisEdit.Services
         /// <summary>Connection state reported by the last poll (03 §3.3).</summary>
         public required VDriveConnectionStatus Status { get; init; }
 
-        /// <summary>The discovered drive; null when the device is not detected.</summary>
+        /// <summary>
+        /// The discovered drive; null when the device is not detected <b>and</b> has no demo
+        /// content. An undetected board that <see cref="IDemoDeviceProvider"/> answers for carries
+        /// the synthetic <see cref="DemoVDrive"/> location instead, which is what lets its editor
+        /// read a profile through the ordinary code path.
+        /// </summary>
         public VDriveLocation? Location { get; init; }
 
         /// <summary>Version-file data re-read during the last poll; empty when nothing could be read.</summary>

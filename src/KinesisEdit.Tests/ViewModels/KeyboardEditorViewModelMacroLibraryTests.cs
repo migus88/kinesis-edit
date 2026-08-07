@@ -181,15 +181,18 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
 
-            // Demo mode reads no profile at all, so there is nothing to scope a name to — and the
-            // library is still built over the factory-default layout.
+            // Demo mode opens a real demo profile (issue #96), so a name genuinely scopes to one and
+            // the library is built over the fixture's layout — what demo mode refuses is the
+            // *write*, not the read: spec 08 §3 bans saving app settings, never loading them.
             Assert.NotNull(editor.MacroLibrary);
-            Assert.Equal(0, editor.ProfileNumber);
+            Assert.True(editor.ProfileNumber >= 1);
 
             editor.MarkMacroNamesDirty();
 
             await editor.SaveCommand.ExecuteAsync(null);
 
+            // The names stay on Macro.Name for the session — the dropdown and the library work
+            // exactly as on a writable drive — but nothing reaches the fixture drive.
             Assert.Empty(_preferences.MacroNameWrites);
         }
 

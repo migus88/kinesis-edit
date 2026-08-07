@@ -184,8 +184,10 @@ namespace KinesisEdit.ViewModels
 
             if (profileNumber < 1)
             {
-                // Demo mode reads no profile, so no name can be scoped to one. The macros keep
-                // their derived names and nothing is lost.
+                // No session — a load that failed, or a device with no drive at all. There is no
+                // profile to scope a name to, so the macros keep their derived names and nothing is
+                // lost. Demo mode does *not* come through here: it opens a real profile (issue #96)
+                // and reads its names normally; what it refuses is the write, in the store.
                 return;
             }
 

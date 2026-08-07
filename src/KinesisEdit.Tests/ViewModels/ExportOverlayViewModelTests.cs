@@ -80,8 +80,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void ExportCommand_InDemoMode_IsDisabledAndDoesNothing()
+        public void ExportCommand_WithNoSession_IsDisabledAndDoesNothing()
         {
+            // Not "in demo mode" — demo mode opens a real session over the fixture drive and
+            // exports perfectly well. What has nothing to serialize is a load that produced no
+            // session at all: a board with no drive and no demo content, or a read that threw.
             var overlay = new ExportOverlayViewModel(null, _folderPicker, _files, _notifications);
 
             Assert.False(overlay.CanExport);

@@ -25,11 +25,43 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
-        public async Task LoadAsync_InDemoMode_BuildsTheLayoutInMemoryWithoutTouchingTheDrive()
+        public async Task LoadAsync_InDemoMode_ReadsTheProfileThroughTheSessionLikeAnyOtherLoad()
         {
-            var editor = CreateEditor(TestDevices.CreateSnapshot(
+            // Demo mode used to short-circuit here and edit a factory-default model, which is why
+            // it opened an empty board. The ban of 03 §3.5 is on *writing*: a demo device has a
+            // drive — a real one that is merely not writable, or the synthetic fixture drive — and
+            // it is read through the ordinary path, by a file service that refuses the way back.
+            var snapshot = TestDevices.CreateSnapshot(
                 DeviceId.FreestyleEdgeRgb,
-                VDriveConnectionStatus.CannotAccess));
+                VDriveConnectionStatus.CannotAccess);
+
+            var editor = CreateEditor(snapshot);
+
+            await editor.LoadAsync();
+
+            var call = Assert.Single(_profiles.LoadCalls);
+
+            Assert.Same(snapshot.Location, call.Location);
+            Assert.NotNull(editor.Layout);
+            Assert.Equal("Profile 1", editor.ProfileCaption);
+            Assert.False(editor.IsLoading);
+
+            // Everything that would write is still refused.
+            Assert.False(editor.SaveCommand.CanExecute(null));
+            Assert.False(editor.ImportCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public async Task LoadAsync_InDemoModeWithNoDriveAtAll_StillBuildsTheLayoutInMemory()
+        {
+            // The board without demo content, unchanged: the demo gate answered null for it, so
+            // there is no drive to read and the editor edits a factory-default model with no
+            // session behind it. Six of the seven boards open exactly this way.
+            var snapshot = DeviceSnapshot.CreateDemo(DeviceCatalog.GetById(DeviceId.Tko));
+
+            Assert.Null(snapshot.Location);
+
+            var editor = CreateEditor(snapshot);
 
             await editor.LoadAsync();
 
@@ -38,6 +70,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(string.Empty, editor.ProfileCaption);
             Assert.False(editor.IsLoading);
             Assert.False(editor.SaveCommand.CanExecute(null));
+            Assert.False(editor.ExportCommand.CanExecute(null));
         }
 
         [Fact]
@@ -321,16 +354,25 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task SaveCommand_InDemoMode_IsUnavailableAndWritesNothing()
         {
+            // A demo session is a real session now, so "no session" no longer does the refusing —
+            // `!IsDemoMode` in CanSave is the whole of it, and Save must neither run nor reach the
+            // session's own Save (which, on the real one, ends in an eject).
             var editor = CreateEditor(TestDevices.CreateSnapshot(
                 DeviceId.FreestyleEdgeRgb,
                 VDriveConnectionStatus.CannotAccess));
 
             await editor.LoadAsync();
+
+            var session = _profiles.SessionToReturn;
+
+            Assert.NotNull(session);
+
             await editor.SaveCommand.ExecuteAsync(null);
 
             Assert.False(editor.SaveCommand.CanExecute(null));
-            Assert.Null(_profiles.SessionToReturn);
+            Assert.Equal(0, session.SaveCallCount);
             Assert.Empty(_notifications.Toasts);
+            Assert.Empty(_files.WrittenPaths);
         }
 
         [Fact]
@@ -510,6 +552,20 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void MountPath_OverTheDemoVDrive_IsHiddenBecauseItsRootIsNotAPlaceOnThisMachine()
+        {
+            // The mono slot is for values that exist verbatim on the machine, and
+            // `kinesis-edit://demo/FreestyleEdgeRgb` exists nowhere. `HasMountPath` already refused
+            // every demo device, so this is the case that must not become an exception when a demo
+            // device acquires a location.
+            var editor = CreateEditor(DeviceSnapshot.CreateDemo(
+                DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb)));
+
+            Assert.StartsWith(DemoVDrive.RootPrefix, editor.MountPath, StringComparison.Ordinal);
+            Assert.False(editor.HasMountPath);
+        }
+
+        [Fact]
         public void Shell_IsNullUntilTheShellAssignsIt()
         {
             // Which is why every binding through it has to degrade to an empty chip: the headless
@@ -534,18 +590,27 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task IsDirty_InDemoMode_StaysFalseBecauseThereIsNoSession()
+        public async Task IsDirty_InDemoMode_FollowsTheSessionBecauseThereIsOneNow()
         {
+            // It used to be permanently false, and only because demo mode opened no session at all.
+            // Now the session is real, so an edit really does move it — the amber Save reports the
+            // truth about the model even where Save itself can never run (03 §3.5). Nothing about
+            // that makes the profile savable, which is the pair of assertions below.
             var editor = CreateEditor(TestDevices.CreateSnapshot(
                 DeviceId.FreestyleEdgeRgb,
                 VDriveConnectionStatus.CannotAccess));
 
             await editor.LoadAsync();
 
+            Assert.False(editor.IsDirty);
+
+            _profiles.SessionToReturn!.IsDirty = true;
+
             editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
             editor.ResetKeyCommand.Execute(null);
 
-            Assert.False(editor.IsDirty);
+            Assert.True(editor.IsDirty);
+            Assert.False(editor.SaveCommand.CanExecute(null));
         }
 
         [Fact]
@@ -814,18 +879,22 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task ConfirmCloseAsync_InDemoMode_LeavesWithoutAsking()
         {
-            // Demo mode opens no session, so it can never be dirty and there is nothing to write
-            // (03 §3.5). A question whose Save could not run would be a dead end, and one asked
-            // about work that was never going anywhere would be a lie.
+            // The behaviour is unchanged; the reason is not. Demo mode used to be clean by
+            // construction (no session), so it fell out of the `!IsDirty` shortcut for free. Now it
+            // is genuinely dirty after an edit and still must not ask: Save can never run there
+            // (03 §3.5), so the question would offer an answer that does nothing and a Discard for
+            // work that was never going anywhere.
             var editor = CreateEditor(TestDevices.CreateSnapshot(
                 DeviceId.FreestyleEdgeRgb,
                 VDriveConnectionStatus.CannotAccess));
 
             await editor.LoadAsync();
 
+            _profiles.SessionToReturn!.IsDirty = true;
+
             RunMutation(editor, "resetKey");
 
-            Assert.False(editor.IsDirty);
+            Assert.True(editor.IsDirty);
             Assert.True(await editor.ConfirmCloseAsync());
             Assert.DoesNotContain(
                 _notifications.MessageBoxes,

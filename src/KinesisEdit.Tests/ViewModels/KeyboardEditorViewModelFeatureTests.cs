@@ -278,8 +278,12 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task ExportCommand_OpensTheExportPanelAndIsRefusedInDemoMode()
+        public async Task ExportCommand_OpensTheExportPanel_InDemoModeToo()
         {
+            // Export is the one transfer action demo mode keeps, and this reverses a recorded
+            // deviation: §11.5 writes to a folder the user picked, never to the v-Drive, so it
+            // breaks none of 03 §3.5's promise — and a user with no hardware is exactly who wants
+            // a layout file out of the app. Mockup 1f puts it on the Demo Mode bar for that reason.
             var editor = await CreateLoadedEditorAsync();
 
             Assert.True(editor.ExportCommand.CanExecute(null));
@@ -294,22 +298,47 @@ namespace KinesisEdit.Tests.ViewModels
                 DeviceId.FreestyleEdgeRgb,
                 VDriveConnectionStatus.CannotAccess));
 
+            Assert.True(demoEditor.ExportCommand.CanExecute(null));
+
             demoEditor.ExportCommand.Execute(null);
 
-            Assert.False(demoEditor.ExportCommand.CanExecute(null));
-            Assert.Null(demoEditor.ActiveOverlay);
+            var demoOverlay = Assert.IsType<ExportOverlayViewModel>(demoEditor.ActiveOverlay);
+
+            Assert.True(demoOverlay.CanExport);
+        }
+
+        [Fact]
+        public async Task ExportCommand_WithNoDriveAndNoDemoContent_IsStillRefused()
+        {
+            // The other side of the line above. Export needs something to serialize, and a board
+            // the demo gate does not answer for opens no session — so the command is refused there
+            // exactly as it always was, by the clause that was never about demo mode.
+            var editor = await CreateLoadedEditorAsync(
+                DeviceSnapshot.CreateDemo(DeviceCatalog.GetById(DeviceId.FreestyleEdgeRgb), new FakeDemoDeviceProvider()));
+
+            editor.ExportCommand.Execute(null);
+
+            Assert.False(editor.ExportCommand.CanExecute(null));
+            Assert.Null(editor.ActiveOverlay);
         }
 
         [Fact]
         public async Task ImportCommand_InDemoModeOrOnAReadOnlyProfile_IsUnavailable()
         {
+            // Import is a *write* — it replaces the open profile, and the point of it is to save
+            // the result — so unlike Export it stays refused in demo mode even though the session
+            // is now real and the file picker would work. `!IsDemoMode` in CanImport is the whole
+            // of that refusal now that "no session" no longer does it.
             var demoEditor = await CreateLoadedEditorAsync(TestDevices.CreateSnapshot(
                 DeviceId.FreestyleEdgeRgb,
                 VDriveConnectionStatus.CannotAccess));
 
+            Assert.NotNull(_profiles.SessionToReturn);
+
             await demoEditor.ImportCommand.ExecuteAsync(null);
 
             Assert.False(demoEditor.ImportCommand.CanExecute(null));
+            Assert.Empty(_profiles.SessionToReturn.ImportCalls);
             Assert.Equal(0, _filePicker.PickCount);
 
             // specs/02-devices.md: the factory profile disables Import with Save.

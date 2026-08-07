@@ -456,7 +456,7 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheDemoModeBar_CarriesItsVerbatimCopyAndOnlyTheConnectAction()
+        public async Task TheDemoModeBar_CarriesItsVerbatimCopyAndBothOfTheMockupsActions()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -485,21 +485,28 @@ namespace KinesisEdit.Tests.Design
             var actions = bar.GetVisualDescendants().OfType<Button>().ToArray();
             var editor = (KeyboardEditorViewModel)view.DataContext!;
 
-            // ONE action, not the mockup's two. `Export layout to file…` is gone: demo mode opens
-            // no session, so CanExport is false for exactly as long as this bar is on screen, and
-            // "a feature the device lacks is not shown, not disabled" is the design law. Every
-            // other CanExecute-disabled control in this editor can become live; that one could not.
-            var action = Assert.Single(actions);
+            // BOTH of the mockup's actions, in its order. `Export layout to file…` is drawn because
+            // it is genuinely live: demo mode opens a real session over the fixture v-Drive, and an
+            // export writes to a folder the user picked rather than to the drive (§11.5), so 03
+            // §3.5 is untouched by it. It was withheld for exactly as long as demo mode had nothing
+            // to serialize, which is no longer true.
+            Assert.Equal(2, actions.Length);
 
-            Assert.Equal(KeyboardEditorViewModel.DemoModeConnectCaption, action.Content);
-            Assert.Same(editor.Shell!.HomeCommand, action.Command);
+            Assert.Equal(KeyboardEditorViewModel.DemoModeExportCaption, actions[0].Content);
+            Assert.Equal("Export layout to file…", actions[0].Content);
+            Assert.Same(editor.ExportCommand, actions[0].Command);
 
-            Assert.DoesNotContain(
-                bar.GetVisualDescendants().OfType<TextBlock>(),
-                block => block.Text is not null && block.Text.StartsWith("Export", StringComparison.Ordinal));
+            Assert.Equal(KeyboardEditorViewModel.DemoModeConnectCaption, actions[1].Content);
+            Assert.Same(editor.Shell!.HomeCommand, actions[1].Command);
 
-            // And it really is unavailable, which is why it is not drawn.
-            Assert.False(editor.ExportCommand.CanExecute(null));
+            // Drawn *and* enabled — a dead control on this bar is what the earlier deviation
+            // refused, and the reason it is legal now.
+            Assert.True(editor.ExportCommand.CanExecute(null));
+            Assert.True(actions[0].IsEffectivelyEnabled);
+
+            // Save and Import are the two that stay refused, and neither is on this bar.
+            Assert.False(editor.SaveCommand.CanExecute(null));
+            Assert.False(editor.ImportCommand.CanExecute(null));
         }
 
         [AvaloniaFact]

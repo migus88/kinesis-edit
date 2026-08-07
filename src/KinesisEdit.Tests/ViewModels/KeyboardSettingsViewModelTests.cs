@@ -283,7 +283,11 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task LoadAsync_WithoutADrive_ReadsNothingAndSaysSoWithoutClaimingTheRowsAreTheDevices()
         {
-            var panel = Create(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.NotDetected);
+            // The TKO rather than the Freestyle Edge RGB, and the swap is the point: the RGB is the
+            // board demo fixtures exist for, so an undetected one now carries the synthetic demo
+            // drive and lands in the case below. "No drive at all" is what the six boards without
+            // fixtures still report — nothing read, and a note that does not pretend otherwise.
+            var panel = Create(DeviceId.Tko, VDriveConnectionStatus.NotDetected);
 
             await panel.LoadAsync();
 
@@ -292,6 +296,26 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(KeyboardSettingsViewModel.NoDriveHint, panel.StatusMessage);
             Assert.All(panel.Rows, row => Assert.False(row.IsEnabled));
             Assert.False(panel.SaveCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public async Task LoadAsync_OnAnUndetectedBoardWithDemoContent_ReadsItAndSaysDemoModeRatherThanNoDrive()
+        {
+            // The string the user sees changed, and correctly. An undetected Freestyle Edge RGB is
+            // no longer driveless — it opens over the fixture v-Drive — so the panel really does
+            // show settings, and NoDriveHint ("could not be read") would be false. Spec 08 §3 bans
+            // saving there, not reading, which is exactly what DemoModeHint says.
+            _settings.KeyboardSettingsToReturn = new KeyboardSettings { MacroSpeed = 7 };
+
+            var panel = Create(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.NotDetected);
+
+            await panel.LoadAsync();
+
+            Assert.Equal(1, _settings.LoadKeyboardCallCount);
+            Assert.True(panel.HasLoadedSettings);
+            Assert.Equal(KeyboardSettingsViewModel.DemoModeHint, panel.StatusMessage);
+            Assert.False(panel.SaveCommand.CanExecute(null));
+            Assert.Empty(_settings.KeyboardSaves);
         }
 
         [Fact]
@@ -310,7 +334,9 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task SaveCommand_WithoutADrive_IsUnavailable()
         {
-            var panel = Create(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.NotDetected);
+            // The TKO for the same reason as the load case above: it is one of the six boards an
+            // undetected snapshot leaves without any drive at all.
+            var panel = Create(DeviceId.Tko, VDriveConnectionStatus.NotDetected);
 
             await panel.LoadAsync();
 

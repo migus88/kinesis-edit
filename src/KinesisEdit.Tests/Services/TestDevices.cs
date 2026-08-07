@@ -15,6 +15,13 @@ namespace KinesisEdit.Tests.Services
     /// </summary>
     internal static class TestDevices
     {
+        /// <summary>
+        /// The same gate <see cref="DeviceMonitorService"/> uses, so a snapshot built here is the
+        /// snapshot the loop would have produced: an undetected board with fixtures carries the
+        /// demo drive, and one without carries nothing.
+        /// </summary>
+        private static readonly IDemoDeviceProvider _demoDevices = new DemoDeviceProvider();
+
         public static VDriveLocation CreateLocation(DeviceId deviceId, bool isWritable = true)
         {
             var device = DeviceCatalog.GetById(deviceId);
@@ -87,8 +94,14 @@ namespace KinesisEdit.Tests.Services
             VersionFileInfo? versionFile = null)
         {
             var isDemoMode = status != VDriveConnectionStatus.Connected;
+
+            // NotDetected is the hardware-free case, and it is no longer automatically
+            // location-free: the detection loop offers the synthetic demo drive to every undetected
+            // board the fixtures cover. Asking the real provider here keeps this helper honest —
+            // a test that stages "no drive at all" for the Freestyle Edge RGB would otherwise be
+            // testing a state the app can no longer produce for it.
             var location = status == VDriveConnectionStatus.NotDetected
-                ? null
+                ? _demoDevices.TryCreateLocation(DeviceCatalog.GetById(deviceId))
                 : CreateLocation(deviceId, status == VDriveConnectionStatus.Connected);
 
             return new DeviceSnapshot
