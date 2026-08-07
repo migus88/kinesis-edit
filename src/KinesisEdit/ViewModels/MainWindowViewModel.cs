@@ -13,6 +13,11 @@ namespace KinesisEdit.ViewModels
     /// 'v-Drive OK', red 'v-Drive Error', or 'Demo Mode') and the mono "refreshed 0.4s ago"
     /// readout of docs/design/mockups.md §1b.
     /// <para>
+    /// <see cref="CurrentView"/> is one of <b>four</b> things: the dashboard, the open editor, the
+    /// Settings screen or the Help screen. The three nav pills are the three screens; the editor
+    /// has no pill of its own, because it is reached from a card rather than from the bar.
+    /// </para>
+    /// <para>
     /// It is also the app's <see cref="IShellChrome"/>: an editor that draws its own 46 px bar
     /// reaches Home and the status chip through that interface rather than up the visual tree, and
     /// the shell hides its own bar for as long as such an editor is open
@@ -104,14 +109,40 @@ namespace KinesisEdit.ViewModels
             return string.Format(CultureInfo.InvariantCulture, LastRefreshedTemplate, elapsedSeconds);
         }
 
-        /// <summary>The dashboard; also the view shown whenever no editor is open.</summary>
+        /// <summary>The dashboard; the screen the app opens on and the Home pill's destination.</summary>
         public DashboardViewModel Dashboard { get; }
 
-        /// <summary>The view currently filling the window: the dashboard or the open editor.</summary>
+        /// <summary>
+        /// The Settings screen — the <b>host</b> preferences of docs/app/host-preferences.md, not
+        /// any keyboard's settings file. Built once and held for the app's lifetime: it subscribes
+        /// to the preferences store, so one per navigation would leave a listener behind on every
+        /// visit. Disposed with this shell.
+        /// </summary>
+        public SettingsScreenViewModel SettingsScreen { get; }
+
+        /// <summary>The Help screen — the link table and the about card. Holds nothing.</summary>
+        public HelpScreenViewModel HelpScreen { get; }
+
+        /// <summary>
+        /// The view currently filling the window: the dashboard, the open editor, Settings or Help.
+        /// <para>
+        /// Its setter is the <b>one</b> place the three nav-pill flags are raised, the way the
+        /// <see cref="Editor"/> setter is the one place its four are: every navigation path ends
+        /// here, so none of them can move the window and forget to move the bar.
+        /// </para>
+        /// </summary>
         public ViewModelBase CurrentView
         {
             get => _currentView;
-            private set => SetProperty(ref _currentView, value);
+            private set
+            {
+                if (SetProperty(ref _currentView, value))
+                {
+                    OnPropertyChanged(nameof(IsHomeSelected));
+                    OnPropertyChanged(nameof(IsSettingsSelected));
+                    OnPropertyChanged(nameof(IsHelpSelected));
+                }
+            }
         }
 
         /// <summary>
@@ -127,7 +158,6 @@ namespace KinesisEdit.ViewModels
                 if (SetProperty(ref _editor, value))
                 {
                     OnPropertyChanged(nameof(IsEditorOpen));
-                    OnPropertyChanged(nameof(IsHomeSelected));
                     OnPropertyChanged(nameof(WindowTitle));
 
                     // Both directions: an editor with its own chrome opening hides the shell bar,
@@ -150,18 +180,26 @@ namespace KinesisEdit.ViewModels
         public bool IsShellChromeVisible => _editor?.ProvidesOwnChrome != true;
 
         /// <summary>
-        /// Whether the Home nav pill reads as the current location. Settings and Help are never
-        /// selected — they are their own issue and stay unavailable — so the view needs no
-        /// equivalent for them; it styles them as inactive nav rather than broken buttons.
+        /// Whether the Home nav pill reads as the current location — i.e. whether the dashboard is
+        /// the screen on show. Not the complement of <see cref="IsEditorOpen"/> any more: Settings
+        /// and Help are screens of their own, and on either of them Home is somewhere to go rather
+        /// than where you are.
         /// <para>
-        /// This is the exact complement of <see cref="IsEditorOpen"/>, which is why
-        /// <see cref="HomeCommand"/> may <b>not</b> be gated on an editor being open: the nav pill
-        /// takes its selected face from a style qualified <c>.selected:not(:disabled)</c>
-        /// (Themes/ControlThemes/Pills.axaml), so a Home that is disabled exactly when it is
-        /// selected can never wear that face and renders as a third dead pill on the dashboard.
+        /// This is why <see cref="HomeCommand"/> may <b>not</b> be gated on an editor being open,
+        /// and why neither of the other two may be gated on being elsewhere: the nav pill takes its
+        /// selected face from a style qualified <c>.selected:not(:disabled)</c>
+        /// (Themes/ControlThemes/Pills.axaml), so a pill that is disabled exactly when it is
+        /// selected can never wear that face and renders as a dead pill on its own screen. All
+        /// three commands stay runnable everywhere and no-op on their own screen (invariant 11).
         /// </para>
         /// </summary>
-        public bool IsHomeSelected => !IsEditorOpen;
+        public bool IsHomeSelected => ReferenceEquals(_currentView, Dashboard);
+
+        /// <summary>Whether the Settings screen is the one on show (see <see cref="IsHomeSelected"/>).</summary>
+        public bool IsSettingsSelected => ReferenceEquals(_currentView, SettingsScreen);
+
+        /// <summary>Whether the Help screen is the one on show (see <see cref="IsHomeSelected"/>).</summary>
+        public bool IsHelpSelected => ReferenceEquals(_currentView, HelpScreen);
 
         /// <summary>The window title: 'KinesisEdit', '‹Device› — KinesisEdit', or '‹Device› (Demo) — KinesisEdit'.</summary>
         public string WindowTitle => BuildWindowTitle(_editor?.DeviceName, _isDemoMode);
@@ -186,10 +224,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Whether a navigation — or the window's close question — is in flight. Each of the three
-        /// may put a modal question on screen and none of them blocks the top bar, so without this
-        /// a Configure would open a second session underneath the answer to the first one, and a
-        /// second close attempt would stack a second prompt.
+        /// Whether a navigation — or the window's close question — is in flight. Every one of them
+        /// (Home, Settings, Help, Configure, and the close) may put a modal question on screen and
+        /// none of them blocks the top bar, so without this a second navigation would land
+        /// underneath the answer to the first one and a second close attempt would stack a second
+        /// prompt.
         /// </summary>
         public bool IsBusy
         {
@@ -199,6 +238,8 @@ namespace KinesisEdit.ViewModels
                 if (SetProperty(ref _isBusy, value))
                 {
                     HomeCommand.NotifyCanExecuteChanged();
+                    SettingsCommand.NotifyCanExecuteChanged();
+                    HelpCommand.NotifyCanExecuteChanged();
                 }
             }
         }
@@ -223,25 +264,21 @@ namespace KinesisEdit.ViewModels
         /// is its own deliberate action on the dashboard card, so nothing is released behind the
         /// user's back." It is a <em>navigation</em>, so it stays runnable while the dashboard is
         /// already showing and simply does nothing — see <see cref="IsHomeSelected"/> for why the
-        /// alternative, gating it on <see cref="IsEditorOpen"/>, cannot work.
+        /// alternative, gating it on <see cref="IsEditorOpen"/>, cannot work. It goes home from
+        /// Settings and Help too, which is the whole of what those two screens need from it.
         /// </summary>
         public IAsyncRelayCommand HomeCommand { get; }
 
         /// <summary>
-        /// The top bar's Settings button (specs/10-apps-and-ui.md). Permanently disabled until
-        /// the app-settings dialog exists: nothing consumes <see cref="SettingsRequested"/> yet,
-        /// and a button that silently does nothing is worse than a visibly unavailable one.
+        /// The top bar's Settings button (specs/10-apps-and-ui.md): navigates to
+        /// <see cref="SettingsScreen"/>. Asynchronous because leaving an open editor for it goes
+        /// through the same unsaved-changes question Home asks — a dirty editor is not discardable
+        /// by a nav click. Runnable on its own screen, where it does nothing (invariant 11).
         /// </summary>
-        public IRelayCommand SettingsCommand { get; }
+        public IAsyncRelayCommand SettingsCommand { get; }
 
-        /// <summary>The top bar's Help button; disabled on the same terms as <see cref="SettingsCommand"/>.</summary>
-        public IRelayCommand HelpCommand { get; }
-
-        /// <summary>Raised by <see cref="SettingsCommand"/> until the settings dialog exists.</summary>
-        public event Action? SettingsRequested;
-
-        /// <summary>Raised by <see cref="HelpCommand"/> until the help dialog exists.</summary>
-        public event Action? HelpRequested;
+        /// <summary>The top bar's Help button; the same navigation on the same terms.</summary>
+        public IAsyncRelayCommand HelpCommand { get; }
 
         private readonly DeviceMonitorService _monitor;
         private readonly DeviceSessionManager _sessions;
@@ -260,12 +297,21 @@ namespace KinesisEdit.ViewModels
         private bool _isDisposed;
 
         /// <summary>
-        /// Creates the shell over the dashboard, the detection loop, and the session services.
+        /// Creates the shell over the dashboard, the detection loop, the session services and the
+        /// two screens the app bar's other pills navigate to.
         /// <paramref name="clock"/> ages the "refreshed Ns ago" readout and
         /// <paramref name="dispatcher"/> marshals its ticker onto the UI thread — a
         /// <c>DispatcherTimer</c> would put Avalonia inside a view model
         /// (docs/app/app-shell.md, invariant 8). <paramref name="lastRefreshedTickInterval"/>
         /// overrides the 200 ms default; tests park it.
+        /// <para>
+        /// <paramref name="settingsScreen"/> and <paramref name="helpScreen"/> are handed in built
+        /// rather than constructed here, because the first of them needs two Avalonia-touching
+        /// appliers and a view model may not have an <c>Application</c> (invariant 8). Each is
+        /// built <b>once</b>, by the composition root; the settings screen listens to the
+        /// preferences store, so one per navigation would leave a listener behind on every visit —
+        /// which is why this shell disposes it.
+        /// </para>
         /// <para>
         /// No eject notifier: since Home stopped ejecting (docs/design/mockups.md §1l) the shell
         /// has nothing to eject, and the only eject left in the app is the dashboard card's, which
@@ -278,11 +324,15 @@ namespace KinesisEdit.ViewModels
             DeviceSessionManager sessions,
             INotificationService notifications,
             IEditorViewModelFactory editors,
+            SettingsScreenViewModel settingsScreen,
+            HelpScreenViewModel helpScreen,
             ISystemClock clock,
             IUiDispatcher dispatcher,
             TimeSpan? lastRefreshedTickInterval = null)
         {
             Dashboard = dashboard ?? throw new ArgumentNullException(nameof(dashboard));
+            SettingsScreen = settingsScreen ?? throw new ArgumentNullException(nameof(settingsScreen));
+            HelpScreen = helpScreen ?? throw new ArgumentNullException(nameof(helpScreen));
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
@@ -292,8 +342,8 @@ namespace KinesisEdit.ViewModels
             _currentView = dashboard;
 
             HomeCommand = new AsyncRelayCommand(GoHomeAsync, () => !IsBusy);
-            SettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke(), () => false);
-            HelpCommand = new RelayCommand(() => HelpRequested?.Invoke(), () => false);
+            SettingsCommand = new AsyncRelayCommand(GoToSettingsAsync, () => !IsBusy);
+            HelpCommand = new AsyncRelayCommand(GoToHelpAsync, () => !IsBusy);
 
             Dashboard.ConfigureRequested += OpenDevice;
             _monitor.Updated += OnMonitorUpdated;
@@ -429,9 +479,9 @@ namespace KinesisEdit.ViewModels
         /// because the *question* failed is the exact outcome this guard exists to prevent.
         /// </para>
         /// <para>
-        /// It takes part in <see cref="IsBusy"/> for the same reason both navigations do: a
-        /// Configure must not start underneath the close prompt, and a second close attempt while
-        /// the prompt is up must not stack a second prompt behind it.
+        /// It takes part in <see cref="IsBusy"/> for the same reason every navigation does: a
+        /// Configure or a nav pill must not start underneath the close prompt, and a second close
+        /// attempt while the prompt is up must not stack a second prompt behind it.
         /// </para>
         /// <para>
         /// It only answers. Tearing the editor down stays with <see cref="Dispose"/>, which the
@@ -574,12 +624,41 @@ namespace KinesisEdit.ViewModels
         /// as a side effect of a navigation is exactly what that forbids. The dashboard card's
         /// <c>Eject</c> button is the only eject in the app.
         /// </summary>
-        private async Task GoHomeAsync()
+        private Task GoHomeAsync()
         {
-            // Home is already where we are: nothing to confirm and nothing to close. The command
-            // stays runnable there so the pill can wear its selected face, so this is the one place
-            // that has to say the navigation is a no-op.
-            if (!IsEditorOpen || IsBusy)
+            return NavigateAsync(Dashboard);
+        }
+
+        /// <summary>Goes to the Settings screen; identical rules to <see cref="GoHomeAsync"/>.</summary>
+        private Task GoToSettingsAsync()
+        {
+            return NavigateAsync(SettingsScreen);
+        }
+
+        /// <summary>Goes to the Help screen; identical rules to <see cref="GoHomeAsync"/>.</summary>
+        private Task GoToHelpAsync()
+        {
+            return NavigateAsync(HelpScreen);
+        }
+
+        /// <summary>
+        /// The one nav-pill navigation, shared by all three pills: refuse if we are already there or
+        /// something else is asking, then — <b>if an editor is open</b> — put it through the same
+        /// unsaved-changes question Home and Configure ask, end the session and close it, and only
+        /// then swap the view.
+        /// <para>
+        /// The "already there" test is why every pill's command stays runnable on its own screen:
+        /// the selected face is written <c>.selected:not(:disabled)</c>, so the no-op has to live
+        /// here rather than in the predicate (invariant 11). And the confirmation is why a nav click
+        /// cannot discard work — a refusal returns with the editor still open and the view unmoved.
+        /// </para>
+        /// <para>
+        /// <b>Nothing is ejected</b> on any of the three (invariant 1).
+        /// </para>
+        /// </summary>
+        private async Task NavigateAsync(ViewModelBase destination)
+        {
+            if (ReferenceEquals(CurrentView, destination) || IsBusy)
             {
                 return;
             }
@@ -588,17 +667,21 @@ namespace KinesisEdit.ViewModels
 
             try
             {
-                if (!await ConfirmEditorCloseAsync().ConfigureAwait(true))
+                if (IsEditorOpen)
                 {
-                    return;
+                    if (!await ConfirmEditorCloseAsync().ConfigureAwait(true))
+                    {
+                        return;
+                    }
+
+                    _sessions.End();
+
+                    CloseEditor();
+
+                    IsDemoMode = false;
                 }
 
-                _sessions.End();
-
-                CloseEditor();
-
-                CurrentView = Dashboard;
-                IsDemoMode = false;
+                CurrentView = destination;
             }
             finally
             {
@@ -777,8 +860,8 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Unsubscribes from the dashboard and the detection loop, stops the readout ticker, and
-        /// closes any open editor. Safe to call multiple times.
+        /// Unsubscribes from the dashboard and the detection loop, stops the readout ticker,
+        /// disposes the Settings screen, and closes any open editor. Safe to call multiple times.
         /// <para>
         /// It still closes the editor even though <see cref="ConfirmShutdownAsync"/> now runs
         /// first, and deliberately <em>asks nothing</em>: <see cref="IDisposable"/> cannot await,
@@ -801,6 +884,11 @@ namespace KinesisEdit.ViewModels
             _monitor.RefreshActivityChanged -= OnRefreshActivityChanged;
 
             _lastRefreshedTicker.Dispose();
+
+            // The Settings screen holds a subscription to the preferences store, which outlives
+            // the shell. It is built once and lives as long as this shell does, so this is where
+            // that subscription ends. The Help screen holds nothing and needs no equivalent.
+            SettingsScreen.Dispose();
 
             CloseEditor();
         }

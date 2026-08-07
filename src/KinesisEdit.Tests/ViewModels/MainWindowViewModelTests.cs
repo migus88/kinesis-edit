@@ -24,6 +24,7 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeKeystrokeCaptureService _capture = new();
         private readonly FakeSystemClock _clock = new();
+        private readonly FakeHostPreferencesStore _preferences = new();
         private readonly ISettingsService _settings;
         private readonly DeviceSessionManager _sessions;
         private readonly DeviceMonitorService _monitor;
@@ -1286,25 +1287,208 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void SettingsCommand_And_HelpCommand_AreUnavailableUntilTheirDialogsExist()
+        public void SettingsCommand_And_HelpCommand_AreRunnableEverywhereIncludingTheirOwnScreen()
         {
-            // Nothing consumes SettingsRequested/HelpRequested in production yet, so the buttons
-            // report themselves as unavailable rather than swallowing clicks.
-            Assert.False(_shell.SettingsCommand.CanExecute(null));
-            Assert.False(_shell.HelpCommand.CanExecute(null));
+            // They used to be permanently CanExecute → false, with nothing behind them. Both are
+            // real navigations now, and — like Home — neither may be gated on being somewhere
+            // else: NavPill writes its selected setter as `.selected:not(:disabled)`, so a pill
+            // disabled in exactly the state it is selected can never wear the active face
+            // (docs/app/app-shell.md, invariant 11).
+            Assert.True(_shell.SettingsCommand.CanExecute(null));
+            Assert.True(_shell.HelpCommand.CanExecute(null));
         }
 
         [Fact]
-        public void SettingsCommand_And_HelpCommand_KeepTheirPlaceholderRequestsAsHooks()
+        public async Task SettingsCommand_And_HelpCommand_SwapTheScreenIntoTheWindow()
         {
-            var raised = new List<string>();
-            _shell.SettingsRequested += () => raised.Add("settings");
-            _shell.HelpRequested += () => raised.Add("help");
+            // What replaced the two placeholder events: the screens the shell was handed are what
+            // the pills navigate to, and each is the very object hosted in the content area.
+            await _shell.SettingsCommand.ExecuteAsync(null);
 
-            _shell.SettingsCommand.Execute(null);
-            _shell.HelpCommand.Execute(null);
+            Assert.Same(_shell.SettingsScreen, _shell.CurrentView);
 
-            Assert.Equal(new[] { "settings", "help" }, raised);
+            await _shell.HelpCommand.ExecuteAsync(null);
+
+            Assert.Same(_shell.HelpScreen, _shell.CurrentView);
+
+            // And no editor was opened, no session begun and nothing ejected on the way.
+            Assert.Null(_shell.Editor);
+            Assert.Null(_sessions.Active);
+            Assert.Empty(_ejectService.EjectedPaths);
+        }
+
+        [Fact]
+        public async Task EachNavPill_WearsTheSelectedFace_OnlyOnItsOwnScreen()
+        {
+            Assert.True(_shell.IsHomeSelected);
+            Assert.False(_shell.IsSettingsSelected);
+            Assert.False(_shell.IsHelpSelected);
+
+            await _shell.SettingsCommand.ExecuteAsync(null);
+
+            Assert.False(_shell.IsHomeSelected);
+            Assert.True(_shell.IsSettingsSelected);
+            Assert.False(_shell.IsHelpSelected);
+
+            await _shell.HelpCommand.ExecuteAsync(null);
+
+            Assert.False(_shell.IsHomeSelected);
+            Assert.False(_shell.IsSettingsSelected);
+            Assert.True(_shell.IsHelpSelected);
+
+            // The editor is the one view with no pill: none of the three reads as selected there.
+            await _shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            Assert.False(_shell.IsHomeSelected);
+            Assert.False(_shell.IsSettingsSelected);
+            Assert.False(_shell.IsHelpSelected);
+        }
+
+        /// <summary>
+        /// The three flags are raised from the <c>CurrentView</c> setter, which every navigation
+        /// path ends at, rather than from each path — so a path added later cannot move the window
+        /// and leave the bar showing the screen you left.
+        /// </summary>
+        [Fact]
+        public async Task EveryNavigation_RaisesAllThreeSelectionFlags()
+        {
+            var changes = new List<string?>();
+
+            _shell.PropertyChanged += (_, e) => changes.Add(e.PropertyName);
+
+            await _shell.SettingsCommand.ExecuteAsync(null);
+
+            Assert.Contains(nameof(MainWindowViewModel.IsHomeSelected), changes);
+            Assert.Contains(nameof(MainWindowViewModel.IsSettingsSelected), changes);
+            Assert.Contains(nameof(MainWindowViewModel.IsHelpSelected), changes);
+
+            changes.Clear();
+
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Contains(nameof(MainWindowViewModel.IsHomeSelected), changes);
+            Assert.Contains(nameof(MainWindowViewModel.IsSettingsSelected), changes);
+            Assert.Contains(nameof(MainWindowViewModel.IsHelpSelected), changes);
+        }
+
+        [Fact]
+        public async Task SettingsCommand_OnTheSettingsScreen_IsRunnableAndDoesNothing()
+        {
+            await _shell.SettingsCommand.ExecuteAsync(null);
+
+            var screen = _shell.CurrentView;
+
+            Assert.True(_shell.SettingsCommand.CanExecute(null));
+
+            await _shell.SettingsCommand.ExecuteAsync(null);
+
+            Assert.Same(screen, _shell.CurrentView);
+            Assert.False(_shell.IsBusy);
+        }
+
+        [Fact]
+        public async Task HomeCommand_FromSettingsAndFromHelp_ReturnsToTheDashboard()
+        {
+            // GoHomeAsync used to early-return unless an editor was open, which would have left
+            // Home dead on both of these screens.
+            await _shell.SettingsCommand.ExecuteAsync(null);
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.True(_shell.IsHomeSelected);
+
+            await _shell.HelpCommand.ExecuteAsync(null);
+            await _shell.HomeCommand.ExecuteAsync(null);
+
+            Assert.Same(_dashboard, _shell.CurrentView);
+            Assert.True(_shell.IsHomeSelected);
+        }
+
+        [Fact]
+        public async Task NavigatingToSettings_WithAnEditorOpen_AsksItFirstAndClosesIt()
+        {
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseResult = true
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+            await shell.SettingsCommand.ExecuteAsync(null);
+
+            Assert.Equal(1, editor.ConfirmCloseCount);
+            Assert.Same(shell.SettingsScreen, shell.CurrentView);
+            Assert.Null(shell.Editor);
+            Assert.Null(_sessions.Active);
+            Assert.False(shell.IsDemoMode);
+
+            // Still no eject, on this exit as on every other one (invariant 1).
+            Assert.Empty(_ejectService.EjectedPaths);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task ADirtyEditor_RefusingToClose_RefusesTheNavigationAndStaysOpen(bool toSettings)
+        {
+            // A nav pill is not a way to throw work away: Settings and Help go through the same
+            // ConfirmCloseAsync gate Home and Configure do, and a refusal leaves everything alone.
+            var editors = new FakeEditorViewModelFactory();
+
+            using var shell = CreateShell(editors);
+
+            var editor = new FakeDeviceEditorViewModel(TestDevices.CreateSnapshot(DeviceId.Tko))
+            {
+                ConfirmCloseResult = false
+            };
+
+            editors.EditorToReturn = editor;
+
+            await shell.OpenDeviceAsync(TestDevices.CreateSnapshot(DeviceId.Tko));
+
+            var session = _sessions.Active;
+            var command = toSettings ? shell.SettingsCommand : shell.HelpCommand;
+
+            await command.ExecuteAsync(null);
+
+            Assert.Equal(1, editor.ConfirmCloseCount);
+            Assert.Same(editor, shell.CurrentView);
+            Assert.Same(editor, shell.Editor);
+            Assert.Equal(0, editor.DisposeCount);
+            Assert.Same(session, _sessions.Active);
+            Assert.False(shell.IsBusy);
+
+            // And the navigation is not wedged: once the editor agrees, the same click works.
+            editor.ConfirmCloseResult = true;
+
+            await command.ExecuteAsync(null);
+
+            Assert.Same(toSettings ? shell.SettingsScreen : shell.HelpScreen, shell.CurrentView);
+        }
+
+        [Fact]
+        public void Dispose_Always_DisposesTheSettingsScreenItWasGiven()
+        {
+            // The screen subscribes to the host-preferences store, which outlives it. It is built
+            // once, so nothing else is in a position to unsubscribe it.
+            var shell = CreateShell(new FakeEditorViewModelFactory());
+            var screen = shell.SettingsScreen;
+
+            shell.Dispose();
+
+            var before = _preferences.ChangedCount;
+
+            _preferences.Update(current => current with { Theme = AppThemePreference.Dark });
+
+            Assert.Equal(before + 1, _preferences.ChangedCount);
+            Assert.Equal(
+                AppThemePreference.FollowSystem,
+                screen.SelectedThemeOption.Value);
         }
 
         [Fact]
@@ -1453,6 +1637,8 @@ namespace KinesisEdit.Tests.ViewModels
                 _sessions,
                 notifications ?? _notifications,
                 editors,
+                new SettingsScreenViewModel(_preferences, _ => { }, _ => { }),
+                new HelpScreenViewModel(new FakeUrlLauncher()),
                 _clock,
                 new FakeUiDispatcher(),
                 _neverPolls);

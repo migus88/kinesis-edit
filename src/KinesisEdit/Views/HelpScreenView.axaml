@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
+             xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="KinesisEdit.Views.HelpScreenView"
+             x:DataType="vm:HelpScreenViewModel">
+  <!--
+    The shell's Help screen: a table of links out of the app, and a card saying which app this is.
+
+    EVERY LINK IS THE SAME THREE PARTS, and they are the ones the empty state and the read-only
+    settings banner already use: a `Button.link`, the caption, and IconExternalLink drawn as geometry
+    beside it. The mockups write such a caption as "... ↗"; the arrow is never a character in the
+    string - a Latin-1 arrow is a glyph the shipped font may not carry, and the icon system exists
+    precisely so a caption never has to (docs/app/design-system.md).
+
+    The row template is declared once, as a resource, and used by all three lists: the rows differ
+    only in what the view model put in them. It reaches this screen's OpenLinkCommand through
+    `$parent[views:HelpScreenView]`, which is why HelpLink itself carries no command.
+  -->
+  <UserControl.Resources>
+    <DataTemplate x:Key="HelpLinkRow" DataType="vm:HelpLink">
+      <Border Classes="listRow">
+        <StackPanel Spacing="{DynamicResource Space4}">
+          <Button Classes="link"
+                  HorizontalAlignment="Left"
+                  Command="{Binding $parent[views:HelpScreenView].((vm:HelpScreenViewModel)DataContext).OpenLinkCommand}"
+                  CommandParameter="{Binding}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
+              <controls:Icon Data="{DynamicResource IconExternalLink}"
+                             Stroke="{DynamicResource AccentBrush}"
+                             VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <TextBlock Text="{Binding Description}"
+                     Classes="meta muted"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasDescription}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="24" Spacing="{DynamicResource Space24}" MaxWidth="720" HorizontalAlignment="Left">
+
+      <!-- ===== The screen's own header ======================================================= -->
+      <StackPanel Spacing="{DynamicResource Space4}">
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.Title}" Classes="pageTitle" />
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.Subtitle}"
+                   Classes="body muted"
+                   TextWrapping="Wrap" />
+      </StackPanel>
+
+      <!-- ===== Start here =================================================================== -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.GeneralSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <ItemsControl ItemsSource="{Binding GeneralLinks}" ItemTemplate="{StaticResource HelpLinkRow}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+          </ItemsControl>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== The board this app does not edit ============================================= -->
+      <!-- Absent, not empty, when the catalog holds no web-configured board: a feature a device
+           does not have is not rendered at all. -->
+      <StackPanel Spacing="{DynamicResource Space8}" IsVisible="{Binding HasWebToolLinks}">
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.WebToolSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Space8}">
+            <TextBlock Text="{x:Static vm:HelpScreenViewModel.WebToolSectionNote}"
+                       Classes="body muted"
+                       TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding WebToolLinks}" ItemTemplate="{StaticResource HelpLinkRow}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== Troubleshooting, by device =================================================== -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.TroubleshootingSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Space8}">
+            <TextBlock Text="{x:Static vm:HelpScreenViewModel.TroubleshootingSectionNote}"
+                       Classes="body muted"
+                       TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding TroubleshootingLinks}" ItemTemplate="{StaticResource HelpLinkRow}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <!-- ===== About ======================================================================== -->
+      <!-- The product name and the assembly's own informational version. Sans, not mono: the mono
+           law reserves that face for a value that exists verbatim in a config file, and a version
+           the app reads out of itself is the app speaking. -->
+      <StackPanel Spacing="{DynamicResource Space8}">
+        <TextBlock Text="{x:Static vm:HelpScreenViewModel.AboutSectionLabel}" Classes="sectionLabel" />
+
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Space4}">
+            <TextBlock Text="{Binding ProductName}" Classes="cardTitle" />
+            <TextBlock Text="{Binding VersionLine}" Classes="meta muted" />
+            <TextBlock Text="{x:Static vm:HelpScreenViewModel.AboutText}"
+                       Classes="body muted"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

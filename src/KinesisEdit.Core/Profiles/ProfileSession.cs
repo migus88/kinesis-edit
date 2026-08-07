@@ -19,8 +19,13 @@ namespace KinesisEdit.Core.Profiles
     /// </summary>
     public sealed class ProfileSession
     {
-        private static readonly IVDriveFileService _fileService = new VDriveFileService();
-        private static readonly SettingsService _settingsService = new(_fileService);
+        // The defaults are shared by every session that does not name its own — a session is not
+        // worth a file service or an ejector of its own. They are also the only place
+        // VDriveEject.CreateForCurrentPlatform() is reached, so a session handed an ejector never
+        // touches the platform (on macOS, "diskutil unmount") at all.
+        private static readonly IVDriveFileService _defaultFileService = new VDriveFileService();
+        private static readonly SettingsService _defaultSettingsService = new(_defaultFileService);
+        private static readonly IVDriveEjector _defaultEjector = VDriveEject.CreateForCurrentPlatform();
 
         /// <summary>
         /// The profile's key/layer/macro model, freshly built by <see cref="LayoutFileParser"/>
@@ -85,6 +90,9 @@ namespace KinesisEdit.Core.Profiles
         private readonly KeyboardSettings _settings;
         private readonly IReadOnlyList<string> _originalLayoutLines;
         private readonly IReadOnlyList<string>? _originalLightingLines;
+        private readonly IVDriveFileService _fileService;
+        private readonly SettingsService _settingsService;
+        private readonly IVDriveEjector _ejector;
 
         private ProfileSession(
             VDriveLocation location,
@@ -95,7 +103,10 @@ namespace KinesisEdit.Core.Profiles
             object? lighting,
             KeyboardSettings settings,
             IReadOnlyList<string> originalLayoutLines,
-            IReadOnlyList<string>? originalLightingLines)
+            IReadOnlyList<string>? originalLightingLines,
+            IVDriveFileService fileService,
+            SettingsService settingsService,
+            IVDriveEjector ejector)
         {
             _location = location;
             Device = device;
@@ -106,6 +117,9 @@ namespace KinesisEdit.Core.Profiles
             _settings = settings;
             _originalLayoutLines = originalLayoutLines;
             _originalLightingLines = originalLightingLines;
+            _fileService = fileService;
+            _settingsService = settingsService;
+            _ejector = ejector;
         }
 
         /// <summary>
@@ -117,8 +131,23 @@ namespace KinesisEdit.Core.Profiles
         /// <see cref="LayoutFileParser.Parse"/> already building a fresh <see cref="KeyboardLayout"/>
         /// every call. Throws <see cref="ProfileReadOnlyException"/> for the Advantage 360's
         /// profile 0, which has no on-disk file to read (specs/02-devices.md "Profiles 0-9").
+        /// <para>
+        /// <paramref name="fileService"/> and <paramref name="ejector"/> are the module's whole
+        /// substitution seam: omit them and the session reads, writes and ejects exactly as it
+        /// always has (the shared real services); name a <paramref name="fileService"/> and
+        /// <b>every</b> read and write of the session goes through it — layout, led <i>and</i> the
+        /// settings file, whose <see cref="SettingsService"/> is built over the same instance, so a
+        /// session can never straddle two sources; name an <paramref name="ejector"/> and the save
+        /// never reaches the platform. Core stays unaware of why a caller would want that — there
+        /// is no demo-mode concept here.
+        /// </para>
         /// </summary>
-        public static ProfileSession Load(VDriveLocation location, DeviceId device, int profileNumber)
+        public static ProfileSession Load(
+            VDriveLocation location,
+            DeviceId device,
+            int profileNumber,
+            IVDriveFileService? fileService = null,
+            IVDriveEjector? ejector = null)
         {
             ArgumentNullException.ThrowIfNull(location);
 
@@ -140,7 +169,11 @@ namespace KinesisEdit.Core.Profiles
             EnsureNotReadOnlyProfile(scheme, profileNumber);
             EnsureValidProfileNumber(scheme, profileNumber);
 
-            var layoutLines = _fileService.ReadAllLines(GetLayoutFilePath(location, profileNumber));
+            var effectiveFileService = fileService ?? _defaultFileService;
+            var effectiveSettingsService = ResolveSettingsService(fileService);
+            var effectiveEjector = ejector ?? _defaultEjector;
+
+            var layoutLines = effectiveFileService.ReadAllLines(GetLayoutFilePath(location, profileNumber));
             var parseResult = new LayoutFileParser(device).Parse(layoutLines);
             var originalLayoutLines = LayoutFileSerializer.Serialize(parseResult.Layout, parseResult.InvalidLines);
 
@@ -149,12 +182,12 @@ namespace KinesisEdit.Core.Profiles
 
             if (ProfileLightingCodec.HasSupportedLighting(device))
             {
-                var lightingLines = _fileService.ReadAllLines(GetLightingFilePath(location, profileNumber));
+                var lightingLines = effectiveFileService.ReadAllLines(GetLightingFilePath(location, profileNumber));
                 lighting = ProfileLightingCodec.Parse(device, lightingLines);
                 originalLightingLines = ProfileLightingCodec.Serialize(device, lighting);
             }
 
-            var settings = _settingsService.LoadKeyboardSettings(location);
+            var settings = effectiveSettingsService.LoadKeyboardSettings(location);
 
             return new ProfileSession(
                 location,
@@ -165,7 +198,10 @@ namespace KinesisEdit.Core.Profiles
                 lighting,
                 settings,
                 originalLayoutLines,
-                originalLightingLines);
+                originalLightingLines,
+                effectiveFileService,
+                effectiveSettingsService,
+                effectiveEjector);
         }
 
         /// <summary>
@@ -289,7 +325,7 @@ namespace KinesisEdit.Core.Profiles
                 SaveStartupSettings(targetProfileNumber);
             }
 
-            var ejectResult = VDriveEject.CreateForCurrentPlatform().Eject(_location.RootPath);
+            var ejectResult = _ejector.Eject(_location.RootPath);
             var isStartupProfile = setAsStartup || _settings.StartupProfileNumber == targetProfileNumber;
 
             return new ProfileSaveResult
@@ -309,6 +345,17 @@ namespace KinesisEdit.Core.Profiles
                 targetProfileNumber);
 
             _settingsService.SaveKeyboardSettings(_location, VersionFileInfo.Empty, updatedSettings);
+        }
+
+        /// <summary>
+        /// The settings service a session reads and writes settings through. Sharing the *given*
+        /// file service is the point: a session handed a substitute must not read its layout from
+        /// that substitute and its settings from the real disk, so the default service — the only
+        /// one built over the default file service — is used only when nothing was given.
+        /// </summary>
+        private static SettingsService ResolveSettingsService(IVDriveFileService? fileService)
+        {
+            return fileService is null ? _defaultSettingsService : new SettingsService(fileService);
         }
 
         private static void EnsureNotReadOnlyProfile(LayoutFileScheme scheme, int profileNumber)

@@ -98,6 +98,39 @@ namespace KinesisEdit.Tests.Services
             Assert.False(settings.ReduceMotion);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void SystemReduceMotion_IsTheDetectorsAnswer(bool detected)
+        {
+            var settings = new MotionSettings(new FakeReduceMotionDetector(detected));
+
+            Assert.Equal(detected, settings.SystemReduceMotion);
+            Assert.Equal(detected, settings.ReduceMotion);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void SystemReduceMotion_SurvivesAnOverride(bool detected)
+        {
+            // This is what makes MotionPreference.FollowSystem reversible: an override must not
+            // destroy the only copy of the OS answer, because nothing re-reads the OS.
+            var settings = new MotionSettings(new FakeReduceMotionDetector(detected));
+
+            settings.ReduceMotion = !detected;
+
+            Assert.Equal(detected, settings.SystemReduceMotion);
+        }
+
+        [Fact]
+        public void SystemReduceMotion_IsFalse_WhenDetectionFailed()
+        {
+            var settings = new MotionSettings(FakeReduceMotionDetector.Failing(new InvalidOperationException()));
+
+            Assert.False(settings.SystemReduceMotion);
+        }
+
         [Fact]
         public void Constructor_Rejects_NullDetector()
         {
