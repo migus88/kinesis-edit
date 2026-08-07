@@ -277,24 +277,34 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public void TheEditorsMarkup_BindsTheThreeBudgetRowsToAmberAndNamesNoErrorRampAtAll()
+        public void TheMacroPanelsMarkup_BindsTheThreeBudgetRowsToAmberAndNeitherFileNamesAnErrorRamp()
         {
             // The rows only carry the class while a budget is actually over, so no rendered scene
             // of a clean profile can see this. It is the flip itself: `statusError` (red) became
-            // `statusWarning` (amber) on all three, and the editor now names no error role at all —
-            // an advisory is never red, and every state this screen reports is an advisory.
-            var xaml = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Views/KeyboardEditorView.axaml"]);
+            // `statusWarning` (amber) on all three, and neither the panel nor the editor around it
+            // names an error role at all — an advisory is never red, and every state this screen
+            // reports is an advisory.
+            //
+            // The rows live in Views/MacroPanelView.axaml since issue #93 lifted the panel out of
+            // the editor's markup; the editor is still swept for the error ramp, so the claim covers
+            // exactly the same screen it always did.
+            var files = AuthoredXaml.Files();
+            var panel = AuthoredXaml.WithoutComments(files["Views/MacroPanelView.axaml"]);
+            var editor = AuthoredXaml.WithoutComments(files["Views/KeyboardEditorView.axaml"]);
 
             foreach (var flag in new[] { "IsMacroOverBudget", "IsTotalOverBudget", "IsMacroCountOverBudget" })
             {
                 Assert.Contains(
                     $"Classes.statusWarning=\"{{Binding Budget.{flag}}}\"",
-                    xaml,
+                    panel,
                     StringComparison.Ordinal);
             }
 
-            Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
-            Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
+            foreach (var xaml in new[] { panel, editor })
+            {
+                Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
+                Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
+            }
         }
 
         [AvaloniaFact]

@@ -632,6 +632,14 @@ namespace KinesisEdit.Tests.Design
                 return (await CreateEditorAsync().ConfigureAwait(true)).Lighting;
             }
 
+            // The Macros tab's panel. It is the editor's own instance — built by AttachMacroPanel
+            // when the profile loaded — rather than a hand-made one, so the scene shows the slots,
+            // the budgets and the profile's macro list of a real device over a real layout.
+            if (viewType == typeof(MacroPanelView))
+            {
+                return (await CreateEditorAsync().ConfigureAwait(true)).MacroPanel;
+            }
+
             if (viewType == typeof(SavantElitePedalView))
             {
                 return await CreatePedalEditorAsync().ConfigureAwait(true);

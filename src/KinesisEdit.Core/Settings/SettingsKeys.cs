@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace KinesisEdit.Core.Settings
 {
     /// <summary>
@@ -139,6 +141,22 @@ namespace KinesisEdit.Core.Settings
         /// </summary>
         public const string CustomColorPrefix = "cust_color_";
 
+        /// <summary>
+        /// Macro-name key prefix. <b>Not a spec 08 key</b> — this app adds it; see
+        /// <see cref="AppSettings"/> for why an unmodelled key is safe on disk. Unlike every other
+        /// key here the full name is dynamic
+        /// (<c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>,
+        /// <see cref="MacroNameKey"/>), so these lines are found by <b>prefix scan</b>
+        /// (<see cref="SettingsLineReader.FindPrefixedValues"/>) rather than by an exact key.
+        /// <para>
+        /// The spelling is deliberate: no managed key of this file starts with <c>macro_name_</c>,
+        /// and <c>macro_name_</c> is not a prefix of one — <c>macro_speed</c> and
+        /// <c>macro_disable</c> (spec 08 §2) diverge before the underscore. The scan therefore
+        /// claims only lines this app owns.
+        /// </para>
+        /// </summary>
+        public const string MacroNamePrefix = "macro_name_";
+
         /// <summary>Builds the key <c>cust_color_&lt;number&gt;</c> for a color slot 1-12 (spec 08 §3).</summary>
         public static string GetCustomColorKey(int number)
         {
@@ -146,6 +164,18 @@ namespace KinesisEdit.Core.Settings
             ArgumentOutOfRangeException.ThrowIfGreaterThan(number, AppSettings.CustomColorCount);
 
             return CustomColorPrefix + number;
+        }
+
+        /// <summary>
+        /// Builds the key <c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>
+        /// for <paramref name="key"/>. Components are unsigned invariant decimals, which is what
+        /// makes <see cref="MacroNameKey.TryParseSuffix"/> the exact inverse.
+        /// </summary>
+        public static string GetMacroNameKey(MacroNameKey key)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{MacroNamePrefix}{key.ProfileNumber}_{key.LayerIndex}_{key.TriggerKeyCode}_{key.SlotNumber}");
         }
     }
 }

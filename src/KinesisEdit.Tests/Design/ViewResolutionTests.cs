@@ -39,11 +39,10 @@ namespace KinesisEdit.Tests.Design
             [typeof(TokenPickerCategoryViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the filter chips).",
             [typeof(TokenPickerGroupViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the counted result groups).",
             [typeof(TokenPickerRowViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the result rows, inside their group).",
-            [typeof(MacroPanelViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the macro panel).",
-            [typeof(MacroSlotViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the slot pills).",
-            [typeof(MacroStepViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the recorded steps).",
-            [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the co-trigger toggles).",
-            [typeof(MacroListEntryViewModel)] = "DataTemplate in Views/KeyboardEditorView.axaml (the profile's macros).",
+            [typeof(MacroSlotViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the slot pills).",
+            [typeof(MacroStepViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the recorded steps).",
+            [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the co-trigger toggles).",
+            [typeof(MacroListEntryViewModel)] = "DataTemplate in Views/MacroPanelView.axaml (the profile's macros).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
             [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the mode menu).",
             [typeof(LightingDirectionViewModel)] = "DataTemplate in Views/LightingTabView.axaml (the direction toggles).",
@@ -62,8 +61,8 @@ namespace KinesisEdit.Tests.Design
             [typeof(ColorPickerViewModel)] = "Views/LightingTabView.axaml hosts Controls/ColorPickerView explicitly.",
             [typeof(LightingColorSlotViewModel)] = "Bound as EffectColor / BaseColor inside Views/LightingTabView.axaml.",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
-            [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside the macro panel's template.",
-            [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside the macro panel's template."
+            [typeof(MacroBudgetViewModel)] = "Bound as Budget.* inside Views/MacroPanelView.axaml.",
+            [typeof(MacroStepListViewModel)] = "Bound as Steps.Items inside Views/MacroPanelView.axaml."
         };
 
         /// <summary>Every concrete view model the app declares.</summary>
