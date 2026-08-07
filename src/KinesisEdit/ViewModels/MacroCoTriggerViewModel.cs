@@ -1,5 +1,6 @@
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
@@ -71,7 +72,7 @@ namespace KinesisEdit.ViewModels
         {
             Key = key ?? throw new ArgumentNullException(nameof(key));
 
-            Caption = KeyCaption.For(key, dialect, KeyCaption.IsMacOs);
+            Caption = KeyCaption.For(key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
         }
     }
 }

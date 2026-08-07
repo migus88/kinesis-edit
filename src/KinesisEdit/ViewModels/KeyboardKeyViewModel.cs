@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
@@ -74,7 +75,9 @@ namespace KinesisEdit.ViewModels
 
             var token = key.GetToken(dialect);
 
-            return token.Length > 0 ? "[" + token + "]" : KeyCaption.For(key, dialect, KeyCaption.IsMacOs);
+            return token.Length > 0
+                ? "[" + token + "]"
+                : KeyCaption.For(key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
         }
 
         /// <summary>The model object this cap edits.</summary>
@@ -326,7 +329,7 @@ namespace KinesisEdit.ViewModels
                 return legend;
             }
 
-            return KeyCaption.ForKey(Key, _dialect);
+            return KeyCaption.ForKey(Key, _dialect, EmbeddedFontGlyphCoverage.Instance);
         }
     }
 }

@@ -155,7 +155,9 @@ namespace KinesisEdit.ViewModels
         /// the caption names that identity and not the cap's current caption.
         /// </summary>
         public string TriggerCaption =>
-            DisplayedTriggerKey is { } key ? KeyCaption.For(key.TriggerKey, _dialect, KeyCaption.IsMacOs) : string.Empty;
+            DisplayedTriggerKey is { } key
+                ? KeyCaption.For(key.TriggerKey, _dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance)
+                : string.Empty;
 
         /// <summary>Whether the key whose macro is open can carry one at all (05 §5.3, 06 §2.2).</summary>
         public bool CanEditMacro => IsSupported && _target.Key is { CanAssignMacro: true };
@@ -1021,7 +1023,7 @@ namespace KinesisEdit.ViewModels
             {
                 foreach (var coTrigger in macro.CoTriggers)
                 {
-                    parts.Add(KeyCaption.For(coTrigger, _dialect, KeyCaption.IsMacOs));
+                    parts.Add(KeyCaption.For(coTrigger, _dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance));
                 }
             }
 

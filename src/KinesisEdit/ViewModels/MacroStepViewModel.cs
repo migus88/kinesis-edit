@@ -1,5 +1,6 @@
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
@@ -49,7 +50,7 @@ namespace KinesisEdit.ViewModels
 
             Keystroke = keystroke;
             Position = position;
-            KeyText = KeyCaption.For(keystroke.Key, dialect, KeyCaption.IsMacOs);
+            KeyText = KeyCaption.For(keystroke.Key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
             ModifiersText = keystroke.FormatModifiers();
             Caption = BuildCaption(keystroke, ModifiersText, KeyText);
         }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
+using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
 {
@@ -128,7 +129,7 @@ namespace KinesisEdit.ViewModels
         {
             var trigger = key is null
                 ? UnassignedTriggerCaption
-                : KeyCaption.For(key.TriggerKey, dialect, KeyCaption.IsMacOs);
+                : KeyCaption.For(key.TriggerKey, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
 
             if (slot > 0)
             {
