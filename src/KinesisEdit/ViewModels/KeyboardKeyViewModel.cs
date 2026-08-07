@@ -250,18 +250,27 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The colour this key carries <b>on file</b> — one entry of
-        /// <see cref="LayerLightingState.KeyColors"/> — as <c>#RRGGBB</c>, or null when the key is
-        /// unpainted. It is the *paint* layer of the lighting board, drawn under the previewed
-        /// effect at <see cref="PaintOpacity"/>, and it is model state: a mode that ignores it does
-        /// not erase it.
+        /// The colour this key's <b>face</b> is painted with, as <c>#RRGGBB</c>, or null when the
+        /// key is unpainted. It is the *paint* layer of the lighting board, drawn under the
+        /// previewed effect at <see cref="PaintOpacity"/>, and it stands for model state: a mode
+        /// that ignores it does not erase it.
+        /// <para>
+        /// It is the key's colour on file — one entry of <see cref="LayerLightingState.KeyColors"/>
+        /// — <b>softened for the preview</b> by <see cref="LedPreviewTint"/>, so it is a value to
+        /// draw and never a value to store or to show as a number
+        /// ([#124](https://github.com/migus88/kinesis-edit/issues/124)). What is on file is what the
+        /// lighting model holds and what the rail's colour slots show verbatim; nothing reads it
+        /// back off the cap.
+        /// </para>
         /// <para>
         /// Pushed in through <see cref="ApplyPaint"/> rather than re-read by
         /// <see cref="RefreshFromModel"/>, because the colour lives in the lighting model and not
         /// in <see cref="KeyboardKey"/> (docs/app/keyboard-editor.md, "The Lighting tab"). The
-        /// setter is public so a test or a design scene can stand a lit cap up in one initializer;
-        /// the app writes through <see cref="ApplyPaint"/>, which is the path that skips the
-        /// formatting when nothing moved.
+        /// setter is public so a test or a design scene can stand a lit cap up in one initializer,
+        /// and it takes the face colour it is given as-is — softening happens on the
+        /// <see cref="ApplyPaint"/> path alone, because it must happen exactly once. The app writes
+        /// through <see cref="ApplyPaint"/>, which is also the path that skips the formatting when
+        /// nothing moved.
         /// </para>
         /// </summary>
         public string? PaintColorHex
@@ -302,11 +311,15 @@ namespace KinesisEdit.ViewModels
         /// The colour the previewed effect lights this key with in <b>this frame</b>, as
         /// <c>#RRGGBB</c>, or null when the effect does not reach it. It is not file state and
         /// never survives a save; it is re-pushed ~30 times a second by
-        /// <see cref="LightingTabViewModel.AdvancePreview"/>.
+        /// <see cref="LightingTabViewModel.AdvancePreview"/>, and — like
+        /// <see cref="PaintColorHex"/> — it is the sampler's colour after
+        /// <see cref="LedPreviewTint"/>, i.e. what the face is painted with rather than what the
+        /// sampler answered.
         /// <para>
         /// Null rather than black when unlit: black is a colour a key can legitimately be lit
         /// (Pitch Black lights every key black), so "unlit" has to be absence — which is exactly
-        /// <see cref="LightingEffectFrame.Cells"/>'s own contract.
+        /// <see cref="LightingEffectFrame.Cells"/>'s own contract, and the reason softening leaves
+        /// black alone rather than lifting it.
         /// </para>
         /// </summary>
         public string? EffectColorHex
@@ -440,12 +453,24 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Sets the key's painted colour and the opacity the paint layer is drawn at.
-        /// <paramref name="color"/> is null when the key is unpainted.
+        /// <paramref name="color"/> is the colour <b>on file</b>, and is null when the key is
+        /// unpainted.
         /// <para>
         /// It takes a <see cref="LedColor"/> rather than a hex string so that the string is
         /// formatted only when the colour actually moved: this runs for every cap of a layer, and
         /// <see cref="ApplyEffect"/> beside it runs ~30 times a second on ~76 caps, so an
         /// unconditional format-and-notify would be the most expensive thing on the screen.
+        /// </para>
+        /// <para>
+        /// <b>This is the one seam the preview softening is applied at</b>
+        /// (<see cref="LedPreviewTint"/>): a stored colour becomes a face colour here, and here
+        /// only. Deliberately not in <c>KeyColorOverlay.ToHex</c> and not in the view's
+        /// hex-to-brush converter — both are shared with the rail's colour slots and the picker,
+        /// which must keep showing the file's value verbatim — and deliberately upstream of
+        /// <c>LitLabelBrushConverter</c>, which reads <see cref="PaintColorHex"/> to decide the lit
+        /// caption's light/dark flip and would otherwise be reasoning about a colour nothing draws.
+        /// The change check stays on the <i>stored</i> colour, so an unchanged key still costs
+        /// nothing and the softening never runs twice on the same value.
         /// </para>
         /// </summary>
         public void ApplyPaint(LedColor? color, double opacity)
@@ -454,7 +479,7 @@ namespace KinesisEdit.ViewModels
             {
                 _paintColor = color;
 
-                SetPaintColorHex(color is { } value ? KeyColorOverlay.ToHex(value) : null);
+                SetPaintColorHex(color is { } value ? KeyColorOverlay.ToHex(LedPreviewTint.Soften(value)) : null);
             }
 
             PaintOpacity = opacity;
@@ -462,8 +487,10 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Sets what the previewed effect lights this key with this frame — see
-        /// <see cref="EffectColorHex"/>. <paramref name="color"/> is null when the effect does not
-        /// reach the key, and the intensity is then irrelevant rather than meaningful.
+        /// <see cref="EffectColorHex"/>. <paramref name="color"/> is the sampler's answer and is
+        /// null when the effect does not reach the key, in which case the intensity is irrelevant
+        /// rather than meaningful. It is softened for the face on the same terms as
+        /// <see cref="ApplyPaint"/>, which is where the reasoning is written down.
         /// </summary>
         public void ApplyEffect(LedColor? color, double intensity)
         {
@@ -471,7 +498,7 @@ namespace KinesisEdit.ViewModels
             {
                 _effectColor = color;
 
-                SetEffectColorHex(color is { } value ? KeyColorOverlay.ToHex(value) : null);
+                SetEffectColorHex(color is { } value ? KeyColorOverlay.ToHex(LedPreviewTint.Soften(value)) : null);
             }
 
             EffectIntensity = intensity;

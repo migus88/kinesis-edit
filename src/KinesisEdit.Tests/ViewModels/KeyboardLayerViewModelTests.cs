@@ -92,10 +92,12 @@ namespace KinesisEdit.Tests.ViewModels
 
             var layers = BuildRgbLayers(lighting);
 
-            Assert.Equal("#FF0000", layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            // The claim is WHICH cap got the colour, so the expectation is the softened face of the
+            // colour that was stored rather than a literal — see Softened.
+            Assert.Equal(Softened(255, 0, 0), layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
             Assert.True(layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].HasPaintColor);
             Assert.Null(layers[0].Keys[TestLayouts.RgbDigitTwoKeyIndex].PaintColorHex);
-            Assert.Equal("#0000FF", layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].PaintColorHex);
+            Assert.Equal(Softened(0, 0, 255), layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].PaintColorHex);
             Assert.Null(layers[1].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
         }
 
@@ -170,7 +172,7 @@ namespace KinesisEdit.Tests.ViewModels
             lighting.TopLayer.SetKeyColor(TestLayouts.Gen1Key("1").Code, new LedColor(0, 128, 255));
             layer.ApplyLighting(EmptyFrame, KeyColorOverlay.BuildPaint(RgbDevice, lighting, layer.Layer));
 
-            Assert.Equal("#0080FF", key.PaintColorHex);
+            Assert.Equal(Softened(0, 128, 255), key.PaintColorHex);
             Assert.True(key.HasPaintColor);
             Assert.Contains(nameof(KeyboardKeyViewModel.PaintColorHex), changed);
             Assert.Contains(nameof(KeyboardKeyViewModel.HasPaintColor), changed);
@@ -190,7 +192,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             layer.ApplyLighting(frame, null);
 
-            Assert.Equal("#0080FF", lit.EffectColorHex);
+            Assert.Equal(Softened(0, 128, 255), lit.EffectColorHex);
             Assert.True(lit.HasEffectColor);
             Assert.Equal(0.5, lit.EffectIntensity);
 
@@ -305,7 +307,7 @@ namespace KinesisEdit.Tests.ViewModels
                 .SelectMany(section => section.Keys)
                 .Single(key => key.Index == TestLayouts.RgbDigitOneKeyIndex);
 
-            Assert.Equal("#FF0000", fromSection.PaintColorHex);
+            Assert.Equal(Softened(255, 0, 0), fromSection.PaintColorHex);
         }
 
         [Fact]
@@ -417,6 +419,25 @@ namespace KinesisEdit.Tests.ViewModels
                 KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb),
                 VisualCatalog.FreestyleEdgeRgb,
                 lighting);
+        }
+
+        /// <summary>
+        /// The <c>#RRGGBB</c> a cap's <b>face</b> carries when the lighting model holds this colour
+        /// — i.e. the stored value after the preview softening
+        /// (<see cref="LedPreviewTint"/>, issue #124).
+        /// <para>
+        /// Every paint/effect expectation below goes through here rather than restating a literal.
+        /// What these tests are about is the <b>routing</b> — which cap the colour lands on, that a
+        /// section and the flat list are the same instance, that a repaint notifies — and none of
+        /// that should break when the tint's two constants are re-tuned, which they are meant to be:
+        /// they are a look, chosen against rendered frames. The tint's own shape is pinned by
+        /// <see cref="LedPreviewTintTests"/>, and that a stored colour is softened <i>at all</i> by
+        /// <see cref="KeyboardKeyViewModelTests"/>; from here it is a given.
+        /// </para>
+        /// </summary>
+        private static string Softened(byte red, byte green, byte blue)
+        {
+            return KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(red, green, blue)));
         }
     }
 }

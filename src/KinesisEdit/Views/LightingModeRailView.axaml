@@ -16,11 +16,16 @@
     separated by hairlines rather than by gaps. The two rails are the same object in two tabs, and a
     second rail vocabulary would say they were not.
 
-    IT IS 300 WIDE, NOT 268. `WidthInspectorRailWide` is set here, on the Border, because a local
-    value outranks the `inspectorRail` style's own `Width` — the class is paint, not a bridge, so
-    widening it at the call site costs the theme nothing. The extra 32 px is what lets the parameter
-    footer hold a swatch with its hex, nine speed bars and four direction arrows without wrapping,
-    and what lets the colour picker's ring open inside the column instead of over the board.
+    IT SETS NO WIDTH OF ITS OWN, and that is the point of issue #124. It used to carry
+    `Width="{DynamicResource WidthInspectorRailWide}"` on this Border — 300 rather than 268, for the
+    parameter footer's swatch-plus-hex, nine speed bars and four direction arrows, and for the
+    colour picker's ring opening inside the column instead of over the board. That local value is
+    precisely what would outrank the grid column the rail now lives in, and a GridSplitter resizes a
+    COLUMN: the two would disagree the moment the seam beside this rail was dragged. So the width
+    moved rather than being layered over, exactly as the key inspector's did in #119. The column is
+    LightingTabView's, driven from its code-behind (Views/InspectorRailColumn) off the same stored
+    width the Keys tab's rail reads — one rail, one width, both tabs — bounded by
+    `WidthInspectorRailMin`/`Max` and opening at the user's own number, 268 until they drag it.
 
     THREE THINGS SHARE THE BODY ROW, and only ever two of them are on screen:
 
@@ -40,7 +45,7 @@
     caption over a group of controls — and are authored uppercase because Avalonia has no
     text-transform.)
   -->
-  <Border Classes="inspectorRail" Width="{DynamicResource WidthInspectorRailWide}">
+  <Border Classes="inspectorRail">
     <Grid RowDefinitions="Auto,*,Auto">
 
       <!-- ===== The rail's own header =========================================================
@@ -279,6 +284,27 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
+
+          <!-- ===== Apply (issue #124) ===========================================================
+               The commit of the select-then-apply flow. A zone button used to paint on the spot,
+               which left no way to say "these keys" without also committing a colour to them; a
+               zone SELECTS now, and this is what puts the picker's colour on the selection.
+
+               THE PICKER STILL PAINTS LIVE, AND THIS IS NOT REDUNDANT. Dragging the ring goes on
+               writing the current selection as it moves — that is the user's own decision, and it
+               is what makes the board a live preview of the colour being chosen. Apply is for the
+               other order: select a zone, then commit the colour the picker already holds. It is
+               also the re-apply for a selection made AFTER the colour was picked, which nothing
+               else on this screen can do. Do not "simplify" it away.
+
+               It carries no section label, unlike the three blocks above: those name a group of
+               controls, and this is one button that says what it does. `IsEnabled` comes free from
+               PaintSelectionCommand's own CanExecute — the command is live exactly while something
+               is selected — so nothing here decides availability twice. -->
+          <Button Classes="primaryAction"
+                  Content="{x:Static views:LightingModeRailView.ApplyCaption}"
+                  HorizontalAlignment="Stretch"
+                  Command="{Binding PaintSelectionCommand}" />
         </StackPanel>
       </Border>
     </Grid>
