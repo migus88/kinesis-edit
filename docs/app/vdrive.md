@@ -28,6 +28,8 @@ Two-stage design: platform **volume enumerators** produce `VolumeCandidate(RootP
 
 `VDriveMonitor(IVDriveScanner, TimeSpan? pollInterval = 2 s)` tracks every detectable catalog device. `Poll()` runs one scan pass (tests call it directly — no timers in tests); `Start()` runs one synchronous poll (so `Statuses` is populated on return) then arms a `System.Threading.Timer`; `Stop()` disarms it; overlapping polls are dropped, not queued.
 
+**Only `Poll()` has a production caller.** The app scans on demand — `DeviceMonitorService.Refresh()` calls `Poll()` and nothing arms this timer ([app-shell.md](app-shell.md), invariant 5) — so `Start()`/`Stop()`/`pollInterval` are unused machinery kept for a caller that wants a self-driving monitor. Do not read their presence as evidence that the app polls.
+
 - `Statuses` — per-device `VDriveStatus` (`VDriveConnectionStatus`: `NotDetected` / `CannotAccess` (found, not writable) / `Connected`, + `Location`). Matches the legacy dashboard states (spec 03 §3.3, 10 "Detection loop").
 - `StatusChanged` — `Action<VDriveStatusChange>` per device whose status changed; `VDriveStatusChange.IsConnectionLost` flags Connected → gone (the "Keyboard Connection Lost" trigger, spec 03 §3.5; the reopen hint is `DeviceDefinition.VDriveShortcutHint`).
 - **Demo mode is not a monitor state**: it is the app-level condition "no device Connected" (spec 03 §3.5). In demo mode the app disables saves; nothing at this layer simulates a drive.

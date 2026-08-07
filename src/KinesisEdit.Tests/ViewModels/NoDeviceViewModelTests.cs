@@ -10,18 +10,19 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public void Devices_Always_OffersEveryProgrammableCatalogDeviceInTheMockupsOrder()
         {
-            // docs/design/mockups.md §1d lists the seven in this order. DeviceCatalog.All is in
-            // legacy-app-id order, which puts the pedal first and interleaves the families.
+            // The default board heads the list, then docs/design/mockups.md §1d's own order.
+            // DeviceCatalog.All is in legacy-app-id order, which puts the pedal first and
+            // interleaves the families.
             var viewModel = CreateViewModel(out _, out _, out _);
 
             Assert.Equal(
                 new[]
                 {
+                    DeviceId.FreestyleEdgeRgb,
                     DeviceId.Advantage2,
                     DeviceId.Advantage360,
                     DeviceId.FreestyleEdge,
                     DeviceId.FreestylePro,
-                    DeviceId.FreestyleEdgeRgb,
                     DeviceId.Tko,
                     DeviceId.SavantElite2
                 },
@@ -40,15 +41,46 @@ namespace KinesisEdit.Tests.ViewModels
                 viewModel.Devices.Select(option => option.Id).Order());
         }
 
+        /// <summary>
+        /// Issue #118, item 3: the Freestyle Edge RGB is the default. It is the board this app
+        /// edits most fully and the one <c>DemoVDriveFixtures</c> answers for, so the empty state's
+        /// Demo Mode button opens a populated editor rather than an empty one. Exactly one row
+        /// carries the tag, and it is the first one.
+        /// </summary>
         [Fact]
-        public void Devices_Always_TagOnlyTheAdvantage2AsTheDefault()
+        public void Devices_Always_TagOnlyTheFreestyleEdgeRgbAsTheDefault()
         {
             var viewModel = CreateViewModel(out _, out _, out _);
 
             var tagged = Assert.Single(viewModel.Devices, option => option.IsDefault);
 
-            Assert.Equal(DeviceId.Advantage2, tagged.Id);
+            Assert.Equal(DeviceId.FreestyleEdgeRgb, NoDeviceViewModel.DefaultDevice);
+            Assert.Equal(DeviceId.FreestyleEdgeRgb, tagged.Id);
+            Assert.Equal(DeviceId.FreestyleEdgeRgb, viewModel.Devices[0].Id);
             Assert.Equal("default", NoDeviceViewModel.DefaultTagCaption);
+        }
+
+        /// <summary>
+        /// Issue #118, item 4: a board this app cannot edit appears on no screen, and the picker is
+        /// the screen a user reaches while nothing is plugged in. Driven off the catalog rather than
+        /// off a name, so a future unsupported board is covered without anyone remembering to.
+        /// </summary>
+        [Fact]
+        public void Devices_ForEveryUnprogrammableBoard_OfferNoOption()
+        {
+            var unsupported = DeviceCatalog.All.Where(device => !device.IsProgrammable).ToArray();
+            var viewModel = CreateViewModel(out _, out _, out _);
+
+            Assert.NotEmpty(unsupported);
+            Assert.All(
+                unsupported,
+                device =>
+                {
+                    Assert.DoesNotContain(viewModel.Devices, option => option.Id == device.Id);
+                    Assert.DoesNotContain(
+                        viewModel.Devices,
+                        option => option.Caption.Contains(device.DisplayName, StringComparison.Ordinal));
+                });
         }
 
         [Fact]
@@ -66,12 +98,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void SelectedDevice_ByDefault_IsTheAdvantage2()
+        public void SelectedDevice_ByDefault_IsTheFreestyleEdgeRgb()
         {
             var viewModel = CreateViewModel(out _, out _, out _);
 
-            Assert.Equal(DeviceId.Advantage2, viewModel.SelectedDevice.Id);
+            Assert.Equal(DeviceId.FreestyleEdgeRgb, viewModel.SelectedDevice.Id);
             Assert.True(viewModel.SelectedOption.IsDefault);
+            Assert.Same(viewModel.Devices[0], viewModel.SelectedOption);
         }
 
         [Theory]
@@ -88,16 +121,21 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(expected, viewModel.Title);
         }
 
+        /// <summary>
+        /// Issue #118: mockup §1d's sentence promised that the app was watching and would pick a
+        /// drive up on its own. Scanning is manual, so this one says what to do instead.
+        /// </summary>
         [Fact]
-        public void Body_Always_QuotesTheMockup()
+        public void Body_Always_AsksForAScanInsteadOfPromisingOne()
         {
             var viewModel = CreateViewModel(out _, out _, out _);
 
             Assert.Equal(
-                "KinesisEdit is watching for a v-Drive and will pick one up the moment it appears — "
-                + "no need to press anything. Meanwhile, pick your device for connection steps, or "
-                + "work without hardware.",
+                "KinesisEdit checks for a v-Drive when you ask it to. Mount your device's drive, then "
+                + "press Scan now — or pick your device below for connection steps, and work without "
+                + "hardware in the meantime.",
                 viewModel.Body);
+            Assert.Contains(NoDeviceViewModel.ScanButtonCaption, viewModel.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -150,7 +188,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("A drive named ", last.LeadText);
             Assert.Equal(label, last.ValueText);
             Assert.Equal(
-                " appears. This screen will replace itself with your device card automatically.",
+                " appears. Press Scan now and your device card takes over this screen.",
                 last.TrailText);
         }
 
@@ -257,51 +295,6 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void RescanText_BeforeAnyPassCompletes_CountsFromTheConstructionBaseline()
-        {
-            // The baseline makes the sentence true: the loop has been running since the app
-            // started, and this screen only claims the passes that happened while it was open.
-            var viewModel = CreateViewModel(out _, out _, out _, completedRefreshBaseline: 41);
-
-            Assert.Equal(0, viewModel.RescanCount);
-            Assert.Equal("Still watching · rescanned 0 times since you opened this window", viewModel.RescanText);
-        }
-
-        [Fact]
-        public void RescanText_AfterOnePass_IsSingular()
-        {
-            var viewModel = CreateViewModel(out _, out _, out _, completedRefreshBaseline: 41);
-
-            viewModel.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 42);
-
-            Assert.Equal(1, viewModel.RescanCount);
-            Assert.Equal("Still watching · rescanned 1 time since you opened this window", viewModel.RescanText);
-        }
-
-        [Fact]
-        public void RescanText_AfterSeveralPasses_QuotesTheMockupsSentence()
-        {
-            var viewModel = CreateViewModel(out _, out _, out _);
-
-            viewModel.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 8);
-
-            Assert.Equal("Still watching · rescanned 8 times since you opened this window", viewModel.RescanText);
-        }
-
-        [Fact]
-        public void SetRefreshActivity_WhenTheCountMoves_NotifiesTheLine()
-        {
-            var viewModel = CreateViewModel(out _, out _, out _);
-            var changed = new List<string?>();
-            viewModel.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
-
-            viewModel.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 3);
-
-            Assert.Contains(nameof(NoDeviceViewModel.RescanCount), changed);
-            Assert.Contains(nameof(NoDeviceViewModel.RescanText), changed);
-        }
-
-        [Fact]
         public void ScanCaption_WhileAPassIsInFlight_SaysSoAndTheButtonRefuses()
         {
             var viewModel = CreateViewModel(out _, out _, out _);
@@ -309,13 +302,13 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("Scan now", viewModel.ScanCaption);
             Assert.True(viewModel.ScanCommand.CanExecute(null));
 
-            viewModel.SetRefreshActivity(isRefreshing: true, completedRefreshCount: 0);
+            viewModel.SetRefreshActivity(isRefreshing: true);
 
             Assert.True(viewModel.IsRefreshing);
             Assert.Equal("Scanning", viewModel.ScanCaption);
             Assert.False(viewModel.ScanCommand.CanExecute(null));
 
-            viewModel.SetRefreshActivity(isRefreshing: false, completedRefreshCount: 1);
+            viewModel.SetRefreshActivity(isRefreshing: false);
 
             Assert.Equal("Scan now", viewModel.ScanCaption);
             Assert.True(viewModel.ScanCommand.CanExecute(null));
@@ -491,7 +484,6 @@ namespace KinesisEdit.Tests.ViewModels
             out FakeUrlLauncher urlLauncher,
             out List<DeviceSnapshot> demoRequests,
             out ScanCounter scanCounter,
-            int completedRefreshBaseline = 0,
             IDemoDeviceProvider? demoDevices = null)
         {
             urlLauncher = new FakeUrlLauncher();
@@ -504,7 +496,6 @@ namespace KinesisEdit.Tests.ViewModels
                 urlLauncher,
                 requests.Add,
                 counter.IncrementAsync,
-                completedRefreshBaseline,
                 demoDevices: demoDevices);
         }
 

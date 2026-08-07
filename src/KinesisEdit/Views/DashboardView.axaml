@@ -8,10 +8,9 @@
              x:DataType="vm:DashboardViewModel">
   <Panel>
     <!--
-      A card exists once its device has been detected at least once this session and stays, resting,
-      if the drive later goes away; a refresh updates each card in place and never rebuilds the
-      list, so scroll offset and the control under the pointer survive it (docs/design/mockups.md
-      §2b, "the 2s refresh must not move anything").
+      A card exists for every device the last scan found, and only for those; a scan updates each
+      card in place and never rebuilds the list, so scroll offset and the control under the pointer
+      survive it, and a newly found device inserts at the end.
     -->
     <Grid RowDefinitions="Auto,*" IsVisible="{Binding HasDevices}" Margin="24">
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
@@ -28,7 +27,7 @@
       </Grid>
 
       <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-        <ItemsControl x:Name="Cards" ItemsSource="{Binding Devices}">
+        <ItemsControl ItemsSource="{Binding Devices}">
           <!--
             Two columns at `CardGridGap`, with no trailing gutter.
 
@@ -67,7 +66,9 @@
       </ScrollViewer>
     </Grid>
 
-    <!-- specs/11-feature-dialogs.md §11.8 troubleshoot panel while nothing has been detected. -->
+    <!-- specs/11-feature-dialogs.md §11.8 troubleshoot panel while nothing is detected. It comes
+         back when the last device goes: the roster is what the last scan found, so an unplugged
+         board leaves the grid empty rather than leaving a card behind. -->
     <ContentControl Content="{Binding EmptyState}" IsVisible="{Binding IsEmpty}" Margin="24" />
   </Panel>
 </UserControl>

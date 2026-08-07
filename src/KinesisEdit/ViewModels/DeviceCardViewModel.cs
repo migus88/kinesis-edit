@@ -6,26 +6,30 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One drive-backed device card of the dashboard (specs/10-apps-and-ui.md, "SmartSetMaster …
-    /// dashboard apps"; docs/design/mockups.md §1b, §2e): device name, the catalog-composed meta
-    /// line, a status line, the mono mount path, a per-state explanation, and the Configure /
-    /// secondary / Eject actions. Everything the view needs is a string, a bool or an enum —
-    /// colours and classes are resolved in XAML.
+    /// One card of the device dashboard (specs/10-apps-and-ui.md, "SmartSetMaster … dashboard
+    /// apps"; docs/design/mockups.md §1b, §2e): device name, the catalog-composed meta line, a
+    /// status line, the mono mount path, a per-state explanation, and the Configure / secondary /
+    /// Eject actions. Everything the view needs is a string, a bool or an enum — colours and
+    /// classes are resolved in XAML.
+    /// <para>
+    /// <b>A card exists only while its drive does.</b> The dashboard's roster is what the last scan
+    /// found, so a card is always backed by a mounted drive — either
+    /// <see cref="VDriveConnectionStatus.Connected"/> or
+    /// <see cref="VDriveConnectionStatus.CannotAccess"/>. There is one card kind, and it is this
+    /// one; a board this app cannot edit gets no card at all.
+    /// </para>
     /// <para>
     /// The card renders a <see cref="DeviceCardState"/>, not a
     /// <see cref="VDriveConnectionStatus"/>: the drive fact plus whether a detection pass is in
-    /// flight. Which <em>actions</em> exist follows the drive alone, deliberately — a 2 s refresh
-    /// puts every card through <see cref="DeviceCardState.Scanning"/>, and buttons that appeared,
+    /// flight. Which <em>actions</em> exist follows the drive alone, deliberately — a scan puts
+    /// every card through <see cref="DeviceCardState.Scanning"/>, and buttons that appeared,
     /// vanished or changed caption for the duration would shift the layout under the cursor.
     /// </para>
     /// </summary>
-    public sealed class DeviceCardViewModel : DashboardCardViewModel
+    public sealed class DeviceCardViewModel : ViewModelBase
     {
         /// <summary>Status caption for a connected, writable drive.</summary>
         public const string ConnectedStatusText = "Connected";
-
-        /// <summary>Status caption when no drive was found — the resting state, not an error.</summary>
-        public const string NotDetectedStatusText = "Not Detected";
 
         /// <summary>Status caption when the drive was found but is not writable.</summary>
         public const string CannotAccessStatusText = "Cannot Access";
@@ -33,16 +37,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Status caption while a detection pass is in flight (docs/design/mockups.md §1b, §2e).</summary>
         public const string ScanningStatusText = "Scanning for v-Drive…";
 
-        /// <summary>Main-button caption when the device can be opened against a mounted drive.</summary>
+        /// <summary>Main-button caption; every card has a mounted drive to open.</summary>
         public const string ConfigureActionCaption = "Configure";
 
-        /// <summary>Main-button caption when the device would open without a drive at all.</summary>
-        public const string DemoModeActionCaption = "Demo Mode";
-
-        /// <summary>Caption of the rescan button (specs/11-feature-dialogs.md §11.8).</summary>
-        public const string ScanActionCaption = "Scan for v-Drive";
-
-        /// <summary>Caption the rescan button takes over a drive that is mounted but unwritable (mockup §1b).</summary>
+        /// <summary>Caption the secondary button takes over a drive that is mounted but unwritable (mockup §1b).</summary>
         public const string RetryAccessActionCaption = "Retry access";
 
         /// <summary>Caption the secondary button holds while the pass it would start is already running (mockup §1b).</summary>
@@ -50,9 +48,6 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Caption of the eject button (specs/10-apps-and-ui.md).</summary>
         public const string EjectActionCaption = "Eject";
-
-        /// <summary>Explanation under a resting card (docs/design/mockups.md §2e, verbatim).</summary>
-        public const string RestingExplanationText = "Known device, no drive mounted. Idle and quiet — no red, no spinner. This is the resting state, not an error.";
 
         /// <summary>
         /// Explanation under an unwritable card (docs/design/mockups.md §1b, verbatim except that
@@ -72,12 +67,9 @@ namespace KinesisEdit.ViewModels
                 return DeviceCardState.Scanning;
             }
 
-            return status switch
-            {
-                VDriveConnectionStatus.Connected => DeviceCardState.Connected,
-                VDriveConnectionStatus.CannotAccess => DeviceCardState.CannotAccess,
-                _ => DeviceCardState.Resting
-            };
+            return status == VDriveConnectionStatus.CannotAccess
+                ? DeviceCardState.CannotAccess
+                : DeviceCardState.Connected;
         }
 
         /// <summary>Maps a card state to its status caption.</summary>
@@ -85,20 +77,19 @@ namespace KinesisEdit.ViewModels
         {
             return state switch
             {
-                DeviceCardState.Connected => ConnectedStatusText,
                 DeviceCardState.CannotAccess => CannotAccessStatusText,
                 DeviceCardState.Scanning => ScanningStatusText,
-                _ => NotDetectedStatusText
+                _ => ConnectedStatusText
             };
         }
 
         /// <summary>
-        /// Maps a card state to its colour severity. <see cref="DeviceCardState.Resting"/> is
+        /// Maps a card state to its colour severity. <see cref="DeviceCardState.Scanning"/> is
         /// <see cref="StatusSeverity.Unknown"/> and emphatically not
-        /// <see cref="StatusSeverity.Error"/>: a known device whose drive is simply not mounted is
-        /// not broken, and the status chip has no <c>.unknown</c> face on purpose — the absence of
-        /// a chip colour <em>is</em> the resting treatment (docs/design/mockups.md §2e). Scanning
-        /// is transient and gets no colour either; its indeterminate bar is what reads as motion.
+        /// <see cref="StatusSeverity.Error"/>: a scan in flight is transient, gets no colour, and
+        /// its indeterminate bar is what reads as motion. The status chip has no <c>.unknown</c>
+        /// face on purpose — the absence of a chip colour <em>is</em> that treatment
+        /// (docs/design/mockups.md §2e).
         /// </summary>
         public static StatusSeverity GetStatusSeverity(DeviceCardState state)
         {
@@ -119,14 +110,33 @@ namespace KinesisEdit.ViewModels
         /// <summary>Resolved device id; what this card shows, which can change between refreshes.</summary>
         public DeviceId DeviceId => _snapshot.DeviceId;
 
-        /// <summary>Card identity: the scanned slot, never the resolved id (invariant 4).</summary>
-        public override string Key => _snapshot.ScannedDeviceId.ToString();
+        /// <summary>
+        /// Stable identity of this card within one session: the scanned slot, never the resolved id
+        /// — Freestyle resolution makes that many-to-one (docs/app/app-shell.md, invariant 4).
+        /// </summary>
+        public string Key => _snapshot.ScannedDeviceId.ToString();
 
         /// <summary>Device name shown on the card.</summary>
-        public override string DisplayName => _snapshot.DisplayName;
+        public string DisplayName => _snapshot.DisplayName;
 
-        /// <summary>Hardware summary composed from the catalog — no per-device code lives here.</summary>
-        public override string MetaLine => DeviceMetaLine.Describe(_snapshot.Device);
+        /// <summary>
+        /// The hardware summary under the title — "Split flat · 2 layers · per-key RGB". Always
+        /// composed by <see cref="DeviceMetaLine"/> from catalog data, so no card and no view ever
+        /// carries per-device code.
+        /// </summary>
+        public string MetaLine => DeviceMetaLine.Describe(_snapshot.Device);
+
+        /// <summary>
+        /// Whether this card has already been on screen once. The design animates a card in when
+        /// its device is <em>newly detected</em>; a card view is also rebuilt from scratch every
+        /// time the shell swaps the dashboard back in, and an existing card being re-hosted is not
+        /// an insertion — without this the whole grid would grow in from zero on every trip Home.
+        /// <para>
+        /// A bool rather than anything from the toolkit: the card knows whether it has been shown,
+        /// the view decides what to do about it (docs/app/app-shell.md, invariant 8).
+        /// </para>
+        /// </summary>
+        public bool HasBeenPresented { get; private set; }
 
         /// <summary>Whether a detection pass is in flight; pushed in by the dashboard.</summary>
         public bool IsScanning
@@ -146,6 +156,7 @@ namespace KinesisEdit.ViewModels
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(StatusSeverity));
                 OnPropertyChanged(nameof(SecondaryActionCaption));
+                OnPropertyChanged(nameof(ShowsSecondaryAction));
                 OnPropertyChanged(nameof(CanRunSecondaryAction));
 
                 SecondaryActionCommand.NotifyCanExecuteChanged();
@@ -189,34 +200,33 @@ namespace KinesisEdit.ViewModels
         public bool HasExplanation => ExplanationText.Length > 0;
 
         /// <summary>
-        /// Caption of the main button. Chosen from the drive rather than the card state: an
-        /// unwritable drive still opens its editor (in demo mode), so it reads <c>Configure</c>
-        /// like a connected one, and only a device with no drive at all offers
-        /// <c>Demo Mode</c>. A scan in flight never changes it, so the caption cannot flicker
-        /// twice a second under the pointer.
+        /// Caption of the main button, which is always <c>Configure</c>: a card exists only for a
+        /// mounted drive, and an unwritable one still opens its editor (in demo mode). Demo mode
+        /// without hardware is reached from the empty state's own button, never from a card.
         /// </summary>
-        public string PrimaryActionCaption => IsDetected ? ConfigureActionCaption : DemoModeActionCaption;
+        public string PrimaryActionCaption => ConfigureActionCaption;
 
         /// <summary>
-        /// Caption of the secondary button: <c>Retry access</c> over a mounted-but-unwritable
-        /// drive, <c>Scanning</c> while the pass it would start is already running, and
-        /// <c>Scan for v-Drive</c> otherwise. The button always exists — it holds its position
-        /// through a scan instead of disappearing (docs/design/mockups.md §2e).
+        /// Caption of the secondary button: <c>Scanning</c> while the pass it would start is
+        /// already running, and <c>Retry access</c> otherwise. It is only rendered over a
+        /// mounted-but-unwritable drive (see <see cref="ShowsSecondaryAction"/>), so those are the
+        /// only two captions it can hold.
         /// </summary>
-        public string SecondaryActionCaption
-        {
-            get
-            {
-                if (_isScanning)
-                {
-                    return ScanningActionCaption;
-                }
+        public string SecondaryActionCaption => _isScanning ? ScanningActionCaption : RetryAccessActionCaption;
 
-                return _snapshot.Status == VDriveConnectionStatus.CannotAccess
-                    ? RetryAccessActionCaption
-                    : ScanActionCaption;
-            }
-        }
+        /// <summary>
+        /// Whether the secondary button is rendered at all: only over a drive that is mounted but
+        /// unwritable, where re-reading it is the one thing that can help. A connected card carries
+        /// <c>Configure</c> and <c>Eject</c> and nothing else — re-scanning a drive the app is
+        /// already talking to changes nothing.
+        /// <para>
+        /// <b>Gated on the drive, never on <see cref="State"/></b>, exactly as
+        /// <see cref="ShowsEject"/> is: <see cref="GetState"/> reports
+        /// <see cref="DeviceCardState.Scanning"/> for every card while a pass is in flight, so a
+        /// state-based test would flash the button onto a connected card mid-scan.
+        /// </para>
+        /// </summary>
+        public bool ShowsSecondaryAction => _snapshot.Status == VDriveConnectionStatus.CannotAccess;
 
         /// <summary>Whether the secondary button can start a pass — false while one is already running.</summary>
         public bool CanRunSecondaryAction => !_isScanning;
@@ -266,6 +276,12 @@ namespace KinesisEdit.ViewModels
             EjectCommand = new AsyncRelayCommand(EjectAsync, () => CanEject);
         }
 
+        /// <summary>Records that a view for this card has joined the visual tree.</summary>
+        public void MarkPresented()
+        {
+            HasBeenPresented = true;
+        }
+
         /// <summary>Re-points the card at a newer snapshot of the same device, notifying every derived value.</summary>
         public void Update(DeviceSnapshot snapshot)
         {
@@ -296,6 +312,7 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(HasExplanation));
             OnPropertyChanged(nameof(PrimaryActionCaption));
             OnPropertyChanged(nameof(SecondaryActionCaption));
+            OnPropertyChanged(nameof(ShowsSecondaryAction));
             OnPropertyChanged(nameof(ShowsEject));
             OnPropertyChanged(nameof(CanEject));
 
@@ -304,12 +321,9 @@ namespace KinesisEdit.ViewModels
 
         private static string GetExplanationText(DeviceCardState state, string driveName)
         {
-            return state switch
-            {
-                DeviceCardState.Resting => RestingExplanationText,
-                DeviceCardState.CannotAccess => string.Format(CannotAccessExplanationTemplate, driveName),
-                _ => string.Empty
-            };
+            return state == DeviceCardState.CannotAccess
+                ? string.Format(CannotAccessExplanationTemplate, driveName)
+                : string.Empty;
         }
 
         private static string GetDriveName(DeviceSnapshot snapshot)

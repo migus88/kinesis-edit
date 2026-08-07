@@ -8,16 +8,18 @@ namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
     /// The device card of specs/10-apps-and-ui.md as the redesign draws it
-    /// (docs/design/mockups.md §1b, §2e): the four card states, the catalog-composed meta line,
+    /// (docs/design/mockups.md §1b, §2e): the three card states, the catalog-composed meta line,
     /// the mono mount path, the per-state explanation and the per-state actions.
+    /// <para>
+    /// A card exists only while its drive does — the dashboard's roster is what the last scan
+    /// found — so every state here is built over a <b>mounted</b> drive: Connected or
+    /// CannotAccess, with Scanning laid over either.
+    /// </para>
     /// </summary>
     public class DeviceCardViewModelTests
     {
-        private const string ScanCaption = "Scan for v-Drive";
-
         [Theory]
         [InlineData(VDriveConnectionStatus.Connected, DeviceCardState.Connected, "Connected", StatusSeverity.Ok)]
-        [InlineData(VDriveConnectionStatus.NotDetected, DeviceCardState.Resting, "Not Detected", StatusSeverity.Unknown)]
         [InlineData(VDriveConnectionStatus.CannotAccess, DeviceCardState.CannotAccess, "Cannot Access", StatusSeverity.Error)]
         public void State_PerConnectionState_UsesTheSpecWordingAndItsOwnSeverity(
             VDriveConnectionStatus status,
@@ -30,24 +32,6 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(expectedState, card.State);
             Assert.Equal(expectedText, card.StatusText);
             Assert.Equal(expectedSeverity, card.StatusSeverity);
-        }
-
-        /// <summary>
-        /// The defect this card refresh names: a known device whose drive is simply not mounted
-        /// used to paint red. It is the resting state, not an error, and the status chip has no
-        /// <c>.unknown</c> face — the absence of a colour is the treatment.
-        /// </summary>
-        [Fact]
-        public void StatusSeverity_WhenResting_IsUnknownAndNeverError()
-        {
-            var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Advantage2, VDriveConnectionStatus.NotDetected),
-                out _,
-                out _);
-
-            Assert.Equal(StatusSeverity.Unknown, card.StatusSeverity);
-            Assert.NotEqual(StatusSeverity.Error, card.StatusSeverity);
-            Assert.NotEqual(StatusSeverity.Warning, card.StatusSeverity);
         }
 
         [Fact]
@@ -64,6 +48,23 @@ namespace KinesisEdit.Tests.ViewModels
             card.IsScanning = false;
 
             Assert.Equal(DeviceCardState.Connected, card.State);
+        }
+
+        /// <summary>
+        /// A scan in flight is transient, gets no colour, and its indeterminate bar is what reads as
+        /// motion — emphatically not red. The status chip has no <c>.unknown</c> face on purpose:
+        /// the absence of a chip colour <em>is</em> that treatment.
+        /// </summary>
+        [Fact]
+        public void StatusSeverity_WhileScanning_IsUnknownAndNeverError()
+        {
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Advantage2), out _, out _);
+
+            card.IsScanning = true;
+
+            Assert.Equal(StatusSeverity.Unknown, card.StatusSeverity);
+            Assert.NotEqual(StatusSeverity.Error, card.StatusSeverity);
+            Assert.NotEqual(StatusSeverity.Warning, card.StatusSeverity);
         }
 
         /// <summary>The meta line is composed in Core; the card only surfaces it.</summary>
@@ -89,32 +90,6 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.True(card.HasMountPath);
             Assert.Equal(snapshot.Location!.RootPath, card.MountPath);
-        }
-
-        [Fact]
-        public void MountPath_WhenResting_HasNothingToShow()
-        {
-            var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.NotDetected),
-                out _,
-                out _);
-
-            Assert.False(card.HasMountPath);
-            Assert.Null(card.MountPath);
-        }
-
-        [Fact]
-        public void ExplanationText_WhenResting_SaysItIsRestingRatherThanBroken()
-        {
-            var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Advantage2, VDriveConnectionStatus.NotDetected),
-                out _,
-                out _);
-
-            Assert.True(card.HasExplanation);
-            Assert.Equal(
-                "Known device, no drive mounted. Idle and quiet — no red, no spinner. This is the resting state, not an error.",
-                card.ExplanationText);
         }
 
         /// <summary>
@@ -156,7 +131,7 @@ namespace KinesisEdit.Tests.ViewModels
         public void ExplanationText_WhileScanning_IsEmpty()
         {
             var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.NotDetected),
+                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess),
                 out _,
                 out _);
 
@@ -166,37 +141,27 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(string.Empty, card.ExplanationText);
         }
 
+        /// <summary>
+        /// Issue #118, item 6: a connected card offers <c>Configure</c> and <c>Eject</c> and
+        /// nothing else. Re-scanning a drive the app is already talking to changes nothing, so the
+        /// secondary button is not drawn at all rather than drawn and disabled.
+        /// </summary>
         [Fact]
-        public void Actions_WhenConnected_AreConfigureScanAndEject()
+        public void Actions_WhenConnected_AreExactlyConfigureAndEject()
         {
             var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out _, out _);
 
             Assert.Equal("Configure", card.PrimaryActionCaption);
-            Assert.Equal(ScanCaption, card.SecondaryActionCaption);
-            Assert.True(card.CanRunSecondaryAction);
+            Assert.False(card.ShowsSecondaryAction);
             Assert.True(card.ShowsEject);
             Assert.True(card.CanEject);
             Assert.False(card.IsDemoMode);
         }
 
-        [Fact]
-        public void Actions_WhenResting_AreDemoModeAndScanWithNothingToEject()
-        {
-            var card = CreateCard(
-                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.NotDetected),
-                out _,
-                out _);
-
-            Assert.Equal("Demo Mode", card.PrimaryActionCaption);
-            Assert.Equal(ScanCaption, card.SecondaryActionCaption);
-            Assert.False(card.ShowsEject);
-            Assert.False(card.CanEject);
-            Assert.True(card.IsDemoMode);
-        }
-
         /// <summary>
         /// An unwritable drive is still a drive: the card offers Configure — the editor enters demo
-        /// mode by itself (03 §3.5) — and its secondary button becomes 'Retry access'.
+        /// mode by itself (03 §3.5) — and its secondary button becomes 'Retry access', the one
+        /// thing that can help it.
         /// </summary>
         [Fact]
         public void Actions_WhenTheDriveIsUnwritable_AreConfigureRetryAccessAndEject()
@@ -207,21 +172,52 @@ namespace KinesisEdit.Tests.ViewModels
                 out _);
 
             Assert.Equal("Configure", card.PrimaryActionCaption);
+            Assert.True(card.ShowsSecondaryAction);
             Assert.Equal("Retry access", card.SecondaryActionCaption);
             Assert.True(card.ShowsEject);
             Assert.True(card.IsDemoMode);
         }
 
         /// <summary>
+        /// Issue #118: <see cref="DeviceCardViewModel.ShowsSecondaryAction"/> is gated on the
+        /// <b>drive</b>, never on <see cref="DeviceCardViewModel.State"/>. Every mounted drive is
+        /// walked, scanning and not, because <c>GetState</c> reports <c>Scanning</c> for all of them
+        /// while a pass is in flight — a state-based test would flash the button onto a connected
+        /// card mid-scan and shift its layout under the cursor.
+        /// </summary>
+        [Theory]
+        [InlineData(VDriveConnectionStatus.Connected, false, false)]
+        [InlineData(VDriveConnectionStatus.Connected, true, false)]
+        [InlineData(VDriveConnectionStatus.CannotAccess, false, true)]
+        [InlineData(VDriveConnectionStatus.CannotAccess, true, true)]
+        public void ShowsSecondaryAction_FollowsTheDriveAndNotTheCardState(
+            VDriveConnectionStatus status,
+            bool isScanning,
+            bool expected)
+        {
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko, status), out _, out _);
+
+            card.IsScanning = isScanning;
+
+            Assert.Equal(expected, card.ShowsSecondaryAction);
+
+            // ...and the card really is in the Scanning face, so the case above is not vacuous.
+            Assert.Equal(isScanning, card.State == DeviceCardState.Scanning);
+        }
+
+        /// <summary>
         /// Nothing cancels a running pass — <c>DeviceMonitorService.Refresh()</c> has no
         /// cancellation token — so the Scanning card renders no Cancel button. The secondary button
         /// holds its position and reads 'Scanning' instead, and every other action keeps the place
-        /// the drive gave it, so a 2 s refresh cannot shift the layout under the cursor.
+        /// the drive gave it.
         /// </summary>
         [Fact]
         public void Actions_WhileScanning_OfferNoCancelAndHoldTheirPositions()
         {
-            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out _, out _);
+            var card = CreateCard(
+                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess),
+                out _,
+                out _);
 
             card.IsScanning = true;
 
@@ -232,7 +228,28 @@ namespace KinesisEdit.Tests.ViewModels
 
             // Unchanged by the scan: the buttons are chosen from the drive, not from the overlay.
             Assert.Equal("Configure", card.PrimaryActionCaption);
+            Assert.True(card.ShowsSecondaryAction);
             Assert.True(card.ShowsEject);
+        }
+
+        /// <summary>
+        /// The secondary button has exactly two captions, because it is only ever rendered over a
+        /// mounted-but-unwritable drive. 'Scan for v-Drive' — the caption a resting card used to
+        /// carry — no longer exists anywhere on a card.
+        /// </summary>
+        [Fact]
+        public void SecondaryActionCaption_HasOnlyTheTwoCaptionsAnUnwritableDriveCanShow()
+        {
+            var card = CreateCard(
+                TestDevices.CreateSnapshot(DeviceId.Tko, VDriveConnectionStatus.CannotAccess),
+                out _,
+                out _);
+
+            Assert.Equal(DeviceCardViewModel.RetryAccessActionCaption, card.SecondaryActionCaption);
+
+            card.IsScanning = true;
+
+            Assert.Equal(DeviceCardViewModel.ScanningActionCaption, card.SecondaryActionCaption);
         }
 
         [Fact]
@@ -310,33 +327,45 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// The secondary button rescans in every device and drive state, including the connected
-        /// Freestyle Edge RGB that used to swap to 'Check for Updates'.
+        /// The secondary button re-runs detection for every board whose drive is unwritable,
+        /// including the Freestyle Edge RGB that used to swap to 'Check for Updates'.
         /// </summary>
         [Theory]
-        [InlineData(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess)]
-        [InlineData(DeviceId.Tko, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.Advantage360, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.FreestyleEdge, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.FreestylePro, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.Advantage2, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.SavantElite2, VDriveConnectionStatus.Connected)]
-        [InlineData(DeviceId.Tko, VDriveConnectionStatus.CannotAccess)]
-        [InlineData(DeviceId.Tko, VDriveConnectionStatus.NotDetected)]
-        public async Task SecondaryAction_ForEveryDeviceAndStatus_ScansForTheVDrive(
-            DeviceId deviceId,
-            VDriveConnectionStatus status)
+        [InlineData(DeviceId.FreestyleEdgeRgb)]
+        [InlineData(DeviceId.Tko)]
+        [InlineData(DeviceId.Advantage360)]
+        [InlineData(DeviceId.FreestyleEdge)]
+        [InlineData(DeviceId.FreestylePro)]
+        [InlineData(DeviceId.Advantage2)]
+        [InlineData(DeviceId.SavantElite2)]
+        public async Task SecondaryAction_ForEveryUnwritableDrive_RetriesTheScan(DeviceId deviceId)
         {
-            var card = CreateCard(TestDevices.CreateSnapshot(deviceId, status), out _, out var scans);
+            var card = CreateCard(
+                TestDevices.CreateSnapshot(deviceId, VDriveConnectionStatus.CannotAccess),
+                out _,
+                out var scans);
 
-            Assert.Equal(
-                status == VDriveConnectionStatus.CannotAccess ? "Retry access" : ScanCaption,
-                card.SecondaryActionCaption);
+            Assert.True(card.ShowsSecondaryAction);
+            Assert.Equal("Retry access", card.SecondaryActionCaption);
 
             await card.SecondaryActionCommand.ExecuteAsync(null);
 
             Assert.Single(scans);
+        }
+
+        [Fact]
+        public void HasBeenPresented_UntilAViewHostsIt_IsFalse()
+        {
+            // The design animates a card in when its device is newly detected; a card view is also
+            // rebuilt every time the shell swaps the dashboard back in, and an existing card being
+            // re-hosted is not an insertion (docs/app/app-shell.md, invariant 8).
+            var card = CreateCard(TestDevices.CreateSnapshot(DeviceId.Tko), out _, out _);
+
+            Assert.False(card.HasBeenPresented);
+
+            card.MarkPresented();
+
+            Assert.True(card.HasBeenPresented);
         }
 
         [Fact]
@@ -364,6 +393,7 @@ namespace KinesisEdit.Tests.ViewModels
                 nameof(DeviceCardViewModel.HasExplanation),
                 nameof(DeviceCardViewModel.PrimaryActionCaption),
                 nameof(DeviceCardViewModel.SecondaryActionCaption),
+                nameof(DeviceCardViewModel.ShowsSecondaryAction),
                 nameof(DeviceCardViewModel.ShowsEject),
                 nameof(DeviceCardViewModel.CanEject)
             })
@@ -397,6 +427,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Contains(nameof(DeviceCardViewModel.State), changed);
             Assert.Contains(nameof(DeviceCardViewModel.StatusText), changed);
             Assert.Contains(nameof(DeviceCardViewModel.SecondaryActionCaption), changed);
+            Assert.Contains(nameof(DeviceCardViewModel.ShowsSecondaryAction), changed);
             Assert.Contains(nameof(DeviceCardViewModel.CanRunSecondaryAction), changed);
 
             changed.Clear();

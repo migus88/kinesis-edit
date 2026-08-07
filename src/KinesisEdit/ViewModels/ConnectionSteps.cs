@@ -44,9 +44,9 @@ namespace KinesisEdit.ViewModels
             "On the keyboard, use its onboard v-Drive shortcut to mount the v-Drive.";
         private const string DriveLead = "A drive named ";
         private const string DriveTrail =
-            " appears. This screen will replace itself with your device card automatically.";
+            " appears. Press Scan now and your device card takes over this screen.";
         private const string UnknownDriveText =
-            "A drive appears. This screen will replace itself with your device card automatically.";
+            "A drive appears. Press Scan now and your device card takes over this screen.";
 
         /// <summary>
         /// Whether <paramref name="device"/> is a foot pedal rather than a keyboard. One predicate

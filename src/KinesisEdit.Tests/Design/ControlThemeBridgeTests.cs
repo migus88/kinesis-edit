@@ -55,7 +55,6 @@ namespace KinesisEdit.Tests.Design
                 (typeof(DeviceCardView).FullName!, "primaryAction", "PrimaryActionButton"),
                 (typeof(DeviceCardView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(DeviceCardView).FullName!, "eject", "EjectButton"),
-                (typeof(WebToolCardView).FullName!, "secondary", "SecondaryButton"),
                 (typeof(DashboardView).FullName!, "secondary", "SecondaryButton"),
 
                 // The dashboard's empty state (docs/design/mockups.md §1d) — the three weights of

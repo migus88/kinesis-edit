@@ -47,9 +47,7 @@ namespace KinesisEdit.Tests.Views
             _monitor = new DeviceMonitorService(
                 new VDriveMonitor(_scanner, _neverPolls),
                 _fileService,
-                new FakeUiDispatcher(),
-                new FakeSystemClock(),
-                _neverPolls);
+                new FakeUiDispatcher());
 
             _dashboard = new DashboardViewModel(
                 _monitor,
@@ -63,10 +61,7 @@ namespace KinesisEdit.Tests.Views
                 _notifications,
                 _editors,
                 new SettingsScreenViewModel(_preferences, _ => { }, _ => { }),
-                new HelpScreenViewModel(new FakeUrlLauncher()),
-                new FakeSystemClock(),
-                new FakeUiDispatcher(),
-                _neverPolls);
+                new HelpScreenViewModel(new FakeUrlLauncher()));
         }
 
         [AvaloniaFact]

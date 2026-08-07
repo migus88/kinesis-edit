@@ -11,36 +11,26 @@ namespace KinesisEdit.Services
     /// "Startup / v-Drive scan / demo mode"): each refresh runs one
     /// <see cref="VDriveMonitor.Poll"/> and then re-reads and re-parses every present device's
     /// version file, producing an immutable <see cref="DeviceSnapshot"/> list plus the status
-    /// transitions of that poll. The version file is re-read on every tick on purpose — it is
+    /// transitions of that poll. The version file is re-read on every pass on purpose — it is
     /// both the "v-Drive OK / v-Drive Error" probe and the Freestyle Edge/Pro model resolution.
+    /// <para>
+    /// <b>Scanning is manual.</b> There is no timer: a pass happens because something asked for
+    /// one — the composition root once at startup, or the user through 'Scan all', a card's own
+    /// scan button or the empty state's 'Scan now'. Nothing here looks at the drives on its own,
+    /// so no surface in the app may claim the list refreshes itself.
+    /// </para>
+    /// <para>
     /// Both events — <see cref="Updated"/> and <see cref="RefreshActivityChanged"/> — are marshaled
-    /// through an <see cref="IUiDispatcher"/> because the monitor polls on a thread-pool timer.
-    /// Serializing the refreshes, and the refresh state the dashboard renders
-    /// (<see cref="IsRefreshing"/>, <see cref="LastRefreshedUtc"/>), live in
+    /// through an <see cref="IUiDispatcher"/>, because a scan is normally run on a thread-pool
+    /// thread so a stalled mount cannot freeze the window. Serializing the refreshes, and the
+    /// in-flight flag the dashboard renders (<see cref="IsRefreshing"/>), live in
     /// <see cref="RefreshActivity"/>.
+    /// </para>
     /// </summary>
     public sealed class DeviceMonitorService : IDisposable
     {
-        private static readonly TimeSpan _defaultRefreshInterval = TimeSpan.FromSeconds(2);
-
         /// <summary>The snapshots produced by the most recent refresh; empty before the first one.</summary>
         public IReadOnlyList<DeviceSnapshot> Snapshots { get; private set; } = [];
-
-        /// <summary>
-        /// Whether the polling timer is armed. The loop runs for as long as the app does — an
-        /// open editor keeps it running, because specs/10-apps-and-ui.md requires the editor to
-        /// "re-verify the device's version file every tick" to drive its status indicator.
-        /// </summary>
-        public bool IsPolling
-        {
-            get
-            {
-                lock (_syncRoot)
-                {
-                    return _timer is not null;
-                }
-            }
-        }
 
         /// <summary>
         /// Whether a refresh is in flight right now — what the dashboard renders as its "Scanning"
@@ -48,57 +38,32 @@ namespace KinesisEdit.Services
         /// </summary>
         public bool IsRefreshing => _activity.IsRefreshing;
 
-        /// <summary>
-        /// When the most recent refresh that ran to completion finished, read from
-        /// <see cref="ISystemClock"/>; null until the first one does. This is what the dashboard's
-        /// "refreshed 0.4s ago" readout ages against. A pass that found no drives, or that read
-        /// nothing but unreadable version files, still counts — it looked, and that is what the
-        /// readout claims. A pass that threw does not, so the readout keeps ageing while the loop
-        /// is failing instead of reporting a scan that never happened.
-        /// </summary>
-        public DateTimeOffset? LastRefreshedUtc => _activity.LastRefreshedUtc;
-
-        /// <summary>
-        /// How many detection passes have run to completion since this service was created — the
-        /// number the dashboard's empty state ages its "rescanned N times since you opened this
-        /// window" against, by subtracting the baseline it captured when it was built.
-        /// <para>
-        /// It counts <b>completed passes</b> on exactly the rule <see cref="LastRefreshedUtc"/>
-        /// follows: a <see cref="Refresh"/> coalesced into a running pass shares that pass's single
-        /// increment, and a pass that threw adds nothing.
-        /// </para>
-        /// </summary>
-        public int CompletedRefreshCount => _activity.CompletedRefreshCount;
-
         /// <summary>Raised once per refresh, on the UI thread, with that refresh's snapshots and changes.</summary>
         public event Action<DeviceMonitorUpdate>? Updated;
 
         /// <summary>
-        /// Raised on the UI thread whenever <see cref="IsRefreshing"/> or
-        /// <see cref="LastRefreshedUtc"/> changes. Separate from <see cref="Updated"/> because a
-        /// refresh <em>starting</em> publishes no snapshots and yet must light the Scanning state,
-        /// and because a coalesced repeat changes neither. Marshaled through the same
-        /// <see cref="IUiDispatcher"/>, so a handler may touch view-model state directly.
+        /// Raised on the UI thread whenever <see cref="IsRefreshing"/> changes. Separate from
+        /// <see cref="Updated"/> because a refresh <em>starting</em> publishes no snapshots and yet
+        /// must light the Scanning state, and because a coalesced repeat changes nothing. Marshaled
+        /// through the same <see cref="IUiDispatcher"/>, so a handler may touch view-model state
+        /// directly.
         /// </summary>
         public event Action? RefreshActivityChanged;
 
         private readonly VDriveMonitor _monitor;
         private readonly IVDriveFileService _fileService;
         private readonly IUiDispatcher _dispatcher;
-        private readonly ISystemClock _clock;
         private readonly IDemoDeviceProvider? _demoDevices;
-        private readonly TimeSpan _refreshInterval;
         private readonly object _syncRoot = new();
         private readonly RefreshActivity _activity = new();
         private readonly List<VDriveStatusChange> _pendingChanges = [];
-        private Timer? _timer;
         private bool _isDisposed;
 
         /// <summary>
         /// Creates the service over an existing <paramref name="monitor"/> (owned and disposed by
-        /// this service), the file service used to re-read version files, the dispatcher that
+        /// this service), the file service used to re-read version files, and the dispatcher that
         /// marshals <see cref="Updated"/> and <see cref="RefreshActivityChanged"/> onto the UI
-        /// thread, and the clock that stamps <see cref="LastRefreshedUtc"/>.
+        /// thread.
         /// <para>
         /// <paramref name="demoDevices"/> is the gate every <b>undetected</b> device's snapshot is
         /// offered a demo drive by — one poll builds one for each of the seven catalog boards, and
@@ -110,16 +75,12 @@ namespace KinesisEdit.Services
             VDriveMonitor monitor,
             IVDriveFileService fileService,
             IUiDispatcher dispatcher,
-            ISystemClock clock,
-            TimeSpan? refreshInterval = null,
             IDemoDeviceProvider? demoDevices = null)
         {
             _monitor = monitor ?? throw new ArgumentNullException(nameof(monitor));
             _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
             _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
-            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _demoDevices = demoDevices;
-            _refreshInterval = refreshInterval ?? _defaultRefreshInterval;
 
             _monitor.StatusChanged += OnStatusChanged;
             _activity.Changed += OnActivityChanged;
@@ -131,12 +92,15 @@ namespace KinesisEdit.Services
         /// missing, unreadable, or unparseable — that device reports
         /// <see cref="VDriveHealth.Error"/> instead. A call after <see cref="Dispose"/> is a no-op.
         /// <para>
+        /// <b>This is the only thing that scans.</b> Nothing arms it; it runs when a caller asks.
+        /// </para>
+        /// <para>
         /// Refreshes are serialized without blocking the caller: a call arriving while another
         /// refresh runs marks that refresh to repeat instead of scanning concurrently. Scanning
         /// concurrently is not an option — <see cref="VDriveMonitor.Poll"/> discards an
-        /// overlapping poll outright, which would turn a user's 'Scan for v-Drive' landing on a
-        /// timer tick into a no-op. Repeating means the explicit scan still produces a scan that
-        /// observes the drives as of the request, and no status change is dropped on the way.
+        /// overlapping poll outright, which would turn a user's second scan landing on a running
+        /// one into a no-op. Repeating means the second request still produces a scan that observes
+        /// the drives as of the request, and no status change is dropped on the way.
         /// </para>
         /// </summary>
         public void Refresh()
@@ -166,44 +130,6 @@ namespace KinesisEdit.Services
             }
         }
 
-        /// <summary>
-        /// Runs one synchronous <see cref="Refresh"/> and then arms the polling timer, so
-        /// <see cref="Snapshots"/> is populated when this returns. Starting twice is a no-op.
-        /// </summary>
-        public void Start()
-        {
-            if (_isDisposed)
-            {
-                return;
-            }
-
-            var started = false;
-
-            lock (_syncRoot)
-            {
-                if (_timer is null)
-                {
-                    _timer = new Timer(OnTimerTick, null, _refreshInterval, _refreshInterval);
-                    started = true;
-                }
-            }
-
-            if (started)
-            {
-                Refresh();
-            }
-        }
-
-        /// <summary>Disarms the polling timer; the last <see cref="Snapshots"/> stay available. Safe when not started.</summary>
-        public void Stop()
-        {
-            lock (_syncRoot)
-            {
-                _timer?.Dispose();
-                _timer = null;
-            }
-        }
-
         private void RunRefresh()
         {
             _monitor.Poll();
@@ -217,12 +143,10 @@ namespace KinesisEdit.Services
                 changes = [.. _pendingChanges];
             }
 
+            // Published before Updated, and only once the pass has produced them: Snapshots being
+            // non-empty is what "a pass has completed" means everywhere else in the app, and a pass
+            // that threw on the way here must not claim to have happened.
             Snapshots = snapshots;
-
-            // Stamped only once the pass has produced its snapshots, and before they are
-            // published: an Updated handler reading LastRefreshedUtc must never see the previous
-            // pass's time, and a pass that threw on the way here must not claim to have happened.
-            _activity.Stamp(_clock.UtcNow);
 
             var update = new DeviceMonitorUpdate
             {
@@ -330,25 +254,13 @@ namespace KinesisEdit.Services
 
         private void OnActivityChanged()
         {
-            // The transition happens on the polling thread; invariant 7 of docs/app/app-shell.md
-            // makes marshaling this the service's job, exactly as it is for Updated.
+            // The transition happens on whichever thread asked for the scan — normally a
+            // thread-pool one; invariant 7 of docs/app/app-shell.md makes marshaling this the
+            // service's job, exactly as it is for Updated.
             _dispatcher.Post(() => RefreshActivityChanged?.Invoke());
         }
 
-        private void OnTimerTick(object? state)
-        {
-            try
-            {
-                Refresh();
-            }
-            catch (Exception)
-            {
-                // A refresh failure must never take down the process from the timer thread;
-                // the next tick simply retries.
-            }
-        }
-
-        /// <summary>Stops polling and releases the monitor. Safe to call multiple times.</summary>
+        /// <summary>Releases the monitor. Safe to call multiple times.</summary>
         public void Dispose()
         {
             if (_isDisposed)
@@ -357,8 +269,6 @@ namespace KinesisEdit.Services
             }
 
             _isDisposed = true;
-
-            Stop();
 
             _activity.Changed -= OnActivityChanged;
             _monitor.StatusChanged -= OnStatusChanged;

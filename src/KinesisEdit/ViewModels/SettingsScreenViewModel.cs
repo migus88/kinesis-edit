@@ -4,10 +4,17 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The shell's <b>Settings</b> screen — the app bar's second nav pill. It edits the
-    /// <b>host</b> preferences of <see cref="IHostPreferencesStore"/>: the theme, the motion budget
-    /// and (silently) the window's geometry. Everything here belongs to the person at this computer
-    /// and applies to every board they ever plug in.
+    /// The shell's <b>Settings</b> screen — the app bar's second nav pill. It edits the two
+    /// <b>host</b> preferences of <see cref="IHostPreferencesStore"/> that are a choice: the theme
+    /// and the motion budget. Everything here belongs to the person at this computer and applies to
+    /// every board they ever plug in.
+    /// <para>
+    /// <b>Two rows on one card, and no section labels.</b> A section label over a single row names
+    /// the row twice, so the screen is its title, its subtitle and one unlabelled card holding both
+    /// switches. The store's third field — the window's size and position, which the shell writes on
+    /// close and restores on open — is not on this screen at all: it is not a choice, and a screen of
+    /// choices is the wrong place to narrate something that has no switch.
+    /// </para>
     /// <para>
     /// <b>It is not the editor's Settings tab, and the two must not be confused.</b>
     /// <see cref="KeyboardSettingsViewModel"/> edits <c>kbd_settings.txt</c> on a keyboard's
@@ -47,18 +54,12 @@ namespace KinesisEdit.ViewModels
             + "to every board you open. A board's own settings live on the board, in its editor's "
             + "Settings tab.";
 
-        /// <summary>Caption over the theme switch.</summary>
-        public const string AppearanceSectionLabel = "Appearance";
-
         /// <summary>The theme row's own caption.</summary>
         public const string ThemeCaption = "Theme";
 
         /// <summary>What the theme row does, in one line.</summary>
         public const string ThemeDescription =
             "Follow the operating system, or pin the app to light or dark. It changes as you pick it.";
-
-        /// <summary>Caption over the motion switch.</summary>
-        public const string MotionSectionLabel = "Motion";
 
         /// <summary>The motion row's own caption.</summary>
         public const string MotionCaption = "Animation";
@@ -67,18 +68,6 @@ namespace KinesisEdit.ViewModels
         public const string MotionDescription =
             "The app's animations are a small fixed budget — a card arriving, a status colour "
             + "crossing over, a fade. Reduced keeps the fades and drops the movement.";
-
-        /// <summary>Caption over the window note.</summary>
-        public const string WindowSectionLabel = "Window";
-
-        /// <summary>
-        /// The window's geometry is restored with no switch to turn it off, so the screen says what
-        /// it is doing instead of rendering a control (docs/design/README.md: a feature that is not
-        /// a choice is not drawn as one).
-        /// </summary>
-        public const string WindowNote =
-            "KinesisEdit remembers this window's size and position and puts it back the next time "
-            + "you open it. There is nothing to switch on.";
 
         /// <summary>Caption of the "follow the OS" segment, on both switches.</summary>
         public const string FollowSystemCaption = "Follow system";

@@ -78,24 +78,14 @@
           </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-          <!-- "refreshed 0.4s ago" (docs/design/mockups.md §1b). Mono, and this is the one place
-               the mono law bends: the string is the app speaking, not a value out of a config file.
-               The design sets it in mono anyway, and for a reason that survives the translation -
-               a proportional face reflows the whole right-hand end of the bar every time the
-               tenths digit changes, five times a second. Hidden outright until a pass has
-               completed: there is nothing to age yet, and a zero would claim a scan that never
-               happened. -->
-          <TextBlock Classes="monoValueSmall muted"
-                     Text="{Binding LastRefreshedText}"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding HasLastRefreshed}" />
+        <!-- The status chip is its own view: the editor's toolbar draws the same one, and a copy
+             would drift. It binds to an IShellChrome, which this view model is, so the inherited
+             DataContext is already the right one.
 
-          <!-- The status chip is its own view: the editor's toolbar draws the same one, and a
-               copy would drift. It binds to an IShellChrome, which this view model is, so the
-               inherited DataContext is already the right one. -->
-          <views:StatusChipView VerticalAlignment="Center" />
-        </StackPanel>
+             It is the only thing on this end of the bar. The design also drew a mono
+             "refreshed 0.4s ago" readout here; scanning is manual now, so there is no loop for it
+             to report and nothing in the chrome may imply the app is watching on its own. -->
+        <views:StatusChipView Grid.Column="2" VerticalAlignment="Center" />
       </Grid>
     </Border>
 

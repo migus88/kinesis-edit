@@ -486,7 +486,7 @@ What follows from it, and what each thing is guarded by:
 | The mount-path slot stays **empty** | `HasMountPath` is `!IsDemoMode && …`. The demo root is `kinesis-edit://demo/‹DeviceId›`, which is not a place on the machine and so may not sit in a mono slot |
 | A board **without** fixtures is untouched | its snapshot has no `Location`, so it takes the in-memory branch above and opens the empty demo editor it always did. Six of the seven do |
 
-The last row is the one to be careful with: the detection loop builds a demo snapshot for **every** undetected catalog device, so "which boards have demo content" is `IDemoDeviceProvider`'s answer and is never asked by id in a view model.
+The last row is the one to be careful with: every detection scan builds a demo snapshot for **every** undetected catalog device, so "which boards have demo content" is `IDemoDeviceProvider`'s answer and is never asked by id in a view model.
 
 ### Remap state machine
 

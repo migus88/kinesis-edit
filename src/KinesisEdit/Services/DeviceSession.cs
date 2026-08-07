@@ -8,7 +8,7 @@ namespace KinesisEdit.Services
     /// <para>
     /// Demo mode and the preferences store are fixed when the session opens — specs/10-apps-and-ui.md
     /// has Configure "set demo mode from the device's connected/writable state", once. Only
-    /// <see cref="Device"/> and therefore <see cref="Health"/> follow the polling loop, which is
+    /// <see cref="Device"/> and therefore <see cref="Health"/> follow each detection scan, which is
     /// what drives the editor's `v-Drive OK` / `v-Drive Error` indicator.
     /// </para>
     /// </summary>

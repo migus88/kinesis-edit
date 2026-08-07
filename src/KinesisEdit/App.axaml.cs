@@ -19,10 +19,10 @@ namespace KinesisEdit
     /// The composition root. Everything is wired by hand — the app deliberately has no DI
     /// container — in the order the service layer expects: discovery, then the detection loop,
     /// then the session and notification services, and only then the view models and the shell
-    /// window. Polling is started last, once the window exists, because the surfaces a scan can
-    /// raise — the message box on the shell's overlay, the file pickers on its storage provider —
-    /// are all reached through it. The <c>--keystroke-spike</c> argument replaces that whole graph
-    /// with the self-contained <see cref="KeystrokeCaptureSpikeWindow"/>.
+    /// window. The one startup scan is run last, once the window exists, because the surfaces a
+    /// scan can raise — the message box on the shell's overlay, the file pickers on its storage
+    /// provider — are all reached through it. The <c>--keystroke-spike</c> argument replaces that
+    /// whole graph with the self-contained <see cref="KeystrokeCaptureSpikeWindow"/>.
     /// <para>
     /// It is also the only thing in the app that names the real per-user preferences file
     /// (<see cref="HostPreferencesPathProvider.CreateForCurrentPlatform"/>) and the only thing that
@@ -49,7 +49,7 @@ namespace KinesisEdit
             AvaloniaXamlLoader.Load(this);
         }
 
-        /// <summary>Builds the object graph, shows the shell, and arms the detection loop.</summary>
+        /// <summary>Builds the object graph, shows the shell, and runs the one startup scan.</summary>
         public override void OnFrameworkInitializationCompleted()
         {
             // Before any window exists, because the alias resources it writes are what the views'
@@ -96,13 +96,15 @@ namespace KinesisEdit
                     desktop.MainWindow = new MainWindow(_shell!, notifications, _preferences);
                     desktop.Exit += OnExit;
 
-                    // The shell never starts or stops polling itself; the composition root owns the
-                    // loop's lifetime and it runs until exit, because an open editor needs the same
-                    // per-tick version-file re-check as the dashboard (specs/10-apps-and-ui.md).
-                    // This first pass is synchronous on purpose: DashboardViewModel is built before
-                    // the window, so the cards must exist before the first frame or the troubleshoot
-                    // empty state would flash on every launch.
-                    _deviceMonitor!.Start();
+                    // The app's one unattended scan, and the only one it ever runs on its own:
+                    // after this, a pass happens because the user asked for it ('Scan all', a
+                    // card's scan button, the empty state's 'Scan now').
+                    //
+                    // Synchronous, and here rather than earlier, on purpose. DashboardViewModel is
+                    // built before the window, so the cards must exist before the first frame or
+                    // the troubleshoot empty state would flash on every launch; and the surfaces a
+                    // scan can raise all hang off the window, which now exists.
+                    _deviceMonitor!.Refresh();
                 }
             }
 
@@ -120,13 +122,11 @@ namespace KinesisEdit
             var fileService = new DemoVDriveFileService(new VDriveFileService());
             var monitor = new VDriveMonitor(new VDriveScanner(PlatformVolumeEnumerator.Create()));
 
-            // One clock and one dispatcher for the whole shell: the detection loop stamps its
-            // completed passes with the clock and the app bar's "refreshed Ns ago" readout ages
-            // against the same one, and both marshal onto the UI thread the same way.
-            var clock = new SystemClock();
+            // One dispatcher for the whole shell: a scan runs off the UI thread, so both of the
+            // detection loop's events are marshaled back onto it through this.
             var dispatcher = new AvaloniaUiDispatcher();
 
-            _deviceMonitor = new DeviceMonitorService(monitor, fileService, dispatcher, clock);
+            _deviceMonitor = new DeviceMonitorService(monitor, fileService, dispatcher);
 
             // One settings service for the whole app: app_settings.txt must have a single reader
             // and a single writer, or the notification-suppression flags and the lighting pickers'
@@ -206,9 +206,7 @@ namespace KinesisEdit
                 notifications,
                 editorFactory,
                 settingsScreen,
-                helpScreen,
-                clock,
-                dispatcher);
+                helpScreen);
 
             return notifications;
         }

@@ -2,17 +2,23 @@ namespace KinesisEdit.Services
 {
     /// <summary>
     /// The refresh state of <see cref="DeviceMonitorService"/>, extracted so the service stays a
-    /// detection loop instead of also being a state machine. It owns two things that belong
-    /// together because they change at the same three moments:
+    /// detection loop instead of also being a state machine. It owns two things that are the same
+    /// fact seen from two sides:
     /// <list type="bullet">
     /// <item>the gate that serializes refreshes — a call arriving while one runs marks the running
     /// one to <em>repeat</em> and returns, because <c>VDriveMonitor.Poll</c> discards an
     /// overlapping poll outright;</item>
-    /// <item>the two facts the dashboard renders — whether a refresh is in flight (the "Scanning"
-    /// card state) and when the last one completed (the "refreshed 0.4s ago" readout).</item>
+    /// <item>whether a refresh is in flight, which is what the dashboard renders as its "Scanning"
+    /// card state and the empty state as its "Scanning" button caption.</item>
     /// </list>
     /// <see cref="Changed"/> is raised outside the lock, on whatever thread caused the transition —
-    /// usually the thread-pool timer. Marshaling it onto the UI thread is the service's job.
+    /// a scan runs on a thread-pool thread, because a stalled mount must not freeze the window.
+    /// Marshaling it onto the UI thread is the service's job.
+    /// <para>
+    /// It records nothing about <em>past</em> passes. Scanning is manual (see
+    /// <see cref="DeviceMonitorService"/>), so no surface counts completed passes or ages against
+    /// the last one — the app never claims to be watching on its own.
+    /// </para>
     /// </summary>
     internal sealed class RefreshActivity
     {
@@ -28,49 +34,12 @@ namespace KinesisEdit.Services
             }
         }
 
-        /// <summary>The last value passed to <see cref="Stamp"/>; null before the first one.</summary>
-        public DateTimeOffset? LastRefreshedUtc
-        {
-            get
-            {
-                lock (_syncRoot)
-                {
-                    return _lastRefreshedUtc;
-                }
-            }
-        }
-
-        /// <summary>
-        /// How many refreshes have run to completion since this instance was created — every call
-        /// to <see cref="Stamp"/>, and nothing else.
-        /// <para>
-        /// <b>It counts completed passes, not requests and not timer ticks.</b> A
-        /// <c>Refresh()</c> arriving while one runs is coalesced into a repeat of the running pass
-        /// (see <see cref="TryBegin"/>), so two callers can share one increment; a pass that threw
-        /// unwinds through <see cref="End"/> and never reaches <see cref="Stamp"/>, so it adds
-        /// nothing. It is what the empty state's "rescanned N times" reads, which is a claim about
-        /// scans that actually happened.
-        /// </para>
-        /// </summary>
-        public int CompletedRefreshCount
-        {
-            get
-            {
-                lock (_syncRoot)
-                {
-                    return _completedRefreshCount;
-                }
-            }
-        }
-
-        /// <summary>Raised after <see cref="IsRefreshing"/> or <see cref="LastRefreshedUtc"/> changes.</summary>
+        /// <summary>Raised after <see cref="IsRefreshing"/> changes.</summary>
         public event Action? Changed;
 
         private readonly object _syncRoot = new();
         private bool _isRefreshing;
         private bool _isRepeatRequested;
-        private DateTimeOffset? _lastRefreshedUtc;
-        private int _completedRefreshCount;
 
         /// <summary>
         /// Claims the gate for a refresh. Returns false when one is already running, having marked
@@ -139,22 +108,6 @@ namespace KinesisEdit.Services
             {
                 Changed?.Invoke();
             }
-        }
-
-        /// <summary>
-        /// Records that a refresh ran to completion at <paramref name="timestamp"/>. The time and
-        /// the count move together, under one lock, because they are the same fact seen twice:
-        /// <em>a pass finished</em>.
-        /// </summary>
-        public void Stamp(DateTimeOffset timestamp)
-        {
-            lock (_syncRoot)
-            {
-                _lastRefreshedUtc = timestamp;
-                _completedRefreshCount++;
-            }
-
-            Changed?.Invoke();
         }
     }
 }

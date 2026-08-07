@@ -61,7 +61,6 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("MainWindow", names);
             Assert.Contains("DashboardView", names);
             Assert.Contains("DeviceCardView", names);
-            Assert.Contains("WebToolCardView", names);
             Assert.Contains("NoDeviceView", names);
             Assert.Contains("KeyboardEditorView", names);
             Assert.Contains("LightingTabView", names);
@@ -87,7 +86,11 @@ namespace KinesisEdit.Tests.Design
             Assert.DoesNotContain("SearchKeysOverlayView", names);
             Assert.DoesNotContain("TapAndHoldOverlayView", names);
 
-            Assert.True(names.Count >= 31, $"Only {names.Count} views were discovered.");
+            // The dashboard has ONE card kind (issue #118). A board this app cannot edit gets no
+            // card at all, so the web-tool card is gone rather than merely unused.
+            Assert.DoesNotContain("WebToolCardView", names);
+
+            Assert.True(names.Count >= 30, $"Only {names.Count} views were discovered.");
         }
 
         [AvaloniaFact]
