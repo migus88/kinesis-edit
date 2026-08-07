@@ -1,5 +1,5 @@
 ---
-description: Drive a feature end-to-end from a GitHub issue ID or description — research, clarify, update/create the issue, implement in an isolated git worktree, open a PR
+description: Drive a feature end-to-end from a GitHub issue ID or description — resolve the issue, branch an isolated git worktree off origin/main, research and clarify inside it, implement, open a PR
 argument-hint: <issue-number | issue-url | feature description>
 ---
 
@@ -9,12 +9,12 @@ Input: `$ARGUMENTS` — either a GitHub issue reference (`123`, `#123`, or an is
 
 ## Operating principles
 
-- **Worktree isolation.** All implementation happens in a dedicated git worktree under `.claude/worktrees/`, branched from `origin/main` (phase 5). The shared checkout is never switched or dirtied, so multiple `/feature` sessions can run concurrently.
+- **Worktree isolation.** All implementation happens in a dedicated git worktree under `.claude/worktrees/`, branched from `origin/main` (phase 3). The shared checkout is never switched or dirtied, so multiple `/feature` sessions can run concurrently.
 - **Stay lean.** You are the orchestrator: hold decisions, plans, and diffs under review — not file contents. Delegate reading, exploring, and code-writing to subagents (Agent tool). Do not pull whole source files into your own context when a subagent summary will do.
 - **But read the seams yourself.** Lean is not blind. Before fanning out, read the few files that define the contract the agents will share: the composition root they all merge into, the base type they all derive from, the file whose conventions they must match. Ten minutes of your own reading sharpens every prompt you are about to write; skipping it means each agent invents its own answer to the same question and the integration pass pays for all of them.
 - **Contracts live in the repo, not in prompts.** When more than two agents work on one subsystem, have the first agent commit the shared convention as an artifact — a base type, a header comment, a doc section — and tell the rest to *read* it. Pasting a convention into N prompts guarantees drift: the copies go stale as the work teaches you things, and the later agents receive instructions the code has already outgrown.
 - **Name the traps, not the principle.** Agents working in parallel make the *same* mistake in parallel. A principle ("make state precedence explicit") produced an identical defect in four files at once; the enumerated list of qualifiers that actually recur would have prevented all four. Where you know the failure modes, spell them out as a checklist — a principle is what you write when you don't yet know them.
-- **One PR is one reviewable change.** Generation time scales with the size of the diff; *verification does not, and will not* — a build and a test run cost a fraction of writing the code, because one is a compiler and the other is a model emitting thousands of lines. A feature that runs for hours is therefore almost always one that was scoped too large, not one that was checked too thoroughly; the longest here have been the ones that landed a hundred-plus files at once. Size is the decision with the hours riding on it, and phase 3 is where it gets made, before any code exists. Splitting is cheap precisely because the gates are; not splitting buys a review nobody can hold in their head and an integration pass that touches everything at once.
+- **One PR is one reviewable change.** Generation time scales with the size of the diff; *verification does not, and will not* — a build and a test run cost a fraction of writing the code, because one is a compiler and the other is a model emitting thousands of lines. A feature that runs for hours is therefore almost always one that was scoped too large, not one that was checked too thoroughly; the longest here have been the ones that landed a hundred-plus files at once. Size is the decision with the hours riding on it, and phase 4 is where it gets made, before any code exists. Splitting is cheap precisely because the gates are; not splitting buys a review nobody can hold in their head and an integration pass that touches everything at once.
 - **Docs before source.** This repo is documented agent-first: subagents should read `docs/app/` (and `specs/` for domain questions) before opening source files. See CLAUDE.md.
 - **Ultracode.** If a system-reminder says ultracode is enabled for this session, orchestrate research and implementation with the Workflow tool as described in phase 6. Otherwise use individual subagents and skip the heavy machinery.
 - **Documentation is part of the feature, not an afterthought.** Per CLAUDE.md, every change ships with its documentation: the module's agent-first doc in `docs/app/` (create it if the module is new), CLAUDE.md (new modules, changed commands), and README.md when user-facing behavior changes. A feature without its doc updates is incomplete and must not reach the PR phase.
@@ -22,34 +22,40 @@ Input: `$ARGUMENTS` — either a GitHub issue reference (`123`, `#123`, or an is
 
 ## Phase 1 — Sync
 
-`git fetch --prune origin`. Do **not** check out or pull `main`, and do not require a clean shared checkout — the shared checkout is never touched; the feature branches from `origin/main` inside its own worktree in phase 5.
+`git fetch --prune origin`. Do **not** check out or pull `main`, and do not require a clean shared checkout — the shared checkout is never touched; the feature branches from `origin/main` inside its own worktree in phase 3.
 
-## Phase 2 — Resolve the input
+## Phase 2 — Resolve the input, and get an issue number
+
+You need an issue number `N` before phase 3, because the branch and worktree are named for it.
 
 - Issue reference → `gh issue view <n> --json number,title,body,labels,comments`. Its content is the starting spec. If the lookup fails, tell the user and ask whether the input was meant as a description instead.
-- Free text → that is the starting spec; the issue gets created in phase 4.
+- Free text → **create the issue now**, with the user's description as the body and a title you propose: `gh issue create --title "…" --body "…"`. Capture the new number. The refined spec is posted as a comment in phase 5, exactly as it is for an issue that already existed — creating it early costs nothing and is what lets research run against a current tree.
 
-## Phase 3 — Research and clarify
+## Phase 3 — Worktree
 
-1. Delegate codebase research to an Explore agent: which modules/files the feature touches, existing patterns to follow, relevant constraints from `specs/`. You receive a summary, not file dumps. Have it finish with a **reading list for the implementers** — the specific `docs/app/` and `specs/` *sections*, by heading, that each one actually needs. The corpus is much larger than any single feature needs, and its biggest module docs are individually substantial; "docs before source" must not turn into every agent independently paging in the whole of it. The research agent pays that cost once and hands down pointers.
-2. Ask the user clarifying questions with AskUserQuestion — one batched call, max 4 questions, and only questions whose answers change the implementation (scope, behavior, UX trade-offs). Skip entirely if the issue is unambiguous.
-3. Write a short spec: problem, approach, acceptance criteria, affected modules, required unit tests (what new behavior gets tested, which existing tests need updating), **the screens whose rendered frames phase 7 will check** — name them now, or the visual gate arrives with nothing planned for it — and required doc updates (`docs/app/`, CLAUDE.md, README per repo policy).
-4. **Size the spec before committing to it.** Estimate the files it implies. Past the point where one reviewer could hold the whole change in their head — a couple of dozen files is a fair rule of thumb — stop and put a split to the user: a sequence of independently shippable issues, in dependency order, with your recommendation for what lands first. Do it here, where it costs one message, rather than at phase 7, where the diff is already too big to review and every remaining option is bad.
-
-## Phase 4 — GitHub issue
-
-- Existing issue: post the refined spec as a comment (`gh issue comment <n> --body …`); use `gh issue edit` only if the original body is empty or wrong.
-- No issue yet: `gh issue create --title "…" --body "…"` with the spec, then capture the new issue number.
-
-Either way you now have an issue number `N` for the branch and PR.
-
-## Phase 5 — Worktree
+Before research, not after. The shared checkout is **routinely several merges behind** `origin/main` — this repo merges fast, and a research pass against a stale tree is worse than no research: subagents cannot tell a stale tree from a current one, so they report confidently either way and the errors surface only at integration. Two full research passes have already been thrown away to this, having proposed rebuilding things that already existed on `main`.
 
 1. Determine the primary checkout's root: the first `worktree` line of `git worktree list --porcelain`. Do not use `--show-toplevel` — the session may already be inside another worktree.
 2. Create the worktree and its branch from `origin/main`:
    `git worktree add "<root>/.claude/worktrees/feature-N-short-slug" -b feature/N-short-slug origin/main`
    If the branch or worktree already exists (a previous run for the same issue), don't fight it: ask the user whether to resume in the existing worktree as-is or delete and recreate it.
-3. Switch the session into it: EnterWorktree with `path: "<root>/.claude/worktrees/feature-N-short-slug"`. Every subsequent phase — implementing, testing, committing, pushing — runs inside the worktree.
+3. Switch the session into it: EnterWorktree with `path: "<root>/.claude/worktrees/feature-N-short-slug"`. Every subsequent phase — researching, implementing, testing, committing, pushing — runs inside the worktree.
+
+## Phase 4 — Research and clarify
+
+Runs **inside the worktree from phase 3**, so every agent reads the tree the feature will actually be built on. Re-fetch before each new wave of agents; the repo can move under you mid-feature.
+
+1. Delegate codebase research to an Explore agent: which modules/files the feature touches, existing patterns to follow, relevant constraints from `specs/`. Point it at `docs/app/README.md` first — it routes a question to the right module doc, which is cheaper than searching for it. You receive a summary, not file dumps. Have it finish with a **reading list for the implementers** — the specific `docs/app/` and `specs/` *sections*, by heading, that each one actually needs. The corpus is much larger than any single feature needs, and its biggest module docs are individually substantial; "docs before source" must not turn into every agent independently paging in the whole of it. The research agent pays that cost once and hands down pointers. Tell agents to locate code by **symbol name, not line number**.
+2. Ask the user clarifying questions with AskUserQuestion — one batched call, max 4 questions, and only questions whose answers change the implementation (scope, behavior, UX trade-offs). Skip entirely if the issue is unambiguous.
+3. Write a short spec: problem, approach, acceptance criteria, affected modules, required unit tests (what new behavior gets tested, which existing tests need updating), **the screens whose rendered frames phase 7 will check** — name them now, or the visual gate arrives with nothing planned for it — and required doc updates. Per CLAUDE.md's documentation rules that is the **module's own `docs/app/` doc**; a new module also needs its row in `docs/app/README.md`. CLAUDE.md and README are touched only for genuinely repo-wide changes, never to describe what the feature does.
+4. **Size the spec before committing to it.** Estimate the files it implies. Past the point where one reviewer could hold the whole change in their head — a couple of dozen files is a fair rule of thumb — stop and put a split to the user: a sequence of independently shippable issues, in dependency order, with your recommendation for what lands first. Do it here, where it costs one message, rather than at phase 7, where the diff is already too big to review and every remaining option is bad.
+
+## Phase 5 — Record the spec on the issue
+
+Post the refined spec as a comment on issue `N` (`gh issue comment <n> --body …`) — for an issue that already existed and for one you created in phase 2 alike. Use `gh issue edit` only if the body is empty or wrong (typically the stub you just wrote).
+
+If phase 4 ended in a split, this is where the follow-up issues get created, and the worktree from phase 3 continues with whichever piece lands first.
+
 
 ## Phase 6 — Implement
 
@@ -71,11 +77,21 @@ Either way you now have an issue number `N` for the branch and PR.
 
 ## Phase 7 — Verify
 
-1. **Re-sync gate.** `git fetch origin`, then merge `origin/main` into the branch. A feature that ran for several rounds has probably been overtaken by a merge; resolving that now, before the suite runs, is far cheaper than after the PR is open. **A textually clean auto-merge is not a correct one** — git merges by region, not by meaning, so inspect the files both sides touched and re-run the suite before believing it.
-2. **Unit-test gate (hard requirement).** Build and run the full unit-test suite (see CLAUDE.md for the current commands; `dotnet build` / `dotnet test` once the solution exists). Every test must pass before a PR is created — fix failures and rerun until the suite is green. Never open a PR with a failing suite; if a failure genuinely cannot be resolved, stop and report it to the user instead of proceeding.
-3. **Test-coverage gate.** Confirm the diff includes the unit tests identified in phase 3: new tests for the behavior the feature adds, and updates to the existing tests of any code it touched. If tests are missing, go back and write them before opening the PR.
-4. **Visual gate (any change that alters what a screen looks like).** Per CLAUDE.md's testing rules, a green suite is not evidence the screen is right. Capture the affected **screens** (those named in the phase-3 spec) offscreen in both theme variants and look at the frames yourself — not the control in isolation, which is what the agent already asserted about. **Do not re-derive the harness**: `Design/ViewSceneFactory.cs` already builds any view over a realistic view model and `Headless/ThemedHost.cs` already shows it under a chosen variant and captures the frame. The throwaway part is only the few lines that pick the scene, wait out the fade-in in *real* time, and write the PNG — read `docs/app/design-system.md` § *Rendered-frame capture* first, which owns the timing details and both of the traps that cost real time to rediscover. Delete that driver before committing.
-5. **Documentation gate.** Confirm the diff includes the doc updates identified in phase 3 — `docs/app/` for every touched/created module, CLAUDE.md, and README.md where applicable. If any are missing, go back and write them before opening the PR.
+1. **Re-sync gate.** `git fetch origin`, then merge `origin/main` into the branch. A feature that ran for several rounds has probably been overtaken by a merge; resolving that now, before the suite runs, is far cheaper than after the PR is open. **A textually clean auto-merge is not a correct one** — git merges by region, not by meaning, so inspect the files both sides touched, and re-run the suite before believing it *if the merge changed the compiled tree* (see the next gate — merging a green `origin/main` into a docs-only branch does not).
+2. **Unit-test gate (hard requirement, with one precondition).** First ask what the run can actually tell you. `origin/main` is already green — CI proved it — so a suite run is informative only when this branch's **compiled tree differs from `origin/main`'s**. Check that, and check it *before* starting a run rather than after:
+
+   ```sh
+   git diff origin/main -- src/ global.json .editorconfig --stat   # empty → nothing to learn
+   ```
+
+   If that is empty, the branch is docs-only (or command-only): the source the tests compile is byte-identical to a tree already known green, so the suite cannot distinguish this branch from `main` and there is nothing for it to catch. Say so in the PR body — *"no compiled file changed; source is identical to `origin/main`"* — and skip to the next gate. CI still runs on the PR, so nothing goes unverified.
+
+   Otherwise the gate is hard: build and run the full unit-test suite (see CLAUDE.md for the current commands; `dotnet build` / `dotnet test` once the solution exists). Every test must pass before a PR is created — fix failures and rerun until the suite is green. Never open a PR with a failing suite; if a failure genuinely cannot be resolved, stop and report it to the user instead of proceeding.
+
+   **The trap is reasoning about the diff instead of running that command.** A merge from `origin/main` really does add source and tests to the branch — but they arrive *from* the tree that is already green, so they add nothing to verify. "The merge pulled in a thousand lines of new source" is a true sentence and the wrong conclusion; only `git diff origin/main -- src/` settles it. A 3-minute headless suite run started on that reasoning is 3 minutes bought for no information.
+3. **Test-coverage gate.** Confirm the diff includes the unit tests identified in phase 4: new tests for the behavior the feature adds, and updates to the existing tests of any code it touched. If tests are missing, go back and write them before opening the PR. (Vacuous when the precondition above found no compiled change — a change with no behavior owes no tests.)
+4. **Visual gate (any change that alters what a screen looks like).** Per CLAUDE.md's testing rules, a green suite is not evidence the screen is right. Capture the affected **screens** (those named in the phase-4 spec) offscreen in both theme variants and look at the frames yourself — not the control in isolation, which is what the agent already asserted about. **Do not re-derive the harness**: `Design/ViewSceneFactory.cs` already builds any view over a realistic view model and `Headless/ThemedHost.cs` already shows it under a chosen variant and captures the frame. The throwaway part is only the few lines that pick the scene, wait out the fade-in in *real* time, and write the PNG — read `docs/app/design-system.md` § *Rendered-frame capture* first, which owns the timing details and both of the traps that cost real time to rediscover. Delete that driver before committing.
+5. **Documentation gate.** Confirm the diff includes the doc updates identified in phase 4 — the `docs/app/` doc of every touched module, a new row in `docs/app/README.md` for a new one. Check the reverse too: per CLAUDE.md's documentation rules, a feature's behavior is described in its module's doc and **nowhere else**, so a diff that adds a sentence about this feature to CLAUDE.md or README.md is wrong and that sentence belongs in `docs/app/` instead. If any are missing, go back and write them before opening the PR.
 
 ## Phase 8 — Pull request
 
