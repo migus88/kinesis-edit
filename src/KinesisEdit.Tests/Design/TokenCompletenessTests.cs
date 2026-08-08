@@ -136,8 +136,14 @@ namespace KinesisEdit.Tests.Design
                 .Where(role => role.StartsWith("Shadow", StringComparison.Ordinal))
                 .ToArray();
 
+            // `ShadowKeyHaloStrong` joined the set with issue #128 — the opaque two-tone ring a
+            // selected key cap actually wears, beside the handoff's own translucent wash rather
+            // than in place of it. See TokenValueTests for both values and why there are two.
             Assert.Equal(
-                new[] { "ShadowFocusHalo", "ShadowKeyHalo", "ShadowModal", "ShadowPopover" },
+                new[]
+                {
+                    "ShadowFocusHalo", "ShadowKeyHalo", "ShadowKeyHaloStrong", "ShadowModal", "ShadowPopover"
+                },
                 shadows.Order(StringComparer.Ordinal));
 
             foreach (var variant in DesignTokens.Variants)

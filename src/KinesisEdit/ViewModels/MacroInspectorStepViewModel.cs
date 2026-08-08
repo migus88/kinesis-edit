@@ -158,8 +158,27 @@ namespace KinesisEdit.ViewModels
             internal set => SetProperty(ref _isDropTarget, value);
         }
 
+        /// <summary>
+        /// Whether this row is the one being carried — the <em>source</em> of a drag in flight, set
+        /// the moment the press passes the movement threshold and cleared when the gesture ends.
+        /// The row lifts and dims while it is true, so the list shows where the step came <em>from</em>
+        /// as well as where it would land; before this, the only feedback was the drop ring, and a
+        /// gesture whose subject is invisible reads as "nothing is happening" (issue #128).
+        /// <para>
+        /// A property of the <b>gesture</b>, exactly like <see cref="IsDropTarget"/>: written by
+        /// <c>MacroInspectorPanelView</c> and by nothing else, never by a reorder, and it cannot
+        /// survive one because the rows are rebuilt.
+        /// </para>
+        /// </summary>
+        public bool IsDragSource
+        {
+            get => _isDragSource;
+            internal set => SetProperty(ref _isDragSource, value);
+        }
+
         private bool _isSelected;
         private bool _isDropTarget;
+        private bool _isDragSource;
 
         /// <summary>
         /// Builds one row. <paramref name="delay"/> is the keystroke folded in behind

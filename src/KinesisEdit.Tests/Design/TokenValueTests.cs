@@ -42,6 +42,12 @@ namespace KinesisEdit.Tests.Design
         [InlineData("AccentSelectedRing", "#3E6FA8", "#3E6FA8")]
         [InlineData("AccentFocusHalo", "#475B9DF9", "#475B9DF9")]
         [InlineData("AccentKeyHalo", "#4D5B9DF9", "#4D5B9DF9")]
+        // The selected key cap's opaque ring (#128). `AccentKeyRing` is the accent itself at full
+        // opacity and `KeycapRingEdge` the near-black hairline inside it — the one member of the
+        // accent family that is not a blue, and deliberately so: a single hue cannot contrast with
+        // an arbitrary led colour, so the ring carries two and one of them always does.
+        [InlineData("AccentKeyRing", "#5B9DF9", "#5B9DF9")]
+        [InlineData("KeycapRingEdge", "#14181B", "#14181B")]
         // Status: amber is the only warning colour, so it is identical in both variants.
         [InlineData("StatusOk", "#4FBF8B", "#35A26D")]
         [InlineData("StatusOkText", "#7ED3AC", "#1D7A52")]
@@ -82,12 +88,71 @@ namespace KinesisEdit.Tests.Design
         // Focus is a spread-only halo, never an offset outline (handoff.md "Elevation").
         [InlineData("ShadowFocusHalo", "0 0 0 3 #475B9DF9")]
         [InlineData("ShadowKeyHalo", "0 0 0 2 #4D5B9DF9")]
+        // ...and the ring the key cap actually wears since #128, which the handoff does not
+        // specify because the handoff's own value is the line above. It is pinned here for the
+        // same reason every other value is: it repaints the board just as thoroughly if it drifts.
+        [InlineData("ShadowKeyHaloStrong", "0 0 0 3 #5B9DF9, 0 0 0 1 #14181B")]
         public void Shadow_InEachVariant_IsTheHandoffValue(string role, string expected)
         {
             foreach (var variant in DesignTokens.Variants)
             {
                 Assert.Equal(BoxShadows.Parse(expected), (BoxShadows)DesignTokens.Resolve(role, variant));
             }
+        }
+
+        [AvaloniaFact]
+        public void TheKeyCapsRing_IsOpaqueAndTwoToned_AndTheHandoffsWashIsStillDeclaredBesideIt()
+        {
+            // THE DEVIATION, stated as the two facts that make it one (issue #128).
+            //
+            // The handoff draws a selected keycap as "filled face + 1px accent border + 2px halo
+            // rgba(91,157,249,0.3)", and `ShadowKeyHalo` above is that value to the letter. It is
+            // legible on the Layout board's neutral cap and invisible on the Lighting board's: a
+            // lit cap's face is an arbitrary saturated led colour drawn to the inside of the
+            // border, `.paintSelected` paints no face of its own, and 30 % of blue over #A41010 is
+            // a shade of red. The user could not see which keys were selected.
+            //
+            // So the ring the cap wears is a third token: opaque, and two-toned, because a single
+            // hue cannot promise contrast against device data — a blue ring disappears on a
+            // blue-lit key however opaque it is. Both facts are asserted rather than described:
+            // every colour in the ring is fully opaque, and the ring holds two DIFFERENT colours.
+            foreach (var variant in DesignTokens.Variants)
+            {
+                var ring = (BoxShadows)DesignTokens.Resolve("ShadowKeyHaloStrong", variant);
+                var wash = (BoxShadows)DesignTokens.Resolve("ShadowKeyHalo", variant);
+
+                Assert.Equal(2, ring.Count);
+                Assert.All(Shadows(ring), shadow => Assert.Equal(255, shadow.Color.A));
+                Assert.NotEqual(ring[0].Color, ring[1].Color);
+
+                // ...and it is INWARD-ONLY and blur-free, like every halo in this file: an offset
+                // or a blur would put the band in the 4px gap the focus ring owns.
+                Assert.All(
+                    Shadows(ring),
+                    shadow =>
+                    {
+                        Assert.Equal(0, shadow.OffsetX);
+                        Assert.Equal(0, shadow.OffsetY);
+                        Assert.Equal(0, shadow.Blur);
+                    });
+
+                // The handoff's own value is untouched and still declared: this is a token beside
+                // it, not an edit to it, and a later hand comparing the two can see the deviation.
+                Assert.Equal(BoxShadows.Parse("0 0 0 2 #4D5B9DF9"), wash);
+            }
+        }
+
+        /// <summary>The shadows of <paramref name="shadows"/>, which indexes but does not enumerate.</summary>
+        private static IReadOnlyList<BoxShadow> Shadows(BoxShadows shadows)
+        {
+            var list = new List<BoxShadow>();
+
+            for (var index = 0; index < shadows.Count; index++)
+            {
+                list.Add(shadows[index]);
+            }
+
+            return list;
         }
 
         [AvaloniaFact]

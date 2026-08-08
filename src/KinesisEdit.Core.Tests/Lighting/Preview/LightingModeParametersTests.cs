@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Lighting;
 using KinesisEdit.Core.Lighting.Preview;
 
@@ -8,28 +9,29 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
     /// Pins the mode-parameter descriptor the lighting rail draws from: that every fact is the
     /// one the catalog and <see cref="LightingAvailability"/> already hold (specs/07-lighting.md
     /// §3), that the base colour follows the LED ≥ 1.0.44 layer-customization gate, that the
-    /// paint-direct set is exactly the five modes of <see cref="LightingPaintModes"/>, and the
-    /// grammar of the one-line summary.
+    /// paint-direct set is exactly the five modes of <see cref="LightingPaintModes"/>, that a mode
+    /// accepts paint exactly when its layer writes a file body at all, and the grammar of the
+    /// one-line summary.
     /// </summary>
     public class LightingModeParametersTests
     {
         [Theory]
-        [InlineData(LightingMode.Disabled, false, false, false, false, false, "—")]
-        [InlineData(LightingMode.Freestyle, true, false, false, true, true, "color")]
-        [InlineData(LightingMode.Monochrome, true, false, false, false, false, "color")]
-        [InlineData(LightingMode.Breathe, true, false, true, true, true, "color · spd")]
-        [InlineData(LightingMode.Spectrum, false, false, true, false, false, "spd")]
-        [InlineData(LightingMode.Wave, false, false, true, false, false, "spd · D/L/U/R")]
-        [InlineData(LightingMode.FrozenWave, true, false, false, true, true, "color")]
-        [InlineData(LightingMode.Reactive, true, true, true, false, false, "2 colors · spd")]
-        [InlineData(LightingMode.Ripple, true, true, true, false, false, "2 colors · spd")]
-        [InlineData(LightingMode.Fireball, true, true, true, false, false, "2 colors · spd")]
-        [InlineData(LightingMode.Starlight, true, true, true, false, false, "2 colors · spd")]
-        [InlineData(LightingMode.Rebound, true, true, true, false, false, "2 colors · spd · L/U")]
-        [InlineData(LightingMode.Loop, true, true, true, false, false, "2 colors · spd · D/L/U/R")]
-        [InlineData(LightingMode.Pulse, false, false, true, false, false, "spd")]
-        [InlineData(LightingMode.Rain, true, true, true, false, false, "2 colors · spd")]
-        [InlineData(LightingMode.PitchBlack, false, false, false, false, false, "—")]
+        [InlineData(LightingMode.Disabled, false, false, false, false, false, false, "—")]
+        [InlineData(LightingMode.Freestyle, true, false, false, true, true, true, "color")]
+        [InlineData(LightingMode.Monochrome, true, false, false, false, false, true, "color")]
+        [InlineData(LightingMode.Breathe, true, false, true, true, true, true, "color · spd")]
+        [InlineData(LightingMode.Spectrum, false, false, true, false, false, true, "spd")]
+        [InlineData(LightingMode.Wave, false, false, true, false, false, true, "spd · D/L/U/R")]
+        [InlineData(LightingMode.FrozenWave, true, false, false, true, true, true, "color")]
+        [InlineData(LightingMode.Reactive, true, true, true, false, false, true, "2 colors · spd")]
+        [InlineData(LightingMode.Ripple, true, true, true, false, false, true, "2 colors · spd")]
+        [InlineData(LightingMode.Fireball, true, true, true, false, false, true, "2 colors · spd")]
+        [InlineData(LightingMode.Starlight, true, true, true, false, false, true, "2 colors · spd")]
+        [InlineData(LightingMode.Rebound, true, true, true, false, false, true, "2 colors · spd · L/U")]
+        [InlineData(LightingMode.Loop, true, true, true, false, false, true, "2 colors · spd · D/L/U/R")]
+        [InlineData(LightingMode.Pulse, false, false, true, false, false, true, "spd")]
+        [InlineData(LightingMode.Rain, true, true, true, false, false, true, "2 colors · spd")]
+        [InlineData(LightingMode.PitchBlack, false, false, false, false, false, false, "—")]
         public void For_OnTheRgbWithTheGateOpen_DerivesEveryModesParameterSet(
             LightingMode mode,
             bool acceptsEffectColor,
@@ -37,6 +39,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
             bool acceptsSpeed,
             bool hasPerKeyColors,
             bool rendersPaintDirectly,
+            bool acceptsPaint,
             string summary)
         {
             var parameters = LightingModeParameters.For(DeviceId.FreestyleEdgeRgb, mode, true);
@@ -47,6 +50,12 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
             Assert.Equal(acceptsSpeed, parameters.AcceptsSpeed);
             Assert.Equal(hasPerKeyColors, parameters.HasPerKeyColors);
             Assert.Equal(rendersPaintDirectly, parameters.RendersPaintDirectly);
+
+            // The whole column, not only the two false rows: the claim is that Off and Pitch Black
+            // are the *only* modes a paint gesture cannot reach the file in (specs/07-lighting.md
+            // §2.2), and a matrix that named just those two would pass with the answer inverted
+            // everywhere else.
+            Assert.Equal(acceptsPaint, parameters.AcceptsPaint);
             Assert.Equal(summary, parameters.Summary);
         }
 
@@ -170,6 +179,68 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
         }
 
         [Fact]
+        public void AcceptsPaint_ForEveryModeTheRgbOffers_IsExactlyWhenTheLayerWritesAFileBody()
+        {
+            // The invariant behind the flag, asserted against the serializer rather than against a
+            // second list of names: a layer carrying a painted key writes nothing at all exactly
+            // when the mode accepts no paint. §2.2 gives Disable an empty section and never writes
+            // the reserved [black] token, so nothing about such a layer — its per-key colours
+            // included — can be expressed, which is why the rail draws no colour picker in them.
+            var painted = KeyRegistry.FindByToken("F4", TokenDialect.Gen1)!.Code;
+
+            foreach (var definition in LightingModeCatalog.All)
+            {
+                // The RGB's own menu (§3), which is the set the rail can select. Frozen Wave is
+                // left out on purpose: it is edge-only, and a mode the key-backlight context has
+                // no token for writes nothing there for a reason that is about the context rather
+                // than about the mode.
+                if (!definition.OffersInRgbKeyBacklightMenu && definition.Mode != LightingMode.PitchBlack)
+                {
+                    continue;
+                }
+
+                var model = new LightingModel();
+
+                model.TopLayer.Mode = definition.Mode;
+                model.TopLayer.SetKeyColor(painted, new LedColor(87, 196, 216));
+
+                var parameters = LightingModeParameters.For(DeviceId.FreestyleEdgeRgb, definition.Mode, true);
+                var lines = LedFileSerializer.SerializeRgb(model);
+
+                Assert.Equal(parameters.AcceptsPaint, lines.Count > 0);
+            }
+        }
+
+        [Fact]
+        public void AcceptsPaint_OnEveryDeviceAndEitherGate_IsTheSameTwoModesAndImpliesTheSwatches()
+        {
+            // Two claims the rail leans on. First, the answer is the file format's, so no device
+            // and no firmware gate moves it. Second — and this is what lets the swatch handler
+            // scroll to a section that can now be collapsed — AcceptsAnyColor IMPLIES AcceptsPaint:
+            // the two modes that write no body write no colour line either, so a swatch is never on
+            // screen while the picker is not.
+            foreach (var deviceId in Enum.GetValues<DeviceId>())
+            {
+                foreach (var mode in Enum.GetValues<LightingMode>())
+                {
+                    foreach (var gateOpen in new[] { true, false })
+                    {
+                        var parameters = LightingModeParameters.For(deviceId, mode, gateOpen);
+
+                        Assert.Equal(
+                            mode is not (LightingMode.Disabled or LightingMode.PitchBlack),
+                            parameters.AcceptsPaint);
+
+                        if (parameters.AcceptsAnyColor)
+                        {
+                            Assert.True(parameters.AcceptsPaint);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact]
         public void AcceptsAnyColor_PerMode_IsTrueWheneverEitherSwatchApplies()
         {
             Assert.True(LightingModeParameters.For(DeviceId.FreestyleEdgeRgb, LightingMode.Monochrome, true).AcceptsAnyColor);
@@ -189,6 +260,9 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
             Assert.False(parameters.AcceptsSpeed);
             Assert.False(parameters.HasPerKeyColors);
             Assert.False(parameters.RendersPaintDirectly);
+
+            // Including the picker: "no layer selected yet" is not a surface to paint on either.
+            Assert.False(parameters.AcceptsPaint);
             Assert.Empty(parameters.Directions);
             Assert.Equal(LightingModeParameters.NoParametersSummary, parameters.Summary);
         }

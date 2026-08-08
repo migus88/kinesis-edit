@@ -72,6 +72,20 @@
       <Color x:Key="AccentKeyHaloColor">#4D5B9DF9</Color>
       <SolidColorBrush x:Key="AccentKeyHaloBrush" Color="{StaticResource AccentKeyHaloColor}" />
 
+      <!-- THE SELECTED KEY CAP'S RING, and the one member of this family that is not a blue.
+           `AccentKeyRing` is the accent itself at full opacity, and `KeycapRingEdge` is the
+           near-black hairline drawn one pixel inside it. The pair exists because the Lighting
+           board's cap face is DEVICE DATA: a translucent accent wash over an arbitrary saturated
+           colour reads as nothing at all, and an opaque accent alone disappears the moment the key
+           is lit blue. One of the two therefore always contrasts with whatever is underneath, which
+           is the whole reason there are two. Both are variant-independent for the same reason the
+           two lit-keycap label roles at the foot of this file are: the colour under them belongs to
+           the led file, not to the OS theme. -->
+      <Color x:Key="AccentKeyRingColor">#5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentKeyRingBrush" Color="{StaticResource AccentKeyRingColor}" />
+      <Color x:Key="KeycapRingEdgeColor">#14181B</Color>
+      <SolidColorBrush x:Key="KeycapRingEdgeBrush" Color="{StaticResource KeycapRingEdgeColor}" />
+
       <!-- Status. Amber is the only warning colour — the app never shows red for an advisory;
            red is reserved for genuine failure and for the macro Record dot. -->
       <Color x:Key="StatusOkColor">#4FBF8B</Color>
@@ -131,13 +145,29 @@
 
       <!-- Elevation. Flat elevation is a 1px SurfaceLine border and no shadow at all; only
            popovers and modals cast one. The halos are spread-only shadows, never offset
-           outlines: focus is 3px of accent at 28% alpha, a selected keycap 2px at 30%. -->
+           outlines: focus is 3px of accent at 28% alpha, a selected keycap 2px at 30%.
+
+           `ShadowKeyHaloStrong` is the SELECTED KEY CAP'S ring, and the one entry here that is
+           two shadows rather than one — 3px of opaque `AccentKeyRing` with 1px of
+           `KeycapRingEdge` laid back over its inner pixel, which paints a 2px accent band with a
+           1px near-black hairline inside it. Both are drawn INWARD from the cap's own edge (see
+           Themes/ControlThemes/Keycap.axaml for the geometry that makes that true), so the band
+           never reaches the neighbouring cap 4px away.
+
+           IT IS NOT A LOUDER `ShadowKeyHalo`, and the handoff's 30% wash is deliberately still
+           declared beside it. On the Lighting board the cap's face is an arbitrary saturated led
+           colour, and a translucent accent over one reads as nothing — the defect this entry was
+           added for. Alpha is the failure mode, so the answer is opacity plus a second stroke in
+           a contrasting value, never more blue. The order is load-bearing: Skia draws outer box
+           shadows in list order, so the LAST entry paints on top, which is what puts the hairline
+           inside the band rather than under it. -->
       <Color x:Key="ScrimColor">#9E080A0C</Color>
       <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
       <BoxShadows x:Key="ShadowPopover">0 8 24 0 #80000000</BoxShadows>
       <BoxShadows x:Key="ShadowModal">0 24 60 0 #99000000</BoxShadows>
       <BoxShadows x:Key="ShadowFocusHalo">0 0 0 3 #475B9DF9</BoxShadows>
       <BoxShadows x:Key="ShadowKeyHalo">0 0 0 2 #4D5B9DF9</BoxShadows>
+      <BoxShadows x:Key="ShadowKeyHaloStrong">0 0 0 3 #5B9DF9, 0 0 0 1 #14181B</BoxShadows>
     </ResourceDictionary>
 
     <!-- ================================================================================
@@ -202,6 +232,20 @@
       <Color x:Key="AccentKeyHaloColor">#4D5B9DF9</Color>
       <SolidColorBrush x:Key="AccentKeyHaloBrush" Color="{StaticResource AccentKeyHaloColor}" />
 
+      <!-- THE SELECTED KEY CAP'S RING, and the one member of this family that is not a blue.
+           `AccentKeyRing` is the accent itself at full opacity, and `KeycapRingEdge` is the
+           near-black hairline drawn one pixel inside it. The pair exists because the Lighting
+           board's cap face is DEVICE DATA: a translucent accent wash over an arbitrary saturated
+           colour reads as nothing at all, and an opaque accent alone disappears the moment the key
+           is lit blue. One of the two therefore always contrasts with whatever is underneath, which
+           is the whole reason there are two. Both are variant-independent for the same reason the
+           two lit-keycap label roles at the foot of this file are: the colour under them belongs to
+           the led file, not to the OS theme. -->
+      <Color x:Key="AccentKeyRingColor">#5B9DF9</Color>
+      <SolidColorBrush x:Key="AccentKeyRingBrush" Color="{StaticResource AccentKeyRingColor}" />
+      <Color x:Key="KeycapRingEdgeColor">#14181B</Color>
+      <SolidColorBrush x:Key="KeycapRingEdgeBrush" Color="{StaticResource KeycapRingEdgeColor}" />
+
       <!-- Status hues darken for contrast on light while keeping their hue identity. The tints
            stay translucent, so they are re-mixed from the darkened hue rather than reused. -->
       <Color x:Key="StatusOkColor">#35A26D</Color>
@@ -256,13 +300,29 @@
       <SolidColorBrush x:Key="MacroStepKeyBrush" Color="{StaticResource MacroStepKeyColor}" />
 
       <!-- The scrim and the shadows are the same in both variants: they are the absence of
-           light, and dimming a light window uses the same near-black at the same alpha. -->
+           light, and dimming a light window uses the same near-black at the same alpha.
+
+           `ShadowKeyHaloStrong` is the SELECTED KEY CAP'S ring, and the one entry here that is
+           two shadows rather than one — 3px of opaque `AccentKeyRing` with 1px of
+           `KeycapRingEdge` laid back over its inner pixel, which paints a 2px accent band with a
+           1px near-black hairline inside it. Both are drawn INWARD from the cap's own edge (see
+           Themes/ControlThemes/Keycap.axaml for the geometry that makes that true), so the band
+           never reaches the neighbouring cap 4px away.
+
+           IT IS NOT A LOUDER `ShadowKeyHalo`, and the handoff's 30% wash is deliberately still
+           declared beside it. On the Lighting board the cap's face is an arbitrary saturated led
+           colour, and a translucent accent over one reads as nothing — the defect this entry was
+           added for. Alpha is the failure mode, so the answer is opacity plus a second stroke in
+           a contrasting value, never more blue. The order is load-bearing: Skia draws outer box
+           shadows in list order, so the LAST entry paints on top, which is what puts the hairline
+           inside the band rather than under it. -->
       <Color x:Key="ScrimColor">#9E080A0C</Color>
       <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
       <BoxShadows x:Key="ShadowPopover">0 8 24 0 #80000000</BoxShadows>
       <BoxShadows x:Key="ShadowModal">0 24 60 0 #99000000</BoxShadows>
       <BoxShadows x:Key="ShadowFocusHalo">0 0 0 3 #475B9DF9</BoxShadows>
       <BoxShadows x:Key="ShadowKeyHalo">0 0 0 2 #4D5B9DF9</BoxShadows>
+      <BoxShadows x:Key="ShadowKeyHaloStrong">0 0 0 3 #5B9DF9, 0 0 0 1 #14181B</BoxShadows>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 

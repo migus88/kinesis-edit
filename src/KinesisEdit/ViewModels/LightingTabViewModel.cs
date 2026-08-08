@@ -9,9 +9,17 @@ namespace KinesisEdit.ViewModels
 {
     /// <summary>
     /// The editor's Lighting tab: the per-layer LED editor of specs/07-lighting.md §3 and §4,
-    /// redesigned around design mockup 2f — <b>the mode is rendered on the board</b> rather than
-    /// named in a dropdown. A mode rail beside the board, the board animating the selected mode at
-    /// its real speed and direction, and under it the paint selection the colour picker applies to.
+    /// redesigned around design mockup 2f — <b>the mode is rendered on the board</b>, which is
+    /// still the point of the screen: the board animates the selected mode at its real speed and
+    /// direction, and under it sits the paint selection the colour picker applies to.
+    /// <para>
+    /// <b>The rail beside it is a properties panel</b> (issue #128). 2f drew a fourteen-row mode
+    /// list taking most of the column and a fixed parameter footer under it; the list is a
+    /// <c>ComboBox</c> now, and <b>only the properties the selected mode actually has are
+    /// rendered</b> — each with one line saying what it means in that mode
+    /// (<see cref="LightingHintCatalog"/>). What a mode has is still exactly one answer, Core's
+    /// <see cref="LightingModeParameters"/>; nothing here decides it a second time.
+    /// </para>
     /// <para>
     /// It owns no lighting rules. Mode membership and firmware gating are
     /// <see cref="LightingAvailability"/>'s, what a mode accepts is
@@ -67,8 +75,12 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string FrozenPreviewSuffix = " · preview";
 
-        /// <summary>The rail's own header (mockup 2f), verbatim.</summary>
-        public const string ModeRailCaption = "Mode — click to preview on the board";
+        /// <summary>
+        /// The rail's own header. Mockup 2f reads "Mode — click to preview on the board", which
+        /// described a scrolled list of fourteen rows; the rail is a properties panel over a
+        /// dropdown since issue #128, so the instruction is kept and the gesture it names is not.
+        /// </summary>
+        public const string ModeRailCaption = "Mode — previewed on the board";
 
         /// <summary>
         /// Whether this panel can edit <paramref name="device"/>'s lighting. True exactly for a
@@ -127,7 +139,7 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _board, value);
         }
 
-        /// <summary>The device's mode rail for its firmware (§3, mockup 2f).</summary>
+        /// <summary>The device's mode menu for its firmware (§3, mockup 2f).</summary>
         public IReadOnlyList<LightingModeViewModel> Modes { get; }
 
         /// <summary>The selected layer's mode.</summary>
@@ -142,6 +154,24 @@ namespace KinesisEdit.ViewModels
                     OnPropertyChanged(nameof(BoardHeader));
                 }
             }
+        }
+
+        /// <summary>
+        /// The row of <see cref="Modes"/> for <see cref="SelectedMode"/> — what the rail's mode
+        /// dropdown binds its <c>SelectedItem</c> to (issue #128), one-way, with the control's
+        /// <c>SelectionChanged</c> running <see cref="SelectModeCommand"/>: the repo's established
+        /// shape for a selector over a property the view model owns.
+        /// <para>
+        /// <b>Null is a real state</b>, not a bug: a led file may carry a mode the device's own
+        /// menu does not offer — Ripple or Fireball below the KBD 1.0.121 / LED 1.0.58 gate (§3) —
+        /// and <see cref="Modes"/> is the menu. The dropdown then shows its placeholder, which is
+        /// <see cref="ModeCaption"/>, so the layer still says what it is set to.
+        /// </para>
+        /// </summary>
+        public LightingModeViewModel? SelectedModeOption
+        {
+            get => _selectedModeOption;
+            private set => SetProperty(ref _selectedModeOption, value);
         }
 
         /// <summary>What the rail calls the selected mode (<see cref="LightingModeCaptions"/>).</summary>
@@ -183,10 +213,36 @@ namespace KinesisEdit.ViewModels
             {
                 if (SetProperty(ref _parameters, value))
                 {
+                    OnPropertyChanged(nameof(ModeHint));
+                    OnPropertyChanged(nameof(SpeedHint));
+                    OnPropertyChanged(nameof(DirectionHint));
+                    OnPropertyChanged(nameof(PickerHint));
+
                     NotifyCommands();
                 }
             }
         }
+
+        // ===== The rail's inline explanations (issue #128) =====================================
+        // One line under each control saying what it means IN THE SELECTED MODE — the ask being
+        // "I don't understand what is the difference between Effect and Base color in reactive
+        // mode", which no per-property sentence could have answered. The copy is
+        // LightingHintCatalog's; these four are the properties the view binds, and the two colour
+        // swatches carry their own (LightingColorSlotViewModel.Hint) because a swatch is one row
+        // with one meaning. They all follow Parameters rather than SelectedMode, because Parameters
+        // is what decides which of them is on screen and it is written after the mode is.
+
+        /// <summary>What the selected mode does, under the mode dropdown.</summary>
+        public string ModeHint => LightingHintCatalog.ForMode(SelectedMode);
+
+        /// <summary>What the nine speed bars move, in this mode.</summary>
+        public string SpeedHint => LightingHintCatalog.ForSpeed(SelectedMode);
+
+        /// <summary>What the direction arrows steer, in this mode.</summary>
+        public string DirectionHint => LightingHintCatalog.ForDirection(SelectedMode);
+
+        /// <summary>What the colour picker writes — the swatch above it, the paint selection, or both.</summary>
+        public string PickerHint => LightingHintCatalog.ForPicker(Parameters.AcceptsAnyColor);
 
         /// <summary>The effect-color swatch.</summary>
         public LightingColorSlotViewModel EffectColor { get; }
@@ -224,9 +280,16 @@ namespace KinesisEdit.ViewModels
         public int MaximumSpeed => LayerLightingState.MaximumSpeed;
 
         /// <summary>
-        /// The four direction arrows — always four, each carrying
-        /// <see cref="LightingDirectionViewModel.IsAvailable"/>, because 2f keeps the ones a mode
-        /// cannot use in place and strikes them through.
+        /// The four direction arrows, each carrying
+        /// <see cref="LightingDirectionViewModel.IsAvailable"/>.
+        /// <para>
+        /// <b>The list is still four long; the rail draws only the available ones</b> (issue #128).
+        /// Mockup 2f kept a mode's unusable arrows in place and struck them through so that "the
+        /// row never changes shape as you move down the list" — and the list it was talking about
+        /// is gone. Which arrow a mode accepts is still one answer, Core's, and it is still the
+        /// only thing a write is validated against: an unavailable arrow that somehow reaches
+        /// <see cref="SelectDirectionCommand"/> is a no-op whether or not it was ever drawn.
+        /// </para>
         /// </summary>
         public IReadOnlyList<LightingDirectionViewModel> Directions
         {
@@ -276,19 +339,27 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand<int> SetSpeedCommand { get; }
 
         /// <summary>
-        /// Toggles a zone's keys in the paint selection (§4, issue #124). It <b>paints nothing</b>:
-        /// a zone is a way of selecting a set of positions, and <see cref="PaintSelectionCommand"/>
-        /// is the explicit commit.
+        /// Toggles a zone's keys in the paint selection (§4) and paints whatever it added — a
+        /// <b>direct paint gesture</b>, see <see cref="PaintWhatTheGestureSelects"/>.
         /// </summary>
         public IRelayCommand<LightingZoneViewModel> SelectZoneCommand { get; }
 
-        /// <summary>Adds a key to the paint selection or takes it out — what a click on a cap runs.</summary>
+        /// <summary>
+        /// Adds a key to the paint selection or takes it out — what a click on a cap runs, and a
+        /// direct paint gesture (<see cref="PaintWhatTheGestureSelects"/>).
+        /// </summary>
         public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand { get; }
 
-        /// <summary>Extends the paint selection to a key — what a shift-click on a cap runs.</summary>
+        /// <summary>
+        /// Extends the paint selection to a key — what a shift-click on a cap runs, and a direct
+        /// paint gesture (<see cref="PaintWhatTheGestureSelects"/>).
+        /// </summary>
         public IRelayCommand<KeyboardKeyViewModel> ExtendSelectionCommand { get; }
 
-        /// <summary>Selects every key of the layer (mockup 2f's "Select all").</summary>
+        /// <summary>
+        /// Selects every key of the layer (mockup 2f's "Select all"). It is deliberately
+        /// <b>not</b> a paint gesture — see <see cref="PaintWhatTheGestureSelects"/>.
+        /// </summary>
         public IRelayCommand SelectAllKeysCommand { get; }
 
         /// <summary>
@@ -298,18 +369,18 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand ClearKeyColorsCommand { get; }
 
         /// <summary>
-        /// <b>Apply</b> — paints the picker's current color onto the whole selection, and the rail
-        /// footer's own control since issue #124.
+        /// Paints the picker's current color onto the <b>whole</b> selection, and announces it once.
         /// <para>
-        /// Dragging the picker still paints the selection live (see
-        /// <see cref="OnPickerColorChanged"/>), which was the user's explicit decision: this is the
-        /// commit for the select-a-zone-then-apply flow, and a re-apply of the picker's colour to a
-        /// selection made afterwards, not the only way a colour ever lands.
+        /// <b>It has no button any more</b> (issue #128). It was the rail footer's <c>Apply</c>,
+        /// the commit of the select-then-apply flow #124 introduced; every control on this rail
+        /// writes on the spot now — including a selection gesture, which paints what it adds (see
+        /// <see cref="PaintWhatTheGestureSelects"/>) — so the one thing Apply could do that nothing
+        /// else could is done by the gesture that used to need it.
         /// </para>
         /// <para>
-        /// It is enabled exactly while something is selected — the one gate on the paint row, and it
-        /// is about the <i>selection</i> rather than the mode, so it does not break the rule below
-        /// that no paint control comes and goes with the effect.
+        /// The command survives the button because it is still the honest name for "put this colour
+        /// on everything selected", and it is what <see cref="ClearKeyColorsCommand"/> is built out
+        /// of. It stays enabled exactly while something is selected.
         /// </para>
         /// </summary>
         public IRelayCommand PaintSelectionCommand { get; }
@@ -340,6 +411,7 @@ namespace KinesisEdit.ViewModels
         private IReadOnlyList<LightingDirectionViewModel> _directions = [];
         private LightingModeParameters _parameters = LightingModeParameters.None;
         private LightingLayerViewModel? _selectedLayer;
+        private LightingModeViewModel? _selectedModeOption;
         private KeyboardLayerViewModel? _board;
         private LightingModel? _model;
         private KeyboardLayer? _topLayoutLayer;
@@ -425,15 +497,22 @@ namespace KinesisEdit.ViewModels
             // screen at all (IsSupported). What the mode decides is how the paint is *drawn*:
             // directly, or at 40% under the effect (LightingModeParameters.RendersPaintDirectly).
             //
-            // Apply's CanExecute below is not an exception to that: it asks about the SELECTION,
-            // which is a fact about what the user pointed at, not about the effect running.
-            SelectZoneCommand = new RelayCommand<LightingZoneViewModel>(SelectZone);
-            SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Toggle);
-            ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(Selection.Extend);
+            // PaintSelectionCommand's CanExecute below is not an exception to that: it asks about
+            // the SELECTION, a fact about what the user pointed at, not about the effect running.
+            //
+            // THE FIRST THREE ARE PAINT GESTURES AND `Select all` IS NOT. See
+            // PaintWhatTheGestureSelects: pointing at keys on the board is how a colour lands now
+            // that the Apply button is gone, and a bulk selector must never be one.
+            SelectZoneCommand = new RelayCommand<LightingZoneViewModel>(
+                zone => PaintWhatTheGestureSelects(() => SelectZone(zone)));
+            SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(
+                key => PaintWhatTheGestureSelects(() => Selection.Toggle(key)));
+            ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(
+                key => PaintWhatTheGestureSelects(() => Selection.Extend(key)));
             SelectAllKeysCommand = new RelayCommand(Selection.SelectAll);
             ClearKeyColorsCommand = new RelayCommand(ClearKeyColors);
-            // Apply's one gate is the selection, not the mode: painting nothing is not a paint, and
-            // a control that claims otherwise is a lie the user only finds out about by pressing it.
+            // The one gate is the selection, not the mode: painting nothing is not a paint, and a
+            // control that claims otherwise is a lie the user only finds out about by pressing it.
             PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color), () => Selection.HasSelection);
             ResetAllCommand = new AsyncRelayCommand(ResetAllAsync);
 
@@ -580,11 +659,7 @@ namespace KinesisEdit.ViewModels
             try
             {
                 SelectedMode = state?.Mode ?? LightingMode.Disabled;
-
-                foreach (var mode in Modes)
-                {
-                    mode.IsSelected = mode.Mode == SelectedMode;
-                }
+                SelectedModeOption = FindMode(SelectedMode);
 
                 EffectColor.ReadFrom(state);
                 BaseColor.ReadFrom(state);
@@ -613,13 +688,21 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
+            // RE-SELECTING THE MODE ALREADY OPEN IS NOT A MODE CHANGE, and the guard is load
+            // bearing for exactly the reason SelectLayer's is: the picker is a ComboBox since issue
+            // #128, and a selector raises SelectionChanged while it BINDS. Without this, merely
+            // showing the tab — or coming back to it, since it is hidden rather than unloaded —
+            // ran a write and raised ModelChanged, which turns the editor's Save amber over a
+            // profile nobody edited (invariant 16). Nothing else on this panel could have noticed:
+            // the mode written is the mode that was already there.
+            if (ReferenceEquals(mode, SelectedModeOption))
+            {
+                return;
+            }
+
             state.Mode = mode.Mode;
             SelectedMode = mode.Mode;
-
-            foreach (var entry in Modes)
-            {
-                entry.IsSelected = ReferenceEquals(entry, mode);
-            }
+            SelectedModeOption = mode;
 
             _isSynchronizing = true;
 
@@ -640,8 +723,9 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Recomputes what the selected mode accepts, rebuilds the direction arrows, and makes sure
-        /// the picker is pointed at a swatch the mode actually has.
+        /// Recomputes what the selected mode accepts, re-labels and re-explains the two colour
+        /// swatches for it, rebuilds the direction arrows, and makes sure the picker is pointed at
+        /// a swatch the mode actually has.
         /// </summary>
         private void RefreshParameters()
         {
@@ -650,8 +734,30 @@ namespace KinesisEdit.ViewModels
             EffectColor.IsVisible = Parameters.AcceptsEffectColor;
             BaseColor.IsVisible = Parameters.AcceptsBaseColor;
 
+            // The swatch is renamed as well as explained: in a per-key mode it is not an effect
+            // colour at all (07 §2.2 writes no such line for Freestyle/Breathe/Frozen Wave), and
+            // "Effect Color" there names a line the file will never carry.
+            EffectColor.Caption = LightingColorSlotViewModel.EffectCaptionFor(SelectedMode);
+            EffectColor.Hint = LightingHintCatalog.ForEffectColor(SelectedMode);
+            BaseColor.Hint = LightingHintCatalog.ForBaseColor(SelectedMode);
+
             RefreshDirections();
             RefreshSelectedColorSlot();
+        }
+
+        /// <summary>The row of <see cref="Modes"/> for <paramref name="mode"/>, or null (see
+        /// <see cref="SelectedModeOption"/> for when that happens).</summary>
+        private LightingModeViewModel? FindMode(LightingMode mode)
+        {
+            foreach (var entry in Modes)
+            {
+                if (entry.Mode == mode)
+                {
+                    return entry;
+                }
+            }
+
+            return null;
         }
 
         private void RefreshDirections()
@@ -794,8 +900,9 @@ namespace KinesisEdit.ViewModels
         {
             var state = SelectedLayer?.State;
 
-            // A struck-through arrow is not hit-testable, so this is the second line rather than
-            // the only one — but a mode that cannot run that way must not have it written.
+            // An unavailable arrow is not drawn at all since issue #128, so this is the second line
+            // rather than the only one — but a mode that cannot run that way must not have it
+            // written, whatever reaches the command.
             if (direction is null || state is null || !direction.IsAvailable)
             {
                 return;
@@ -841,14 +948,23 @@ namespace KinesisEdit.ViewModels
 
         private bool PaintSelectedKeys(LedColor color)
         {
+            return PaintKeys(Selection.Keys, color);
+        }
+
+        /// <summary>
+        /// Writes <paramref name="color"/> onto <paramref name="keys"/> and answers whether
+        /// anything was written. Keys are addressed by <b>memory key code</b> (§4).
+        /// </summary>
+        private bool PaintKeys(IReadOnlyList<KeyboardKeyViewModel> keys, LedColor color)
+        {
             var state = SelectedLayer?.State;
 
-            if (state is null || !Selection.HasSelection)
+            if (state is null || keys.Count == 0)
             {
                 return false;
             }
 
-            foreach (var key in Selection.Keys)
+            foreach (var key in keys)
             {
                 state.SetKeyColor(key.Key.OriginalKey.Code, color);
             }
@@ -857,14 +973,60 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Toggles a whole zone in the paint selection, and <b>writes no colour</b>.
+        /// Runs a <b>direct paint gesture on the board</b> — a click on a cap, a shift-click run, a
+        /// zone button — and paints the picker's current colour onto whatever that gesture <i>added
+        /// to</i> the selection.
         /// <para>
-        /// Zone buttons used to paint on the spot, which left no way to say "these keys" without
-        /// also committing a colour to them and no way to undo the commit but Reset All. Issue #124
-        /// splits the gesture in two: a zone is a selection, Apply
-        /// (<see cref="PaintSelectionCommand"/>) is the commit. Nothing about the zones' membership
-        /// changed with it.
+        /// It is what replaced the rail footer's <c>Apply</c> in issue #128. Apply existed for one
+        /// flow: pushing an already-held colour onto a selection made <em>after</em> the colour was
+        /// chosen, which the picker cannot do because it only writes on <c>ColorChanged</c>. With
+        /// every other control on the rail applying on the spot, a button whose whole job was
+        /// "commit, now" was the one thing left asking to be pressed.
         /// </para>
+        /// <para>
+        /// <b>It is emphatically not "paint on every selection change".</b> `Select all` plus a
+        /// held colour would then repaint the entire layer in a single click with nothing but
+        /// <c>Reset All</c> to undo it — which is precisely the regression issue #124 removed when
+        /// <c>ApplyZoneCommand</c> became <c>SelectZoneCommand</c>. So this is wired to the three
+        /// commands that are a user pointing at keys, and <see cref="SelectAllKeysCommand"/> is
+        /// deliberately not one of them.
+        /// </para>
+        /// <para>
+        /// <b>Only what the gesture added is painted</b>, never the whole selection: a click that
+        /// grows a selection must not re-colour the keys already in it, or `Clear` followed by one
+        /// more click would silently undo the Clear.
+        /// </para>
+        /// </summary>
+        private void PaintWhatTheGestureSelects(Action gesture)
+        {
+            var before = new HashSet<KeyboardKeyViewModel>(Selection.Keys);
+
+            gesture();
+
+            var added = new List<KeyboardKeyViewModel>(Selection.Count);
+
+            foreach (var key in Selection.Keys)
+            {
+                if (!before.Contains(key))
+                {
+                    added.Add(key);
+                }
+            }
+
+            if (!PaintKeys(added, Picker.Color))
+            {
+                return;
+            }
+
+            RefreshBoard();
+            RaiseModelChanged();
+        }
+
+        /// <summary>
+        /// Toggles a whole zone in the paint selection. Since issue #124 it selects rather than
+        /// paints, and since #128 the <i>gesture</i> around it paints what it selected — see
+        /// <see cref="PaintWhatTheGestureSelects"/>, which is the only caller. Nothing about the
+        /// zones' membership has changed through either.
         /// <para>
         /// The toggle is over the zone as a whole — a zone already entirely selected comes out, and
         /// anything else goes fully in — so two zones can be built up into one selection and the
@@ -914,8 +1076,9 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The selection moved, from wherever. Two things follow it: Apply is enabled exactly while
-        /// something is selected, and every zone button lights up exactly while all of its keys are.
+        /// The selection moved, from wherever. Two things follow it:
+        /// <see cref="PaintSelectionCommand"/> is live exactly while something is selected, and
+        /// every zone button lights up exactly while all of its keys are.
         /// </summary>
         private void OnSelectionChanged(object? sender, EventArgs e)
         {
@@ -1009,8 +1172,9 @@ namespace KinesisEdit.ViewModels
         /// <see cref="RefreshDirections"/> — because <see cref="ModelChanged"/> is what turns the
         /// editor's Save amber.
         /// <para>
-        /// A zone is <b>not</b> among them since issue #124: clicking one selects keys and writes
-        /// nothing, so it has nothing to announce. Applying to the selection is what writes.
+        /// Since issue #128 a <b>selection gesture on the board</b> is among them — a cap click, a
+        /// shift-click run or a zone button paints what it added (<see cref="PaintWhatTheGestureSelects"/>)
+        /// — while `Select all` still is not, because it paints nothing.
         /// </para>
         /// </summary>
         private void RaiseModelChanged()
@@ -1021,8 +1185,9 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Re-asks the one command whose availability the mode decides. The paint commands are
         /// deliberately absent: none of them carries a gate the <i>mode</i> can move, because the
-        /// colours they manage are the layer's rather than the effect's. Apply's own gate is the
-        /// selection, and it is re-asked from <see cref="OnSelectionChanged"/> instead.
+        /// colours they manage are the layer's rather than the effect's.
+        /// <see cref="PaintSelectionCommand"/>'s own gate is the selection, and it is re-asked from
+        /// <see cref="OnSelectionChanged"/> instead.
         /// </summary>
         private void NotifyCommands()
         {

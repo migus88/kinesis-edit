@@ -18,8 +18,29 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the effect-color swatch (specs/07-lighting.md §3).</summary>
         public const string EffectColorCaption = "Effect Color";
 
+        /// <summary>
+        /// What the same swatch is called in a mode where it is <b>not effect colour at all</b>.
+        /// specs/07-lighting.md §2.2 writes no effect-colour line for Freestyle, Breathe or Frozen
+        /// Wave: their file body is per-key colour lines, so the swatch is literally "the colour
+        /// you paint with" (§4: "clicking a key applies the currently selected picker color") and
+        /// calling it "Effect Color" there names a line the file will never carry.
+        /// </summary>
+        public const string PaintColorCaption = "Paint Color";
+
         /// <summary>Caption of the base-color swatch (§3), shown for the two-line effects only.</summary>
         public const string BaseColorCaption = "Base Color";
+
+        /// <summary>
+        /// What the effect-colour swatch is called in <paramref name="mode"/>. It asks the catalog
+        /// whether the mode writes an effect-colour line at all
+        /// (<see cref="LightingModeDefinition.WritesEffectColor"/>, i.e. §2.2's own grammar) rather
+        /// than restating which modes those are — the per-mode table lives in Core and nowhere
+        /// else.
+        /// </summary>
+        public static string EffectCaptionFor(LightingMode mode)
+        {
+            return LightingModeCatalog.Find(mode).WritesEffectColor ? EffectColorCaption : PaintColorCaption;
+        }
 
         /// <summary>The swatch over <see cref="LayerLightingState.EffectColor"/>.</summary>
         public static LightingColorSlotViewModel CreateEffectColor()
@@ -39,8 +60,27 @@ namespace KinesisEdit.ViewModels
                 (state, color) => state.BaseColor = color);
         }
 
-        /// <summary>The swatch's caption.</summary>
-        public string Caption { get; }
+        /// <summary>
+        /// The swatch's caption. Settable, because the effect swatch is renamed per mode — see
+        /// <see cref="EffectCaptionFor"/>.
+        /// </summary>
+        public string Caption
+        {
+            get => _caption;
+            set => SetProperty(ref _caption, value);
+        }
+
+        /// <summary>
+        /// The one line printed under the swatch saying what this colour <i>means</i> in the
+        /// selected mode (<see cref="LightingHintCatalog"/>). It is per mode, which is the point:
+        /// "Effect Color" and "Base Color" are indistinguishable names until something says that
+        /// one is the flash and the other is what the key rests at.
+        /// </summary>
+        public string Hint
+        {
+            get => _hint;
+            set => SetProperty(ref _hint, value);
+        }
 
         /// <summary>The color the slot currently holds.</summary>
         public LedColor Color
@@ -75,6 +115,8 @@ namespace KinesisEdit.ViewModels
         private readonly Func<LayerLightingState, LedColor> _reader;
         private readonly Action<LayerLightingState, LedColor> _writer;
         private LedColor _color = LedColor.DefaultEffectColor;
+        private string _caption;
+        private string _hint = string.Empty;
         private bool _isVisible;
         private bool _isSelected;
 
@@ -86,7 +128,7 @@ namespace KinesisEdit.ViewModels
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(caption);
 
-            Caption = caption;
+            _caption = caption;
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
         }

@@ -64,6 +64,17 @@ Consumes the already-parsed `VersionFileInfo` from the firmware module ([firmwar
 
 Pure model-to-model, no I/O and no range check (`KeyboardSettingsSerializer` enforces 1–9). Both the settings panel's active-profile slider (08 §5.1 "Active profile slider → `startup_file` (+ paired `led_mode` file)") and `ProfileSession.SaveAs(…, setAsStartup: true)` (07 §1.2 "Save As … switches both the current layout file and the current led file at once") go through this one helper, so the pair cannot drift. `GetLedFileName` is also what `ProfileSession` builds the `lighting/led<n>.txt` path from, so the file a session reads and the name the settings point at are spelled in one place.
 
+**`StartupProfileNumber` is not "the profile the editor has open", and the app now draws both.** Two different concepts, one number each, and conflating them is the mistake this paragraph exists to prevent:
+
+| | `KeyboardSettings.StartupProfileNumber` | `ProfileSession.ProfileNumber` |
+|---|---|---|
+| Is | the profile the **keyboard powers on into** | the `layout<n>.txt` + `led<n>.txt` pair the **editor is editing** |
+| Lives in | `kbd_settings.txt`'s `startup_file` (+ paired `led_mode`) | nowhere — it is which files the session opened |
+| Moved by | the Settings tab's **`Active profile` slider**, and by `SaveAs(…, setAsStartup: true)` | the tab bar's **profile drop-down** ([keyboard-editor.md](keyboard-editor.md) § "The profile picker") |
+| Writes | this settings file, on that tab's own Save | **nothing at all** — a switch is a load |
+
+The drop-down (issue #128) is the app-side equivalent of pressing `SmartSet + <n>` on the board: it points the editor at a different pair of files. It leaves `startup_file` exactly as it found it, and the slider leaves the open profile exactly as it found it. A user who wants the board to boot into the profile they are editing has to move the slider too — deliberately, because a picker that silently rewrote the power-on setting would change the hardware's behaviour to answer a request to *look* at something.
+
 ## Settings-panel strings — `SettingsMessageCatalog`
 
 Plain consts, no UI framework — the same pattern as `Profiles.ProfileSaveMessageCatalog`:

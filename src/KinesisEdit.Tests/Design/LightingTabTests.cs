@@ -107,14 +107,21 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheDirectionRow_DrawsFourArrows_WhateverTheModeIs()
+        public async Task TheRail_DrawsOnlyThePropertiesTheSelectedModeHas()
         {
-            // 2f, verbatim: "Directions a mode can't use stay in place, struck through — the row
-            // never changes shape as you move down the list." The assertion is therefore about the
-            // COUNT being constant across every row of the rail, not about any one mode.
+            // ISSUE #128, ITEM 3b, ASSERTED AS A MATRIX. The user's words: "I want to know that the
+            // controls I'm seeing are part of the mode I've selected." So for every mode the device
+            // offers, what is on screen has to equal what Core says the mode accepts — the very
+            // table LightingModeParametersTests holds Core to, read here off the glass instead.
+            //
+            // The picker is in the matrix on its own column, AcceptsPaint: it is on screen wherever
+            // the per-key colours it paints can reach the file, which is every mode but the two
+            // that write nothing — those colours belong to the LAYER rather than to the effect
+            // running over them (mockup 2f: "the colors are still on file"), and a layer with no
+            // file body has nowhere to keep them. See ThePicker_IsAbsentUnderAModeThatWritesNothing.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
@@ -127,46 +134,157 @@ namespace KinesisEdit.Tests.Design
 
                 host.Capture();
 
-                var segments = DirectionSegments(view);
+                var parameters = mode.Parameters;
 
-                Assert.Equal(LightingDirectionViewModel.Order.Count, segments.Length);
-                Assert.Equal(4, segments.Length);
+                Assert.Equal(parameters.AcceptsEffectColor, IsSwatchShown(view, lighting.EffectColor));
+                Assert.Equal(parameters.AcceptsBaseColor, IsSwatchShown(view, lighting.BaseColor));
+                Assert.Equal(
+                    parameters.AcceptsSpeed,
+                    Descendants<Button>(view).Any(button => button.Classes.Contains("speedBar") && button.IsEffectivelyVisible));
 
-                // ...and the ones the mode cannot use are the struck ones, in place.
-                var struck = segments.Count(button => button.Classes.Contains("unavailable"));
+                // Only the arrows the mode really accepts, and none at all when it has none.
+                var arrows = DirectionSegments(view).Where(button => button.IsEffectivelyVisible).ToArray();
 
-                Assert.Equal(4 - mode.Parameters.Directions.Count, struck);
+                Assert.Equal(parameters.Directions.Count, arrows.Length);
+                Assert.DoesNotContain(arrows, button => button.Classes.Contains("unavailable"));
+
+                Assert.Equal(
+                    parameters.AcceptsPaint,
+                    Descendants<ColorPickerView>(view).Any(picker => picker.IsEffectivelyVisible));
             }
         }
 
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task AnUnavailableArrow_IsStruckAndUnreachable_RatherThanRemoved(string variantName)
+        public async Task ThePicker_IsAbsentUnderAModeThatWritesNothing(string variantName)
         {
+            // THE DEFECT A CAPTURED FRAME CAUGHT, in the one control issue #128 left ungated. Under
+            // Off the rail said "The backlight is off for this layer, and nothing is written to the
+            // file for it" and then, directly under it, drew PICK A COLOR, a full colour wheel and
+            // "those colours stay on file and show through under the effect". Both halves cannot be
+            // true: LightingSectionSerializer returns before its first line for Disable and Pitch
+            // Black (specs/07-lighting.md §2.2), so a colour picked there reaches no file and there
+            // is no effect for it to show through under.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ToVariant(variantName));
 
-            // Solid accepts no direction at all, so every one of the four is struck — the widest
-            // case of the rule, and the one where a row that hid its unusable arrows would vanish.
+            // A mode that paints: the picker and its line are both drawn, swatch or no swatch.
+            SelectMode(lighting, LightingMode.Reactive);
+
+            host.Capture();
+
+            Assert.True(lighting.Parameters.AcceptsPaint);
+            Assert.Contains(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
+            Assert.Contains(LightingModeRailView.PickerLabel, VisibleTexts(view));
+            Assert.Contains(lighting.PickerHint, VisibleTexts(view));
+
+            SelectMode(lighting, LightingMode.Disabled);
+
+            host.Capture();
+
+            // ...and under Off the whole section goes: the wheel, its label and its line.
+            var texts = VisibleTexts(view);
+
+            Assert.False(lighting.Parameters.AcceptsPaint);
+            Assert.DoesNotContain(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
+            Assert.DoesNotContain(LightingModeRailView.PickerLabel, texts);
+            Assert.DoesNotContain(LightingHintCatalog.PickerPaintOnlyHint, texts);
+            Assert.DoesNotContain(LightingHintCatalog.PickerWithSwatchHint, texts);
+
+            // What is left is the mode itself and the one line that says why there is nothing else:
+            // a properties panel with no properties, rather than a promise the file cannot keep.
+            Assert.Contains(lighting.ModeHint, texts);
+            Assert.DoesNotContain(Descendants<Button>(view), button => button.Classes.Contains("colorSlot") && button.IsEffectivelyVisible);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task AModeWithNoDirection_DrawsNoDirectionBlockAtAll(string variantName)
+        {
+            // THE DELIBERATE REVERSAL OF MOCKUP 2f (issue #128). 2f said, verbatim: "Directions a
+            // mode can't use stay in place, struck through — the row never changes shape as you
+            // move down the list." That was bought with the scrubable fourteen-row list, where a
+            // block growing and shrinking under the pointer would have been worse than a struck
+            // arrow. The list is a dropdown now, so the cost is gone and the app's own law applies
+            // again: features a mode lacks are not rendered at all rather than disabled.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            // Solid accepts no direction at all — the widest case of the rule.
             SelectMode(lighting, LightingMode.Monochrome);
 
             host.Capture();
 
-            var segments = DirectionSegments(view);
+            Assert.False(lighting.Parameters.AcceptsDirection);
+            Assert.DoesNotContain(DirectionSegments(view), button => button.IsEffectivelyVisible);
+            Assert.DoesNotContain(LightingModeRailView.DirectionLabel, VisibleTexts(view));
 
-            Assert.Equal(4, segments.Length);
-            Assert.All(segments, button => Assert.Contains("unavailable", button.Classes));
-            Assert.All(segments, button => Assert.False(button.IsHitTestVisible));
-            Assert.All(segments, button => Assert.False(button.Focusable));
+            // Rebound offers two of the four, so exactly those two are drawn — and neither is
+            // struck, because the struck face has nothing left to say.
+            SelectMode(lighting, LightingMode.Rebound);
 
-            // The slot keeps its size: the strike is a Path inside the same template, not a
-            // different control.
-            Assert.All(segments, button => Assert.True(button.Bounds.Width > 0 && button.Bounds.Height > 0));
+            host.Capture();
+
+            var arrows = DirectionSegments(view).Where(button => button.IsEffectivelyVisible).ToArray();
+
+            Assert.Equal(2, arrows.Length);
+            Assert.All(arrows, button => Assert.True(button.IsHitTestVisible));
+            Assert.All(arrows, button => Assert.DoesNotContain("unavailable", button.Classes));
+            Assert.Contains(LightingModeRailView.DirectionLabel, VisibleTexts(view));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task EveryPropertyOnTheRail_CarriesItsOwnLineOfExplanation(string variantName)
+        {
+            // ISSUE #128, ITEM 4. Inline, not a tooltip: the ask was that the meaning be visible,
+            // and Reactive is the case that prompted it — two same-shaped colour rows that nothing
+            // on screen told apart.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Reactive);
+
+            host.Capture();
+
+            var texts = VisibleTexts(view);
+
+            Assert.Contains(lighting.ModeHint, texts);
+            Assert.Contains(lighting.EffectColor.Hint, texts);
+            Assert.Contains(lighting.BaseColor.Hint, texts);
+            Assert.Contains(lighting.SpeedHint, texts);
+            Assert.Contains(lighting.PickerHint, texts);
+
+            // They are the settings panel's helper-text role, not a fourth voice: `meta muted`.
+            var hint = Descendants<TextBlock>(view).First(text => text.Text == lighting.EffectColor.Hint);
+
+            Assert.Contains("meta", hint.Classes);
+            Assert.Contains("muted", hint.Classes);
+            Assert.Equal(TextWrapping.Wrap, hint.TextWrapping);
+
+            // A mode with a direction shows that line too; Reactive has none, so it must not.
+            Assert.DoesNotContain(lighting.DirectionHint, texts);
+
+            SelectMode(lighting, LightingMode.Wave);
+
+            host.Capture();
+
+            Assert.Contains(lighting.DirectionHint, VisibleTexts(view));
         }
 
         [AvaloniaTheory]
@@ -336,160 +454,122 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheModeRail_DrawsEveryModeAsANameOverItsParameterSummary()
+        public async Task TheModePicker_IsADropdownOfEveryModeTheFirmwareOffers()
         {
+            // ISSUE #128, ITEM 3a. The rail was a scrolled column of fourteen buttons taking most
+            // of its height; it is one control now, and the modes it offers are unchanged — the
+            // device's own menu, LightingAvailability's answer.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
             host.Capture();
 
-            var rows = Descendants<Button>(view).Where(button => button.Classes.Contains("modeOption")).ToArray();
+            var picker = ModePickerOf(view);
 
-            Assert.Equal(lighting.Modes.Count, rows.Length);
+            // The device's own menu, whatever that is on this scene's firmware: the counts
+            // themselves (14 with the Ripple/Fireball gate open, 12 with it shut) are
+            // LightingTabViewModelTests', because they are a rule rather than a rendering.
+            Assert.NotEmpty(lighting.Modes);
+            Assert.Equal(lighting.Modes.Count, picker.ItemCount);
+            Assert.Same(lighting.SelectedModeOption, picker.SelectedItem);
+            Assert.Equal(lighting.Modes, picker.ItemsSource);
 
+            // The rail still says what the control is for — 2f's own heading, minus the gesture it
+            // named ("click to preview" described a list of rows).
+            Assert.Contains(LightingTabViewModel.ModeRailCaption, VisibleTexts(view));
+
+            // The column of buttons is gone, and with it most of the rail's height.
+            Assert.DoesNotContain(Descendants<Button>(view), button => button.Classes.Contains("modeOption"));
+            Assert.DoesNotContain(Descendants<ItemsControl>(view), items => ReferenceEquals(items.ItemsSource, lighting.Modes) && items is not ComboBox);
+        }
+
+        [AvaloniaFact]
+        public async Task TheModePicker_DrawsAModeAsItsNameOverItsParameterSummary()
+        {
+            // The row markup is the list's, verbatim: the mark, the name, and Core's parameter
+            // summary underneath — which is what makes the control an answer to "what will change
+            // if I pick this one" rather than a list of names.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            SelectMode(lighting, LightingMode.Wave);
+
+            host.Capture();
+
+            var wave = lighting.Modes.Single(mode => mode.Mode == LightingMode.Wave);
             var texts = VisibleTexts(view);
 
-            foreach (var mode in lighting.Modes)
-            {
-                Assert.Contains(mode.Caption, texts);
-                Assert.Contains(mode.Summary, texts);
-            }
+            Assert.Contains(wave.Caption, texts);
+            Assert.Contains(wave.Summary, texts);
 
-            // The second line is the one the muted role hangs off; a row that stopped classing it
-            // would read as two headings.
-            var summaries = Descendants<TextBlock>(view)
-                .Where(text => text.Classes.Contains("modeSummary"))
-                .ToArray();
+            // The second line keeps the muted role it had inside the button row. It took it from
+            // `Button.modeOption :is(TextBlock).modeSummary`, which cannot reach a ComboBoxItem, so
+            // the two generic classes that style spelled are named at the call site instead.
+            var summary = Assert.Single(
+                Descendants<TextBlock>(view),
+                text => text.Classes.Contains("modeSummary") && text.IsEffectivelyVisible);
 
-            Assert.Equal(lighting.Modes.Count, summaries.Length);
+            Assert.Equal(wave.Summary, summary.Text);
+            Assert.Contains("meta", summary.Classes);
+            Assert.Contains("muted", summary.Classes);
+
+            // Both marks are in the cell, and exactly one of them draws: an outline mode answers
+            // the stroke converter and a solid one the fill, never both.
+            var marks = Descendants<Icon>(view).Where(icon => icon.Classes.Contains("modeMark")).ToArray();
+
+            Assert.Equal(2, marks.Length);
+            Assert.Single(marks, icon => icon.Data is not null);
         }
 
         [AvaloniaFact]
-        public async Task TheRail_IsTheEditorsOwnBoundedColumn_AndCarriesTheRailsOwnHeading()
+        public async Task PickingAMode_WritesThroughSelectModeCommand()
         {
-            // It used to assert `WidthInspectorRailWide`, 300, set on the rail's own Border. Issue
-            // #124 moved the width onto the grid COLUMN — a GridSplitter resizes a column, and a
-            // local Width would have outranked it — and pointed that column at the very
-            // InspectorRailWidthViewModel the Keys tab's rail reads. So the rail opens at the
-            // user's stored width, inside the same band the key inspector's column carries.
+            // The repo's established shape for a selector over a property the view model owns:
+            // SelectedItem reads it one way, and the SelectionChanged handler runs the command.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
-
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
-
-            host.Capture();
-
-            var rail = Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
-
-            Assert.True(
-                double.IsNaN(rail.Width),
-                "The mode rail still carries a Width of its own; the column owns it now.");
-            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
-            Assert.Contains(LightingTabViewModel.ModeRailCaption, VisibleTexts(view));
-        }
-
-        [AvaloniaFact]
-        public async Task TheRailsColumn_IsBoundedByTheSameGeometryTokensAsTheKeyInspectors()
-        {
-            // The drag's own band, on this tab too: the column carries it, so the seam cannot be
-            // pulled outside it in the first place, and the view model clamps the stored number to
-            // the same two.
-            using var scenes = new ViewSceneFactory();
-
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
-
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
-
-            host.Capture();
-
-            var column = RailColumnOf(view);
-
-            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMin", ThemeVariant.Dark), column.MinWidth);
-            Assert.Equal((double)DesignTokens.Resolve("WidthInspectorRailMax", ThemeVariant.Dark), column.MaxWidth);
-            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, column.Width.Value);
-            Assert.True(
-                column.Width.IsAbsolute,
-                "The mode rail's column is not a fixed width; the splitter has nothing to resize.");
-        }
-
-        [AvaloniaFact]
-        public async Task DraggingTheLightingSeam_WidensTheRailAndStoresWhatTheUserChose()
-        {
-            // The whole mechanism end to end, through Avalonia's own input pipeline — a real press
-            // on the seam, a real move, a real release — exactly as EditorChromeTests drives the
-            // Keys tab's. Nothing here pokes the view model, because the failure this catches is a
-            // splitter resizing a column the rail does not live in, which every property-level
-            // assertion would miss.
-            using var scenes = new ViewSceneFactory();
-
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
             host.Capture();
 
-            var rail = Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
-            var seam = Assert.Single(Descendants<GridSplitter>(view));
+            var picker = ModePickerOf(view);
+            var loop = lighting.Modes.Single(mode => mode.Mode == LightingMode.Loop);
 
-            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, rail.Bounds.Width);
-
-            const double pull = 60;
-
-            var grip = seam.TranslatePoint(new Point(seam.Bounds.Width / 2, seam.Bounds.Height / 2), host.Window)
-                ?? throw new InvalidOperationException("The seam is not in the window's visual tree.");
-
-            host.Window.MouseMove(grip);
-            host.Window.MouseDown(grip, MouseButton.Left);
-            host.Window.MouseMove(grip - new Point(pull, 0), RawInputModifiers.LeftMouseButton);
-            host.Window.MouseUp(grip - new Point(pull, 0), MouseButton.Left);
+            picker.SelectedItem = loop;
 
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            // Left widens it: the rail is the right-hand column, so the seam moving left gives it
-            // room and the board's star column gives the room up.
-            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, lighting.Rail.Width);
-            Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, rail.Bounds.Width);
+            Assert.Equal(LightingMode.Loop, lighting.SelectedMode);
+            Assert.Equal(LightingMode.Loop, lighting.SelectedLayer!.State.Mode);
+            Assert.Same(loop, picker.SelectedItem);
         }
 
-        [AvaloniaFact]
-        public async Task AStoredWidth_ReachesTheModeRailsColumn()
-        {
-            // The other direction, and the half a drag cannot prove: a width that arrives from the
-            // preference store — or from a drag on the OTHER tab's seam — has to land on this
-            // column, or the two rails would only agree until one of them was moved.
-            using var scenes = new ViewSceneFactory();
+        // ===== THE RAIL'S COLUMN IS NOT ASSERTED HERE ANY MORE (issue #128) ====================
+        // Four tests used to live at this point — that the rail carries no Width of its own, that
+        // its ColumnDefinition is bounded by WidthInspectorRailMin/Max, that dragging the seam
+        // widens it and stores what the user chose, and that a width arriving from the store
+        // reaches the column. Every one of them scanned the LightingTabView scene, and the rail is
+        // not in it: the editor shell owns one full-height rail column now and swaps its contents
+        // per tab, so there is one column, one seam and one width for both rails rather than two
+        // that agree. All four claims are held over the editor, where the column actually is —
+        // EditorChromeTests.TheRailsColumn_IsBoundedByTheGeometryTokens,
+        // .TheRailsWidth_IsOneNumberForBothTabs (which drives the real seam on the Lighting tab and
+        // reads the width back on the Keys tab), .TheRail_RunsTheWholeHeightOfTheBody and
+        // .OnASectionWithNoRail_TheColumnAndItsSeam_CollapseToNothing. What is left in this file is
+        // what the rail *contains*, which is what this suite is for.
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
-            var lighting = (LightingTabViewModel)view.DataContext!;
-
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
-
-            host.Capture();
-
-            lighting.Rail.Width = 420;
-
-            Dispatcher.UIThread.RunJobs();
-            host.Capture();
-
-            Assert.Equal(420, RailBorderOf(view).Bounds.Width);
-
-            // ...and the macro panel's 300 px floor is NOT inherited here. The Keys tab's rail is
-            // entitled to it; this tab has no macro panel, so a narrow rail stays narrow.
-            lighting.Rail.Width = HostPreferences.MinimumInspectorRailWidth;
-            lighting.Rail.IsWide = true;
-
-            Dispatcher.UIThread.RunJobs();
-            host.Capture();
-
-            Assert.Equal(HostPreferences.MinimumInspectorRailWidth, RailBorderOf(view).Bounds.Width);
-        }
 
         [AvaloniaTheory]
         [InlineData("Dark")]
@@ -529,12 +609,11 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task AZone_SelectsItsKeysAndShowsItsSelectedFace_WithoutPaintingAnything(string variantName)
+        public async Task AZone_SelectsItsKeysAndShowsItsSelectedFace_AndPaintsThem(string variantName)
         {
-            // Issue #124 split one gesture in two. A zone used to paint on the spot, which left no
-            // way to say "these keys" without also committing a colour to them; it selects now, and
-            // Apply commits. The button therefore needs a face — it had none at all, because
-            // `Button.zoneButton` carried padding, a margin and a cursor and no ControlTheme.
+            // A zone button is a user pointing at a named set of keys, so it commits on the spot
+            // (issue #128) — the Apply it was split from in #124 is gone. The face is unchanged and
+            // still matters: the chip has to show which zones the selection now covers.
             var variant = ToVariant(variantName);
 
             using var scenes = new ViewSceneFactory();
@@ -546,12 +625,15 @@ namespace KinesisEdit.Tests.Design
 
             SelectMode(lighting, LightingMode.Freestyle);
 
+            lighting.Picker.Color = new LedColor(0, 0, 255);
+
             host.Capture();
 
             var zone = lighting.Zones.First(entry => entry.KeyCodes.Count > 0);
             var button = ZoneButtonFor(view, zone);
 
             Assert.DoesNotContain("selected", button.Classes);
+            Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
 
             lighting.SelectZoneCommand.Execute(zone);
 
@@ -562,20 +644,57 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains("selected", button.Classes);
             Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.Background);
 
-            // The other half of the split, and the one a face cannot show: the keys are selected and
-            // NOTHING on the layer was painted.
             Assert.Equal(zone.KeyCodes.Count, lighting.Selection.Count);
-            Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
+            Assert.Equal(zone.KeyCodes.Count, lighting.Board.Keys.Count(key => key.HasPaintColor));
+            Assert.Equal(
+                KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 0, 255))),
+                lighting.Board.Keys.First(key => key.HasPaintColor).PaintColorHex);
         }
 
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task Apply_SitsInTheRailFooter_IsGatedOnTheSelection_AndPaintsIt(string variantName)
+        public async Task TheRail_HasNoApplyButtonLeft(string variantName)
         {
-            // The commit of the select-then-apply flow (issue #124). It is the one control on this
-            // screen that can paint a selection made AFTER the colour was chosen — the picker paints
-            // live, but only what was selected while it was being dragged.
+            // ISSUE #128, ITEM 3c. Every control on this rail applies immediately, so the one
+            // control whose whole job was "commit, now" had nothing left to say — the flow it
+            // existed for (a colour held before the keys were picked) is done by the gesture that
+            // picks them. It was the rail's only accent action, so the claim is asserted as "no
+            // primaryAction anywhere on the rail" rather than against a caption that is gone.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            lighting.SelectAllKeysCommand.Execute(null);
+
+            host.Capture();
+
+            // Even with a selection — the state that used to light it up — there is no such button.
+            Assert.True(lighting.Selection.HasSelection);
+            Assert.DoesNotContain(
+                Descendants<Button>(view),
+                button => button.Classes.Contains("primaryAction"));
+
+            // The command survives the button: it is still what Clear is built out of.
+            Assert.True(lighting.PaintSelectionCommand.CanExecute(null));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task SelectAll_WithAHeldColour_DoesNotRepaintTheLayer_ButACapClickDoes(string variantName)
+        {
+            // THE TRAP THE MISSING APPLY MUST NOT HAVE BEEN REPLACED BY: painting on every
+            // selection change would make `Select all` plus a held colour repaint the whole layer
+            // in one click, with nothing but Reset All to undo it — precisely the regression issue
+            // #124 removed when ApplyZoneCommand became SelectZoneCommand. Both halves are driven
+            // through real pointer input, because the difference between the two gestures is
+            // exactly which command the view runs.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
@@ -587,41 +706,32 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            // It sits WITH Color / Speed / Direction — searched from the footer down rather than
-            // from the screen down, so a button that landed anywhere else would not be found.
-            var footer = Assert.Single(
-                Descendants<Border>(view),
-                border => border.Classes.Contains("inspectorFooter"));
-            var apply = Assert.Single(
-                Descendants<Button>(footer),
-                button => Equals(button.Content, LightingModeRailView.ApplyCaption));
-
-            // Nothing selected: the command cannot run, so the button is dead. No visibility logic
-            // decides that — CanExecute does.
-            Assert.False(lighting.Selection.HasSelection);
-            Assert.False(apply.IsEffectivelyEnabled);
-
-            // The colour is chosen FIRST, over an empty selection, so the live paint writes nothing.
+            // The colour is chosen FIRST, over an empty selection, so nothing is written yet.
             lighting.Picker.Color = new LedColor(0, 0, 255);
 
             Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
 
-            var zone = lighting.Zones.First(entry => entry.KeyCodes.Count > 0);
+            var selectAll = VisibleButton(view, LightingPaintSelection.SelectAllCaption);
 
-            lighting.SelectZoneCommand.Execute(zone);
+            Assert.NotNull(selectAll);
 
-            Dispatcher.UIThread.RunJobs();
-            host.Capture();
+            Click(host, selectAll!);
 
-            Assert.True(apply.IsEffectivelyEnabled);
+            Assert.Equal(lighting.Board.Keys.Count, lighting.Selection.Count);
             Assert.DoesNotContain(lighting.Board.Keys, key => key.HasPaintColor);
 
-            Click(host, apply);
+            // ...while a click on a cap — a user pointing at one key — does commit, which is what
+            // makes the missing button a simplification rather than a loss.
+            lighting.Selection.Clear();
 
-            Assert.Equal(zone.KeyCodes.Count, lighting.Board.Keys.Count(key => key.HasPaintColor));
+            Dispatcher.UIThread.RunJobs();
+
+            ClickCap(host, view, lighting.Board.Keys[0], RawInputModifiers.None);
+
+            Assert.Equal(1, lighting.Board.Keys.Count(key => key.HasPaintColor));
             Assert.Equal(
                 KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 0, 255))),
-                lighting.Board.Keys.First(key => key.HasPaintColor).PaintColorHex);
+                lighting.Board.Keys[0].PaintColorHex);
         }
 
         [AvaloniaFact]
@@ -629,7 +739,7 @@ namespace KinesisEdit.Tests.Design
         {
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
@@ -650,59 +760,83 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheColourSwatch_ShowsItsHexInMono_AndDisclosesThePickerInsideTheRail(string variantName)
+        public async Task TheColourSwatch_ShowsItsHexInMono_AndTargetsTheAlwaysOpenPicker(string variantName)
         {
+            // THE PICKER NO LONGER DISCLOSES (issue #128). It used to open IN PLACE OF the mode
+            // list, which was the only part of the rail tall enough to hold it; there is no list to
+            // displace, so it is simply always on screen and a swatch is a target rather than a
+            // disclosure. A toggle that could only ever hide a control the user had just asked for
+            // earned nothing.
             using var scenes = new ViewSceneFactory();
 
-            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
             var lighting = (LightingTabViewModel)view.DataContext!;
 
             using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Reactive);
+
+            host.Capture();
+
+            // Reactive is the two-swatch case the hints exist for: both rows are drawn, and each
+            // shows the colour the file carries in mono.
+            var effect = SwatchFor(view, lighting.EffectColor);
+            var basis = SwatchFor(view, lighting.BaseColor);
+
+            Assert.NotNull(effect);
+            Assert.NotNull(basis);
+
+            // A hex is a value the file carries, so it is mono — the one class the mono law grants.
+            var hex = Assert.Single(Descendants<TextBlock>(effect!), text => text.Classes.Contains("monoValue"));
+
+            Assert.Equal(lighting.EffectColor.ColorHex, hex.Text);
+
+            // Open from the first frame, before anything was clicked.
+            Assert.Contains(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
+            Assert.True(lighting.EffectColor.IsSelected);
+
+            Click(host, basis!);
+
+            host.Capture();
+
+            // Clicking a swatch re-points the picker; it does not open or close anything, and the
+            // mode dropdown above it is untouched.
+            Assert.True(lighting.BaseColor.IsSelected);
+            Assert.False(lighting.EffectColor.IsSelected);
+            Assert.Contains(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
+            Assert.True(ModePickerOf(view).IsEffectivelyVisible);
+            Assert.DoesNotContain(Descendants<Border>(view), border => border.Classes.Contains("overlayScrim"));
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheEffectSwatch_IsCalledPaintColour_WhereTheFileCarriesNoEffectLine(string variantName)
+        {
+            // specs/07-lighting.md §2.2 writes no effect-colour line for Freestyle: the body is
+            // per-key lines, so the swatch is literally "the colour you paint with" (§4). Naming it
+            // "Effect Color" there points at a line the file will never carry — which is the same
+            // confusion the hints exist to remove, one level up.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            host.Capture();
+
+            Assert.Contains(LightingColorSlotViewModel.PaintColorCaption, VisibleTexts(view));
+            Assert.DoesNotContain(LightingColorSlotViewModel.EffectColorCaption, VisibleTexts(view));
 
             SelectMode(lighting, LightingMode.Monochrome);
 
             host.Capture();
 
-            var rail = Assert.Single(Descendants<LightingModeRailView>(view));
-            var swatch = Assert.Single(
-                Descendants<Button>(view),
-                button => button.Classes.Contains("colorSlot") && button.IsEffectivelyVisible);
-
-            // A hex is a value the file carries, so it is mono — the one class the mono law grants.
-            var hex = Assert.Single(Descendants<TextBlock>(swatch), text => text.Classes.Contains("monoValue"));
-
-            Assert.Equal(lighting.EffectColor.ColorHex, hex.Text);
-
-            // Closed to start with: the rail shows its modes, not a colour wheel. (An undisclosed
-            // picker is not merely hidden — an invisible container is never measured, so its
-            // template is never applied and the picker is not in the visual tree at all.)
-            Assert.False(rail.IsPickerOpen);
-            Assert.DoesNotContain(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
-
-            Click(host, swatch);
-
-            host.Capture();
-
-            Assert.True(rail.IsPickerOpen);
-            Assert.Contains(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
-            Assert.True(lighting.EffectColor.IsSelected);
-
-            // ...and it is the mode list it opened in place of, not a scrim over the board.
-            Assert.DoesNotContain(
-                Descendants<Button>(view).Where(button => button.Classes.Contains("modeOption")),
-                button => button.IsEffectivelyVisible);
-            Assert.DoesNotContain(Descendants<Border>(view), border => border.Classes.Contains("overlayScrim"));
-
-            var done = VisibleButton(view, LightingModeRailView.ClosePickerCaption);
-
-            Assert.NotNull(done);
-
-            Click(host, done!);
-
-            Assert.False(rail.IsPickerOpen);
-            Assert.Contains(
-                Descendants<Button>(view).Where(button => button.Classes.Contains("modeOption")),
-                button => button.IsEffectivelyVisible);
+            Assert.Contains(LightingColorSlotViewModel.EffectColorCaption, VisibleTexts(view));
+            Assert.DoesNotContain(LightingColorSlotViewModel.PaintColorCaption, VisibleTexts(view));
         }
 
         [AvaloniaFact]
@@ -957,24 +1091,6 @@ namespace KinesisEdit.Tests.Design
                 ?? throw new InvalidOperationException("The board is not in the tab's tree.");
         }
 
-        /// <summary>The mode rail's own frame.</summary>
-        private static Border RailBorderOf(Control view)
-        {
-            return Assert.Single(Descendants<Border>(view), border => border.Classes.Contains("inspectorRail"));
-        }
-
-        /// <summary>
-        /// The rail's <see cref="ColumnDefinition"/> — where its width lives since issue #124,
-        /// reached through the seam exactly as <c>EditorChromeTests</c> reaches the Keys tab's.
-        /// </summary>
-        private static ColumnDefinition RailColumnOf(Control view)
-        {
-            var seam = Assert.Single(Descendants<GridSplitter>(view));
-            var grid = (Grid)seam.GetVisualParent()!;
-
-            return grid.ColumnDefinitions[Grid.GetColumn(RailBorderOf(view).FindAncestorOfType<LightingModeRailView>()!)];
-        }
-
         /// <summary>
         /// The centred block under the layer switch: the board header, the picture, the paint line
         /// and the zones, as one thing. It is the <see cref="Grid"/> the board hangs off — a Grid
@@ -1008,6 +1124,35 @@ namespace KinesisEdit.Tests.Design
             return Descendants<Button>(view)
                 .Where(button => button.Classes.Contains("directionSegment"))
                 .ToArray();
+        }
+
+        /// <summary>
+        /// The rail's mode dropdown, found by what it lists rather than by being the only
+        /// <see cref="ComboBox"/> around: the colour picker's own <c>ColorView</c> carries parts
+        /// this scan would otherwise trip over.
+        /// </summary>
+        private static ComboBox ModePickerOf(Control view)
+        {
+            return Assert.Single(
+                Descendants<ComboBox>(view),
+                box => box.ItemsSource is IEnumerable<LightingModeViewModel>);
+        }
+
+        /// <summary>
+        /// The rail's button for one colour slot, or null when the mode does not have it. Null
+        /// rather than hidden is the honest answer: an invisible container is never measured, so
+        /// its template is never applied and the button is not in the visual tree at all.
+        /// </summary>
+        private static Button? SwatchFor(Control view, LightingColorSlotViewModel slot)
+        {
+            return Descendants<Button>(view)
+                .FirstOrDefault(button => button.Classes.Contains("colorSlot")
+                    && ReferenceEquals(button.CommandParameter, slot));
+        }
+
+        private static bool IsSwatchShown(Control view, LightingColorSlotViewModel slot)
+        {
+            return SwatchFor(view, slot) is { IsEffectivelyVisible: true };
         }
 
         private static Button? VisibleButton(Control view, string caption)

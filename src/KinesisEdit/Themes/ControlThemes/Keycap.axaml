@@ -35,22 +35,37 @@
          exception and needs no qualifier — its face IS the inset surface, so the two agree.
 
       2. SELECTION AND FOCUS AT THE SAME TIME (contract 4, and the acceptance criterion of the
-         issue). Both are drawn as spread-only shadows in the same accent at almost the same alpha —
-         2px at 30% for selection, 3px at 28% for focus — so laying them on the same element would
-         produce one slightly denser ring and nothing legible. They are made CONCENTRIC instead:
+         issue). Both are spread-only shadows in the accent family, so laying them on the same
+         element would produce one denser ring and nothing legible. They are made CONCENTRIC:
 
-             selection paints the outer 2px of the cap, INWARD from its edge;
+             selection paints the outer 3px of the cap, INWARD from its edge;
              focus paints 3px OUTWARD from that same edge.
 
-         A cap that is both wears a continuous 5px band with its 1px accent border at the seam, and
-         each half is still readable on its own. Nothing of the selection ring lands on a
-         neighbouring cap, which is the constraint the design states outright ("it has to read on a
-         26px key without eating its neighbour").
+         A cap that is both wears a continuous 6px band with its own edge at the seam, and each
+         half is still readable on its own. Nothing of the selection ring lands on a neighbouring
+         cap, which is the constraint the design states outright ("it has to read on a 26px key
+         without eating its neighbour").
 
          Mechanically that needs a second element: a Border has exactly one BoxShadow, BaseButton
          has already spoken for Root's with the focus halo, and two `{DynamicResource}` entries
          cannot be composed into one BoxShadows value in XAML. `Border#Ring` below is that element —
-         inset so that its own 2px spread lands inside the cap rather than outside it.
+         inset so that its own spread lands inside the cap rather than outside it.
+
+         THE SELECTION RING IS OPAQUE, AND TWO-TONE, AND THAT IS THE WHOLE OF ISSUE #128. It used
+         to be `ShadowKeyHalo` — the handoff's 2px of accent at 30% alpha — over a 1px accent
+         border, which is legible on the Layout board's neutral cap and INVISIBLE on the Lighting
+         board's. There the cap's face is an arbitrary saturated led colour drawn right up to the
+         inside of the border by KeyCapView's fill panel, and 30% of blue over #A41010 is a shade
+         of red. `.paintSelected` paints no face to fall back on, so the wash was the entire
+         signal and the user could not tell a selected key from an unselected one.
+
+         Alpha is the failure mode, so the answer is opacity and a contrasting second stroke, not
+         more blue: `ShadowKeyHaloStrong` is 2px of the accent at FULL opacity with a 1px
+         near-black hairline (`KeycapRingEdge`) inside it. One of the two always contrasts with
+         whatever the key is lit — the accent carries a red, a green or a white face, the hairline
+         carries a blue or an accent-coloured one — which no single colour can promise against
+         device data. The handoff's own value stays declared and is deliberately unedited; this is
+         a third token beside it, and the deviation is recorded in docs/app/design-system.md.
 
          THERE ARE TWO SELECTIONS, AND THEY ARE DIFFERENT SELECTIONS. `.selected` is the Layout
          board's ONE selected key — the one the inspector rail is talking about. `.paintSelected` is
@@ -173,44 +188,58 @@
             <!--
               THE SELECTION RING. Empty, transparent, and present only to own a second BoxShadow.
 
-              `Margin="-1"` puts its bounds 2px inside the cap's outer edge: the panel already sits
-              3px in (Root's 1px border plus its 2px padding), so -1 walks it back out to 2. A
-              spread-only shadow is drawn OUTSIDE the element it belongs to and clipped out beneath
-              it, so a 2px spread from there paints exactly the cap's outer 2px — the inward half of
-              the concentric pair described at the top of this file. Transparent rather than absent
-              because a Border with no brush at all draws nothing, shadow included.
+              `Margin="0"` leaves its bounds exactly where the Panel's are, 3px inside the cap's
+              outer edge (Root's 1px border plus its 2px padding). A spread-only shadow is drawn
+              OUTSIDE the element it belongs to and clipped out beneath it, so from there a 3px
+              spread paints exactly the cap's outer 3px and a 1px spread paints the third of those
+              — which is how one BoxShadows value draws a 2px accent band with a hairline inside
+              it, and why the two spreads are 3 and 1 rather than 2 and 1. Transparent rather than
+              absent because a Border with no brush at all draws nothing, shadow included.
 
-              That -1 is measured against a 1px border, so LISTENING — the one state that doubles
-              the thickness — restates it; see the note beside that state.
+              The band grew from 2px to 3px with issue #128; it still runs INWARD, so the 4px gap
+              between caps is as free as it ever was and the focus halo still owns it.
+
+              `CornerRadius="1"` and not RadiusChip, because the radius is measured where the
+              ELEMENT is: the cap's own curve is RadiusKeycap (4) at its edge, a shadow inflates
+              the rounded rect by its spread, and 1 + 3 is the 4 the cap draws. RadiusChip's 3
+              would have inflated to 6 and bulged the ring's corners past the cap's. It is spelled
+              out for the reason `Rectangle#Locked` spells its own: a CornerRadius resource cannot
+              be handed to a Border's shorthand and back out again.
+
+              That margin is measured against a 1px border, so LISTENING — the one state that
+              doubles the thickness — restates it; see the note beside that state.
             -->
             <Border x:Name="Ring"
-                    Margin="-1"
+                    Margin="0"
                     ClipToBounds="False"
                     IsHitTestVisible="False"
                     Background="Transparent"
-                    CornerRadius="{StaticResource RadiusChip}" />
+                    CornerRadius="1" />
 
             <!--
               THE PAINT SELECTION'S RING — the Lighting board's own, and the second element of the
-              pair described at the top of this file. Same geometry, same band, same accent as
+              pair described at the top of this file. Same geometry, same band, same two tones as
               `Border#Ring`: a selection is a selection, and drawing the paint one differently
               would say the two mean different amounts rather than that they answer different
-              questions.
+              questions. It is also the ring the opaque two-tone was designed FOR — this is the
+              one that sits on an led colour — and `.selected` takes it because the grammar is
+              shared, not because the Layout board needed it.
 
               It is a SECOND Border and not a second setter on the first because both classes can
               be true on one cap: the Layout tab's selection and the Lighting tab's paint selection
               are computed on the SAME cap view models (KeyboardEditorViewModel.Apply hands its
               Layers straight to LightingTabViewModel.Attach), so nothing stops a key from being
               both the inspector's key and one of the painted ones. Sharing `Ring` would mean the
-              two states writing one property, which works only for as long as they agree — and
-              `.listening` already moves Ring's margin out from under `.selected`.
+              two states writing one BoxShadow, which works only for as long as they agree — and
+              `.listening` already writes a THIRD property onto both of these elements, which is
+              exactly the kind of move that would drag one selection along behind the other.
             -->
             <Border x:Name="PaintRing"
-                    Margin="-1"
+                    Margin="0"
                     ClipToBounds="False"
                     IsHitTestVisible="False"
                     Background="Transparent"
-                    CornerRadius="{StaticResource RadiusChip}" />
+                    CornerRadius="1" />
 
             <!--
               THE FOUR BADGES. Last in the Panel, so nothing — not the caption, not the hatch, not
@@ -358,8 +387,8 @@
     </Style>
 
     <!--
-      SELECTED — the cap the inspector is talking about. Filled face, accent border and the 2px ring
-      described at the top, drawn inward from the cap's edge.
+      SELECTED — the cap the inspector is talking about. Filled face, accent border and the opaque
+      two-tone ring described at the top, drawn inward from the cap's edge.
 
       The ring is not qualified against `.listening`: the key that is listening is the key that is
       selected, and losing the ring at the moment the cap starts waiting for a keystroke would make
@@ -374,7 +403,7 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
     <Style Selector="^.selected:not(:disabled) /template/ Border#Ring">
-      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHaloStrong}" />
     </Style>
 
     <!--
@@ -382,10 +411,13 @@
       keys selected · Select all · Clear", mockup 2f). A different selection from `.selected`
       above: that one is the single key the inspector rail is talking about, this one is a set.
 
-      It paints NO FACE, and cannot: on that board the face is the key's own colour. The whole
-      signal is the accent border and the inward ring, which is the same grammar `.selected` uses —
-      the two never need to be told apart, because they are never on screen together (the Layout
-      board has no paint selection and the Lighting board draws no inspector selection of its own).
+      It paints NO FACE, and cannot: on that board the face is the key's own colour. The inward
+      ring is therefore the WHOLE signal rather than the loudest part of one, which is why issue
+      #128 was reported here first and why the ring is opaque: a state with nothing to fall back on
+      cannot be drawn in an alpha over a colour nobody chose. The grammar is the same one
+      `.selected` uses — the two never need to be told apart, because they are never on screen
+      together (the Layout board has no paint selection and the Lighting board draws no inspector
+      selection of its own).
 
       `:not(:disabled)` for the reason every accent state here carries it: BaseButton's disabled
       face is applied first, and an unqualified class would leave a dead cap wearing a live ring.
@@ -396,7 +428,7 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
     <Style Selector="^.paintSelected:not(:disabled) /template/ Border#PaintRing">
-      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHalo}" />
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHaloStrong}" />
     </Style>
 
     <!--
@@ -418,17 +450,25 @@
     </Style>
 
     <!--
-      ...and the ring moves with that thickness. `Border#Ring`'s `Margin="-1"` is measured against a
-      1px border: the panel sits 3px inside the cap (1px border + 2px padding) and -1 walks the ring
-      back out to 2, where its 2px spread paints exactly the cap's outer 2px. Doubling the border
-      puts the panel 4px in, so the same -1 would leave the band floating a pixel inside the cap's
-      edge instead of flush with it — visible on the one cap the eye is on, since a listening cap is
-      by construction the selected cap and wears both.
+      ...and BOTH rings move with that thickness. Their `Margin="0"` is measured against a 1px
+      border: the panel sits 3px inside the cap (1px border + 2px padding), which is where a 3px
+      spread has to start for the band to reach the cap's edge. Doubling the border puts the panel
+      4px in, so the same 0 would leave the band floating a pixel inside the edge instead of flush
+      with it — visible on the one cap the eye is on, since a listening cap is by construction the
+      selected cap and wears both. `-1` walks it back to 3.
 
-      Qualified exactly as the thickness above is, so the two can never drift apart.
+      `Border#PaintRing` is restated as well, and that is not symmetry for its own sake: the
+      Lighting board's caps and the Layout board's are the same view models, so a key can be
+      listening and paint-selected at once, and a ring left behind by the thicker border would sit
+      a pixel in on exactly the cap being pressed.
+
+      Qualified exactly as the thickness above is, so the three can never drift apart.
     -->
     <Style Selector="^.listening:not(:disabled) /template/ Border#Ring">
-      <Setter Property="Margin" Value="-2" />
+      <Setter Property="Margin" Value="-1" />
+    </Style>
+    <Style Selector="^.listening:not(:disabled) /template/ Border#PaintRing">
+      <Setter Property="Margin" Value="-1" />
     </Style>
 
     <!--

@@ -106,7 +106,7 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             var rail = RailOf(view);
-            var board = BoardColumnOf(view);
+            var board = SectionColumnOf(view);
 
             Assert.False(editor.Inspector.HasSelection);
             Assert.True(rail.IsEffectivelyVisible);
@@ -221,11 +221,15 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public async Task TheRailsWidth_IsOneNumberForBothTabs()
         {
-            // Issue #124: the key inspector and the Lighting tab's mode rail are two contents of ONE
-            // resizable column. A width dragged on either tab is the width the other opens at, and
-            // it is stored once. Driven through the real seam on the LIGHTING tab, because that is
-            // the half that is new — and the assertion is on the OTHER tab's rail, which is the only
-            // way to see that one number reached two columns.
+            // Issue #124 gave the key inspector and the Lighting tab's mode rail one stored width;
+            // issue #128 made them two IsVisible-gated contents of ONE ColumnDefinition, so the two
+            // can no longer disagree even in principle. Both halves are asserted: the column is
+            // literally the same object for both rails, and a width dragged on the Lighting tab is
+            // the width the Keys tab opens at.
+            //
+            // Driven through the real seam — the editor has exactly one — rather than by poking the
+            // view model, because the failure this catches is a splitter resizing a column the rail
+            // does not live in, which every property-level assertion would miss.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -235,21 +239,22 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
+            var keysColumn = RailColumnOf(view);
+
             editor.SelectedTab = EditorTab.Lighting;
 
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            var modeRail = Descendants<LightingModeRailView>(view).Single();
+            var modeRail = ModeRailOf(view);
 
+            // ONE column, not two that agree: the same ColumnDefinition instance carries both rails.
+            Assert.Same(keysColumn, BodyGridOf(view).ColumnDefinitions[Grid.GetColumn(RailHostOf(view))]);
             Assert.Equal(HostPreferences.DefaultInspectorRailWidth, modeRail.Bounds.Width);
 
             const double pull = 60;
 
-            // Two seams exist once the Lighting tab has been shown — one per tab's grid — so the
-            // one being dragged is named by the tab it belongs to rather than by being the only one.
-            var seam = Descendants<GridSplitter>(view)
-                .Single(splitter => splitter.FindAncestorOfType<LightingTabView>() is not null);
+            var seam = Descendants<GridSplitter>(view).Single();
             var grip = seam.TranslatePoint(new Point(seam.Bounds.Width / 2, seam.Bounds.Height / 2), host.Window)
                 ?? throw new InvalidOperationException("The lighting seam is not in the window's visual tree.");
 
@@ -270,6 +275,219 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             Assert.Equal(HostPreferences.DefaultInspectorRailWidth + pull, RailOf(view).Bounds.Width);
+        }
+
+        [AvaloniaTheory]
+        [InlineData(EditorTab.Keys)]
+        [InlineData(EditorTab.Lighting)]
+        public async Task TheRail_RunsTheWholeHeightOfTheBody(EditorTab tab)
+        {
+            // Issue #128's first complaint, as a measurement. The rail used to sit INSIDE the padded
+            // content area — a 24,16 inset — so it started 16px below the advisory strip and stopped
+            // 16px above the bottom of the window, with the section's action row running on under it.
+            // It is a column of the body now: it begins where the strip begins and ends where the
+            // window ends, on both tabs that have one.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            editor.SelectedTab = tab;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var rail = RectOf(tab == EditorTab.Keys ? RailOf(view) : ModeRailOf(view), host);
+            var strip = RectOf(Descendants<AdvisoryStripView>(view).Single(), host);
+
+            Assert.Equal(strip.Top, rail.Top, precision: 3);
+            Assert.Equal(host.Window.ClientSize.Height, rail.Bottom, precision: 3);
+
+            // ...and it is beside the strip, not under it: the two share the body's top edge.
+            Assert.True(
+                strip.Right <= rail.Left + 0.5,
+                $"The advisory strip runs to {strip.Right}, past the rail's left edge at {rail.Left}.");
+        }
+
+        [AvaloniaTheory]
+        [InlineData(EditorTab.Macros)]
+        [InlineData(EditorTab.Settings)]
+        public async Task OnASectionWithNoRail_TheColumnAndItsSeam_CollapseToNothing(EditorTab tab)
+        {
+            // The Macros library and the Settings panel take the whole content width and always did.
+            // A fixed-pixel column keeps its width however invisible its contents are, so "no rail
+            // here" has to be spelled on the column — this is what says it was.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var full = SectionColumnOf(view).Bounds.Width;
+
+            Assert.True(RailColumnOf(view).Width.Value > 0, "The rail column measured zero on the Keys tab.");
+
+            editor.SelectedTab = tab;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(RailHostOf(view).IsVisible);
+            Assert.Equal(0, RailColumnOf(view).Width.Value);
+            Assert.Equal(0, RailColumnOf(view).MinWidth);
+
+            // The seam goes with it. Its own Bounds are NOT the assertion — Avalonia does not
+            // re-arrange an invisible control, so the splitter keeps the 6px rectangle it had when
+            // it was last on screen. What the column really measured is the line below.
+            Assert.False(Descendants<GridSplitter>(view).Single().IsEffectivelyVisible);
+
+            // The section really got the room, rather than the column merely reporting zero.
+            Assert.Equal(host.Window.ClientSize.Width, SectionColumnOf(view).Bounds.Width, precision: 3);
+            Assert.True(
+                SectionColumnOf(view).Bounds.Width > full,
+                $"The section is {SectionColumnOf(view).Bounds.Width} wide with no rail, against {full} with one.");
+
+            // ...and coming back restores the column rather than leaving it collapsed.
+            editor.SelectedTab = EditorTab.Keys;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(HostPreferences.DefaultInspectorRailWidth, RailOf(view).Bounds.Width);
+            Assert.Equal(full, SectionColumnOf(view).Bounds.Width, precision: 3);
+        }
+
+        [AvaloniaFact]
+        public async Task TheTabBarRow_CarriesTheLayoutSwitchOnThreeTabsAndTheLightingSwitchOnTheFourth()
+        {
+            // Issue #128. There are two "layers" in this app and they are not the same object —
+            // ledN.txt's against layoutN.txt's — so the editor has two switchers; but the tab bar has
+            // one slot for them, and exactly one is ever in it. The Lighting tab's used to be drawn
+            // by LightingTabView, above the board, which put the editor's switcher in two different
+            // places depending on the section.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var tabBar = TabBarRowOf(view);
+
+            // Both switchers live in the tab-bar row, whichever one is showing.
+            Assert.Contains(LayerSwitchOf(view), tabBar.GetVisualDescendants());
+            Assert.Contains(LightingLayerSwitchOf(view), tabBar.GetVisualDescendants());
+
+            foreach (var tab in new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Settings })
+            {
+                editor.SelectedTab = tab;
+
+                Dispatcher.UIThread.RunJobs();
+                host.Capture();
+
+                Assert.True(LayerSwitchOf(view).IsEffectivelyVisible, $"The layout switch is hidden on {tab}.");
+                Assert.False(LightingLayerSwitchOf(view).IsEffectivelyVisible, $"The lighting switch is shown on {tab}.");
+                Assert.Contains(KeyboardEditorView.LayerSwitchLabel, VisibleTextsOf(tabBar));
+            }
+
+            editor.SelectedTab = EditorTab.Lighting;
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(LayerSwitchOf(view).IsEffectivelyVisible);
+            Assert.True(LightingLayerSwitchOf(view).IsEffectivelyVisible);
+            Assert.Contains(KeyboardEditorView.LightingLayerSwitchLabel, VisibleTextsOf(tabBar));
+            Assert.DoesNotContain(KeyboardEditorView.LayerSwitchLabel, VisibleTextsOf(tabBar));
+
+            // It is the lighting panel's own layers it moves, not the layout's — the whole reason
+            // the label still says which.
+            Assert.Same(editor.Lighting.Layers, LightingLayerSwitchOf(view).ItemsSource);
+            Assert.Same(editor.Lighting.SelectedLayer, LightingLayerSwitchOf(view).SelectedItem);
+
+            // And the Lighting tab no longer draws one of its own.
+            Assert.DoesNotContain(
+                Descendants<LightingTabView>(view).SelectMany(tab => tab.GetVisualDescendants().OfType<ListBox>()),
+                list => list.ItemsSource is IEnumerable<LightingLayerViewModel>);
+        }
+
+        [AvaloniaFact]
+        public async Task TheLightingLayerSwitch_KeepsTheFirmwareGateAndItsReason()
+        {
+            // The Fn segment below the LED 1.0.44 gate stays visible and dimmed (specs/07 §3) —
+            // the layer exists — and the sentence LightingTabView used to print beside it is the
+            // switch's tooltip now, because a 38px bar has no room for it.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            editor.SelectedTab = EditorTab.Lighting;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var switcher = LightingLayerSwitchOf(view);
+
+            Assert.True(editor.Lighting.Layers.Count >= 2, "The lighting scene rendered fewer than two layers.");
+
+            foreach (var index in Enumerable.Range(0, editor.Lighting.Layers.Count))
+            {
+                Assert.Equal(
+                    editor.Lighting.Layers[index].IsEnabled,
+                    switcher.ContainerFromIndex(index)!.IsEnabled);
+            }
+
+            Assert.Equal(editor.Lighting.LayerLockHint, ToolTip.GetTip(switcher));
+            Assert.Equal(!editor.Lighting.IsLayerCustomizationAvailable, ToolTip.GetServiceEnabled(switcher));
+        }
+
+        [AvaloniaFact]
+        public async Task TheProfilePicker_IsInTheTabBarRowAndOnEveryTab()
+        {
+            // A profile is not a layer: switching it reloads the layout, the led file and the
+            // settings alike, so no section is unaffected by it and the picker is on all four. It
+            // replaced the toolbar's read-only `Profile 1` label, which was the one thing on this
+            // screen the user most wanted to change and could not.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var picker = Descendants<ComboBox>(view).Single(box => box.ItemsSource is IEnumerable<ProfileOptionViewModel>);
+
+            Assert.Contains(picker, TabBarRowOf(view).GetVisualDescendants());
+            Assert.True(editor.HasProfiles, "The scene's editor reported no profiles at all.");
+            Assert.Same(editor.Profiles, picker.ItemsSource);
+            Assert.Same(editor.SelectedProfile, picker.SelectedItem);
+
+            foreach (var tab in Enum.GetValues<EditorTab>())
+            {
+                editor.SelectedTab = tab;
+
+                Dispatcher.UIThread.RunJobs();
+                host.Capture();
+
+                Assert.True(picker.IsEffectivelyVisible, $"The profile picker is hidden on {tab}.");
+            }
+
+            // ...and the toolbar's label is gone: the picker already says which profile is open, and
+            // a second copy of the word two rows above it was the third place the app said it.
+            Assert.DoesNotContain(
+                ToolbarOf(view).GetVisualDescendants().OfType<TextBlock>(),
+                block => block.Text is { } text
+                    && text.StartsWith(KeyboardEditorViewModel.ProfileCaptionPrefix, StringComparison.Ordinal));
         }
 
         [AvaloniaTheory]
@@ -1025,13 +1243,84 @@ namespace KinesisEdit.Tests.Design
             return Descendants<KeyInspectorView>(view).Single();
         }
 
-        /// <summary>The board's column of the Layout tab — the seam's left-hand neighbour.</summary>
-        private static Control BoardColumnOf(Control view)
+        /// <summary>The Lighting tab's mode rail — the other face of the same column.</summary>
+        private static Control ModeRailOf(Control view)
         {
-            var seam = Descendants<GridSplitter>(view).Single();
-            var grid = (Grid)seam.GetVisualParent()!;
+            return Descendants<LightingModeRailView>(view).Single();
+        }
+
+        /// <summary>
+        /// The open section's column — the seam's left-hand neighbour, which since issue #128 holds
+        /// the advisory strip as well as the padded content.
+        /// </summary>
+        private static Control SectionColumnOf(Control view)
+        {
+            var grid = BodyGridOf(view);
 
             return grid.Children.OfType<Control>().Single(child => Grid.GetColumn(child) == 0);
+        }
+
+        /// <summary>The editor's body grid: section | seam | rail.</summary>
+        private static Grid BodyGridOf(Control view)
+        {
+            return (Grid)Descendants<GridSplitter>(view).Single().GetVisualParent()!;
+        }
+
+        /// <summary>
+        /// The rail column's host — the direct child of the body grid that both rails live in. It is
+        /// found by walking up from a rail rather than by name, so it survives the host being
+        /// rebuilt into something else.
+        /// </summary>
+        private static Control RailHostOf(Control view)
+        {
+            var grid = BodyGridOf(view);
+
+            return RailOf(view)
+                .GetSelfAndVisualAncestors()
+                .OfType<Control>()
+                .First(control => ReferenceEquals(control.GetVisualParent(), grid));
+        }
+
+        /// <summary>The rectangle <paramref name="control"/> occupies, in the window's coordinates.</summary>
+        private static Rect RectOf(Visual control, ThemedHost host)
+        {
+            return new Rect(control.TranslatePoint(default, host.Window)!.Value, control.Bounds.Size);
+        }
+
+        /// <summary>
+        /// The tab-bar row: the section strip's own container, which since issue #128 also carries
+        /// the profile picker and both layer switches.
+        /// <para>
+        /// The strip is named by what it lists rather than by being the only <see cref="TabStrip"/>
+        /// on screen — the key inspector's mode tabs are one too, the moment a key is selected.
+        /// </para>
+        /// </summary>
+        private static Control TabBarRowOf(Control view)
+        {
+            return (Control)Descendants<TabStrip>(view)
+                .Single(strip => strip.ItemsSource is IEnumerable<EditorTabViewModel>)
+                .GetVisualParent()!;
+        }
+
+        /// <summary>The LAYOUT layer switch — layoutN.txt's layer, what a key does.</summary>
+        private static ListBox LayerSwitchOf(Control view)
+        {
+            return Descendants<ListBox>(view).Single(list => list.ItemsSource is IEnumerable<KeyboardLayerViewModel>);
+        }
+
+        /// <summary>The LIGHTING layer switch — ledN.txt's layer, what a key looks like.</summary>
+        private static ListBox LightingLayerSwitchOf(Control view)
+        {
+            return Descendants<ListBox>(view).Single(list => list.ItemsSource is IEnumerable<LightingLayerViewModel>);
+        }
+
+        private static IReadOnlyList<string> VisibleTextsOf(Visual root)
+        {
+            return root.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Where(block => block.IsEffectivelyVisible)
+                .Select(block => block.Text ?? string.Empty)
+                .ToArray();
         }
 
         /// <summary>
@@ -1055,10 +1344,7 @@ namespace KinesisEdit.Tests.Design
         /// <summary>The rail's <see cref="ColumnDefinition"/> — where its width lives since #119.</summary>
         private static ColumnDefinition RailColumnOf(Control view)
         {
-            var seam = Descendants<GridSplitter>(view).Single();
-            var grid = (Grid)seam.GetVisualParent()!;
-
-            return grid.ColumnDefinitions[Grid.GetColumn(RailOf(view))];
+            return BodyGridOf(view).ColumnDefinitions[Grid.GetColumn(RailHostOf(view))];
         }
 
         private static IEnumerable<T> Descendants<T>(Control view) where T : Visual

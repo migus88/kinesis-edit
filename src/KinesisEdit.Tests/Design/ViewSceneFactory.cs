@@ -255,11 +255,24 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         public async Task<LightingTabViewModel> CreateGatedLightingAsync()
         {
+            var editor = await CreateGatedEditorAsync().ConfigureAwait(true);
+
+            return editor.Lighting;
+        }
+
+        /// <summary>
+        /// The whole editor behind <see cref="CreateGatedLightingAsync"/>, for a scene that needs the
+        /// unmet gate to be visible in the <b>chrome</b> rather than in the panel: since issue #128
+        /// the lighting layer switch lives in the editor's tab-bar row, so a test about a refused
+        /// segment has to render the shell, not the lighting board.
+        /// </summary>
+        public async Task<KeyboardEditorViewModel> CreateGatedEditorAsync()
+        {
             var editor = CreateEditorFor(DeviceId.FreestyleEdgeRgb);
 
             await editor.LoadAsync().ConfigureAwait(true);
 
-            return editor.Lighting;
+            return editor;
         }
 
         /// <summary>

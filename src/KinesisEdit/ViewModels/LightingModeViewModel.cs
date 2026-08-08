@@ -6,8 +6,10 @@ using KinesisEdit.Core.Lighting.Preview;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One row of the lighting tab's mode rail (design mockup 2f: "Mode — click to preview on the
-    /// board"): the mode's name over the parameters it accepts. Membership and firmware gating are
+    /// One row of the lighting tab's mode picker: the mode's name over the parameters it accepts.
+    /// It was fourteen rows of a scrolled list (design mockup 2f) and is the item template of a
+    /// <c>ComboBox</c> since issue #128 — the same two lines, in a control that spends one row of
+    /// the rail instead of most of it. Membership and firmware gating are
     /// <see cref="LightingAvailability"/>'s, the parameters and the summary line are
     /// <see cref="LightingModeParameters"/>'s, and the name is
     /// <see cref="LightingModeCaptions"/>'s — so no lighting rule and no mode name is restated
@@ -86,14 +88,12 @@ namespace KinesisEdit.ViewModels
         /// <summary>Everything the mode accepts, for the row and for the controls under the board.</summary>
         public LightingModeParameters Parameters { get; }
 
-        /// <summary>Whether this is the layer's current mode.</summary>
-        public bool IsSelected
-        {
-            get => _isSelected;
-            set => SetProperty(ref _isSelected, value);
-        }
-
-        private bool _isSelected;
+        // THERE IS NO `IsSelected` HERE ANY MORE (issue #128). The rail was fourteen buttons, each
+        // carrying its own chosen face, and the panel had to keep all fourteen in step on every
+        // mode change and every layer switch. The rail is a ComboBox now: a selector control has
+        // exactly one selected item and draws it itself, so a second copy of that fact on the row
+        // could only ever be a way for the two to disagree. `LightingTabViewModel.SelectedModeOption`
+        // is what the control binds.
 
         /// <summary>Creates one rail row over a mode's parameter set.</summary>
         public LightingModeViewModel(LightingModeParameters parameters)

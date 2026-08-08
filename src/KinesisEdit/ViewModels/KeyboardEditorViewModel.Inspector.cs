@@ -47,8 +47,9 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The session's assignment history, behind the picker's <c>Recent</c> chip. <b>One store per
-        /// editor</b>, shared by the rail's picker and the macro-insertion picker, so an action
-        /// inserted into a macro is offered by the rail too. In memory and never persisted; see
+        /// editor</b>, shared by the rail's picker, the Tap &amp; hold panel's two, the
+        /// macro-insertion picker and the Macro panel's chord composer, so an action inserted into a
+        /// macro is offered by the rail too. In memory and never persisted; see
         /// <see cref="RecentTokenStore"/>.
         /// </summary>
         private readonly RecentTokenStore _recentTokens = new();
@@ -140,7 +141,15 @@ namespace KinesisEdit.ViewModels
             // The Macro panel reaches the editor's ONE MacroLibrary through a function rather than a
             // stored instance: the library arrives with the profile and is replaced by a load or an
             // import, and two libraries over one layout would be two sources of truth.
-            _macroInspectorPanel = new MacroInspectorPanelViewModel(Device, _urlLauncher, () => MacroLibrary);
+            //
+            // It takes the session's recent-token store too (issue #128): its chord composer hosts a
+            // fourth picker, and the `Recent` chip is only a shortcut back to what the user has been
+            // doing if all four pickers remember the same things.
+            _macroInspectorPanel = new MacroInspectorPanelViewModel(
+                Device,
+                _urlLauncher,
+                () => MacroLibrary,
+                _recentTokens);
 
             _remapAssignedHandler = (_, _) => RefreshCounters();
             _tapAndHoldAssignedHandler = (_, _) => OnTapAndHoldAssigned();

@@ -28,8 +28,108 @@
     MONO IS THE FILE'S VOICE. The step tokens, the modifier codes, the millisecond counts and the
     meter readings are values that exist verbatim in a config file or are counted against one;
     every sentence the app says in its own voice is sans.
+
+    THE ROOT IS A GRID SO THE DRAG HAS SOMEWHERE TO DRAW. The panel itself is still the stack it
+    always was; the second child is a Canvas that holds the carried row while a drag is in flight
+    (issue #128). A Canvas measures to nothing, so it costs the stack no height, and it is the LAST
+    child so the ghost draws over the list rather than under it.
   -->
-  <StackPanel>
+
+  <UserControl.Resources>
+    <!-- One held modifier, drawn. THREE call sites now — the step row, the ghost that copies it,
+         and the chord composer's preview — so it is a resource rather than three copies.
+
+         The tooltip is not decoration: only a RIGHT modifier spells its side, so a bare mark is
+         worn by the left one and the generic one alike and the row cannot tell them apart.
+         `Description` is where the distinction the file really carries stays reachable.
+
+         UP TO TWO RUNS, IN TWO FACES. The key-symbol family is a 19-codepoint subset with NO Latin
+         letters, so the `R` side letter stays in the ordinary mono face and only the mark goes in
+         `.keySymbol`; a whole `R⇧` set in that class would fall back to a system font for its `R`.
+         `MacroModifierMarks.Split` hands the two out separately for exactly this. -->
+    <DataTemplate x:Key="MacroModifierMarkRun" DataType="vm:MacroModifierMarks+Mark">
+      <StackPanel Orientation="Horizontal"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="{Binding Description}">
+        <TextBlock Text="{Binding Side}"
+                   Classes="monoValueSmall muted"
+                   IsVisible="{Binding HasSide}"
+                   VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Symbol}"
+                   Classes="keySymbol muted"
+                   VerticalAlignment="Center" />
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- ONE TEMPLATE, TWO CALL SITES: the row in the list and the ghost carried above it. The
+         ghost has to be a copy of the row, and a second hand-written copy of six runs in two
+         faces is a copy that drifts. Nothing in here binds past the step — the row's commands are
+         anchored on the view outside it — so the same template renders correctly in both places. -->
+    <DataTemplate x:Key="MacroStepCaption" DataType="vm:MacroInspectorStepViewModel">
+      <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+        <!-- Mono end to end: the number counts the file's own steps and the token is literally
+             what layoutN.txt carries. -->
+        <TextBlock Text="{Binding NumberText}" Classes="monoValueSmall muted" VerticalAlignment="Center" />
+
+        <!-- THE KEY THAT WAS STRUCK IS TINTED. `MacroStepKeyBrush` is the macro badge's own
+             orchid, darkened on light for type — purple already means "macro" in this app, so the
+             cap's dot and this token say one thing in one hue, and the row invents no fifth
+             meaning. Deliberately not the accent: that has exactly two, and a key token is
+             neither. -->
+        <TextBlock Text="{Binding TokenText}"
+                   Classes="monoValue"
+                   Foreground="{DynamicResource MacroStepKeyBrush}"
+                   IsVisible="{Binding HasToken}"
+                   TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center" />
+
+        <!-- The held modifiers as 2i's marks — `⇧`, `R⌃` — and NOT the file's `LS`, `LC`, `S `
+             codes, which are what goes on the drive rather than what a person reads
+             (`Keystroke.FormatModifiers`, untouched). See `MacroModifierMarkRun` above. -->
+        <ItemsControl ItemsSource="{Binding Modifiers}"
+                      ItemTemplate="{StaticResource MacroModifierMarkRun}"
+                      IsVisible="{Binding HasModifiers}"
+                      VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="3" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <TextBlock Text="{Binding ActionText}" Classes="meta muted" VerticalAlignment="Center" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!-- ===== The drag, seen ==================================================================
+         Two states and no accent between them. The accent has exactly two sanctioned meanings in
+         this app — selection/focus, and "you changed this" — and "this row is being carried" is
+         neither, so the carry reads as LIFT AND DIM: the source row recedes and a copy of it rides
+         above the list on the popover elevation. The drop ring stays the accent's, because that
+         one really is about where a selection lands.
+
+         NOTHING HERE ANIMATES, deliberately. The ghost is pinned to the pointer every move; a
+         transition on its position would make it lag the very gesture it exists to show, which is
+         the complaint this feature answers. Nothing is added to Themes/Motion.axaml because
+         nothing moves on a clock. -->
+    <Style Selector="Grid.dragSource">
+      <Setter Property="Opacity" Value="0.35" />
+    </Style>
+
+    <Style Selector="Border.macroStepGhost">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBorderRaisedBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+      <Setter Property="BoxShadow" Value="{DynamicResource ShadowPopover}" />
+      <Setter Property="Padding" Value="6,4" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid>
+    <StackPanel>
 
     <!-- ===== The refusal =====================================================================
          Drawn INSTEAD of the editor, never beside it. A device with no macros, or a position that
@@ -148,6 +248,15 @@
                      Classes="meta muted"
                      TextWrapping="Wrap" />
 
+          <!-- ...and the one thing it cannot do, said in the same breath (issue #128). A chord the
+               window system keeps is consumed ABOVE the application and is never delivered here at
+               all, so this is a fact about the platform and not a defect the panel can fix; the
+               sentence therefore points at the composer below rather than apologising. Its own
+               line, because the sentence above it is the mock's wording verbatim and pinned. -->
+          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.OsReservedNote}"
+                     Classes="meta muted"
+                     TextWrapping="Wrap" />
+
           <!-- The rows. An ItemsControl and NOT a ListBox, deliberately: the editor's grammar
                leaves the arrows to any SelectingItemsControl in the focused ancestry, so a
                selecting list here would swallow the very ⌥↑↓ the header advertises. Selection is
@@ -164,82 +273,24 @@
                      on this view, whose DataContext is the panel. -->
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto"
                       ColumnSpacing="4"
-                      Background="Transparent">
+                      Background="Transparent"
+                      Classes.dragSource="{Binding IsDragSource}">
                   <controls:Icon Grid.Column="0"
                                  Classes="dragHandle"
                                  Data="{DynamicResource IconDragHandle}"
                                  ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.ReorderHandleHint}"
                                  VerticalAlignment="Center" />
 
+                  <!-- The row's face is the shared `MacroStepCaption` template, because the drag
+                       ghost above the list has to be the same six runs in the same two faces and a
+                       second copy of them would drift from this one. -->
                   <Button Grid.Column="1"
                           Classes="macroStepRow"
                           Classes.selected="{Binding IsSelected}"
                           Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.SelectStepCommand}"
-                          CommandParameter="{Binding}">
-                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                      <!-- Mono end to end: the number counts the file's own steps and the token is
-                           literally what layoutN.txt carries. -->
-                      <TextBlock Text="{Binding NumberText}" Classes="monoValueSmall muted" VerticalAlignment="Center" />
-
-                      <!-- THE KEY THAT WAS STRUCK IS TINTED. `MacroStepKeyBrush` is the macro
-                           badge's own orchid, darkened on light for type — purple already means
-                           "macro" in this app, so the cap's dot and this token say one thing in one
-                           hue, and the row invents no fifth meaning. Deliberately not the accent:
-                           that has exactly two, and a key token is neither. -->
-                      <TextBlock Text="{Binding TokenText}"
-                                 Classes="monoValue"
-                                 Foreground="{DynamicResource MacroStepKeyBrush}"
-                                 IsVisible="{Binding HasToken}"
-                                 TextTrimming="CharacterEllipsis"
-                                 VerticalAlignment="Center" />
-
-                      <!-- The held modifiers as 2i's marks — `⇧`, `R⌃` — and NOT the file's `LS`,
-                           `LC`, `S ` codes, which are what goes on the drive rather than what a
-                           person reads (`Keystroke.FormatModifiers`, untouched).
-
-                           LEFT IS UNMARKED; ONLY THE RIGHT SIDE IS SPELLED. `LS` draws a bare `⇧`
-                           and `RS` draws `R⇧`, so the side run below is hidden for a left modifier
-                           — and for a generic one, which is why the two now draw alike. See
-                           `MacroModifierMarks.LeftSide` for the reasoning and the cost.
-
-                           UP TO TWO RUNS PER MODIFIER, IN TWO FACES. The key-symbol family is a
-                           19-codepoint subset with NO Latin letters, so the `R` side letter stays
-                           in the ordinary mono face and only the mark goes in `.keySymbol`; a whole
-                           `R⇧` set in that class would fall back to a system font for its `R`.
-                           `MacroModifierMarks.Split` hands the two out separately for exactly this,
-                           and the row binds to the parts rather than to the joined string. -->
-                      <ItemsControl ItemsSource="{Binding Modifiers}"
-                                    IsVisible="{Binding HasModifiers}"
-                                    VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="3" />
-                          </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate DataType="vm:MacroModifierMarks+Mark">
-                            <!-- The tooltip is not decoration: only a RIGHT modifier spells its
-                                 side, so a bare mark is worn by the left one and the generic one
-                                 alike and the row cannot tell them apart. `Description` is where
-                                 the distinction the file really carries stays reachable. -->
-                            <StackPanel Orientation="Horizontal"
-                                        VerticalAlignment="Center"
-                                        ToolTip.Tip="{Binding Description}">
-                              <TextBlock Text="{Binding Side}"
-                                         Classes="monoValueSmall muted"
-                                         IsVisible="{Binding HasSide}"
-                                         VerticalAlignment="Center" />
-                              <TextBlock Text="{Binding Symbol}"
-                                         Classes="keySymbol muted"
-                                         VerticalAlignment="Center" />
-                            </StackPanel>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-
-                      <TextBlock Text="{Binding ActionText}" Classes="meta muted" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </Button>
+                          CommandParameter="{Binding}"
+                          Content="{Binding}"
+                          ContentTemplate="{StaticResource MacroStepCaption}" />
 
                   <!-- The per-step delay, edited in place — this is where §11.3's dialog went. A
                        row with none offers `delay…`; a row with one shows it in mono, because
@@ -390,6 +441,115 @@
         </StackPanel>
       </Border>
 
+      <!-- ===== The chord composer (issue #128) ===============================================
+           THE ANSWER TO A CHORD THAT CANNOT BE PRESSED. `Ctrl+1` switches desktop on macOS and a
+           hotkey utility can claim any other combination; such a chord is eaten by the window
+           system above this application and is never delivered to it, so no amount of capture work
+           reaches it (docs/app/keystroke-capture.md). Rather than promise a fix that would do
+           nothing, the panel makes pressing unnecessary: tick the modifiers, pick the key, insert.
+
+           IT IS THE SAME PICKER, over the same catalog, that the rail's Remap panel and §11.6's
+           insertion modal host — and the same session `Recent` history behind them — so this is a
+           fourth call site of one control and not a second key search.
+
+           CLOSED AT REST. The rail is 300 px wide and the picker alone is most of a screenful; the
+           composer is the answer to an occasional problem, not the panel's main affordance, so it
+           is disclosed rather than always drawn. -->
+      <Border Classes="inspectorSection">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <TextBlock Grid.Column="0"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerLabel}"
+                       Classes="sectionLabel"
+                       VerticalAlignment="Center" />
+
+            <Button Grid.Column="1"
+                    Classes="secondary"
+                    Content="{Binding ComposerToggleCaption}"
+                    Command="{Binding ToggleComposerCommand}"
+                    VerticalAlignment="Center" />
+          </Grid>
+
+          <StackPanel Spacing="8" IsVisible="{Binding IsComposerOpen}">
+            <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerHint}"
+                       Classes="meta muted"
+                       TextWrapping="Wrap" />
+
+            <!-- THE EIGHT MODIFIERS ARE MARKS, exactly as the co-trigger strip below draws its six
+                 — `⇧ R⇧ ⌃ R⌃ ⌥ R⌥ ⌘ R⌘`, left unmarked and only the right side spelled, with the
+                 words in the tooltip because a mark alone is not accessible text. Neither run
+                 carries a colour: `ToggleSegment`'s `.selected` face sets Foreground, a TextBlock
+                 inherits it, and a `muted` here would break the on-accent label. -->
+            <ItemsControl ItemsSource="{Binding ChordModifiers}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:MacroChordModifier">
+                  <Button Classes="toggleSegment"
+                          Classes.selected="{Binding IsOn}"
+                          Margin="0,0,4,4"
+                          ToolTip.Tip="{Binding Description}"
+                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleChordModifierCommand}"
+                          CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Side}"
+                                 Classes="monoValueSmall"
+                                 IsVisible="{Binding HasSide}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Symbol}"
+                                 Classes="keySymbol"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- The chord as the step row will draw it, beside the button that writes it. It is
+                 ABOVE the picker deliberately: the result list is capped at 300 px and the rail
+                 scrolls, so an Insert button placed after it would be off-screen for the whole of
+                 the pick. The preview is read back off a real Keystroke, so it can never promise a
+                 modifier the model drops (05 §5.1 attaches none to a modifier key). -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <StackPanel Grid.Column="0"
+                          Orientation="Horizontal"
+                          Spacing="5"
+                          VerticalAlignment="Center"
+                          IsVisible="{Binding HasComposedKey}">
+                <TextBlock Text="{Binding ComposedTokenText}"
+                           Classes="monoValue"
+                           Foreground="{DynamicResource MacroStepKeyBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+                <ItemsControl ItemsSource="{Binding ComposedMarks}"
+                              ItemTemplate="{StaticResource MacroModifierMarkRun}"
+                              VerticalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="3" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </StackPanel>
+
+              <Button Grid.Column="1"
+                      Classes="primaryAction"
+                      Content="{x:Static vm:MacroInspectorPanelViewModel.InsertChordCaption}"
+                      Command="{Binding InsertChordCommand}"
+                      VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Resolved by ViewLocator from the panel's own TokenPickerViewModel, exactly as the
+                 Remap panel hosts its own. `↵` on a highlighted row inserts the chord too — the
+                 picker raises `Chosen` and the panel decides what taking a row means. -->
+            <ContentControl Content="{Binding ChordPicker}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
       <!-- ===== The footer meters =============================================================
            2i's three readings, in its order: `Playback speed 3 / 5`, `this macro 128 / 500`,
            `layout keystrokes 5 140 / 7 200`. Over budget goes AMBER and still saves — the layout
@@ -513,5 +673,29 @@
         </StackPanel>
       </Border>
     </StackPanel>
-  </StackPanel>
+    </StackPanel>
+
+    <!-- ===== The carried step ================================================================
+         WHAT IS BEING DRAGGED, not only where it would land (issue #128). The drop ring alone left
+         the gesture's subject invisible — the list did not move until the pointer came up, which is
+         exactly the "the view is only updated after the movement" the user reported. A copy of the
+         row now rides the pointer from the 4 px threshold until the gesture ends.
+
+         `IsHitTestVisible="False"` IS MANDATORY, on the layer and on the ghost alike. The drop row
+         is resolved by hit-testing the release position against the live tree, so a ghost that
+         could be hit would sit under the pointer and answer every one of those tests itself — the
+         drag would land on nothing, every time.
+
+         Its content is the row's own `MacroStepCaption`, and its position is written straight from
+         `OnPointerMovedOverStep`; a Canvas measures to nothing, so this costs the panel above it no
+         height at all. -->
+    <Canvas x:Name="DragLayer" IsHitTestVisible="False">
+      <Border x:Name="DragGhost"
+              Classes="macroStepGhost"
+              IsHitTestVisible="False"
+              IsVisible="False">
+        <ContentControl x:Name="DragGhostContent" ContentTemplate="{StaticResource MacroStepCaption}" />
+      </Border>
+    </Canvas>
+  </Grid>
 </UserControl>

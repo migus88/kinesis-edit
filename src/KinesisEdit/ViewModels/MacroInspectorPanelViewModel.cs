@@ -56,8 +56,13 @@ namespace KinesisEdit.ViewModels
     /// <see cref="MacroKeySnapshot"/> it read when the inspector was pointed at the position. The
     /// baseline is taken in <see cref="Refresh"/> and <b>only when the key identity changed</b> —
     /// an unconditional snapshot would be overwritten by the very edit the user wants undone.</para>
+    ///
+    /// <para><b>It has a second way in, which needs no keypress at all</b> — the chord composer of
+    /// <c>MacroInspectorPanelViewModel.Composer.cs</c> (issue #128). Split into a partial for the
+    /// same reason <c>KeyboardEditorViewModel.Inspector.cs</c> was: this file is already long and
+    /// docs/guides/Coding Conventions.md forbids growing it into a god class.</para>
     /// </summary>
-    public sealed class MacroInspectorPanelViewModel : KeyInspectorPanelViewModel, IKeystrokeSink
+    public sealed partial class MacroInspectorPanelViewModel : KeyInspectorPanelViewModel, IKeystrokeSink
     {
         /// <summary>The panel's own name, and its mode tab's caption.</summary>
         public const string PanelTitle = KeyInspectorTabViewModel.MacroCaption;
@@ -104,6 +109,25 @@ namespace KinesisEdit.ViewModels
         /// <summary>What the capture actually does with what it hears, stated in the panel (2i).</summary>
         public const string CaptureRule =
             "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.";
+
+        /// <summary>
+        /// The one thing recording cannot do, said plainly beside the rule that says what it can
+        /// (issue #128). A chord the window system keeps — <c>Ctrl+1</c> on macOS, or anything a
+        /// hotkey utility has registered — is consumed <b>above</b> the application: it is never
+        /// delivered to the window, so no handler and no local event monitor can see it or swallow
+        /// it, and no amount of capture work would change that (docs/app/keystroke-capture.md,
+        /// "Permissions and platform reach"). The sentence therefore does not apologise — it points
+        /// at <see cref="ComposeChordCaption"/>, which authors exactly those chords without pressing
+        /// them.
+        /// <para>
+        /// Drawn as its own line rather than folded into <see cref="CaptureRule"/>, which is mockup
+        /// <c>2i</c>'s wording verbatim and pinned as such. Both lines sit under the record banner,
+        /// so the sentence is on screen at the moment the user discovers the limitation.
+        /// </para>
+        /// </summary>
+        public const string OsReservedNote =
+            "Some chords never reach this app at all — Ctrl+1, and anything a hotkey utility has claimed, "
+            + "are taken by the system first. Build those with Compose chord below.";
 
         /// <summary>Label of the playback-speed meter, verbatim from mockup <c>2i</c>.</summary>
         public const string SpeedMeterLabel = "Playback speed";
@@ -357,11 +381,18 @@ namespace KinesisEdit.ViewModels
         /// library arrives with the profile and is replaced by a load or an import, and two
         /// libraries over one layout would be two sources of truth.
         /// </para>
+        /// <para>
+        /// <paramref name="recentTokens"/> is the editor's <b>one</b> session history, shared with
+        /// the rail's Remap picker and the macro-insertion modal so the chord composer's
+        /// <c>Recent</c> chip offers what the user has just been assigning. Optional, because a
+        /// panel built without one keeps a history of its own — which is what a test wants.
+        /// </para>
         /// </summary>
         public MacroInspectorPanelViewModel(
             DeviceSnapshot device,
             IUrlLauncher urlLauncher,
-            Func<MacroLibrary?> resolveLibrary)
+            Func<MacroLibrary?> resolveLibrary,
+            RecentTokenStore? recentTokens = null)
         {
             ArgumentNullException.ThrowIfNull(device);
 
@@ -387,6 +418,8 @@ namespace KinesisEdit.ViewModels
             // The step editor writes into the macro directly; the editor's funnel is what everything
             // else hangs off, so one hop is all this needs.
             Steps.Changed += (_, _) => OnMacroWritten();
+
+            CreateComposer(_dialect, recentTokens);
         }
 
         /// <inheritdoc />
@@ -422,6 +455,10 @@ namespace KinesisEdit.ViewModels
             RecordCommand.NotifyCanExecuteChanged();
             InsertStepCommand.NotifyCanExecuteChanged();
             ToggleCoTriggerCommand.NotifyCanExecuteChanged();
+
+            // The composer is about the position the rail is pointed at, so a new one closes it and
+            // every refresh re-asks whether it may be opened at all.
+            RefreshComposer(isNewKey);
         }
 
         /// <summary>
@@ -489,16 +526,37 @@ namespace KinesisEdit.ViewModels
         {
             ArgumentNullException.ThrowIfNull(keystroke);
 
-            if (!_isRecording || EnsureMacro() is not { } macro)
+            if (!_isRecording)
             {
                 return;
             }
 
-            macro.AddKeystroke(BuildKeystroke(keystroke));
+            TryAppendKeystroke(BuildKeystroke(keystroke));
+        }
+
+        /// <summary>
+        /// Appends one already-built keystroke to the macro under edit, creating the macro if the
+        /// position had none. It is the single write path shared by the two ways a step is made —
+        /// the captured keypress of <see cref="ReceiveKeystroke"/> and the composed chord of
+        /// <c>InsertChord</c> (issue #128) — so a step authored from the composer is indistinguishable
+        /// from a recorded one the moment it lands. False when there is no macro to write into and
+        /// none could be created (the count limit of 06 §6, or a full slot strip), which
+        /// <see cref="EnsureMacro"/> has already reported.
+        /// </summary>
+        private bool TryAppendKeystroke(Keystroke keystroke)
+        {
+            if (EnsureMacro() is not { } macro)
+            {
+                return false;
+            }
+
+            macro.AddKeystroke(keystroke);
 
             Steps.RefreshFromModel();
 
             OnMacroWritten();
+
+            return true;
         }
 
         /// <summary>
