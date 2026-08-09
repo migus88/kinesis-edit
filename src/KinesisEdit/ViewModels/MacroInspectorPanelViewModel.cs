@@ -141,9 +141,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>Label of the repeat control. This app's wording; <c>2i</c> draws only speed.</summary>
         public const string RepeatLabel = "Repeat";
 
-        /// <summary>Section label over the six co-trigger latches (06 §5). This app's wording.</summary>
-        public const string CoTriggersLabel = "CO-TRIGGERS";
-
         /// <summary>Shown on a device without macro support (<see cref="MacroCapability.IsSupported"/>).</summary>
         public const string NotSupportedMessage = "This device does not support macros.";
 
@@ -159,19 +156,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Refusal when the profile already holds its macro count (06 §6).</summary>
         public const string MacroCountLimitMessageFormat = "This profile already holds its maximum of {0} macros.";
 
-        /// <summary>Refusal when the co-trigger cap of 06 §5 is already reached.</summary>
-        public const string CoTriggerLimitMessageFormat = "A macro can hold at most {0} co-triggers.";
-
         /// <summary>Builds the macro-count refusal for <paramref name="limit"/> macros (06 §6).</summary>
         public static string BuildMacroCountLimitMessage(int limit)
         {
             return string.Format(CultureInfo.InvariantCulture, MacroCountLimitMessageFormat, limit);
-        }
-
-        /// <summary>Builds the co-trigger refusal for <paramref name="limit"/> slots (06 §5).</summary>
-        public static string BuildCoTriggerLimitMessage(int limit)
-        {
-            return string.Format(CultureInfo.InvariantCulture, CoTriggerLimitMessageFormat, limit);
         }
 
         /// <summary>Builds the capture banner for the step the next keystroke lands in.</summary>
@@ -299,15 +287,6 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool HasRepeat => _capability.Repeat is not null && _capability.PersistsRepeat;
 
-        /// <summary>The six Left/Right Shift, Ctrl and Alt latches of 06 §5.</summary>
-        public IReadOnlyList<MacroCoTriggerViewModel> CoTriggers { get; }
-
-        /// <summary>How many co-triggers the dialect actually writes (06 §2.1, §3).</summary>
-        public int MaxCoTriggers { get; }
-
-        /// <summary>Whether the device has co-triggers at all.</summary>
-        public bool HasCoTriggers => MaxCoTriggers > 0;
-
         /// <summary>The panel's refusal or status line, or an empty string.</summary>
         public string Message
         {
@@ -335,9 +314,6 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public IRelayCommand InsertStepCommand { get; }
 
-        /// <summary>Turns one co-trigger on or off, enforcing the device's cap (06 §5).</summary>
-        public IRelayCommand<MacroCoTriggerViewModel> ToggleCoTriggerCommand { get; }
-
         /// <summary>
         /// Raised after the panel wrote to the profile's macros, so the editor can run its one
         /// refresh funnel — Core announces nothing, so nothing downstream notices otherwise.
@@ -348,6 +324,15 @@ namespace KinesisEdit.ViewModels
         private readonly TokenDialect _dialect;
         private readonly Func<MacroLibrary?> _resolveLibrary;
         private readonly int? _maxMacroCount;
+
+        /// <summary>
+        /// Slots the dialect actually <b>writes</b> (06 §1) — 3 on the Advantage2 and Freestyle
+        /// Edge/Pro, 5 on the RGB family, 0 where macros are not kept in per-key slots at all. Never
+        /// a literal, and never <see cref="Macro.MaxMacroIndex"/>: a macro put in a slot the file
+        /// does not keep is gone at the next save.
+        /// </summary>
+        private readonly int _persistedSlots;
+
         private readonly bool _usesMacroSlots;
         private IReadOnlyList<MacroNameOptionViewModel> _nameOptions = [];
         private MacroNameOptionViewModel? _selectedName;
@@ -400,12 +385,10 @@ namespace KinesisEdit.ViewModels
             _capability = device.Device.Macros;
             _dialect = KeyboardLayout.DialectFor(device.DeviceId);
             _maxMacroCount = MacroLimits.ResolveMaxMacroCount(device);
-            _usesMacroSlots = _capability.PersistedSlotsPerKey is > 0 && !_capability.UsesFlatMacroList;
-
-            MaxCoTriggers = _capability.PersistedCoTriggersPerMacro ?? _capability.MaxCoTriggersPerMacro ?? 0;
+            _persistedSlots = _capability.PersistedSlotsPerKey ?? 0;
+            _usesMacroSlots = _persistedSlots > 0 && !_capability.UsesFlatMacroList;
 
             Steps = new MacroInspectorStepsViewModel(device.DeviceId, device.Firmware, urlLauncher);
-            CoTriggers = MacroCoTriggerViewModel.CreateAll(_dialect);
 
             SpeedMeter = new MacroMeterViewModel(SpeedMeterLabel);
             MacroLengthMeter = new MacroMeterViewModel(MacroLengthMeterLabel);
@@ -413,12 +396,12 @@ namespace KinesisEdit.ViewModels
 
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
             InsertStepCommand = new RelayCommand(StartRecording, CanRecord);
-            ToggleCoTriggerCommand = new RelayCommand<MacroCoTriggerViewModel>(ToggleCoTrigger, _ => IsAvailable);
 
             // The step editor writes into the macro directly; the editor's funnel is what everything
             // else hangs off, so one hop is all this needs.
             Steps.Changed += (_, _) => OnMacroWritten();
 
+            CreateTriggerStrip(_dialect);
             CreateComposer(_dialect, recentTokens);
         }
 
@@ -439,6 +422,10 @@ namespace KinesisEdit.ViewModels
             {
                 // Anything half-recorded belongs to the position it was started on.
                 StopRecording();
+
+                // ...and so does the slot the user picked: the next position opens on whichever slot
+                // it is already carrying, not on the number chosen for the last one.
+                ResetSlotChoice();
 
                 Message = string.Empty;
 
@@ -493,6 +480,10 @@ namespace KinesisEdit.ViewModels
             snapshot.RestoreTo(key.Key, _layout);
 
             Message = string.Empty;
+
+            // The baseline carries the active slot too, so the user's pick is undone with everything
+            // else — leaving it standing would pin the panel to a slot the revert just emptied.
+            ResetSlotChoice();
 
             ReadFromModel();
 
@@ -592,7 +583,8 @@ namespace KinesisEdit.ViewModels
             Steps.Load(_macro);
 
             LoadSpeedAndRepeat();
-            RefreshCoTriggers();
+            RefreshSlots();
+            RefreshTrigger();
             RefreshNames();
             RefreshMeters();
 
@@ -612,9 +604,15 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Which macro the selected position is carrying, or null. The key's own
-        /// <c>ActiveMacroIndex</c> wins when it points at a populated slot — that is what a slot
-        /// click on the Macros tab moved — and otherwise the first populated slot is opened, so
-        /// selecting a cap that carries a macro always shows it rather than an empty editor.
+        /// <c>ActiveMacroIndex</c> wins when it points at a populated slot — that is what the slot
+        /// selector and the Macros tab's slot cards both move — and otherwise the first populated
+        /// slot is opened, so selecting a cap that carries a macro always shows it rather than an
+        /// empty editor.
+        /// <para>
+        /// <b>The fallback stands down once the user has named a slot</b> (issue #137). Picking an
+        /// empty slot is a request to edit <em>that</em> one, and jumping off it onto the first
+        /// populated slot would make an empty-slot pick impossible to express.
+        /// </para>
         /// </summary>
         private Macro? ReadMacro()
         {
@@ -635,9 +633,12 @@ namespace KinesisEdit.ViewModels
                 return active;
             }
 
-            var slots = _capability.PersistedSlotsPerKey ?? Macro.MaxMacroIndex;
+            if (_hasChosenSlot)
+            {
+                return null;
+            }
 
-            for (var slot = Macro.MinMacroIndex; slot <= slots; slot++)
+            for (var slot = Macro.MinMacroIndex; slot <= _persistedSlots; slot++)
             {
                 if (key.Key.GetMacro(slot) is { } macro)
                 {
@@ -690,7 +691,9 @@ namespace KinesisEdit.ViewModels
             }
             else
             {
-                var slot = key.Key.AssignMacro(macro);
+                // The slot under edit when it is empty, and otherwise the first empty PERSISTED one
+                // — see ResolveSlotForNewMacro for why this is not KeyboardKey.AssignMacro.
+                var slot = ResolveSlotForNewMacro(key.Key);
 
                 if (slot == 0)
                 {
@@ -699,6 +702,7 @@ namespace KinesisEdit.ViewModels
                     return null;
                 }
 
+                key.Key.SetMacro(slot, macro);
                 key.Key.ActiveMacroIndex = slot;
             }
 
@@ -837,56 +841,6 @@ namespace KinesisEdit.ViewModels
             OnRecordingChanged();
         }
 
-        private void ToggleCoTrigger(MacroCoTriggerViewModel? toggle)
-        {
-            if (toggle is null || EnsureMacro() is not { } macro)
-            {
-                return;
-            }
-
-            if (toggle.IsOn)
-            {
-                RemoveCoTrigger(macro, toggle.Key);
-            }
-            else
-            {
-                // Macro.AddCoTrigger deliberately neither de-duplicates nor refuses (06 §5), so the
-                // cap is the panel's to hold; Validate() stays the backstop.
-                if (macro.CoTriggerCount >= MaxCoTriggers)
-                {
-                    Message = BuildCoTriggerLimitMessage(MaxCoTriggers);
-
-                    return;
-                }
-
-                macro.AddCoTrigger(toggle.Key);
-
-                Message = string.Empty;
-            }
-
-            RefreshCoTriggers();
-            OnMacroWritten();
-        }
-
-        private static void RemoveCoTrigger(Macro macro, KeyDefinition coTrigger)
-        {
-            for (var index = macro.CoTriggers.Count - 1; index >= 0; index--)
-            {
-                if (macro.CoTriggers[index].Code == coTrigger.Code)
-                {
-                    macro.RemoveCoTriggerAt(index);
-                }
-            }
-        }
-
-        private void RefreshCoTriggers()
-        {
-            foreach (var toggle in CoTriggers)
-            {
-                toggle.IsOn = _macro?.ContainsCoTrigger(toggle.Key.Code) == true;
-            }
-        }
-
         private void RefreshMeters()
         {
             SpeedMeter.Set(_speed, HasSpeed ? SpeedMaximum : null);
@@ -922,7 +876,7 @@ namespace KinesisEdit.ViewModels
 
             if (current is null)
             {
-                var none = new MacroNameOptionViewModel();
+                var none = new MacroNameOptionViewModel(HasSlotSelector);
 
                 options.Add(none);
 
@@ -1071,10 +1025,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// One hop out, plus the readouts this panel owns outright. The meters are derived from the
-        /// macro the panel just wrote to, so they move here rather than waiting for the round trip —
-        /// this is the panel reacting to <em>its own</em> write, which is the opposite of
-        /// <see cref="Refresh"/>'s "re-read and never write" and does not re-enter it.
+        /// One hop out, plus the readouts this panel owns outright. The meters, the slot dots and
+        /// the Trigger strip are all derived from the macro the panel just wrote to, so they move
+        /// here rather than waiting for the round trip — this is the panel reacting to <em>its own</em>
+        /// write, which is the opposite of <see cref="Refresh"/>'s "re-read and never write" and does
+        /// not re-enter it.
         /// <para>
         /// Everything else — the counters, the advisories, the legend, the library snapshot the name
         /// dropdown is built from, and the dirty flag — is the editor's funnel's, because Core
@@ -1083,6 +1038,8 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void OnMacroWritten()
         {
+            RefreshSlots();
+            RefreshTrigger();
             RefreshMeters();
 
             OnPropertyChanged(nameof(RecordingBanner));

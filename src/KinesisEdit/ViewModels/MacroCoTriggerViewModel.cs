@@ -5,19 +5,27 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One co-trigger toggle of the macro panel — the six Left/Right Shift, Ctrl and Alt buttons
-    /// of specs/10-apps-and-ui.md, holding the modifier a macro's trigger must be pressed with
-    /// (specs/06-macros.md §2.1, §5).
+    /// One co-trigger latch of the macro panel's <b>Trigger strip</b> — the modifier a macro's
+    /// trigger must be pressed with (specs/06-macros.md §2.1, §5).
     /// <para>
     /// The toggle owns no rules: how many may be on at once is
-    /// <see cref="Core.Devices.MacroCapability.MaxCoTriggersPerMacro"/> and is enforced by
+    /// <see cref="Core.Devices.MacroCapability.PersistedCoTriggersPerMacro"/> and is enforced by
     /// <see cref="MacroInspectorPanelViewModel"/>, because <see cref="Macro.AddCoTrigger"/> deliberately
     /// neither de-duplicates nor refuses (06 §5 counts populated slots, and a repeated token in a
     /// field file must survive a round trip).
     /// </para>
     /// <para>
-    /// <b>It draws a mark, and keeps its caption.</b> Six two-line captions — <c>Left⏎Shift</c> …
-    /// <c>Right⏎Opt</c> — in a <c>WrapPanel</c> inside a 300 px rail is what the mark spelling of
+    /// <b>The strip offers the three left-hand latches, and that is a deliberate deviation</b>
+    /// (issue #137, recorded in docs/app/design-system.md). specs/10-apps-and-ui.md pins the legacy
+    /// set at "six co-trigger buttons — Left/Right Shift, Ctrl, Alt"; the issue's own rule is that
+    /// authoring is left-only, so <see cref="CreateAll"/> is asked for <c>leftOnly</c> and the three
+    /// right-hand spellings are folded onto their left latch through <see cref="Family"/>. A
+    /// <c>⌘</c> latch is <b>not</b> offered: no co-trigger anywhere in specs 06 or 10 names one, and
+    /// a latch that wrote a token no firmware honours would author a macro that never fires.
+    /// </para>
+    /// <para>
+    /// <b>It draws a mark, and keeps its caption.</b> Two-line captions — <c>Left⏎Shift</c> …
+    /// <c>Right⏎Opt</c> — inside a 300 px rail is what the mark spelling of
     /// <see cref="MacroModifierMarks"/> exists to fix: <see cref="Side"/> plus <see cref="Symbol"/>
     /// is <c>R⇧</c>, one line, and a bare <c>⇧</c> for the left one — left is the unmarked side.
     /// <see cref="Caption"/> stays, because a mark alone is not accessible text — it is the
@@ -28,21 +36,42 @@ namespace KinesisEdit.ViewModels
     public sealed class MacroCoTriggerViewModel : ViewModelBase
     {
         /// <summary>
-        /// The six co-trigger buttons of the legacy macro panel, in spec order. Left/right are
-        /// distinct keys in the §5.1 modifier table and capture reports them apart, so both
-        /// spellings of each modifier get their own toggle.
+        /// The §5.1 spellings of one physical modifier, grouped: generic, left and right. What
+        /// <see cref="FamilyOf"/> answers with, and what lets a <c>{rshft}</c> a file already
+        /// carried light the <c>⇧</c> latch instead of nothing at all.
         /// </summary>
-        public static IReadOnlyList<MacroCoTriggerViewModel> CreateAll(TokenDialect dialect)
+        private static readonly MacroModifiers[] _families =
+        [
+            MacroModifiers.Shift | MacroModifiers.LeftShift | MacroModifiers.RightShift,
+            MacroModifiers.Control | MacroModifiers.LeftControl | MacroModifiers.RightControl,
+            MacroModifiers.Alt | MacroModifiers.LeftAlt | MacroModifiers.RightAlt,
+            MacroModifiers.Win | MacroModifiers.LeftWin | MacroModifiers.RightWin
+        ];
+
+        /// <summary>
+        /// The co-trigger latches, in spec order. <paramref name="leftOnly"/> is what the Trigger
+        /// strip asks for — the three left-hand modifiers of issue #137's left-only rule; the full
+        /// set is specs/10-apps-and-ui.md's own six, where left and right are distinct keys in the
+        /// §5.1 modifier table and capture reports them apart.
+        /// </summary>
+        public static IReadOnlyList<MacroCoTriggerViewModel> CreateAll(TokenDialect dialect, bool leftOnly = false)
         {
-            var modifiers = new[]
-            {
-                MacroModifiers.LeftShift,
-                MacroModifiers.RightShift,
-                MacroModifiers.LeftControl,
-                MacroModifiers.RightControl,
-                MacroModifiers.LeftAlt,
-                MacroModifiers.RightAlt
-            };
+            var modifiers = leftOnly
+                ? new[]
+                {
+                    MacroModifiers.LeftShift,
+                    MacroModifiers.LeftControl,
+                    MacroModifiers.LeftAlt
+                }
+                : new[]
+                {
+                    MacroModifiers.LeftShift,
+                    MacroModifiers.RightShift,
+                    MacroModifiers.LeftControl,
+                    MacroModifiers.RightControl,
+                    MacroModifiers.LeftAlt,
+                    MacroModifiers.RightAlt
+                };
 
             var toggles = new List<MacroCoTriggerViewModel>(modifiers.Length);
 
@@ -61,8 +90,36 @@ namespace KinesisEdit.ViewModels
             return toggles;
         }
 
+        /// <summary>
+        /// Every §5.1 spelling of the physical modifier <paramref name="modifier"/> names — the
+        /// generic code, the left one and the right one — or <see cref="MacroModifiers.None"/> for
+        /// a flag outside the table. It is what makes the strip's latches a view of <em>which key
+        /// is held</em> rather than of which spelling a file happens to carry.
+        /// </summary>
+        public static MacroModifiers FamilyOf(MacroModifiers modifier)
+        {
+            foreach (var family in _families)
+            {
+                if ((family & modifier) != MacroModifiers.None)
+                {
+                    return family;
+                }
+            }
+
+            return MacroModifiers.None;
+        }
+
         /// <summary>The modifier key this toggle adds as a co-trigger (§5.1).</summary>
         public KeyDefinition Key { get; }
+
+        /// <summary>
+        /// Every §5.1 spelling of the physical modifier this latch stands for (see
+        /// <see cref="FamilyOf"/>), or <see cref="MacroModifiers.None"/> for a key that names no
+        /// modifier. <b>A file's right-hand or generic co-trigger lights the matching left latch</b>
+        /// through this, so the user can see the co-trigger exists rather than looking at a strip
+        /// that claims the macro is a bare press.
+        /// </summary>
+        public MacroModifiers Family { get; }
 
         /// <summary>
         /// The key's own caption, by the shared <see cref="KeyCaption"/> rule — two lines for every
@@ -120,11 +177,13 @@ namespace KinesisEdit.ViewModels
 
                 Side = mark.Side;
                 Symbol = mark.Symbol;
+                Family = FamilyOf(modifier);
             }
             else
             {
                 Side = string.Empty;
                 Symbol = string.Empty;
+                Family = MacroModifiers.None;
             }
         }
     }

@@ -623,25 +623,28 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// The six co-trigger toggles are the step row's own marks — <c>⇧ R⇧ ⌃ R⌃ ⌥ R⌥</c> — and
-        /// not the six two-line captions they replaced, which was the panel's tallest block for the
-        /// least information in it. <b>Only the right-hand three draw a side run</b>: left is the
-        /// unmarked side, so half of them are a single run and the caption in the tooltip is what
-        /// says which side a bare mark is.
+        /// <b>The Trigger strip</b> (issue #137): three left-hand latches, the trigger token and a
+        /// status, in the header rather than six toggles under a <c>CO-TRIGGERS</c> label in the
+        /// footer. Each latch is the step row's own mark — <c>⇧ ⌃ ⌥</c> — and each is a single run,
+        /// because left is the unmarked side and the caption in the tooltip is what says which side
+        /// a bare mark is.
         /// <para>
-        /// The assertion that carries the change is the <b>selected foreground</b>. This site is
-        /// type rather than geometry precisely because <c>ToggleSegment</c>'s <c>.selected</c> face
-        /// sets <c>Foreground</c>, which a <c>TextBlock</c> inherits and an <c>Icon</c> — painting
-        /// from <c>Stroke</c> — cannot; a <c>muted</c> or a hand-set colour on either run would
-        /// leave the mark grey on the accent fill with every other assertion here still passing.
-        /// The toggle switched on is therefore a <b>right</b> one, so both of its runs are read.
+        /// The assertion that carries the face is the <b>selected foreground</b>. This site is type
+        /// rather than geometry precisely because <c>ToggleSegment</c>'s <c>.selected</c> face sets
+        /// <c>Foreground</c>, which a <c>TextBlock</c> inherits and an <c>Icon</c> — painting from
+        /// <c>Stroke</c> — cannot; a <c>muted</c> or a hand-set colour on the run would leave the
+        /// mark grey on the accent fill with every other assertion here still passing.
+        /// </para>
+        /// <para>
+        /// The strip is <b>measured</b>, never pinned to a number: a font-metric shift on another
+        /// machine moves the figure, and what must hold is that the row does not wrap and nothing
+        /// runs off a 300 px rail.
         /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheCoTriggers_AreOneLineMarks_SpellOnlyTheRightSide_AndTheSelectedFaceReachesEveryRun(
-            string variantName)
+        public async Task TheTriggerStrip_DrawsThreeLeftHandMarks_AndFitsTheRail(string variantName)
         {
             using var scenes = new ViewSceneFactory();
 
@@ -656,9 +659,7 @@ namespace KinesisEdit.Tests.Design
             Assert.True(panel.HasCoTriggers);
 
             // Switched on through the panel's own command, so the `.selected` class arrives the way
-            // the app puts it there rather than being set on the button by the test. Index 1 is
-            // Right Shift — the two-run case, which is the only one that can prove the selected
-            // foreground reaches a side letter as well as a mark.
+            // the app puts it there rather than being set on the button by the test.
             panel.ToggleCoTriggerCommand.Execute(panel.CoTriggers[1]);
 
             Dispatcher.UIThread.RunJobs();
@@ -671,18 +672,23 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(panel.CoTriggers.Count, toggles.Length);
 
-            // The block, read off the glass, in the order it is drawn in.
+            // The strip, read off the glass, in the order it is drawn in. THREE, and no `⌘`.
             Assert.Equal(
-                ["⇧", "R⇧", "⌃", "R⌃", "⌥", "R⌥"],
+                ["⇧", "⌃", "⌥"],
                 toggles.Select(toggle => string.Concat(VisibleRunsOf(toggle).Select(run => run.Text))));
 
-            var strip = toggles[0].FindAncestorOfType<WrapPanel>()!;
+            var texts = VisibleTextsOf(view);
 
-            // THE SIX NOW FIT ONE ROW. With both sides prefixed they needed 282 px against the
-            // strip's 276 and wrapped 5 + 1; dropping the three `L`s brings them to 260, so the
-            // block is one line shorter again. Measured against the strip's own width rather than
-            // pinned to a number, because a font-metric shift on another machine moves 260 — what
-            // must hold is that nothing wraps and nothing runs off the rail.
+            Assert.Contains(MacroInspectorPanelViewModel.TriggerSectionLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.TriggerJoin, texts);
+            Assert.Contains(panel.TriggerTokenText, texts);
+            Assert.Contains(panel.TriggerStatus, texts);
+
+            // The `CO-TRIGGERS` block left the footer with them; nothing may draw a second copy.
+            Assert.DoesNotContain("CO-TRIGGERS", texts);
+
+            var strip = toggles[0].FindAncestorOfType<Grid>()!;
+
             var rows = toggles
                 .Select(toggle => Math.Round(toggle.TranslatePoint(new Point(0, 0), strip)!.Value.Y, 2))
                 .Distinct()
@@ -690,8 +696,9 @@ namespace KinesisEdit.Tests.Design
 
             var used = toggles.Max(toggle => toggle.TranslatePoint(new Point(toggle.Bounds.Width, 0), strip)!.Value.X);
 
-            Assert.True(used <= strip.Bounds.Width, $"The co-triggers need {used} px of a {strip.Bounds.Width} px strip.");
+            Assert.True(used <= strip.Bounds.Width, $"The latches need {used} px of a {strip.Bounds.Width} px strip.");
             Assert.Equal(1, rows);
+            Assert.True(strip.Bounds.Width <= WideRailWidth, $"The strip is {strip.Bounds.Width} px in a {WideRailWidth} px rail.");
 
             var accentText = DesignTokens.ResolveBrushColor("AccentTextBrush", variant);
             var secondary = DesignTokens.ResolveBrushColor("TextSecondaryBrush", variant);
@@ -702,23 +709,12 @@ namespace KinesisEdit.Tests.Design
                 var model = Assert.IsType<MacroCoTriggerViewModel>(toggle.DataContext);
                 var runs = VisibleRunsOf(toggle);
 
-                // Two runs for a right-hand modifier — the side letter, then the mark — and ONE for
-                // a left one, which spells no side. The two-line caption is the tooltip now, and
+                // ONE run each: left spells no side. The two-line caption is the tooltip now, and
                 // nothing draws it.
-                Assert.Equal(model.HasSide ? 2 : 1, runs.Length);
-                Assert.Equal(model.Symbol, runs[^1].Text);
+                Assert.Single(runs);
+                Assert.Equal(model.Symbol, runs[0].Text);
                 Assert.Equal(model.Caption, toggle.GetValue(ToolTip.TipProperty));
-
-                if (model.HasSide)
-                {
-                    Assert.Equal(model.Side, runs[0].Text);
-
-                    // The side letter is NOT in the key-symbol face. The subset carries no Latin
-                    // letters, so an `R` in that class would fall back to a system font.
-                    Assert.DoesNotContain("keySymbol", runs[0].Classes);
-                }
-
-                Assert.Contains("keySymbol", runs[^1].Classes);
+                Assert.Contains("keySymbol", runs[0].Classes);
 
                 foreach (var run in runs)
                 {
@@ -745,9 +741,113 @@ namespace KinesisEdit.Tests.Design
                 }
             }
 
-            // Both runs of the one that is on — the `R` and the `⇧` — or the assertion above passed
-            // vacuously. Two is the number precisely because a RIGHT toggle was switched on.
-            Assert.Equal(2, selectedRuns);
+            // The run of the one that is on, or the assertion above passed vacuously.
+            Assert.Equal(1, selectedRuns);
+        }
+
+        /// <summary>
+        /// The status readout is an <b>advisory</b>: amber, never the error ramp, and it blocks
+        /// nothing. Read off the glass in both variants, because the two roles are bound
+        /// exclusively — a stylesheet reordered so <c>muted</c> won would leave a collision drawn as
+        /// ordinary prose with every view-model assertion still passing.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheTriggerStatus_GoesAmberOnACollision_AndNeverReachesTheErrorRamp(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+            var variant = ToVariant(variantName);
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            var muted = DesignTokens.ResolveBrushColor("TextMutedBrush", variant);
+            var advisory = DesignTokens.ResolveBrushColor("StatusAdvisoryTextBrush", variant);
+            var error = DesignTokens.ResolveBrushColor("StatusErrorTextBrush", variant);
+
+            Assert.False(panel.IsTriggerAdvisory);
+            Assert.Equal(muted, ForegroundOfStatus(view, panel));
+
+            // A second macro on the same key with the same (empty) co-trigger set — 06 §5's own
+            // duplicate rule, which `Validate()` reports as MacroTriggerCollision and never refuses.
+            panel.SelectedSlot = panel.SlotOptions[1];
+            panel.RecordCommand.Execute(null);
+            panel.ReceiveKeystroke(new CapturedKeystroke
+            {
+                Key = KeyRegistry.FindByToken("b", TokenDialect.Gen1)!,
+                PhysicalKey = PhysicalKeyCode.None
+            });
+            panel.Deactivate();
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(panel.IsTriggerAdvisory);
+            Assert.Contains(MacroInspectorPanelViewModel.BuildCollisionStatus(1), panel.TriggerStatus, StringComparison.Ordinal);
+
+            var colour = ForegroundOfStatus(view, panel);
+
+            Assert.Equal(advisory, colour);
+            Assert.NotEqual(error, colour);
+        }
+
+        /// <summary>
+        /// The slot strip: one dot per <b>persisted</b> slot, filled for the occupied ones, and a
+        /// dropdown naming the slot under edit. No <c>ACTIVE</c> badge and no <c>Make active</c> —
+        /// those belong to the Macros tab's cards, and this panel refuses both.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheSlotStrip_DrawsADotPerPersistedSlot_AndNoActiveBadge(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            Assert.True(panel.HasSlotSelector);
+
+            var dots = view.GetVisualDescendants()
+                .OfType<Ellipse>()
+                .Where(dot => dot.Classes.Contains("macroSlotDot") && dot.IsEffectivelyVisible)
+                .ToArray();
+
+            // Five on the Freestyle Edge RGB, read off MacroCapability and never a literal here.
+            Assert.Equal(panel.SlotOptions.Count, dots.Length);
+            Assert.Equal(
+                panel.SlotOptions.Select(option => option.IsOccupied),
+                dots.Select(dot => dot.Classes.Contains("filled")));
+
+            // Slot 1 carries the recorded macro, so exactly one dot is filled.
+            Assert.Equal(1, dots.Count(dot => dot.Classes.Contains("filled")));
+
+            var texts = VisibleTextsOf(view);
+
+            Assert.Contains(MacroInspectorPanelViewModel.SlotSectionLabel, texts);
+            Assert.Contains(panel.SelectedSlot!.Caption, texts);
+
+            Assert.DoesNotContain(MacroSlotViewModel.ActiveBadge, texts);
+            Assert.DoesNotContain(MacroSlotViewModel.MakeActiveCaption, texts);
+        }
+
+        /// <summary>The status line's own run, found by the text the view model put there.</summary>
+        private static Color ForegroundOfStatus(MacroInspectorPanelView view, MacroInspectorPanelViewModel panel)
+        {
+            var run = Assert.Single(
+                view.GetVisualDescendants().OfType<TextBlock>(),
+                block => block.IsEffectivelyVisible && block.Text == panel.TriggerStatus);
+
+            return Assert.IsAssignableFrom<ISolidColorBrush>(run.Foreground).Color;
         }
 
         /// <summary>

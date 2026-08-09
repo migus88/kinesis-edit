@@ -22,6 +22,15 @@ namespace KinesisEdit.ViewModels
         /// <summary>What the dropdown reads while the selected key carries no macro at all.</summary>
         public const string NoMacroCaption = "No macro on this key";
 
+        /// <summary>
+        /// What it reads instead while a <b>slot</b> is under edit and that slot is empty. The key
+        /// may perfectly well carry a macro in another slot: the header's slot selector
+        /// (<see cref="MacroInspectorPanelViewModel.HasSlotSelector"/>, issue #137) is what made
+        /// that state reachable, and before it existed the panel only ever opened a populated slot,
+        /// so <see cref="NoMacroCaption"/> could not be false. On a slot device it now would be.
+        /// </summary>
+        public const string NoMacroInSlotCaption = "No macro in this slot";
+
         /// <summary>The name to show — the entry's, which is unique inside the library.</summary>
         public string Caption { get; }
 
@@ -37,10 +46,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>How many keys and layers fire this macro today (the "Also on" count).</summary>
         public int SiteCount => Entry?.SiteCount ?? 0;
 
-        /// <summary>Creates the placeholder row.</summary>
-        public MacroNameOptionViewModel()
+        /// <summary>
+        /// Creates the placeholder row. <paramref name="isSlotScoped"/> picks the wording: on a
+        /// slot device the panel edits one slot, so an empty slot is not an empty key.
+        /// </summary>
+        public MacroNameOptionViewModel(bool isSlotScoped = false)
         {
-            Caption = NoMacroCaption;
+            Caption = isSlotScoped ? NoMacroInSlotCaption : NoMacroCaption;
         }
 
         /// <summary>Creates a row for one logical macro of the profile.</summary>
