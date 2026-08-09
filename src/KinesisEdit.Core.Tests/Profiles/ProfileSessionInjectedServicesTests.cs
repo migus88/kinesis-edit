@@ -1,3 +1,4 @@
+using System.Reflection;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Layouts;
@@ -8,10 +9,11 @@ using KinesisEdit.Core.VDrive.Eject;
 namespace KinesisEdit.Core.Tests.Profiles
 {
     /// <summary>
-    /// <see cref="ProfileSession.Load"/>'s optional file service and ejector — the module's only
-    /// substitution seam. Every test here runs against a v-Drive root that <b>does not exist</b>:
-    /// if any read, write or eject escaped the injected services and reached the platform, the
-    /// session would throw (or the eject would report failure) rather than pass.
+    /// <see cref="ProfileSession.Load"/>'s optional file service — the module's only substitution
+    /// seam. Every test here runs against a v-Drive root that <b>does not exist</b>: if any read
+    /// or write escaped the injected service and reached the platform, the session would throw
+    /// rather than pass. Nothing here injects an ejector, because a save never ejects (see
+    /// <see cref="Save_Always_WritesTheProfileFilesAndEjectsNothing"/>).
     /// </summary>
     public sealed class ProfileSessionInjectedServicesTests
     {
@@ -58,9 +60,8 @@ namespace KinesisEdit.Core.Tests.Profiles
         {
             var location = CreateAbsentDriveLocation(DeviceId.FreestyleEdgeRgb);
             var fileService = CreateSeededFileService(location, profileNumber: 1, startupProfileNumber);
-            var ejector = new RecordingVDriveEjector();
 
-            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService, ejector);
+            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService);
             var result = session.Save();
 
             Assert.Contains(location.SettingsFilePath, fileService.ReadPaths);
@@ -76,9 +77,8 @@ namespace KinesisEdit.Core.Tests.Profiles
         {
             var location = CreateAbsentDriveLocation(DeviceId.FreestyleEdgeRgb);
             var fileService = CreateSeededFileService(location, profileNumber: 1, startupProfileNumber: 1);
-            var ejector = new RecordingVDriveEjector();
 
-            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService, ejector);
+            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService);
             var bKey = session.Layout.Layers[0].FindByPositionKeyCode(Key("b").Code)!;
             Assert.True(bKey.Remap(Key("c")));
 
@@ -99,9 +99,8 @@ namespace KinesisEdit.Core.Tests.Profiles
         {
             var location = CreateAbsentDriveLocation(DeviceId.FreestyleEdgeRgb);
             var fileService = CreateSeededFileService(location, profileNumber: 1, startupProfileNumber: 1);
-            var ejector = new RecordingVDriveEjector();
 
-            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService, ejector);
+            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService);
             var result = session.SaveAs(5, setAsStartup: true);
 
             Assert.True(result.Success);
@@ -112,39 +111,34 @@ namespace KinesisEdit.Core.Tests.Profiles
             Assert.False(Directory.Exists(location.RootPath));
         }
 
+        /// <summary>
+        /// The inverse of the two tests that used to live here. Until issue #131,
+        /// <c>ExecuteSave</c>'s last step was <c>IVDriveEjector.Eject(location.RootPath)</c>, so
+        /// every <see cref="ProfileSession.Save"/> unmounted the volume behind the user's back —
+        /// against docs/design/README.md's "Nothing ejects implicitly… Eject is its own deliberate
+        /// action on the device card". A save now writes its files and stops.
+        /// <para>
+        /// It is pinned structurally as well as behaviourally, because there is deliberately no
+        /// ejector left to inject and watch: nothing <see cref="ProfileSession"/> holds, takes or
+        /// answers with can release a volume, so re-adding the step cannot pass unnoticed. The
+        /// eject module itself stays — <c>DeviceEjectService</c>/<c>VDriveEjectNotifier</c> and
+        /// the dashboard card's button are its real consumers.
+        /// </para>
+        /// </summary>
         [Fact]
-        public void Save_WithAnInjectedEjector_EjectsTheDriveRootThroughItAndReportsItsResult()
+        public void Save_Always_WritesTheProfileFilesAndEjectsNothing()
         {
             var location = CreateAbsentDriveLocation(DeviceId.FreestyleEdgeRgb);
             var fileService = CreateSeededFileService(location, profileNumber: 1, startupProfileNumber: 1);
-            var ejector = new RecordingVDriveEjector();
 
-            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService, ejector);
-            var result = session.Save();
-
-            // The platform ejector could not have produced this on any platform: Windows/Linux
-            // report unsupported, and macOS would have run "diskutil unmount" on a path that does
-            // not exist. A true Ejected is proof the injected ejector ran instead.
-            Assert.Equal(new[] { location.RootPath }, ejector.EjectedPaths);
-            Assert.True(result.Ejected);
-        }
-
-        [Fact]
-        public void Save_WithAnInjectedEjectorThatFails_ReportsNotEjectedWithoutFailingTheSave()
-        {
-            var location = CreateAbsentDriveLocation(DeviceId.FreestyleEdgeRgb);
-            var fileService = CreateSeededFileService(location, profileNumber: 1, startupProfileNumber: 1);
-            var ejector = new RecordingVDriveEjector
-            {
-                Result = new VDriveEjectResult { Succeeded = false, Message = "busy" }
-            };
-
-            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService, ejector);
+            var session = ProfileSession.Load(location, DeviceId.FreestyleEdgeRgb, 1, fileService);
             var result = session.Save();
 
             Assert.True(result.Success);
-            Assert.False(result.Ejected);
-            Assert.Single(ejector.EjectedPaths);
+            Assert.Equal(
+                new[] { GetLayoutPath(location, 1), GetLightingPath(location, 1) },
+                fileService.WrittenPaths);
+            Assert.Empty(FindEjectDependencies());
         }
 
         /// <summary>
@@ -166,6 +160,53 @@ namespace KinesisEdit.Core.Tests.Profiles
                 new[] { GetLayoutPath(location, 1), location.SettingsFilePath },
                 fileService.ReadPaths);
             Assert.False(Directory.Exists(location.RootPath));
+        }
+
+        /// <summary>
+        /// Everything about <see cref="ProfileSession"/> and <see cref="ProfileSaveResult"/> that
+        /// names a type from the eject module, described for a failure message. Empty is the
+        /// contract: a session cannot eject if it cannot reach an ejector.
+        /// </summary>
+        private static IReadOnlyList<string> FindEjectDependencies()
+        {
+            const BindingFlags All = BindingFlags.Instance | BindingFlags.Static
+                | BindingFlags.Public | BindingFlags.NonPublic;
+
+            var ejectNamespace = typeof(IVDriveEjector).Namespace;
+            var found = new List<string>();
+
+            foreach (var type in new[] { typeof(ProfileSession), typeof(ProfileSaveResult) })
+            {
+                foreach (var field in type.GetFields(All))
+                {
+                    if (field.FieldType.Namespace == ejectNamespace)
+                    {
+                        found.Add($"{type.Name}.{field.Name} is a {field.FieldType.Name}");
+                    }
+                }
+
+                foreach (var property in type.GetProperties(All))
+                {
+                    if (property.PropertyType.Namespace == ejectNamespace)
+                    {
+                        found.Add($"{type.Name}.{property.Name} is a {property.PropertyType.Name}");
+                    }
+                }
+
+                var parameters = type.GetConstructors(All)
+                    .SelectMany(constructor => constructor.GetParameters())
+                    .Concat(type.GetMethods(All).SelectMany(method => method.GetParameters()));
+
+                foreach (var parameter in parameters)
+                {
+                    if (parameter.ParameterType.Namespace == ejectNamespace)
+                    {
+                        found.Add($"{type.Name} takes a {parameter.ParameterType.Name} parameter");
+                    }
+                }
+            }
+
+            return found;
         }
 
         private static RecordingVDriveFileService CreateSeededFileService(

@@ -310,7 +310,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(tab.SelectZoneCommand.CanExecute(tab.Zones[0]));
             Assert.True(tab.ResetAllCommand.CanExecute(null));
             Assert.True(tab.PaintSelectionCommand.CanExecute(null));
-            Assert.True(tab.ClearKeyColorsCommand.CanExecute(null));
+            Assert.True(tab.ClearSelectionCommand.CanExecute(null));
         }
 
         [AvaloniaFact]
@@ -690,16 +690,33 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void SelectAllKeysCommand_SelectsEveryKeyOfTheShownLayer()
+        public void SelectAllKeysCommand_SelectsEveryKeyOfTheShownLayer_AndClearTakesThemAllBackOut()
         {
+            // The two bulk controls of the paint line are each other's opposite since issue #131:
+            // `Select all` takes the layer, `Clear` empties the selection. Before it, `Clear`
+            // painted the selected keys black — which left "Select all" with no undo but Reset All,
+            // and left the button itself doing nothing visible in most states it was pressed in.
             var boards = BuildBoards(new LightingModel());
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            Assert.False(tab.ClearSelectionCommand.CanExecute(null));
+
             tab.SelectAllKeysCommand.Execute(null);
 
             Assert.Equal(boards[0].Keys.Count, tab.Selection.Count);
             Assert.All(boards[0].Keys, key => Assert.True(key.IsLightingSelected));
+            Assert.True(tab.ClearSelectionCommand.CanExecute(null));
+
+            tab.ClearSelectionCommand.Execute(null);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.All(boards[0].Keys, key => Assert.False(key.IsLightingSelected));
+            Assert.Equal(
+                LightingPaintSelection.CaptionPrefix + LightingPaintSelection.EmptyCaptionSuffix,
+                tab.Selection.Caption);
+            Assert.False(tab.ClearSelectionCommand.CanExecute(null));
         }
 
         [AvaloniaFact]
@@ -796,11 +813,17 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void APaintGesture_PaintsOnlyWhatItAdded_SoAClearIsNotUndoneByTheNextClick()
+        public void APaintGesture_PaintsOnlyWhatItAdded_AndNeverTheRestOfTheSelection()
         {
-            // Painting the WHOLE selection on every gesture would make one more click re-colour the
-            // keys Clear had just erased — the selection stays after a Clear on purpose (§4's
-            // erase is about colour, not about the selection).
+            // Painting the WHOLE selection on every gesture would turn one cap click into a repaint
+            // of everything currently selected — which `Select all` makes the entire layer, with
+            // nothing but Reset All to undo it. `Select all` is the sharpest case precisely because
+            // it paints nothing itself, so it leaves ~95 selected keys with no colour on them: the
+            // very next gesture has to leave all of them alone.
+            //
+            // Until issue #131 this was written around `Clear`, which erased the selected keys'
+            // colours and left them selected. Clear empties the selection now, so the case is made
+            // with the bulk selector instead — the claim it protects is the same one.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
@@ -808,18 +831,26 @@ namespace KinesisEdit.Tests.ViewModels
             tab.Attach(lighting, boards);
             SelectMode(tab, LightingMode.Freestyle);
 
-            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
             tab.Picker.Color = new LedColor(255, 0, 0);
-            tab.ClearKeyColorsCommand.Execute(null);
+            tab.SelectAllKeysCommand.Execute(null);
+
+            Assert.Equal(boards[0].Keys.Count, tab.Selection.Count);
+            Assert.Empty(lighting.TopLayer.KeyColors);
+
+            var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            // It is already selected, so this click takes it OUT — a gesture that adds nothing and
+            // therefore paints nothing.
+            tab.SelectKeyCommand.Execute(key);
 
             Assert.Empty(lighting.TopLayer.KeyColors);
-            Assert.Equal(1, tab.Selection.Count);
 
-            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+            // ...and this one puts it back, which adds exactly one key and paints exactly that key.
+            tab.SelectKeyCommand.Execute(key);
 
-            // Only the newly clicked key is painted; the cleared one stays cleared.
+            Assert.Equal(boards[0].Keys.Count, tab.Selection.Count);
             Assert.Single(lighting.TopLayer.KeyColors);
-            Assert.Contains(TestLayouts.Gen1Key("2").Code, lighting.TopLayer.KeyColors.Keys);
+            Assert.Contains(TestLayouts.Gen1Key("1").Code, lighting.TopLayer.KeyColors.Keys);
         }
 
         [AvaloniaFact]
@@ -842,10 +873,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public void ClearKeyColorsCommand_TurnsTheSelectedKeysOffRatherThanBlack()
+        public void ClearSelectionCommand_EmptiesTheSelection_AndLeavesTheColoursOnTheLayer()
         {
-            // SetKeyColor's contract (specs/07-lighting.md §2.1): black is "no colour", so Clear
-            // goes through it rather than inventing a second erase path — and the cap goes hatched.
+            // ISSUE #131's second half. `Clear` sits beside `Select all`, so it undoes `Select all`
+            // rather than painting: it was bound to a command that turned the selected keys black,
+            // which is invisible with nothing selected, invisible over unpainted keys, and
+            // invisible under a mode whose paint layer is drawn at 0 % — "the Clear button does
+            // nothing", as reported.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
@@ -853,18 +887,56 @@ namespace KinesisEdit.Tests.ViewModels
             tab.Attach(lighting, boards);
             SelectMode(tab, LightingMode.Freestyle);
 
-            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            tab.SelectKeyCommand.Execute(key);
             tab.Picker.Color = new LedColor(255, 0, 0);
 
             Assert.NotEmpty(lighting.TopLayer.KeyColors);
 
-            tab.ClearKeyColorsCommand.Execute(null);
+            var changes = 0;
+
+            tab.ModelChanged += (_, _) => changes++;
+            tab.ClearSelectionCommand.Execute(null);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.False(key.IsLightingSelected);
+
+            // It moves no colour and so writes nothing into the profile: a selection is not file
+            // state, and Save must not go amber for letting go of one.
+            Assert.Equal(0, changes);
+            Assert.Single(lighting.TopLayer.KeyColors);
+            Assert.True(key.HasPaintColor);
+        }
+
+        [AvaloniaFact]
+        public void PaintingAKeyBlack_StillErasesIt_WhichIsTheEraseClearUsedToOwn()
+        {
+            // SetKeyColor's contract (specs/07-lighting.md §2.1): black is "no colour", so the map
+            // never holds it and the cap goes hatched rather than dark. That contract is what made
+            // `Clear` an eraser before issue #131 and it is untouched by the rebinding — picking
+            // black in the picker is the same erase, on the same selection, through the same call.
+            var lighting = new LightingModel();
+            var boards = BuildBoards(lighting);
+            var tab = CreateTab();
+
+            tab.Attach(lighting, boards);
+            SelectMode(tab, LightingMode.Freestyle);
+
+            var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            tab.SelectKeyCommand.Execute(key);
+            tab.Picker.Color = new LedColor(255, 0, 0);
+
+            Assert.NotEmpty(lighting.TopLayer.KeyColors);
+
+            tab.Picker.Color = LedColor.Black;
 
             Assert.Empty(lighting.TopLayer.KeyColors);
-            Assert.False(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].HasPaintColor);
-            Assert.Null(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
+            Assert.False(key.HasPaintColor);
+            Assert.Null(key.PaintColorHex);
 
-            // The keys stay selected: Clear erases colour, it does not empty the selection.
+            // ...and the keys stay selected, because painting is about colour.
             Assert.Equal(1, tab.Selection.Count);
         }
 
@@ -908,7 +980,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(1, tab.Selection.Count);
             Assert.True(tab.PaintSelectionCommand.CanExecute(null));
-            Assert.True(tab.ClearKeyColorsCommand.CanExecute(null));
+            Assert.True(tab.ClearSelectionCommand.CanExecute(null));
 
             tab.Picker.Color = new LedColor(1, 2, 3);
             tab.PaintSelectionCommand.Execute(null);
@@ -926,8 +998,9 @@ namespace KinesisEdit.Tests.ViewModels
                 LightingEffectFrame.PaintOpacityDimmed,
                 boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintOpacity);
 
-            // Clear reaches it too, so a colour painted under a paint-ignoring mode is not stranded.
-            tab.ClearKeyColorsCommand.Execute(null);
+            // The erase reaches it too, so a colour painted under a paint-ignoring mode is not
+            // stranded: black is "no colour" (§2.1) whatever effect is running over it.
+            tab.Picker.Color = LedColor.Black;
 
             Assert.Empty(lighting.TopLayer.KeyColors);
         }
@@ -1004,7 +1077,6 @@ namespace KinesisEdit.Tests.ViewModels
             tab.SelectZoneCommand.Execute(numbers);
 
             Assert.Equal(numbers.KeyCodes.Count, tab.Selection.Count);
-            Assert.True(numbers.IsSelected);
             Assert.All(
                 numbers.KeyCodes,
                 keyCode => Assert.True(
@@ -1084,20 +1156,20 @@ namespace KinesisEdit.Tests.ViewModels
         [AvaloniaFact]
         public void SelectZoneCommand_OnAZoneThatIsAlreadySelected_TakesItBackOut()
         {
-            // The toggle is over the zone as a whole, so the same click that made a selection undoes
-            // it — which is what makes a mis-aimed zone recoverable without emptying everything.
+            // Plain subtraction: a zone whose keys are all selected comes back out on the next
+            // press, which is what makes a mis-aimed zone recoverable without emptying everything.
             var tab = CreateAttachedTab();
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
 
             tab.SelectZoneCommand.Execute(wasd);
 
             Assert.Equal(4, tab.Selection.Count);
-            Assert.True(wasd.IsSelected);
+            Assert.All(KeysOf(tab, wasd), key => Assert.True(key.IsLightingSelected));
 
             tab.SelectZoneCommand.Execute(wasd);
 
             Assert.Equal(0, tab.Selection.Count);
-            Assert.False(wasd.IsSelected);
+            Assert.All(KeysOf(tab, wasd), key => Assert.False(key.IsLightingSelected));
         }
 
         [AvaloniaFact]
@@ -1110,43 +1182,106 @@ namespace KinesisEdit.Tests.ViewModels
             tab.SelectZoneCommand.Execute(wasd);
             tab.SelectZoneCommand.Execute(arrows);
 
+            // The two are disjoint, so the counts simply add — and the board says so key by key,
+            // which is where a selection is read now that no button carries a face for it.
             Assert.Equal(wasd.KeyCodes.Count + arrows.KeyCodes.Count, tab.Selection.Count);
-            Assert.True(wasd.IsSelected);
-            Assert.True(arrows.IsSelected);
+            Assert.All(KeysOf(tab, wasd), key => Assert.True(key.IsLightingSelected));
+            Assert.All(KeysOf(tab, arrows), key => Assert.True(key.IsLightingSelected));
         }
 
         [AvaloniaFact]
-        public void ZoneIsSelected_FollowsTheSelectionFromAnySource()
+        public void AZoneButton_OverALargerZoneItSitsInside_TouchesOnlyItsOwnKeys()
         {
-            // The point of hanging it on LightingPaintSelection.Changed: a zone lights up because
-            // its keys are selected, however they came to be — not because its own button was
-            // pressed.
+            // THE REPORTED SEQUENCE of issue #131: press `Game`, press `WASD`, press `WASD` again.
+            // The zones are NESTED — WASD's four keys are all inside Game's twenty-nine — and the
+            // button used to carry a derived "all my keys are selected" face, so the third press
+            // removed four keys and un-lit `Game`, whose twenty-five other keys were still
+            // selected. Two buttons disagreeing about one selection is what the user saw as them
+            // interfering with each other.
+            //
+            // Each button now acts on its own keys and shows nothing, so the sequence is arithmetic:
+            // +29, +0 (already in), -4.
+            var tab = CreateAttachedTab();
+            var game = tab.Zones.Single(zone => zone.Caption == "Game");
+            var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+
+            Assert.All(wasd.KeyCodes, keyCode => Assert.Contains(keyCode, game.KeyCodes));
+
+            tab.SelectZoneCommand.Execute(game);
+
+            Assert.Equal(game.KeyCodes.Count, tab.Selection.Count);
+
+            // WASD is already wholly inside the selection, so this press subtracts it.
+            tab.SelectZoneCommand.Execute(wasd);
+
+            Assert.Equal(game.KeyCodes.Count - wasd.KeyCodes.Count, tab.Selection.Count);
+            Assert.All(KeysOf(tab, wasd), key => Assert.False(key.IsLightingSelected));
+
+            // ...and Game's OTHER keys are untouched: nothing about the smaller zone reaches them.
+            var others = game.KeyCodes.Where(keyCode => !wasd.KeyCodes.Contains(keyCode)).ToArray();
+
+            Assert.NotEmpty(others);
+            Assert.All(
+                others,
+                keyCode => Assert.True(
+                    tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == keyCode).IsLightingSelected));
+
+            // Pressing Game again is the same plain addition it always was: four of its keys are
+            // missing, so the whole zone goes back in rather than coming out.
+            tab.SelectZoneCommand.Execute(game);
+
+            Assert.Equal(game.KeyCodes.Count, tab.Selection.Count);
+        }
+
+        [AvaloniaFact]
+        public void AZoneButton_AfterSelectAll_TakesItsOwnKeysBackOut()
+        {
+            // The same defect inverted, and separately reported: after `Select all` every button was
+            // lit, so un-pressing WASD left `Game` unlit while twenty-five of its keys were still
+            // selected — and the NEXT press on Game took the select branch and put the four back
+            // instead of removing twenty-five. "Un-toggling the buttons below sometimes doesn't
+            // deselect", in the report's words.
             var tab = CreateAttachedTab();
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
+            var game = tab.Zones.Single(zone => zone.Caption == "Game");
+            var total = tab.Board!.Keys.Count;
+
+            tab.SelectAllKeysCommand.Execute(null);
+
+            Assert.Equal(total, tab.Selection.Count);
+
+            tab.SelectZoneCommand.Execute(wasd);
+
+            Assert.Equal(total - wasd.KeyCodes.Count, tab.Selection.Count);
+            Assert.All(KeysOf(tab, wasd), key => Assert.False(key.IsLightingSelected));
+
+            // Game is no longer wholly selected, so it adds its four missing keys back — plain
+            // addition, and nothing else in the selection moves.
+            tab.SelectZoneCommand.Execute(game);
+
+            Assert.Equal(total, tab.Selection.Count);
+
+            // And a zone that IS wholly selected still subtracts, which is the half the latch broke.
+            tab.SelectZoneCommand.Execute(game);
+
+            Assert.Equal(total - game.KeyCodes.Count, tab.Selection.Count);
+        }
+
+        [AvaloniaFact]
+        public void TheAllZone_IsAPlainButtonToo_TakingTheWholeLayerInAndOut()
+        {
+            // `All` is a superset of every other zone, which is what made it the worst latch on the
+            // row. As a plain button it is unremarkable: everything in, everything out.
+            var tab = CreateAttachedTab();
             var all = tab.Zones.Single(zone => zone.Caption == "All");
 
-            Assert.False(wasd.IsSelected);
+            tab.SelectZoneCommand.Execute(all);
 
-            // "Select all" is not a zone button and selects every zone's keys.
-            tab.SelectAllKeysCommand.Execute(null);
+            Assert.Equal(all.KeyCodes.Count, tab.Selection.Count);
 
-            Assert.True(wasd.IsSelected);
-            Assert.True(all.IsSelected);
+            tab.SelectZoneCommand.Execute(all);
 
-            // A board click that takes one of WASD's keys back out unlights that zone — and only it.
-            var wKey = tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == wasd.KeyCodes[0]);
-
-            tab.SelectKeyCommand.Execute(wKey);
-
-            Assert.False(wasd.IsSelected);
-            Assert.False(all.IsSelected);
-            Assert.True(tab.Zones.Single(zone => zone.Caption == "Arrow").IsSelected);
-
-            // Emptying the selection unlights every one of them.
-            tab.SelectAllKeysCommand.Execute(null);
-            tab.SelectLayerCommand.Execute(tab.Layers[1]);
-
-            Assert.All(tab.Zones, zone => Assert.False(zone.IsSelected));
+            Assert.Equal(0, tab.Selection.Count);
         }
 
         [AvaloniaFact]
@@ -1584,6 +1719,17 @@ namespace KinesisEdit.Tests.ViewModels
         private static void SelectMode(LightingTabViewModel tab, LightingMode mode)
         {
             tab.SelectModeCommand.Execute(tab.Modes.Single(entry => entry.Mode == mode));
+        }
+
+        /// <summary>
+        /// The shown layer's caps for one zone. Since issue #131 a zone button carries no state of
+        /// its own, so "is this zone selected" is a question about the <b>board</b> — which is where
+        /// the user reads it too, off the caps' selection rings.
+        /// </summary>
+        private static IEnumerable<KeyboardKeyViewModel> KeysOf(LightingTabViewModel tab, LightingZoneViewModel zone)
+        {
+            return zone.KeyCodes.Select(
+                keyCode => tab.Board!.Keys.Single(key => key.Key.OriginalKey.Code == keyCode));
         }
 
         private static DeviceSnapshot CreateSnapshot(

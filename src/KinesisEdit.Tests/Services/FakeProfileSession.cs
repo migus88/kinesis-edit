@@ -17,8 +17,7 @@ namespace KinesisEdit.Tests.Services
         public static ProfileSaveResult SuccessfulSave { get; } = new()
         {
             Success = true,
-            Violations = [],
-            Ejected = true
+            Violations = []
         };
 
         public KeyboardLayout Layout { get; private set; }

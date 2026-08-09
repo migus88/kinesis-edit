@@ -38,7 +38,6 @@ namespace KinesisEdit.Core.Tests.Profiles
 
             Assert.True(result.Success);
             Assert.Empty(result.Violations);
-            Assert.False(result.Ejected);
             Assert.Equal(
                 "…use the Refresh Shortcut (SmartSet + Layout) or simply close the v-Drive (SmartSet + F8). "
                 + "To load this layout to the keyboard press SmartSet + 1.",
@@ -83,7 +82,6 @@ namespace KinesisEdit.Core.Tests.Profiles
             var result = session.Save();
 
             Assert.True(result.Success);
-            Assert.False(result.Ejected);
             Assert.Equal(
                 "Use the Refresh Shortcut (SmartSet + Right Shift + B) to preview your Layout and Lighting updates "
                 + "or simply Eject the \"TKO\" drive in File Explorer and then disconnect the v-Drive (SmartSet + Right Shift + V).",

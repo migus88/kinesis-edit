@@ -314,9 +314,9 @@ namespace KinesisEdit.ViewModels
         public InspectorRailWidthViewModel Rail { get; }
 
         /// <summary>
-        /// The keys a colour, or a Clear, applies to — the lighting board's own multi-selection,
-        /// which is <b>not</b> the editor's single selection (see
-        /// <see cref="LightingPaintSelection"/>).
+        /// The keys a colour applies to — the lighting board's own multi-selection, which is
+        /// <b>not</b> the editor's single selection (see <see cref="LightingPaintSelection"/>).
+        /// It is also what "Clear" empties (<see cref="ClearSelectionCommand"/>).
         /// </summary>
         public LightingPaintSelection Selection { get; }
 
@@ -339,8 +339,14 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand<int> SetSpeedCommand { get; }
 
         /// <summary>
-        /// Toggles a zone's keys in the paint selection (§4) and paints whatever it added — a
-        /// <b>direct paint gesture</b>, see <see cref="PaintWhatTheGestureSelects"/>.
+        /// Adds a zone's keys to the paint selection, or takes them back out (§4), and paints
+        /// whatever it added — a <b>direct paint gesture</b>, see
+        /// <see cref="PaintWhatTheGestureSelects"/>.
+        /// <para>
+        /// It acts on <b>its own keys and nothing else</b>, and the button it runs from shows no
+        /// state at all (issue #131) — see <see cref="LightingZoneViewModel"/> for why a latch
+        /// cannot be honest on a family of overlapping zones.
+        /// </para>
         /// </summary>
         public IRelayCommand<LightingZoneViewModel> SelectZoneCommand { get; }
 
@@ -363,10 +369,23 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand SelectAllKeysCommand { get; }
 
         /// <summary>
-        /// Turns the selected keys off — mockup 2f's "Clear". They go hatched, because off is
-        /// hatched and never black.
+        /// Empties the paint selection — mockup 2f's "Clear", the button beside "Select all"
+        /// (issue #131).
+        /// <para>
+        /// <b>It used to paint the selected keys black instead</b>, which is a real operation but
+        /// not the one its caption promises next to a bulk <i>selector</i> — and it was a visible
+        /// no-op in most of the states a user presses it in: with nothing selected, over keys that
+        /// carry no colour, and under Off/Pitch Black, where the paint layer is drawn at 0 %. The
+        /// user's report was simply "the Clear button does nothing". Painting a selection off is
+        /// still reachable — pick black in the picker, which is <c>SetKeyColor</c>'s own erase
+        /// (§2.1) — and erasing the whole layer is still <see cref="ResetAllCommand"/>.
+        /// </para>
+        /// <para>
+        /// It is gated on <see cref="LightingPaintSelection.HasSelection"/>: a button that empties
+        /// an already empty selection is the very thing this command was rebound to stop being.
+        /// </para>
         /// </summary>
-        public IRelayCommand ClearKeyColorsCommand { get; }
+        public IRelayCommand ClearSelectionCommand { get; }
 
         /// <summary>
         /// Paints the picker's current color onto the <b>whole</b> selection, and announces it once.
@@ -379,8 +398,7 @@ namespace KinesisEdit.ViewModels
         /// </para>
         /// <para>
         /// The command survives the button because it is still the honest name for "put this colour
-        /// on everything selected", and it is what <see cref="ClearKeyColorsCommand"/> is built out
-        /// of. It stays enabled exactly while something is selected.
+        /// on everything selected". It stays enabled exactly while something is selected.
         /// </para>
         /// </summary>
         public IRelayCommand PaintSelectionCommand { get; }
@@ -510,20 +528,26 @@ namespace KinesisEdit.ViewModels
             ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(
                 key => PaintWhatTheGestureSelects(() => Selection.Extend(key)));
             SelectAllKeysCommand = new RelayCommand(Selection.SelectAll);
-            ClearKeyColorsCommand = new RelayCommand(ClearKeyColors);
+            // `Clear` is the other half of `Select all`, so it moves the SELECTION and not the
+            // paint (issue #131). Same gate as PaintSelectionCommand's, and for the same reason.
+            ClearSelectionCommand = new RelayCommand(Selection.Clear, () => Selection.HasSelection);
             // The one gate is the selection, not the mode: painting nothing is not a paint, and a
             // control that claims otherwise is a lie the user only finds out about by pressing it.
             PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color), () => Selection.HasSelection);
             ResetAllCommand = new AsyncRelayCommand(ResetAllAsync);
 
             // ONE SUBSCRIPTION, NOT A LIST OF CALL SITES, and subscribed after the commands exist
-            // because it re-asks one of them. The zone buttons' selected state and Apply's
-            // enablement are both functions of the whole selection, and the selection moves from six
-            // places (a click, a shift-click, "Select all", a zone, an emptying, a layer switch).
-            // Hanging both on the selection's own notification is what makes "they always agree with
-            // the board" true by construction rather than by a list somebody has to keep complete —
-            // the same reasoning as RefreshLegend on the Keys tab. The selection is this panel's own
-            // object and dies with it, so nothing detaches this.
+            // because it re-asks two of them. Both gates are functions of the whole selection, and
+            // the selection moves from six places (a click, a shift-click, "Select all", a zone, an
+            // emptying, a layer switch). Hanging them on the selection's own notification is what
+            // makes "they always agree with the board" true by construction rather than by a list
+            // somebody has to keep complete — the same reasoning as RefreshLegend on the Keys tab.
+            // The selection is this panel's own object and dies with it, so nothing detaches this.
+            //
+            // WHAT IS NO LONGER HUNG HERE is the zone buttons' selected state (issue #131). It was
+            // the third consumer, and a derived one — "every key of this zone is selected" — over a
+            // family of OVERLAPPING zones, so one button's click silently repainted another's face.
+            // See LightingZoneViewModel.
             Selection.Changed += OnSelectionChanged;
         }
 
@@ -936,16 +960,6 @@ namespace KinesisEdit.ViewModels
             RaiseModelChanged();
         }
 
-        /// <summary>
-        /// Turns every selected key off — mockup 2f's "Clear". It goes through
-        /// <see cref="LayerLightingState.SetKeyColor"/> with black rather than inventing a second
-        /// erase path, because black <i>is</i> "no colour" (§2.1) and the map never holds it.
-        /// </summary>
-        private void ClearKeyColors()
-        {
-            PaintSelection(LedColor.Black);
-        }
-
         private bool PaintSelectedKeys(LedColor color)
         {
             return PaintKeys(Selection.Keys, color);
@@ -1023,17 +1037,23 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Toggles a whole zone in the paint selection. Since issue #124 it selects rather than
-        /// paints, and since #128 the <i>gesture</i> around it paints what it selected — see
-        /// <see cref="PaintWhatTheGestureSelects"/>, which is the only caller. Nothing about the
-        /// zones' membership has changed through either.
+        /// Adds a whole zone to the paint selection, or subtracts it. Since issue #124 it selects
+        /// rather than paints, and since #128 the <i>gesture</i> around it paints what it selected —
+        /// see <see cref="PaintWhatTheGestureSelects"/>, which is the only caller. Nothing about the
+        /// zones' membership has changed through any of it.
         /// <para>
-        /// The toggle is over the zone as a whole — a zone already entirely selected comes out, and
-        /// anything else goes fully in — so two zones can be built up into one selection and the
-        /// same click that made a zone takes it back. Zone membership is still authored against the
-        /// <b>top layer</b>, so on the Fn layer every code is re-resolved to the same physical
-        /// position first (§2.4 item 6: "Fn-layer per-key lines address keys by top-layer position;
-        /// the color is applied to the same physical key on the Fn layer").
+        /// <b>Plain addition and subtraction over this zone's own keys</b> (issue #131): any of them
+        /// still unselected means the whole zone goes in, all of them already selected means the
+        /// whole zone comes out. The question is asked of <i>these</i> key codes and answered from
+        /// the selection alone, so nothing another button did can change what this one does next —
+        /// which is exactly what the removed <c>IsSelected</c> latch could not promise, the zones
+        /// being nested (<c>All ⊃ Left Module ⊃ Game ⊃ WASD</c>).
+        /// </para>
+        /// <para>
+        /// Zone membership is still authored against the <b>top layer</b>, so on the Fn layer every
+        /// code is re-resolved to the same physical position first (§2.4 item 6: "Fn-layer per-key
+        /// lines address keys by top-layer position; the color is applied to the same physical key
+        /// on the Fn layer").
         /// </para>
         /// </summary>
         private void SelectZone(LightingZoneViewModel? zone)
@@ -1057,8 +1077,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The zone's key codes as the <b>shown layer</b> addresses them — the one place the §2.4
-        /// item 6 resolution is applied to a zone, so selecting one and lighting its button can
-        /// never disagree about which keys it means.
+        /// item 6 resolution is applied to a zone, so the set a click adds and the set the next
+        /// click subtracts can never disagree about which keys the zone means.
         /// </summary>
         private List<int> ResolveZoneKeyCodes(LightingZoneViewModel zone)
         {
@@ -1076,18 +1096,18 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The selection moved, from wherever. Two things follow it:
-        /// <see cref="PaintSelectionCommand"/> is live exactly while something is selected, and
-        /// every zone button lights up exactly while all of its keys are.
+        /// The selection moved, from wherever. The two commands whose gate <i>is</i> the selection
+        /// re-ask it: <see cref="PaintSelectionCommand"/> and <see cref="ClearSelectionCommand"/>
+        /// are live exactly while something is selected.
+        /// <para>
+        /// <b>Nothing here recomputes a zone button</b> any more (issue #131). The buttons are
+        /// stateless, which is what stops one of them from changing another's appearance.
+        /// </para>
         /// </summary>
         private void OnSelectionChanged(object? sender, EventArgs e)
         {
             PaintSelectionCommand.NotifyCanExecuteChanged();
-
-            foreach (var zone in Zones)
-            {
-                zone.IsSelected = Selection.ContainsAll(ResolveZoneKeyCodes(zone));
-            }
+            ClearSelectionCommand.NotifyCanExecuteChanged();
         }
 
         private int? ResolveKeyCode(int topLayerKeyCode)
@@ -1168,7 +1188,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Announces a write into the profile's lighting model. Every one of the write sites on
         /// this panel ends here — the mode, the speed, the direction, either colour swatch, the
-        /// painted selection, "Clear", "Reset All", and the direction <b>normalization</b> of
+        /// painted selection, "Reset All", and the direction <b>normalization</b> of
         /// <see cref="RefreshDirections"/> — because <see cref="ModelChanged"/> is what turns the
         /// editor's Save amber.
         /// <para>

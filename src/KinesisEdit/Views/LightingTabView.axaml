@@ -139,8 +139,14 @@
            to illustrate them on. Whether this board can paint at all is settled by the tab existing
            (LightingTabViewModel.IsSupported); the mode must not answer it twice.
 
-           `Clear` turns the selected keys OFF rather than black, which is why the swatch rule
-           beside it matters: an unlit key is hatched, never black. -->
+           `Clear` EMPTIES THE SELECTION (issue #131) — it is the other half of `Select all`, which
+           is the button it stands beside. It used to paint the selected keys black, and that read
+           as a dead control: with nothing selected, over keys carrying no colour, or under a mode
+           whose paint layer is drawn at 0 %, pressing it changed not one pixel. Painting a
+           selection off is still a black pick in the picker, and erasing the layer is `Reset All`.
+
+           The swatch rule beside the caption still matters for both: an unlit key is hatched,
+           never black. -->
       <Grid Grid.Row="2"
             ColumnDefinitions="Auto,*,Auto,Auto"
             ColumnSpacing="8"
@@ -162,7 +168,7 @@
         <Button Grid.Column="3"
                 Classes="secondary"
                 Content="{x:Static vm:LightingPaintSelection.ClearCaption}"
-                Command="{Binding ClearKeyColorsCommand}" />
+                Command="{Binding ClearSelectionCommand}" />
       </Grid>
 
       <!-- ===== The zones ===================================================================
@@ -179,13 +185,22 @@
            vanishes with the mode still moves only itself — the block above is one fixed set of rows
            — but one that WRAPS now resizes the board with it.
 
-           A ZONE SELECTS; IT DOES NOT PAINT (issue #124). `SelectZoneCommand` toggles the zone's
-           keys in the paint selection and writes no colour at all — Apply, in the rail's footer, is
-           the commit. The button therefore has a selected face, bound to the view model's
-           `IsSelected`, which follows the selection from any source (a cap click, "Select all",
-           another zone). The face itself is the `ToggleSegment` control theme's, reached through
-           the `zoneButton` bridge in Styles/Buttons.axaml: a zone is an independent latch rather
-           than one-of-a-selection, which is the shape that theme was written for. -->
+           A ZONE CHIP IS A PLAIN BUTTON, NOT A TOGGLE (issue #131). `SelectZoneCommand` adds the
+           zone's keys to the paint selection or subtracts them, and the chip shows NO state for it.
+
+           It carried a selected face between #124 and #131, bound to `IsSelected` — "every key of
+           this zone is currently selected", pushed in from the selection so that it followed a cap
+           click and `Select all` too. The zones OVERLAP (`All` contains everything;
+           `Left Module ⊃ Game ⊃ WASD`), so that face was a claim about a set another button could
+           move: pressing `Game` and then `WASD` and then `WASD` again removed four keys and un-lit
+           `Game` while twenty-five of its keys stayed selected, and after `Select all` every chip
+           was lit, so the next press on one of them added instead of removing. A latch that cannot
+           be honest is not shown at all — the keys on the board are where the selection is read.
+
+           The `zoneButton` bridge (Styles/Buttons.axaml -> the `ToggleSegment` control theme) stays:
+           what is used of it is the neutral chip face and its hover/press ramp, and the theme's
+           `.selected` state is simply never entered here. -->
+
       <Grid Grid.Row="3"
             ColumnDefinitions="*,Auto"
             ColumnSpacing="8"
@@ -199,7 +214,6 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="vm:LightingZoneViewModel">
               <Button Classes="zoneButton"
-                      Classes.selected="{Binding IsSelected}"
                       Content="{Binding Caption}"
                       Command="{Binding $parent[views:LightingTabView].((vm:LightingTabViewModel)DataContext).SelectZoneCommand}"
                       CommandParameter="{Binding}" />

@@ -5,7 +5,6 @@ using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Settings;
 using KinesisEdit.Core.Transfer;
 using KinesisEdit.Core.VDrive;
-using KinesisEdit.Core.VDrive.Eject;
 using KinesisEdit.Core.VDrive.Io;
 
 namespace KinesisEdit.Core.Profiles
@@ -14,18 +13,23 @@ namespace KinesisEdit.Core.Profiles
     /// The load/edit/save unit for one numbered profile — Freestyle Edge/Pro, Freestyle Edge
     /// RGB, TKO, and Advantage 360 (Advantage2's position-based naming is out of scope, issue
     /// #37). Ties together the layout parser/serializer, the lighting engine, the settings
-    /// engine, and v-Drive file I/O/eject for one <c>layout&lt;n&gt;.txt</c>/<c>led&lt;n&gt;.txt</c>
+    /// engine, and v-Drive file I/O for one <c>layout&lt;n&gt;.txt</c>/<c>led&lt;n&gt;.txt</c>
     /// pair (specs/03-vdrive-and-files.md §4.1/§4.3, §5.3).
+    /// <para>
+    /// <b>A save writes files and nothing else — it never ejects.</b> Releasing the volume is the
+    /// user's own deliberate action on the dashboard card
+    /// (<c>DeviceEjectService</c>/<c>VDriveEjectNotifier</c>), so this session holds no
+    /// <c>IVDriveEjector</c> and reaches no platform command. Do not re-add one: a drive
+    /// unmounted behind the user's back is exactly what docs/design/README.md's "Nothing ejects
+    /// implicitly" forbids.
+    /// </para>
     /// </summary>
     public sealed class ProfileSession
     {
         // The defaults are shared by every session that does not name its own — a session is not
-        // worth a file service or an ejector of its own. They are also the only place
-        // VDriveEject.CreateForCurrentPlatform() is reached, so a session handed an ejector never
-        // touches the platform (on macOS, "diskutil unmount") at all.
+        // worth a file service of its own.
         private static readonly IVDriveFileService _defaultFileService = new VDriveFileService();
         private static readonly SettingsService _defaultSettingsService = new(_defaultFileService);
-        private static readonly IVDriveEjector _defaultEjector = VDriveEject.CreateForCurrentPlatform();
 
         /// <summary>
         /// The profile's key/layer/macro model, freshly built by <see cref="LayoutFileParser"/>
@@ -92,7 +96,6 @@ namespace KinesisEdit.Core.Profiles
         private readonly IReadOnlyList<string>? _originalLightingLines;
         private readonly IVDriveFileService _fileService;
         private readonly SettingsService _settingsService;
-        private readonly IVDriveEjector _ejector;
 
         private ProfileSession(
             VDriveLocation location,
@@ -105,8 +108,7 @@ namespace KinesisEdit.Core.Profiles
             IReadOnlyList<string> originalLayoutLines,
             IReadOnlyList<string>? originalLightingLines,
             IVDriveFileService fileService,
-            SettingsService settingsService,
-            IVDriveEjector ejector)
+            SettingsService settingsService)
         {
             _location = location;
             Device = device;
@@ -119,7 +121,6 @@ namespace KinesisEdit.Core.Profiles
             _originalLightingLines = originalLightingLines;
             _fileService = fileService;
             _settingsService = settingsService;
-            _ejector = ejector;
         }
 
         /// <summary>
@@ -132,22 +133,20 @@ namespace KinesisEdit.Core.Profiles
         /// every call. Throws <see cref="ProfileReadOnlyException"/> for the Advantage 360's
         /// profile 0, which has no on-disk file to read (specs/02-devices.md "Profiles 0-9").
         /// <para>
-        /// <paramref name="fileService"/> and <paramref name="ejector"/> are the module's whole
-        /// substitution seam: omit them and the session reads, writes and ejects exactly as it
-        /// always has (the shared real services); name a <paramref name="fileService"/> and
-        /// <b>every</b> read and write of the session goes through it — layout, led <i>and</i> the
-        /// settings file, whose <see cref="SettingsService"/> is built over the same instance, so a
-        /// session can never straddle two sources; name an <paramref name="ejector"/> and the save
-        /// never reaches the platform. Core stays unaware of why a caller would want that — there
-        /// is no demo-mode concept here.
+        /// <paramref name="fileService"/> is the module's whole substitution seam: omit it and the
+        /// session reads and writes exactly as it always has (the shared real service); name one
+        /// and <b>every</b> read and write of the session goes through it — layout, led <i>and</i>
+        /// the settings file, whose <see cref="SettingsService"/> is built over the same instance,
+        /// so a session can never straddle two sources. Core stays unaware of why a caller would
+        /// want that — there is no demo-mode concept here. There is no ejector to substitute,
+        /// because a session never ejects.
         /// </para>
         /// </summary>
         public static ProfileSession Load(
             VDriveLocation location,
             DeviceId device,
             int profileNumber,
-            IVDriveFileService? fileService = null,
-            IVDriveEjector? ejector = null)
+            IVDriveFileService? fileService = null)
         {
             ArgumentNullException.ThrowIfNull(location);
 
@@ -171,7 +170,6 @@ namespace KinesisEdit.Core.Profiles
 
             var effectiveFileService = fileService ?? _defaultFileService;
             var effectiveSettingsService = ResolveSettingsService(fileService);
-            var effectiveEjector = ejector ?? _defaultEjector;
 
             var layoutLines = effectiveFileService.ReadAllLines(GetLayoutFilePath(location, profileNumber));
             var parseResult = new LayoutFileParser(device).Parse(layoutLines);
@@ -200,8 +198,7 @@ namespace KinesisEdit.Core.Profiles
                 originalLayoutLines,
                 originalLightingLines,
                 effectiveFileService,
-                effectiveSettingsService,
-                effectiveEjector);
+                effectiveSettingsService);
         }
 
         /// <summary>
@@ -306,7 +303,6 @@ namespace KinesisEdit.Core.Profiles
                 {
                     Success = false,
                     Violations = violations,
-                    Ejected = false,
                     PostSaveMessage = null
                 };
             }
@@ -325,14 +321,14 @@ namespace KinesisEdit.Core.Profiles
                 SaveStartupSettings(targetProfileNumber);
             }
 
-            var ejectResult = _ejector.Eject(_location.RootPath);
+            // No eject: the write is the whole save. The volume is released only when the user
+            // asks for it on the device card (docs/design/README.md, "Nothing ejects implicitly").
             var isStartupProfile = setAsStartup || _settings.StartupProfileNumber == targetProfileNumber;
 
             return new ProfileSaveResult
             {
                 Success = true,
                 Violations = violations,
-                Ejected = ejectResult.Succeeded,
                 PostSaveMessage = ProfileSaveMessageCatalog.GetMessage(Device, targetProfileNumber, isStartupProfile)
             };
         }

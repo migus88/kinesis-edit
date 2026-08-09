@@ -31,7 +31,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the button that selects every key of the layer (mockup 2f).</summary>
         public const string SelectAllCaption = "Select all";
 
-        /// <summary>Caption of the button that turns the selected keys off (mockup 2f).</summary>
+        /// <summary>
+        /// Caption of the button that empties the selection (mockup 2f) — <see cref="SelectAllCaption"/>'s
+        /// opposite, and the button beside it. It turned the selected keys off until issue #131.
+        /// </summary>
         public const string ClearCaption = "Clear";
 
         /// <summary>The selected caps, in the order they joined the selection.</summary>
@@ -275,9 +278,10 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Empties the selection. It is <b>not</b> mockup 2f's "Clear" button, which erases the
-        /// selected keys' colours (<see cref="LightingTabViewModel.ClearKeyColorsCommand"/>) and
-        /// leaves them selected.
+        /// Empties the selection. Since issue #131 this <b>is</b> what mockup 2f's "Clear" button
+        /// runs (<see cref="LightingTabViewModel.ClearSelectionCommand"/>); until then that button
+        /// erased the selected keys' colours and left them selected, which is why this summary used
+        /// to disclaim it.
         /// </summary>
         public void Clear()
         {

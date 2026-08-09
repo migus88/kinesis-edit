@@ -157,7 +157,6 @@ namespace KinesisEdit.Tests.ViewModels
             _profiles.SessionToReturn!.ResultToReturn = new ProfileSaveResult
             {
                 Success = false,
-                Ejected = false,
                 Violations =
                 [
                     new ModelViolation

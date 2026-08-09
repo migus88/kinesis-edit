@@ -609,11 +609,16 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task AZone_SelectsItsKeysAndShowsItsSelectedFace_AndPaintsThem(string variantName)
+        public async Task AZone_SelectsItsKeysAndPaintsThem_WithoutEverTakingASelectedFace(string variantName)
         {
             // A zone button is a user pointing at a named set of keys, so it commits on the spot
-            // (issue #128) — the Apply it was split from in #124 is gone. The face is unchanged and
-            // still matters: the chip has to show which zones the selection now covers.
+            // (issue #128) — the Apply it was split from in #124 is gone.
+            //
+            // WHAT IT NO LONGER DOES IS LIGHT UP (issue #131). The chip carried the ToggleSegment's
+            // accent face while every one of its keys was selected, and the zones overlap, so one
+            // chip's press repainted another's face — and after `Select all` they were all lit at
+            // once. The selection is read off the caps' rings, which is where it actually is; the
+            // row below the board is a row of plain buttons that do things.
             var variant = ToVariant(variantName);
 
             using var scenes = new ViewSceneFactory();
@@ -631,8 +636,10 @@ namespace KinesisEdit.Tests.Design
 
             var zone = lighting.Zones.First(entry => entry.KeyCodes.Count > 0);
             var button = ZoneButtonFor(view, zone);
+            var restingFace = DesignTokens.Resolve("SurfaceBarBrush", variant);
 
             Assert.DoesNotContain("selected", button.Classes);
+            Assert.Equal(restingFace, button.Background);
             Assert.DoesNotContain(lighting.Board!.Keys, key => key.HasPaintColor);
 
             lighting.SelectZoneCommand.Execute(zone);
@@ -640,15 +647,118 @@ namespace KinesisEdit.Tests.Design
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.True(zone.IsSelected);
-            Assert.Contains("selected", button.Classes);
-            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), button.Background);
-
+            // The keys moved and the colour landed...
             Assert.Equal(zone.KeyCodes.Count, lighting.Selection.Count);
             Assert.Equal(zone.KeyCodes.Count, lighting.Board.Keys.Count(key => key.HasPaintColor));
             Assert.Equal(
                 KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(0, 0, 255))),
                 lighting.Board.Keys.First(key => key.HasPaintColor).PaintColorHex);
+
+            // ...and the chip is exactly as it was drawn before the press, in both variants.
+            Assert.DoesNotContain("selected", button.Classes);
+            Assert.Equal(restingFace, button.Background);
+            Assert.NotEqual(DesignTokens.Resolve("AccentBrush", variant), button.Background);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task NoZoneChip_ChangesAnotherChipsAppearance_HoweverTheSelectionMoves(string variantName)
+        {
+            // THE REPORTED SEQUENCE of issue #131, driven through real clicks on the real chips:
+            // `Game`, then `WASD`, then `WASD` again. WASD's four keys are all inside Game's
+            // twenty-nine, so the derived face made the third click un-light `Game` while
+            // twenty-five of its keys stayed selected. Nothing on the row may move but the board.
+            var variant = ToVariant(variantName);
+
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, variant);
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            host.Capture();
+
+            var chips = lighting.Zones.Select(zone => ZoneButtonFor(view, zone)).ToArray();
+            var game = ZoneButtonFor(view, lighting.Zones.Single(zone => zone.Caption == "Game"));
+            var wasd = ZoneButtonFor(view, lighting.Zones.Single(zone => zone.Caption == "WASD"));
+
+            AssertNoChipIsLit(chips, variant);
+
+            Click(host, game);
+
+            Assert.Equal(29, lighting.Selection.Count);
+
+            AssertNoChipIsLit(chips, variant);
+
+            Click(host, wasd);
+
+            // Plain subtraction: four keys out, twenty-five still selected on the board.
+            Assert.Equal(25, lighting.Selection.Count);
+            Assert.Equal(25, lighting.Board!.Keys.Count(key => key.IsLightingSelected));
+
+            AssertNoChipIsLit(chips, variant);
+
+            // And `Select all`, which used to light every chip at once, lights none of them.
+            Click(host, VisibleButton(view, LightingPaintSelection.SelectAllCaption)!);
+
+            Assert.Equal(lighting.Board.Keys.Count, lighting.Selection.Count);
+
+            AssertNoChipIsLit(chips, variant);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task Clear_EmptiesTheSelection_RatherThanDoingNothingVisible(string variantName)
+        {
+            // ISSUE #131's second half, at the glass and through real input: `Clear` sits beside
+            // `Select all` and undoes it. It used to paint the selected keys black, which is why
+            // the report read "the Clear button does nothing" — with nothing selected, over
+            // unpainted keys, or under a mode drawing paint at 0 %, it changed no pixel and was not
+            // even disabled for it.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            host.Capture();
+
+            var clear = VisibleButton(view, LightingPaintSelection.ClearCaption);
+
+            Assert.NotNull(clear);
+
+            // Nothing selected: the button is on screen and refuses, rather than looking live and
+            // doing nothing.
+            Assert.False(clear!.IsEffectivelyEnabled);
+
+            lighting.Picker.Color = new LedColor(0, 0, 255);
+
+            Click(host, VisibleButton(view, LightingPaintSelection.SelectAllCaption)!);
+
+            Assert.Equal(lighting.Board!.Keys.Count, lighting.Selection.Count);
+
+            host.Capture();
+
+            Assert.True(clear.IsEffectivelyEnabled);
+
+            Click(host, clear);
+
+            host.Capture();
+
+            Assert.Equal(0, lighting.Selection.Count);
+            Assert.DoesNotContain(lighting.Board.Keys, key => key.IsLightingSelected);
+            Assert.Contains(
+                LightingPaintSelection.CaptionPrefix + LightingPaintSelection.EmptyCaptionSuffix,
+                VisibleTexts(view));
+            Assert.False(clear.IsEffectivelyEnabled);
         }
 
         [AvaloniaTheory]
@@ -721,8 +831,13 @@ namespace KinesisEdit.Tests.Design
             Assert.DoesNotContain(lighting.Board.Keys, key => key.HasPaintColor);
 
             // ...while a click on a cap — a user pointing at one key — does commit, which is what
-            // makes the missing button a simplification rather than a loss.
-            lighting.Selection.Clear();
+            // makes the missing button a simplification rather than a loss. The selection is let go
+            // of through the `Clear` button, which is what that button does since issue #131 and
+            // the reason this half of the test can be driven at the glass at all.
+            Click(host, VisibleButton(view, LightingPaintSelection.ClearCaption)!);
+
+            Assert.Equal(0, lighting.Selection.Count);
+            Assert.DoesNotContain(lighting.Board.Keys, key => key.HasPaintColor);
 
             Dispatcher.UIThread.RunJobs();
 
@@ -1108,6 +1223,28 @@ namespace KinesisEdit.Tests.Design
             return board.GetSelfAndVisualAncestors()
                 .OfType<Grid>()
                 .First(grid => grid.GetVisualParent() is Grid);
+        }
+
+        /// <summary>
+        /// Every zone chip is at its ordinary button face — no <c>selected</c> class, no accent fill
+        /// and no on-accent label (issue #131). It is asserted as "not the lit face" rather than as
+        /// "exactly the resting face" on purpose: a chip the pointer was just clicked on is legally
+        /// <c>:pointerover</c>, and hovering is not what this claim is about.
+        /// </summary>
+        private static void AssertNoChipIsLit(IReadOnlyList<Button> chips, ThemeVariant variant)
+        {
+            var accentFill = DesignTokens.Resolve("AccentBrush", variant);
+            var accentLabel = DesignTokens.Resolve("AccentTextBrush", variant);
+
+            Assert.NotEmpty(chips);
+            Assert.All(
+                chips,
+                chip =>
+                {
+                    Assert.DoesNotContain("selected", chip.Classes);
+                    Assert.NotEqual(accentFill, chip.Background);
+                    Assert.NotEqual(accentLabel, chip.Foreground);
+                });
         }
 
         /// <summary>The chip drawn for one zone of the paint row.</summary>

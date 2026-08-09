@@ -11,6 +11,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Controls;
+using KinesisEdit.Converters;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Lighting;
@@ -899,21 +900,78 @@ namespace KinesisEdit.Tests.Design
             Assert.True(mixed.B > 60, $"The paint under the effect was covered outright ({mixed}).");
         }
 
-        [AvaloniaFact]
-        public void ALitKey_OnABoardThatIsNotShowingLighting_StillDrawsNothing()
+        [AvaloniaTheory]
+        [InlineData("Dark", "#FFFFFF")]
+        [InlineData("Dark", "#050505")]
+        [InlineData("Light", "#FFFFFF")]
+        [InlineData("Light", "#050505")]
+        public void ALitKey_OnABoardThatIsNotShowingLighting_StillDrawsNothing(string variantName, string paint)
         {
             // The two answers are independent, and this is the pair that proves it: a key can carry
             // paint on a picture that draws no lighting at all. The colour is a fact about the KEY —
             // the Keys tab keeps computing it, because it shares the cap view models with the
             // lighting board — and drawing it is a fact about the SURFACE.
-            var view = KeyCap(showsLighting: false, paint: "#FF0000");
+            //
+            // THE CAPTION IS HALF OF "NOTHING", and it is the half this test used to leave out —
+            // which is exactly how issue #131 shipped. The fill was gated on ShowsLighting and the
+            // caption's colour was not, so on the Keys tab the legend was drawn for a face nothing
+            // painted: KeycapLitLabelDark on the dark theme's raised cap and KeycapLitLabelLight on
+            // the light theme's, 1.15:1 and 1.09:1, in both variants at once. Both extremes of the
+            // fill are walked, because each flips the converter the other way and only one of the
+            // two is invisible in a given variant.
+            var variant = ToVariant(variantName);
+            var view = KeyCap(showsLighting: false, paint: paint, legend: "1");
 
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark, HostWidth, HostHeight);
+            using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
 
             Assert.False(FillOf(view).IsVisible, "A painted key put a lit face on a board that shows none.");
             Assert.True(
                 ((KeyboardKeyViewModel)view.DataContext!).HasPaintColor,
                 "The scene did not actually paint the key.");
+            Assert.Equal(DesignTokens.Resolve("TextPrimaryBrush", variant), CaptionOf(view).Foreground);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void AKeysTabCapsLegend_ReadsAgainstItsOwnFace_WhateverTheLedFileSays(string variantName)
+        {
+            // ...and the same claim at the glass, because the object graph said the right thing
+            // about this cap for as long as the defect existed: the caption's Foreground was
+            // exactly the brush the converter picked, and the brush was picked for a face nothing
+            // drew. What no property could show is that the letter and the cap under it were the
+            // same colour. So this reads the darkest-or-lightest ink inside the cap's own box and
+            // holds it to the contrast a legend has to have — the worst-case fill for the variant
+            // being the one whose label matches the cap's face.
+            var variant = ToVariant(variantName);
+            var view = KeyCap(showsLighting: false, paint: variantName == "Dark" ? "#FFFFFF" : "#050505", legend: "1");
+
+            using var host = ThemedHost.Show(view, variant, HostWidth, HostHeight);
+
+            var frame = host.Capture();
+            var origin = OriginOf(host, view);
+            var face = DesignTokens.ResolveBrushColor("SurfaceRaisedBrush", variant);
+            var ink = face;
+            var worst = 0;
+
+            for (var y = 0; y < (int)view.Bounds.Height; y++)
+            {
+                for (var x = 0; x < (int)view.Bounds.Width; x++)
+                {
+                    var pixel = FramePixels.At(frame, (int)origin.X + x, (int)origin.Y + y);
+                    var distance = Math.Abs(pixel.R - face.R) + Math.Abs(pixel.G - face.G) + Math.Abs(pixel.B - face.B);
+
+                    if (distance > worst)
+                    {
+                        worst = distance;
+                        ink = pixel;
+                    }
+                }
+            }
+
+            Assert.True(
+                ContrastRatio(face, ink) > 4.5,
+                $"The legend drew {ink} on a {face} cap — {ContrastRatio(face, ink):F2}:1, which is not a legend.");
         }
 
         [AvaloniaTheory]
@@ -1633,9 +1691,10 @@ namespace KinesisEdit.Tests.Design
             // The Lighting board's own selection ("Paint · 2 keys selected", mockup 2f). It is a
             // DIFFERENT selection from `.selected` — that one is the single key the inspector rail
             // is talking about, this one is a set — so it owns its own ring part, and neither state
-            // can move the other's.
+            // can move the other's. `.lighting` is part of the state since #131: the ring belongs
+            // to the board that owns the selection (see the test below).
             var variant = ToVariant(variantName);
-            var cap = Cap(variant, "paintSelected");
+            var cap = Cap(variant, "paintSelected", "lighting");
 
             using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
 
@@ -1680,7 +1739,7 @@ namespace KinesisEdit.Tests.Design
             // one BoxShadow would work only while their values agreed, and `.listening` already
             // moves Ring's margin — hence two parts.
             var variant = ToVariant(variantName);
-            var cap = Cap(variant, "selected", "paintSelected");
+            var cap = Cap(variant, "selected", "paintSelected", "lighting");
 
             using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
 
@@ -1701,12 +1760,62 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public void ThePaintSelectionsRing_IsDrawnOnTheLightingBoardAndNowhereElse(string variantName)
+        {
+            // ISSUE #131's second defect. The theme's own comment used to say the two selections
+            // "are never on screen together" — and the paragraph three lines above it said the
+            // opposite: both tabs render the SAME cap view models, so a key picked on the Lighting
+            // board carries `IsLightingSelected` on the Layout board too. Ungated, it drew a full
+            // accent ring and an accent border there, on caps the user had never selected and could
+            // not deselect from that tab.
+            //
+            // The class is still written on both boards — it says what the KEY is — and the ring is
+            // the SURFACE's call, exactly as the four badges are. Nothing is cleared: the paint
+            // selection survives the trip to the Layout tab and back, it is simply not drawn where
+            // it would mean nothing.
+            var variant = ToVariant(variantName);
+            var layout = Cap(variant, "paintSelected");
+
+            using var layoutHost = ThemedHost.Show(layout, variant, HostWidth, HostHeight);
+
+            Assert.Contains("paintSelected", layout.Classes);
+            Assert.Equal(0, PaintRingOf(layout).BoxShadow.Count);
+            Assert.Equal(DesignTokens.Resolve("SurfaceBorderRaisedBrush", variant), layout.BorderBrush);
+
+            // ...and at the glass, because the whole complaint was a ring the user could SEE: the
+            // band a ring would paint is pixel-for-pixel an ordinary cap's.
+            var bare = Cap(variant);
+
+            using var bareHost = ThemedHost.Show(bare, variant, HostWidth, HostHeight);
+
+            AssertClose(
+                FramePixels.At(
+                    bareHost.Capture(),
+                    (int)OriginOf(bareHost, bare).X + InsideProbe,
+                    MidRow(bareHost, bare)),
+                FramePixels.At(
+                    layoutHost.Capture(),
+                    (int)OriginOf(layoutHost, layout).X + InsideProbe,
+                    MidRow(layoutHost, layout)));
+
+            // The lighting board is untouched: same class, same cap, the ring the design asks for.
+            var lighting = Cap(variant, "paintSelected", "lighting");
+
+            using var lightingHost = ThemedHost.Show(lighting, variant, HostWidth, HostHeight);
+
+            Assert.Equal(2, PaintRingOf(lighting).BoxShadow.Count);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), lighting.BorderBrush);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public void ADisabledPaintSelectedCap_LosesItsRingWithEverythingElse(string variantName)
         {
             // Contract 5 again: BaseButton's `:disabled` face is applied first, so the state carries
             // `:not(:disabled)` or a dead cap keeps a live accent ring while the board is loading.
             var variant = ToVariant(variantName);
-            var cap = Cap(variant, "paintSelected");
+            var cap = Cap(variant, "paintSelected", "lighting");
 
             cap.IsEnabled = false;
 
@@ -2325,6 +2434,21 @@ namespace KinesisEdit.Tests.Design
         private static void AssertClose(Color expected, Color actual)
         {
             Assert.True(Distance(expected, actual) <= 3, $"Expected about {expected}, painted {actual}.");
+        }
+
+        /// <summary>
+        /// The WCAG 2.x contrast ratio between two opaque colours. It is what a "the legend is
+        /// there but nobody can read it" claim has to be measured in: channel distance calls
+        /// <c>#14181B</c> on <c>#23272C</c> a difference, and the eye calls it 1.15:1.
+        /// </summary>
+        private static double ContrastRatio(Color first, Color second)
+        {
+            var brighter = LitLabelBrushConverter.RelativeLuminance(first);
+            var darker = LitLabelBrushConverter.RelativeLuminance(second);
+
+            return brighter > darker
+                ? (brighter + 0.05) / (darker + 0.05)
+                : (darker + 0.05) / (brighter + 0.05);
         }
 
         /// <summary>

@@ -403,7 +403,6 @@ namespace KinesisEdit.Tests.ViewModels
                 {
                     Success = true,
                     Violations = [],
-                    Ejected = true,
                     PostSaveMessage = "To load Profile 1 to the keyboard, hold the SmartSet key and tap the 1 key."
                 }
             };
@@ -476,8 +475,7 @@ namespace KinesisEdit.Tests.ViewModels
                             Kind = ModelViolationKind.MacroCountExceeded,
                             Message = "The layout holds 120 macros; the device allows 100."
                         }
-                    ],
-                    Ejected = false
+                    ]
                 }
             };
 
@@ -814,8 +812,7 @@ namespace KinesisEdit.Tests.ViewModels
                             Kind = ModelViolationKind.MacroCountExceeded,
                             Message = "The layout holds 120 macros; the device allows 100."
                         }
-                    ],
-                    Ejected = false
+                    ]
                 }
             };
 
@@ -1034,8 +1031,7 @@ namespace KinesisEdit.Tests.ViewModels
                         Kind = ModelViolationKind.MacroCountExceeded,
                         Message = "The layout holds 120 macros; the device allows 100."
                     }
-                ],
-                Ejected = false
+                ]
             };
 
             Answer(MessageBoxResult.Yes);
