@@ -145,6 +145,29 @@
     <Setter Property="Fill" Value="{DynamicResource StatusErrorBrush}" />
   </Style>
 
+  <!-- ===== The macro slot dots ===============================================================
+       One per macro slot the dialect writes, in the key inspector's Macro panel (issue #137):
+       hollow for an empty slot, filled for one that holds a macro. Geometry rather than a
+       character, for `recordDot`'s reason — U+25CF is in neither embedded family.
+
+       `BadgeMacro` and no other hue: purple already means "there is a macro here" on this app's key
+       caps, so the dot and the cap's badge say one thing in one colour. Deliberately NOT the accent,
+       which has exactly two sanctioned meanings and "occupied" is neither — which is also why the
+       filled dot is not how the strip shows WHICH slot is being edited. The dropdown beside it
+       names that, and the caption is each dot's tooltip. -->
+  <Style Selector="Ellipse.macroSlotDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="Transparent" />
+    <Setter Property="Stroke" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="StrokeThickness" Value="1" />
+  </Style>
+
+  <Style Selector="Ellipse.macroSlotDot.filled">
+    <Setter Property="Fill" Value="{DynamicResource BadgeMacroBrush}" />
+    <Setter Property="Stroke" Value="{DynamicResource BadgeMacroBrush}" />
+  </Style>
+
   <!-- The `↵` of the selected row's `↵ assign` hint — drawn, not typed, for the same reason. It is
        TextSecondary rather than the accent: the row it sits in is already filled with the 14%
        accent selection tint, and AccentText is the colour that rides a SOLID accent fill (white on

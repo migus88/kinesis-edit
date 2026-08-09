@@ -150,6 +150,143 @@
 
     <StackPanel IsVisible="{Binding IsAvailable}">
 
+      <!-- ===== The slot ======================================================================
+           WHICH OF THE KEY'S MACROS IS BEING EDITED (issue #137). A key holds up to five macros
+           told apart by their co-triggers (06 §1); until this strip existed the rail could reach
+           only one of them and the Macros tab's slot cards were the only way to the rest.
+
+           ONE DOT PER SLOT THE DIALECT WRITES, never the five the model owns: `PersistedSlotsPerKey`
+           is 3 on the Advantage2 and Freestyle Edge/Pro and 5 on the RGB family, and a macro put in
+           slot 4 of a Freestyle Edge is gone at the next save.
+
+           NO `ACTIVE` BADGE AND NO `Make active`. The dropdown is a pure EDITING selector — every
+           populated slot is live on the keyboard, and what tells them apart is the Trigger strip
+           below. Picking a slot writes `KeyboardKey.ActiveMacroIndex`, which is in-memory only and
+           never serialized (05 §1.3), so it deliberately does NOT dirty the session.
+
+           ABSENT, NEVER DISABLED: a flat-list board (the Advantage 360) and a position that refuses
+           macros (05 §5.3) draw no selector at all. -->
+      <Border Classes="inspectorSection" IsVisible="{Binding HasSlotSelector}">
+        <StackPanel Spacing="6">
+          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.SlotSectionLabel}" Classes="sectionLabel" />
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <!-- The dots are geometry and not a glyph, for the record dot's own reason: `●` (U+25CF)
+                 is in neither embedded IBM Plex family. Filled means occupied; the caption is the
+                 tooltip, because a dot alone is not accessible text. -->
+            <ItemsControl Grid.Column="0" ItemsSource="{Binding SlotOptions}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:MacroSlotOption">
+                  <Ellipse Classes="macroSlotDot"
+                           Classes.filled="{Binding IsOccupied}"
+                           ToolTip.Tip="{Binding Caption}"
+                           VerticalAlignment="Center" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding SlotOptions}"
+                      SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="vm:MacroSlotOption">
+                  <TextBlock Text="{Binding Caption}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- ===== The trigger ===================================================================
+           WHAT THE KEY HAS TO BE PRESSED WITH, and whether anything else on it already claims that
+           combination (06 §5). The latches used to sit in the footer under a `CO-TRIGGERS` label,
+           three rows away from the slot they distinguish; here they are beside the trigger token
+           they qualify and the collision they cause.
+
+           THREE LATCHES, NOT SIX AND NOT FOUR — a deliberate deviation recorded in
+           docs/app/design-system.md. spec 10 pins the legacy set at "six co-trigger buttons —
+           Left/Right Shift, Ctrl, Alt"; authoring here is left-only, and a right-hand or generic
+           co-trigger a FILE carries lights the matching left latch instead of disappearing. There is
+           no `⌘` latch: no co-trigger in specs 06 or 10 names one, so it would author a token no
+           firmware is documented to honour.
+
+           EACH LATCH IS ONE OR TWO RUNS IN TWO FACES, exactly as the step rows draw them — but the
+           left three spell no side, so each is a single `.keySymbol` run today. NEITHER RUN CARRIES
+           A COLOUR: `ToggleSegment`'s `.selected` face sets Foreground, a TextBlock inherits it and
+           an `Icon` (painting from Stroke) cannot, which is why this site is type at all.
+
+           THE STATUS IS AN ADVISORY AND NEVER A REFUSAL. Amber, never red — a collision is what
+           `Validate()` reports as `MacroTriggerCollision`, and it reports rather than blocks. -->
+      <Border Classes="inspectorSection">
+        <StackPanel Spacing="6">
+          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerSectionLabel}" Classes="sectionLabel" />
+
+          <!-- A Grid and not a horizontal StackPanel: the token takes the `*` column and trims, so
+               nothing here can run off a 300 px rail however long a dialect spells a trigger. -->
+          <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="6">
+            <ItemsControl Grid.Column="0" ItemsSource="{Binding CoTriggers}" IsVisible="{Binding HasCoTriggers}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:MacroCoTriggerViewModel">
+                  <Button Classes="toggleSegment"
+                          Classes.selected="{Binding IsOn}"
+                          ToolTip.Tip="{Binding Caption}"
+                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
+                          CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Side}"
+                                 Classes="monoValueSmall"
+                                 IsVisible="{Binding HasSide}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Symbol}"
+                                 Classes="keySymbol"
+                                 IsVisible="{Binding HasMark}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Caption}"
+                                 IsVisible="{Binding !HasMark}"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Grid.Column="1"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerJoin}"
+                       Classes="meta muted"
+                       IsVisible="{Binding HasCoTriggers}"
+                       VerticalAlignment="Center" />
+
+            <!-- Mono: this is literally the token on the trigger side of the macro line (06 §3). -->
+            <TextBlock Grid.Column="2"
+                       Text="{Binding TriggerTokenText}"
+                       Classes="monoValue"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+          </Grid>
+
+          <!-- The two roles are bound EXCLUSIVELY rather than layered, so which one wins is a fact
+               about the selector and never about the order the stylesheet happens to declare them
+               in (docs/app/design-system.md, contract 7). -->
+          <TextBlock Text="{Binding TriggerStatus}"
+                     Classes="meta"
+                     Classes.muted="{Binding !IsTriggerAdvisory}"
+                     Classes.statusWarning="{Binding IsTriggerAdvisory}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
       <!-- ===== The name ======================================================================
            "The macro is picked by name from a dropdown — Sign-off block ▾ — with the reuse note
            'Named, so it can be picked for another key from this same dropdown. Also on [f7] · Fn.'"
@@ -593,13 +730,15 @@
                   IsSnapToTickEnabled="True"
                   IsVisible="{Binding HasSpeed}" />
 
-          <!-- REPEAT AND THE CO-TRIGGERS STAY. Mockup 2i draws only speed; both of these are
-               supported by the devices this app edits today and there is nowhere else left to set
-               them once the Macros tab becomes a library, so dropping them would be dropping a
-               feature silently. Recorded as a deviation in docs/app/design-system.md.
+          <!-- REPEAT STAYS. Mockup 2i draws only speed; repeat is supported by the devices this app
+               edits today and there is nowhere else left to set it once the Macros tab becomes a
+               library, so dropping it would be dropping a feature silently. Recorded as a deviation
+               in docs/app/design-system.md. THE CO-TRIGGERS LEFT THIS BLOCK with issue #137: they
+               are the Trigger strip in the header now, where they sit beside the trigger token they
+               qualify and the collision they cause.
 
-               Absent, never disabled, where the file does not keep them: the Advantage2 has a
-               repeat range in the model but its serializer writes no {xN} token at all. -->
+               Absent, never disabled, where the file does not keep it: the Advantage2 has a repeat
+               range in the model but its serializer writes no {xN} token at all. -->
           <StackPanel Spacing="4" IsVisible="{Binding HasRepeat}">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Grid.Column="0"
@@ -615,61 +754,6 @@
                     IsSnapToTickEnabled="True" />
           </StackPanel>
 
-          <StackPanel Spacing="4" IsVisible="{Binding HasCoTriggers}">
-            <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.CoTriggersLabel}" Classes="sectionLabel" />
-            <ItemsControl ItemsSource="{Binding CoTriggers}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <!-- THE SIX TOGGLES ARE MARKS, NOT CAPTIONS — `⇧ R⇧ ⌃ R⌃ ⌥ R⌥`. Six two-line
-                   captions (`Left⏎Shift` … `Right⏎Opt`) wrapped in a rail this narrow was the
-                   panel's tallest block for the least information in it; the marks are the step
-                   list's own spelling, one line each, and they cost nothing to read because the
-                   modifier is the whole of what the toggle says. With left unmarked they need
-                   260 px of the strip's 276 and all six sit on ONE row.
-
-                   UP TO TWO RUNS, IN TWO FACES, exactly as the step row above draws them: the
-                   key-symbol family is a 19-codepoint subset with NO Latin letters, so the `R`
-                   stays in the ordinary mono face and only the mark goes in `.keySymbol`. The left
-                   three spell no side and are a single run. `FontSizeKeySymbol` is derived to sit
-                   at `monoValueSmall`'s cap height, which is why that is the pairing here too.
-
-                   NEITHER RUN CARRIES A COLOUR, and that is the reason this site can be type at all
-                   while the layer chips' `⌥` stays a geometry: `ToggleSegment`'s `.selected` face
-                   sets `Foreground`, a TextBlock INHERITS it and an `Icon` (which paints from
-                   `Stroke`) cannot. A `muted` on either run would break the on-accent label.
-
-                   THE CAPTION IS THE TOOLTIP. A mark alone is not accessible text; with left
-                   unmarked it is also the only thing on a left toggle that says which side it is;
-                   and it is the fallback for any co-trigger key that names no modifier at all. -->
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:MacroCoTriggerViewModel">
-                  <Button Classes="toggleSegment"
-                          Classes.selected="{Binding IsOn}"
-                          Margin="0,0,4,4"
-                          ToolTip.Tip="{Binding Caption}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
-                          CommandParameter="{Binding}">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Side}"
-                                 Classes="monoValueSmall"
-                                 IsVisible="{Binding HasSide}"
-                                 VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Symbol}"
-                                 Classes="keySymbol"
-                                 IsVisible="{Binding HasMark}"
-                                 VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Caption}"
-                                 IsVisible="{Binding !HasMark}"
-                                 VerticalAlignment="Center" />
-                    </StackPanel>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
         </StackPanel>
       </Border>
     </StackPanel>

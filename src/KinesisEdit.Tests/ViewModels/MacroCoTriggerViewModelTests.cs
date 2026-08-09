@@ -15,7 +15,7 @@ namespace KinesisEdit.Tests.ViewModels
     public class MacroCoTriggerViewModelTests
     {
         /// <summary>
-        /// The six toggles the panel draws, in spec order — <c>⇧ R⇧ ⌃ R⌃ ⌥ R⌥</c>. <b>Only the
+        /// The six of specs/10-apps-and-ui.md, in spec order — <c>⇧ R⇧ ⌃ R⌃ ⌥ R⌥</c>. <b>Only the
         /// right-hand three spell a side</b>: left is the unmarked case (see
         /// <see cref="MacroModifierMarks.LeftSide"/>), so a left toggle is the bare mark and a
         /// single run. The <c>R</c> is a separate part on purpose: it is a Latin letter and the
@@ -108,7 +108,52 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(toggle.HasSide);
             Assert.Equal(string.Empty, toggle.Symbol);
             Assert.Equal(string.Empty, toggle.Side);
+            Assert.Equal(MacroModifiers.None, toggle.Family);
             Assert.NotEmpty(toggle.Caption);
+        }
+
+        /// <summary>
+        /// What the Trigger strip asks for (issue #137): the three <b>left-hand</b> latches, each a
+        /// single unmarked run. Authoring is left-only, so the right-hand spellings are not offered
+        /// — they are folded onto their left latch by <see cref="MacroCoTriggerViewModel.Family"/>.
+        /// <b>There is no <c>⌘</c> latch</b>, and that is the deviation's whole point: no co-trigger
+        /// in specs 06 or 10 names one, so a fourth would author a token no firmware is documented
+        /// to honour.
+        /// </summary>
+        [AvaloniaFact]
+        public void CreateAll_LeftOnly_GivesTheThreeLatchesTheTriggerStripDraws()
+        {
+            var toggles = MacroCoTriggerViewModel.CreateAll(TokenDialect.Gen1, leftOnly: true);
+
+            Assert.Equal(
+                ["⇧", "⌃", "⌥"],
+                toggles.Select(toggle => toggle.Side + toggle.Symbol));
+            Assert.All(toggles, toggle => Assert.False(toggle.HasSide));
+            Assert.All(toggles, toggle => Assert.True(toggle.HasMark));
+
+            Assert.DoesNotContain(toggles, toggle => toggle.Symbol == MacroModifierMarks.WinMark);
+        }
+
+        /// <summary>
+        /// A latch stands for a <b>physical modifier</b>, not for one spelling of it: the generic,
+        /// left and right codes of 05 §5.1 all belong to the same family. That is what lets a
+        /// <c>{rshft}</c> a file already carried light the <c>⇧</c> latch instead of nothing — the
+        /// "preserve on load" half of the strip's co-trigger rule.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData(MacroModifiers.Shift)]
+        [InlineData(MacroModifiers.LeftShift)]
+        [InlineData(MacroModifiers.RightShift)]
+        public void EverySpellingOfOneModifier_SharesItsFamily(MacroModifiers spelling)
+        {
+            var shift = MacroCoTriggerViewModel.CreateAll(TokenDialect.Gen1, leftOnly: true)[0];
+
+            Assert.Equal(shift.Family, MacroCoTriggerViewModel.FamilyOf(spelling));
+            Assert.True((shift.Family & spelling) != MacroModifiers.None);
+
+            // ...and the families do not overlap, or a right Ctrl would light the Shift latch.
+            Assert.Equal(MacroModifiers.None, shift.Family & MacroCoTriggerViewModel.FamilyOf(MacroModifiers.RightControl));
+            Assert.Equal(MacroModifiers.None, MacroCoTriggerViewModel.FamilyOf(MacroModifiers.None));
         }
     }
 }

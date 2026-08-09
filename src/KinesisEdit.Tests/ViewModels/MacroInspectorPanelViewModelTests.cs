@@ -1,4 +1,6 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Geometry;
+using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Model;
@@ -309,25 +311,498 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(scene.Panel.SpeedMaximum, scene.Panel.SpeedMeter.Value);
         }
 
+        // ===== The slot selector (issue #137) =================================================
+        // A key holds up to five macros told apart by their co-triggers (06 §1). Until this strip
+        // existed the rail could reach exactly one of them.
+
+        /// <summary>
+        /// The dots and the dropdown count the slots the <b>dialect writes</b>, never the five the
+        /// model owns: 3 on the Advantage2 and Freestyle Edge/Pro, 5 on the RGB family. Read off
+        /// <see cref="MacroCapability.PersistedSlotsPerKey"/>, so a device added to the catalog with
+        /// a different figure is right by construction.
+        /// </summary>
+        [Theory]
+        [InlineData(DeviceId.Advantage2, 3)]
+        [InlineData(DeviceId.FreestyleEdge, 3)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 5)]
+        public void SlotOptions_CountThePersistedSlotsOfTheDevice(DeviceId deviceId, int expected)
+        {
+            var scene = new Scene(this, deviceId: deviceId);
+
+            scene.SelectFirstMacroKey();
+
+            Assert.Equal(expected, DeviceCatalog.GetById(deviceId).Macros.PersistedSlotsPerKey);
+            Assert.True(scene.Panel.HasSlotSelector);
+            Assert.Equal(expected, scene.Panel.SlotOptions.Count);
+            Assert.Equal(
+                Enumerable.Range(Macro.MinMacroIndex, expected),
+                scene.Panel.SlotOptions.Select(option => option.Slot));
+
+            // Nothing is recorded yet, so every dot is hollow and the dropdown opens on slot 1.
+            Assert.All(scene.Panel.SlotOptions, option => Assert.False(option.IsOccupied));
+            Assert.Equal(Macro.MinMacroIndex, scene.Panel.SelectedSlot!.Slot);
+
+            scene.Record("a");
+
+            Assert.True(scene.Panel.SlotOptions[0].IsOccupied);
+            Assert.All(scene.Panel.SlotOptions.Skip(1), option => Assert.False(option.IsOccupied));
+        }
+
+        /// <summary>
+        /// <b>The single easiest defect here.</b> <c>ActiveMacroIndex</c> is an in-memory field that
+        /// is never serialized (05 §1.3), so a slot pick cannot reach the editor's funnel — which is
+        /// the only route to the dirty flag, and would raise an unsaved-changes prompt for a choice
+        /// no save could persist. The Macros tab's <c>Make active</c> already gets this right.
+        /// </summary>
         [Fact]
-        public void ToggleCoTrigger_HoldsTheDeviceCapAndReportsIt()
+        public void SelectingASlot_MovesTheActiveSlotAndReReads_WithoutReachingTheEditorsFunnel()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a");
 
-            var limit = scene.Panel.MaxCoTriggers;
+            // A second macro, put straight into slot 2 the way an import or the tab would.
+            scene.Key.Key.SetMacro(2, scene.Layout.CreateMacro());
+            scene.Key.Key.GetMacro(2)!.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("b")));
 
-            for (var index = 0; index < limit; index++)
+            scene.Refresh();
+
+            var assigned = 0;
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+
+            Assert.Equal(2, scene.Key.Key.ActiveMacroIndex);
+            Assert.Equal(2, scene.Panel.SelectedSlot!.Slot);
+            Assert.Equal(["[b]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+
+            // `Assigned` is the panel's ONE hop to RefreshCounters(), and so to IsDirty.
+            Assert.Equal(0, assigned);
+        }
+
+        /// <summary>
+        /// Picking an empty slot yields an empty sequence with recording live — and creates
+        /// <b>nothing</b> until a keystroke lands, because <c>EnsureMacro()</c> stays the only path
+        /// that adds a macro. The one it then creates fills <b>the selected slot</b>, not the first
+        /// free one.
+        /// </summary>
+        [Fact]
+        public void SelectingAnEmptySlot_RecordsIntoThatSlot_AndCreatesNothingBeforeTheFirstKeystroke()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            Assert.Equal(1, scene.Layout.MacroCount);
+
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[2];
+
+            // The panel is pointed at slot 3: empty sequence, nothing created, recording available.
+            Assert.Equal(3, scene.Key.Key.ActiveMacroIndex);
+            Assert.Empty(scene.Panel.Steps.Items);
+            Assert.Equal(1, scene.Layout.MacroCount);
+            Assert.Null(scene.Key.Key.GetMacro(3));
+            Assert.True(scene.Panel.RecordCommand.CanExecute(null));
+
+            scene.Record("b");
+
+            Assert.Equal(2, scene.Layout.MacroCount);
+            Assert.NotNull(scene.Key.Key.GetMacro(3));
+            Assert.Null(scene.Key.Key.GetMacro(2));
+            Assert.Equal(["[a]"], scene.Key.Key.GetMacro(1)!.Keystrokes.Select(k => "[" + k.Key.GetToken(TokenDialect.Gen1) + "]"));
+            Assert.Equal(3, scene.Key.Key.GetMacro(3)!.MacroIndex);
+        }
+
+        /// <summary>
+        /// The name dropdown's placeholder is <b>slot-scoped where slots exist</b>. Selecting an
+        /// empty slot on a key that carries a macro in another one is a state this issue's slot
+        /// selector created — before it, the panel only ever opened a populated slot, so
+        /// <c>No macro on this key</c> could not be false. It would be false here, with the header's
+        /// own dots showing slot 1 occupied two rows above the sentence denying it.
+        /// </summary>
+        [Fact]
+        public void TheNamePlaceholder_SaysSlotNotKey_WhenAnEmptySlotOfAnOccupiedKeyIsSelected()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            // The key really does carry a macro — the placeholder must not deny it.
+            Assert.NotNull(scene.Key.Key.GetMacro(1));
+
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[2];
+
+            var placeholder = Assert.Single(scene.Panel.NameOptions, option => option.IsNone);
+
+            Assert.Equal(MacroNameOptionViewModel.NoMacroInSlotCaption, placeholder.Caption);
+            Assert.Same(placeholder, scene.Panel.SelectedName);
+        }
+
+        /// <summary>
+        /// A flat-list board has no slots, so there the key-scoped wording is the true one and must
+        /// survive — the fix above is scoped to the selector, not applied everywhere.
+        /// </summary>
+        [Fact]
+        public void TheNamePlaceholder_StaysKeyScoped_OnABoardWithNoSlots()
+        {
+            var scene = new Scene(this, deviceId: DeviceId.Advantage360);
+
+            scene.SelectFirstMacroKey();
+
+            Assert.False(scene.Panel.HasSlotSelector);
+
+            var placeholder = Assert.Single(scene.Panel.NameOptions, option => option.IsNone);
+
+            Assert.Equal(MacroNameOptionViewModel.NoMacroCaption, placeholder.Caption);
+        }
+
+        /// <summary>
+        /// The choice belongs to the position it was made on: moving the rail must open the next key
+        /// on whatever slot <em>it</em> carries, not on the number picked for the last one.
+        /// </summary>
+        [Fact]
+        public void TheSlotChoice_DoesNotFollowTheRailToAnotherPosition()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[2];
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Key.Key.SetMacro(2, scene.Layout.CreateMacro());
+
+            scene.Refresh();
+
+            // Slot 2 is the only populated one, so that is what the panel opens on.
+            Assert.Equal(2, scene.Panel.SelectedSlot!.Slot);
+        }
+
+        /// <summary>
+        /// Absent, never disabled (docs/design/README.md): a flat-list board keeps its macros in one
+        /// per-layout list (06 §1) and has no slots at all, and a position that refuses macros
+        /// (05 §5.3) draws the panel's refusal instead of a strip.
+        /// </summary>
+        [Fact]
+        public void NoSlotSelector_OnAFlatListBoardOrOnAPositionThatRefusesMacros()
+        {
+            var flat = new Scene(this, deviceId: DeviceId.Advantage360);
+
+            flat.SelectFirstMacroKey();
+
+            Assert.True(flat.Device.Device.Macros.UsesFlatMacroList);
+            Assert.True(flat.Panel.IsAvailable);
+            Assert.False(flat.Panel.HasSlotSelector);
+            Assert.Empty(flat.Panel.SlotOptions);
+
+            var restricted = new Scene(this);
+
+            restricted.Select(TestLayouts.RgbLeftShiftKeyIndex);
+
+            Assert.False(restricted.Panel.IsAvailable);
+            Assert.False(restricted.Panel.HasSlotSelector);
+            Assert.Empty(restricted.Panel.SlotOptions);
+        }
+
+        /// <summary>
+        /// A macro is never put in a slot the dialect does not write (06 §1), which is why the panel
+        /// resolves the slot itself instead of calling <see cref="KeyboardKey.AssignMacro"/> — that
+        /// one takes the first free slot of the five the <em>model</em> owns. A key parked on slot 4
+        /// by a tolerant load records into slot 1 on a Freestyle Edge, not into a slot the very next
+        /// save would drop.
+        /// </summary>
+        [Fact]
+        public void ANewMacro_NeverLandsInASlotTheDialectDoesNotWrite()
+        {
+            var scene = new Scene(this, deviceId: DeviceId.FreestyleEdge);
+
+            scene.SelectFirstMacroKey();
+
+            scene.Key.Key.ActiveMacroIndex = 4;
+
+            scene.Refresh();
+            scene.Record("a");
+
+            Assert.Equal(3, scene.Panel.SlotOptions.Count);
+            Assert.NotNull(scene.Key.Key.GetMacro(1));
+            Assert.Null(scene.Key.Key.GetMacro(4));
+            Assert.Null(scene.Key.Key.GetMacro(5));
+        }
+
+        // ===== The Trigger strip (issue #137) =================================================
+
+        [Fact]
+        public void TheStrip_OffersTheThreeLeftHandLatchesAndTheTriggerToken()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Equal(
+                [MacroModifierMarks.ShiftMark, MacroModifierMarks.ControlMark, MacroModifierMarks.AltMark],
+                scene.Panel.CoTriggers.Select(latch => latch.Symbol));
+            Assert.All(scene.Panel.CoTriggers, latch => Assert.False(latch.HasSide));
+
+            // No ⌘ latch: no co-trigger in specs 06 or 10 names one.
+            Assert.DoesNotContain(scene.Panel.CoTriggers, latch => latch.Symbol == MacroModifierMarks.WinMark);
+
+            Assert.Equal("[1]", scene.Panel.TriggerTokenText);
+        }
+
+        [Fact]
+        public void ALatch_WritesTheMacrosCoTriggers()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            var macro = Assert.Single(scene.Key.Key.Macros.OfType<Macro>());
+
+            Assert.Equal(1, macro.CoTriggerCount);
+            Assert.Equal(MacroModifierCodes.GetKeyCode(MacroModifiers.LeftShift), macro.CoTriggers[0].Code);
+            Assert.True(scene.Panel.CoTriggers[0].IsOn);
+
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.Equal(0, macro.CoTriggerCount);
+            Assert.False(scene.Panel.CoTriggers[0].IsOn);
+        }
+
+        /// <summary>
+        /// The cap is the dialect's own <see cref="MacroCapability.PersistedCoTriggersPerMacro"/> —
+        /// 1 on the old Freestyle, 3 on the Advantage2, 4 on the RGB family — and never a literal.
+        /// <see cref="Macro.AddCoTrigger"/> deliberately neither de-duplicates nor refuses, so
+        /// holding it is the panel's job.
+        /// </summary>
+        [Theory]
+        [InlineData(DeviceId.FreestyleEdge, 1)]
+        [InlineData(DeviceId.Advantage2, 3)]
+        [InlineData(DeviceId.FreestyleEdgeRgb, 4)]
+        public void TheCoTriggerCap_IsTheDialectsOwn(DeviceId deviceId, int expected)
+        {
+            var scene = new Scene(this, deviceId: deviceId);
+
+            scene.SelectFirstMacroKey();
+            scene.Record("a");
+
+            Assert.Equal(expected, scene.Panel.MaxCoTriggers);
+
+            var macro = scene.CurrentMacro!;
+            var accepted = 0;
+
+            foreach (var latch in scene.Panel.CoTriggers)
             {
-                scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[index]);
+                scene.Panel.ToggleCoTriggerCommand.Execute(latch);
+
+                if (latch.IsOn)
+                {
+                    accepted++;
+                }
             }
 
-            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[limit]);
+            // The strip offers three latches, so a cap of 4 is never reached from it; 1 and 3 are.
+            Assert.Equal(Math.Min(expected, scene.Panel.CoTriggers.Count), accepted);
+            Assert.Equal(accepted, macro.CoTriggerCount);
 
-            Assert.Equal(MacroInspectorPanelViewModel.BuildCoTriggerLimitMessage(limit), scene.Panel.Message);
-            Assert.Equal(limit, Assert.Single(scene.Key.Key.Macros.OfType<Macro>()).CoTriggerCount);
+            if (accepted < scene.Panel.CoTriggers.Count)
+            {
+                Assert.Equal(MacroInspectorPanelViewModel.BuildCoTriggerLimitMessage(expected), scene.Panel.Message);
+            }
+        }
+
+        /// <summary>
+        /// <b>Preserve on load, normalize on edit.</b> Opening a key must not rewrite a co-trigger
+        /// the user only looked at — that would dirty the profile for a read — so a file's
+        /// right-hand or generic spelling survives untouched and lights the matching <em>left</em>
+        /// latch. Touching any latch is the one moment the panel rewrites the set.
+        /// </summary>
+        [Fact]
+        public void AFilesRightHandCoTrigger_SurvivesLoad_LightsTheLeftLatch_AndNormalizesOnTheFirstTouch()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            var macro = scene.CurrentMacro!;
+            var rightShift = KeyRegistry.FindByCode(MacroModifierCodes.GetKeyCode(MacroModifiers.RightShift))!;
+            var genericAlt = KeyRegistry.FindByCode(MacroModifierCodes.GetKeyCode(MacroModifiers.Alt))!;
+
+            macro.AddCoTrigger(rightShift);
+            macro.AddCoTrigger(genericAlt);
+
+            var assigned = 0;
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.Refresh();
+
+            // Lit, so the user can see the co-trigger exists...
+            Assert.True(scene.Panel.CoTriggers[0].IsOn);
+            Assert.False(scene.Panel.CoTriggers[1].IsOn);
+            Assert.True(scene.Panel.CoTriggers[2].IsOn);
+
+            // ...and untouched, and not dirty: a load is a read.
+            Assert.Equal([rightShift.Code, genericAlt.Code], macro.CoTriggers.Select(key => key.Code));
+            Assert.Equal(0, assigned);
+
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[1]);
+
+            // One touch rewrites the whole set to the left-hand spellings of the lit latches.
+            Assert.Equal(
+                [
+                    MacroModifierCodes.GetKeyCode(MacroModifiers.LeftShift),
+                    MacroModifierCodes.GetKeyCode(MacroModifiers.LeftControl),
+                    MacroModifierCodes.GetKeyCode(MacroModifiers.LeftAlt)
+                ],
+                macro.CoTriggers.Select(key => key.Code));
+            Assert.True(assigned > 0);
+        }
+
+        [Fact]
+        public void TriggerStatus_ReadsBarePressUntilACoTriggerIsSet()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildTriggerStatus(
+                    MacroInspectorPanelViewModel.BarePressStatus,
+                    MacroInspectorPanelViewModel.NoCollisionStatus),
+                scene.Panel.TriggerStatus);
+            Assert.Equal("bare press · no collision", scene.Panel.TriggerStatus);
+            Assert.False(scene.Panel.IsTriggerAdvisory);
+
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildTriggerStatus(
+                    MacroInspectorPanelViewModel.CoTriggeredStatus,
+                    MacroInspectorPanelViewModel.NoCollisionStatus),
+                scene.Panel.TriggerStatus);
+            Assert.False(scene.Panel.IsTriggerAdvisory);
+        }
+
+        /// <summary>
+        /// 06 §5's duplicate-trigger rule, named on the slot it collides with — which is the whole
+        /// reason the slot selector can drop the tab's <c>ACTIVE</c> badge: every populated slot is
+        /// live, and what tells them apart is this.
+        /// </summary>
+        [Fact]
+        public void TriggerStatus_NamesTheCollidingSlot_AndIsAnAmberAdvisory()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            // A second macro on the same key with the same (empty) co-trigger set — 06 §5 says two
+            // macros with no co-triggers at all collide.
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+            scene.Record("b");
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildTriggerStatus(
+                    MacroInspectorPanelViewModel.BarePressStatus,
+                    MacroInspectorPanelViewModel.BuildCollisionStatus(1)),
+                scene.Panel.TriggerStatus);
+            Assert.True(scene.Panel.IsTriggerAdvisory);
+
+            // Give the second one a co-trigger and the pair stops colliding.
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildTriggerStatus(
+                    MacroInspectorPanelViewModel.CoTriggeredStatus,
+                    MacroInspectorPanelViewModel.NoCollisionStatus),
+                scene.Panel.TriggerStatus);
+            Assert.False(scene.Panel.IsTriggerAdvisory);
+        }
+
+        /// <summary>
+        /// 06 §5's reserved triggers: <c>fn1s</c> and <c>keyt</c> need at least one co-trigger, so a
+        /// bare macro on either can never fire. Gen2 only, exactly as <c>KeyboardLayoutValidator</c>
+        /// gates it — the strip and the validator must not disagree about what the firmware refuses.
+        /// </summary>
+        [Theory]
+        [InlineData(KeyboardKey.Fn1ShiftKeyCode)]
+        [InlineData(KeyboardKey.KeypadToggleKeyCode)]
+        public void AReservedTrigger_WithNoCoTrigger_IsAnAmberAdvisory(int triggerCode)
+        {
+            var scene = new Scene(this, deviceId: DeviceId.Advantage360);
+
+            scene.SelectByTriggerCode(triggerCode);
+            scene.Record("a");
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildTriggerStatus(
+                    MacroInspectorPanelViewModel.BarePressStatus,
+                    MacroInspectorPanelViewModel.ReservedTriggerStatus),
+                scene.Panel.TriggerStatus);
+            Assert.True(scene.Panel.IsTriggerAdvisory);
+
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.DoesNotContain(
+                MacroInspectorPanelViewModel.ReservedTriggerStatus,
+                scene.Panel.TriggerStatus,
+                StringComparison.Ordinal);
+            Assert.False(scene.Panel.IsTriggerAdvisory);
+        }
+
+        /// <summary>
+        /// An ordinary trigger on the very same Gen2 board raises nothing, or the advisory above
+        /// would pass for the wrong reason.
+        /// </summary>
+        [Fact]
+        public void AnOrdinaryGen2Trigger_RaisesNoReservedAdvisory()
+        {
+            var scene = new Scene(this, deviceId: DeviceId.Advantage360);
+
+            scene.SelectFirstMacroKey();
+            scene.Record("a");
+
+            Assert.False(scene.Panel.IsTriggerAdvisory);
+            Assert.DoesNotContain(
+                MacroInspectorPanelViewModel.ReservedTriggerStatus,
+                scene.Panel.TriggerStatus,
+                StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// <b>Neither advisory blocks anything</b> (docs/app/keyboard-editor.md, invariant 20): the
+        /// layout carrying a collision still validates into a <em>report</em>, and every command on
+        /// the panel is still runnable while the amber is on screen.
+        /// </summary>
+        [Fact]
+        public void NeitherAdvisory_RefusesAnything()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+            scene.Record("b");
+
+            Assert.True(scene.Panel.IsTriggerAdvisory);
+
+            Assert.True(scene.Panel.RecordCommand.CanExecute(null));
+            Assert.True(scene.Panel.InsertStepCommand.CanExecute(null));
+            Assert.True(scene.Panel.ToggleCoTriggerCommand.CanExecute(scene.Panel.CoTriggers[0]));
+
+            // Reported, never refused — the same rule every limit in this model follows.
+            Assert.Contains(
+                scene.Layout.Validate(),
+                violation => violation.Kind == ModelViolationKind.MacroTriggerCollision);
         }
 
         [Fact]
@@ -935,16 +1410,16 @@ namespace KinesisEdit.Tests.ViewModels
 
             private readonly KeyboardLayerViewModel _layer;
 
-            public Scene(MacroInspectorPanelViewModelTests owner, RecentTokenStore? recentTokens = null)
+            public Scene(
+                MacroInspectorPanelViewModelTests owner,
+                RecentTokenStore? recentTokens = null,
+                DeviceId deviceId = DeviceId.FreestyleEdgeRgb)
             {
-                Device = TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb);
-                Layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+                Device = TestDevices.CreateSnapshot(deviceId);
+                Layout = KeyboardLayout.Create(deviceId);
                 Library = new MacroLibrary(Layout);
 
-                _layer = KeyboardLayerViewModel.BuildAll(
-                    Layout,
-                    Core.Geometry.Visual.VisualCatalog.FreestyleEdgeRgb,
-                    null)[0];
+                _layer = KeyboardLayerViewModel.BuildAll(Layout, ResolveVisual(deviceId, Layout), null)[0];
 
                 Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library, recentTokens);
             }
@@ -955,6 +1430,42 @@ namespace KinesisEdit.Tests.ViewModels
                       ?? throw new InvalidOperationException($"The layer has no position {keyIndex}.");
 
                 Refresh();
+            }
+
+            /// <summary>The first position of the layer that accepts a macro (05 §5.3).</summary>
+            public void SelectFirstMacroKey()
+            {
+                foreach (var key in Layout.Layers[0].Keys)
+                {
+                    if (key.CanAssignMacro)
+                    {
+                        Select(key.Index);
+
+                        return;
+                    }
+                }
+
+                throw new InvalidOperationException("The device has no position that accepts a macro.");
+            }
+
+            /// <summary>
+            /// The first position whose <b>trigger</b> key carries <paramref name="code"/> — how a
+            /// test reaches 06 §5's reserved triggers, which are identified by their original
+            /// action rather than by their position token (05 §1.3).
+            /// </summary>
+            public void SelectByTriggerCode(int code)
+            {
+                foreach (var key in Layout.Layers[0].Keys)
+                {
+                    if (key.TriggerKey.Code == code)
+                    {
+                        Select(key.Index);
+
+                        return;
+                    }
+                }
+
+                throw new InvalidOperationException($"The layer has no position triggering on {code}.");
             }
 
             public void Refresh()
@@ -1012,6 +1523,28 @@ namespace KinesisEdit.Tests.ViewModels
                 Panel.ChordPicker.Query = token;
                 Panel.ChordPicker.SelectedRow = Panel.ChordPicker.Rows.First(
                     row => ReferenceEquals(row.Definition, definition));
+            }
+
+            /// <summary>
+            /// The device's own board picture where one is authored, and a throwaway one-per-key
+            /// strip where it is not — only the Freestyle Edge RGB has a real visual today
+            /// (issues #39-#42), and every device's <see cref="MacroCapability"/> is testable now.
+            /// </summary>
+            private static KeyboardVisual ResolveVisual(DeviceId deviceId, KeyboardLayout layout)
+            {
+                if (VisualCatalog.TryGet(deviceId, out var visual))
+                {
+                    return visual;
+                }
+
+                var keys = new List<KeyVisual>(layout.Layers[0].Keys.Count);
+
+                foreach (var key in layout.Layers[0].Keys)
+                {
+                    keys.Add(new KeyVisual(key.Index, key.Index, 0));
+                }
+
+                return new KeyboardVisual(LayoutVariant.None, keys);
             }
         }
     }
