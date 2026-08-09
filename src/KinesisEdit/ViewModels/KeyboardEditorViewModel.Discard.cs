@@ -7,7 +7,7 @@ namespace KinesisEdit.ViewModels
     /// <c>Discard changes</c> — <b>throw this profile's unsaved edits away and go back to what was
     /// loaded</b> (issue #133). Split out of <see cref="KeyboardEditorViewModel"/>'s main file for
     /// the reason <c>…Profiles.cs</c>, <c>…Legend.cs</c>, <c>…Inspector.cs</c> and
-    /// <c>…MacroLibrary.cs</c> were: that file is the largest in the app and
+    /// <c>…MacroNames.cs</c> were: that file is the largest in the app and
     /// docs/guides/Coding Conventions.md forbids growing it into a god class. Everything here is the
     /// same class and runs on the same rules.
     ///

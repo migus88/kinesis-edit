@@ -4,19 +4,19 @@ using KinesisEdit.Core.Settings;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The open profile's <see cref="Core.Model.MacroLibrary"/> and everything that keeps macro
-    /// <em>names</em> alive across a load and a save (issue #93, mockup <c>2i</c>). Split out of
-    /// <see cref="KeyboardEditorViewModel"/>'s main file for the same reason
-    /// <c>KeyboardEditorViewModel.Legend.cs</c> and <c>…Inspector.cs</c> were: that file is the
-    /// largest in the app and docs/guides/Coding Conventions.md forbids growing it into a god
+    /// Everything that keeps a macro's <em>name</em> alive across a load and a save (issue #93,
+    /// mockup <c>2i</c>). Split out of <see cref="KeyboardEditorViewModel"/>'s main file for the
+    /// same reason <c>KeyboardEditorViewModel.Legend.cs</c> and <c>…Inspector.cs</c> were: that file
+    /// is the largest in the app and docs/guides/Coding Conventions.md forbids growing it into a god
     /// class. Everything here is the same class and runs on the same rules.
     ///
-    /// <para><b>There is exactly one library per open profile, and it is this one.</b> "Every macro
-    /// has a name", so a macro on two keys is one identity with two sites — and two
-    /// <c>MacroLibrary</c> instances over one <c>KeyboardLayout</c> would be two snapshots that
-    /// disagree the moment either is edited. Whoever needs it asks <see cref="MacroLibrary"/>;
-    /// nobody constructs a second. Its one production reader is the rail's Macro panel, whose name
-    /// dropdown is built from the snapshot.</para>
+    /// <para><b>A name belongs to a place, not to an identity.</b> There is no shared macro anywhere
+    /// on disk — every key's slot holds its own copy (06 §1) — so the two steps below walk the
+    /// layout's macro <em>sites</em> (<see cref="MacroSites"/>) and nothing groups them. The
+    /// app-level <c>MacroLibrary</c> that used to sit here, disambiguating same-name macros and
+    /// propagating a rename across every site of a group, was deleted with issue #141: it maintained
+    /// an identity the hardware does not have, and renaming the macro on key A must leave the
+    /// identical-looking one on key B alone.</para>
     ///
     /// <para><b>Names are not in the layout file.</b> They ride <c>settings/app_settings.txt</c> as
     /// <c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>
@@ -35,23 +35,11 @@ namespace KinesisEdit.ViewModels
     ///
     /// <para><b>Nothing here throws on a store that cannot write.</b> Demo mode and a drive with no
     /// <c>app_settings.txt</c> both discard the write; the names still live on
-    /// <see cref="Macro.Name"/> for the rest of the session, so the library and the dropdown behave
+    /// <see cref="Macro.Name"/> for the rest of the session, so the rail's name field behaves
     /// identically.</para>
     /// </summary>
     public sealed partial class KeyboardEditorViewModel
     {
-        /// <summary>
-        /// The open profile's macro library, or null while nothing is loaded. <b>Rebuilt in place</b>
-        /// — the instance survives every edit, so a consumer may hold it; its
-        /// <see cref="Core.Model.MacroLibrary.Entries"/> snapshot does not, and is re-read after
-        /// every <see cref="MacroLibraryChanged"/>.
-        /// </summary>
-        public MacroLibrary? MacroLibrary
-        {
-            get => _macroLibrary;
-            private set => SetProperty(ref _macroLibrary, value);
-        }
-
         /// <summary>
         /// The layout profile the editor has open, or <b>0</b> when there is no session at all
         /// (demo mode, and a load that failed). It is what scopes a macro name to a profile: one
@@ -68,15 +56,6 @@ namespace KinesisEdit.ViewModels
         public bool HasUnsavedMacroNames => _renamedProfiles.Count > 0;
 
         /// <summary>
-        /// Raised after <see cref="MacroLibrary"/>'s snapshot was rebuilt or replaced — a load, an
-        /// import, a reset, or any macro edit that went through the editor's refresh funnel. Core
-        /// announces nothing, so a consumer holding an entry has to re-read it here.
-        /// </summary>
-        public event EventHandler? MacroLibraryChanged;
-
-        private MacroLibrary? _macroLibrary;
-
-        /// <summary>
         /// The profile numbers carrying a rename that is not on the drive yet — added by
         /// <see cref="MarkMacroNamesDirty"/>, removed by the save that wrote them. A <b>set</b>
         /// rather than the single flag it was until issue #133: with every visited profile kept
@@ -86,62 +65,14 @@ namespace KinesisEdit.ViewModels
         private readonly HashSet<int> _renamedProfiles = [];
 
         /// <summary>
-        /// Renames every site of <paramref name="entry"/> and marks the session dirty. This is the
-        /// <b>one</b> rename path in the app. The key inspector's Macro panel deliberately does not
-        /// offer one: its name dropdown <em>picks</em> a macro, it never renames one (mockup
-        /// <c>2i</c>).
+        /// Records that a name moved <b>in the open profile</b>. Its production caller is the rail's
+        /// Macro panel, whose inline name field raises <c>NameChanged</c> for exactly this
+        /// (<c>KeyboardEditorViewModel.Inspector.cs</c>) — a name is written straight onto
+        /// <see cref="Macro.Name"/> by the field's own setter, and no session can see that happen,
+        /// because it is not in <c>layout&lt;n&gt;.txt</c>.
         /// <para>
-        /// Returns the fresh entry, because every library mutation rebuilds the snapshot and the one
-        /// that was passed in is stale afterwards. Null when there is no library, or when
-        /// <paramref name="entry"/> did not come from its current snapshot.
-        /// </para>
-        /// <para>
-        /// A blank name <b>clears</b> the stored one: the macro goes back to the name Core derives
-        /// from its content, and its settings key is removed by the next save.
-        /// </para>
-        /// </summary>
-        public MacroLibraryEntry? RenameMacro(MacroLibraryEntry entry, string? newName)
-        {
-            ArgumentNullException.ThrowIfNull(entry);
-
-            if (_macroLibrary is not { } library)
-            {
-                return null;
-            }
-
-            MacroLibraryEntry renamed;
-
-            try
-            {
-                renamed = library.Rename(entry, newName);
-            }
-            catch (ArgumentException)
-            {
-                // A stale entry — the caller is holding a snapshot from before somebody else's
-                // edit. Refusing is right: renaming whatever happens to sit in that slot now would
-                // rename a macro the user never pointed at.
-                return null;
-            }
-
-            MarkMacroNamesDirty();
-
-            // Names are not in the layout, so nothing about this moves a counter — but the rail,
-            // the legend and the dirty flag all read the library, and the funnel is the one place
-            // that pushes to all of them.
-            RefreshCounters();
-
-            return renamed;
-        }
-
-        /// <summary>
-        /// Records that a name moved <b>in the open profile</b>. Public so an edit that moves names
-        /// about without renaming anything — a delete, a duplicate; a rename goes through
-        /// <see cref="RenameMacro"/>, which already does this — can say so without reaching into
-        /// the set.
-        /// <para>
-        /// <b>It has no production caller since issue #140</b> removed the surface that offered
-        /// those two edits. It is kept, with its tests, because issue #141 is what decides the fate
-        /// of the library layer as a whole.
+        /// Public because it is the seam that says "this profile's names are out of date", which is
+        /// a fact about the editor rather than about the panel that noticed it.
         /// </para>
         /// </summary>
         public void MarkMacroNamesDirty()
@@ -174,45 +105,26 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Stamps the stored names onto a freshly parsed layout and builds the library over it.
-        /// Called from <c>Apply</c>, i.e. after a load, after an import and after a layout discard —
-        /// each of those replaces the layout wholesale, so its macros arrive unnamed exactly as a
-        /// loaded one's do.
-        /// <para>
-        /// The order is fixed: names first, library second.
-        /// <see cref="Core.Model.MacroLibrary"/> groups by name, so a name applied after the
-        /// snapshot was built would not be in it.
-        /// </para>
+        /// Stamps the stored names onto a freshly parsed layout. Called from <c>Apply</c>, i.e.
+        /// after a load, after an import and after a layout discard — each of those replaces the
+        /// layout wholesale, so its macros arrive unnamed exactly as a loaded one's do.
         /// <para>
         /// <b><paramref name="applyStoredNames"/> is false on the one path where the layout is not
         /// fresh</b>: returning to a profile the editor already has open (issue #133). Its macros
-        /// are the very objects the user renamed, and
-        /// <see cref="Core.Model.MacroLibrary.ApplyNames"/> writes <c>Macro.Name</c>
-        /// <em>unconditionally</em> — a site with no stored name is set back to null — so re-running
-        /// it there would quietly undo every rename that has not reached
-        /// <c>app_settings.txt</c> yet. The library itself is still rebuilt, because it is per
-        /// profile and it groups by the names the model carries now.
+        /// are the very objects the user renamed, and <see cref="MacroSites.ApplyNames"/> writes
+        /// <c>Macro.Name</c> <em>unconditionally</em> — a site with no stored name is reset to empty
+        /// — so re-running it there would quietly undo every rename that has not reached
+        /// <c>app_settings.txt</c> yet, with nothing on screen to say so.
         /// </para>
         /// </summary>
-        private void AttachMacroLibrary(KeyboardLayout? layout, bool applyStoredNames)
+        private void AttachMacroNames(KeyboardLayout? layout, bool applyStoredNames)
         {
-            if (layout is null)
+            if (layout is null || !applyStoredNames)
             {
-                MacroLibrary = null;
-
-                MacroLibraryChanged?.Invoke(this, EventArgs.Empty);
-
                 return;
             }
 
-            if (applyStoredNames)
-            {
-                ApplyStoredMacroNames(layout);
-            }
-
-            MacroLibrary = new MacroLibrary(layout);
-
-            MacroLibraryChanged?.Invoke(this, EventArgs.Empty);
+            ApplyStoredMacroNames(layout);
         }
 
         /// <summary>
@@ -236,30 +148,11 @@ namespace KinesisEdit.ViewModels
 
             var settings = _preferences.Current;
 
-            Core.Model.MacroLibrary.ApplyNames(
+            MacroSites.ApplyNames(
                 layout,
                 site => MacroNameKey.TryCreate(profileNumber, site.LayerIndex, site.TriggerKeyCode, site.SlotNumber, out var key)
                     ? settings.GetMacroName(key)
                     : null);
-        }
-
-        /// <summary>
-        /// Re-reads the library's snapshot after somebody wrote to the layout. Hung off
-        /// <c>RefreshCounters</c>, the one funnel every mutation path already ends in, so "every
-        /// macro edit reaches the library" is true by construction rather than by a list somebody
-        /// has to maintain — and it runs <b>before</b> the legend and the rail are refreshed,
-        /// because the rail's Macro panel reads this snapshot.
-        /// </summary>
-        private void RefreshMacroLibrary()
-        {
-            if (_macroLibrary is null)
-            {
-                return;
-            }
-
-            _macroLibrary.Refresh();
-
-            MacroLibraryChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -291,7 +184,7 @@ namespace KinesisEdit.ViewModels
             // A copy, because the clear below mutates the set this walks.
             foreach (var profileNumber in _renamedProfiles.ToArray())
             {
-                if (profileNumber < 1 || FindMacroLibraryFor(profileNumber) is not { } library)
+                if (profileNumber < 1 || FindLayoutFor(profileNumber) is not { } layout)
                 {
                     // No session to scope the names to (a load that failed, a board with no drive).
                     // The names stay on Macro.Name for the rest of the session; there is nowhere to
@@ -301,42 +194,42 @@ namespace KinesisEdit.ViewModels
                     continue;
                 }
 
-                PersistMacroNamesOf(profileNumber, library);
+                PersistMacroNamesOf(profileNumber, layout);
 
                 ClearUnsavedMacroNames(profileNumber);
             }
         }
 
         /// <summary>
-        /// The library whose names belong to <paramref name="profileNumber"/>: the editor's one
-        /// live library for the open profile, and a <b>transient</b> one over any other visited
-        /// profile's layout.
+        /// The layout whose names belong to <paramref name="profileNumber"/>: the open profile's,
+        /// and any other visited profile's straight off the session the editor is still holding
+        /// (issue #133). Null for a profile with no session at all.
         /// <para>
-        /// Building a second library is legal here and only here. Invariant 27 — one library per
-        /// profile — is about the <em>open</em> profile, whose library the rail reads; this one is
-        /// read once, inside this method, and dropped. It can be built at
-        /// all because a name lives on <c>Macro.Name</c>, i.e. on the model the other session is
-        /// holding, not on the library.
+        /// Reading another session's layout is legal because a name lives on <see cref="Macro.Name"/>
+        /// — on the model that session holds — rather than in anything this class owns, so there is
+        /// no second snapshot to fall out of step with the first.
         /// </para>
         /// </summary>
-        private MacroLibrary? FindMacroLibraryFor(int profileNumber)
+        private KeyboardLayout? FindLayoutFor(int profileNumber)
         {
             if (profileNumber == ProfileNumber)
             {
-                return _macroLibrary;
+                return Layout;
             }
 
             return _sessions.TryGetValue(profileNumber, out var session)
-                ? new MacroLibrary(session.Layout)
+                ? session.Layout
                 : null;
         }
 
-        private void PersistMacroNamesOf(int profileNumber, MacroLibrary library)
+        private void PersistMacroNamesOf(int profileNumber, KeyboardLayout layout)
         {
             var names = new List<KeyValuePair<MacroNameKey, string>>();
 
-            foreach (var stored in library.EnumerateStoredNames())
+            foreach (var stored in MacroSites.EnumerateStoredNames(layout))
             {
+                // A site the settings layer cannot name — an unbound flat-list macro has no trigger
+                // and no layer — is simply absent, exactly as it was before it was ever named.
                 if (MacroNameKey.TryCreate(
                         profileNumber,
                         stored.Key.LayerIndex,

@@ -10,8 +10,9 @@ The runtime, editable state of one device profile: `KinesisEdit.Core.Model`. Pla
 | `KeyCopyScopes` | `[Flags]` scope of `KeyboardKey.CopyFrom`: `None`/`KeyData`/`Macros`/`All` | 05 §1.3 |
 | `Macro` | ordered keystrokes + trigger metadata + co-triggers + `Name` | 05 §1.2; 06 §1, §4, §5 |
 | `Keystroke` | one key inside a macro + held modifiers + direction | 05 §1.1, §5.1, §5.2, §5.8 |
-| `MacroNaming` | what a macro name may be, when two names are one name, what an unnamed macro is called | — (app concept; name storage is 08 §3) |
-| `MacroLibrary` / `MacroLibraryEntry` / `MacroSite` | one logical macro per name, with many trigger sites. Built for the Macros tab, which [#140](https://github.com/migus88/kinesis-edit/issues/140) deleted; the key inspector's name dropdown is what still reads it, and [#141](https://github.com/migus88/kinesis-edit/issues/141) decides the rest | 06 §1; 05 §1.3 |
+| `MacroNaming` | what a macro name may be, and what an unnamed macro is called | — (app concept; name storage is 08 §3) |
+| `MacroSite` / `MacroSites` | one *place* a macro sits; the walk over every place in a layout, plus the load name-stamp and the save name-harvest built on it | 06 §1; 05 §1.3 |
+| `MacroPlacement` | putting a copy of a macro on a key, and taking one off again | 06 §1, §2.2; 05 §1.5 |
 | `KeyDirection` | `None`/`Down`/`Up` — the `{-token}`/`{+token}` prefixes | 05 §1.1, §5.8; 06 §2.2 |
 | `MacroKeystrokeRenderer` | macro → the 06 §3 line, its layer prefix, and the Adv360 length metric | 06 §3, §6 |
 | `MacroLengthMetric` | which of 06 §6's two per-macro metrics a layout is measured in, and the measurement | 06 §6; 04 §5.3 |
@@ -109,9 +110,11 @@ Clearing: `ClearRemap()`, `ClearTapAndHold()`, `ClearMultiModifiers()`, `ClearMa
 
 Token resolution falls back to the first dialect that names a key: the generic Shift/Ctrl/Alt entries exist only in the Legacy table (05 §3.5) yet appear inside Gen1 macro values (06 §7.3).
 
-## Macro names and the library — `MacroNaming`, `MacroLibrary`
+## Macro names and macro sites — `MacroNaming`, `MacroSites`, `MacroPlacement`
 
-**The decision this encodes: a name identifies one logical macro with many trigger sites.** The file has no shared macro — every key's slot holds its own copy (06 §1) and the Gen2 flat list holds one entry per trigger — so "the same macro on two keys" exists nowhere on disk. `MacroLibrary` owns that identity in the app: it groups the copies, keeps them in step, and lets a name be put on a further key. Nothing here changes what the firmware reads; the layout still carries independent copies.
+**The decision this encodes: a name belongs to a *place*, not to an identity.** The file has no shared macro — every key's slot holds its own copy (06 §1) and the Gen2 flat list holds one entry per trigger — so "the same macro on two keys" exists nowhere on disk, and two keys carrying identical content are two macros that happen to look alike. Editing one leaves the other alone; **nothing here groups them**.
+
+There *was* an app-level identity over them, `MacroLibrary`: it grouped sites by name, disambiguated same-name-different-content with a `" (2)"` suffix, propagated a rename across every site of a group, and deleted every site at once. [#141](https://github.com/migus88/kinesis-edit/issues/141) deleted it — a Core module, a load-time reconciliation pass and a rename-propagation path maintaining a fiction the hardware does not have. What the name job actually needs is a **site walk**, which is all that is left: `MacroSites` for the walk and the two name steps, `MacroPlacement` for the two writes an editor needs beyond mutating the instance it already has.
 
 ### `MacroNaming` (pure functions)
 
@@ -119,40 +122,37 @@ Token resolution falls back to the first dialect that names a key: the generic S
 |---|---|
 | `MaxNameLength` = **24** | The cap `Sanitize` enforces and the longest derived name. Chosen so `"Macro on ["` + an ≤ 8-char file token + `"]"` always fits. |
 | `Sanitize(string?)` | Trim, collapse control characters and interior whitespace runs to single spaces, bound to `MaxNameLength`. Null/blank → `""`. **A newline is stripped**, because the name is stored in a line-oriented `key=value` file (08 §1) and a second line would read back as a stray key. Idempotent. |
-| `AreSameName(a, b)` | Trimmed, case-insensitive. **This is the grouping identity.** |
-| `Disambiguate(name, ordinal)` | `"Sign-off"`, 2 → `"Sign-off (2)"`; ordinal 1 is the name itself; the stem is shortened so the result still fits `MaxNameLength`. |
 | `DeriveDisplayName(macro, layout)` | A name for an unnamed macro, **deterministic**: (1) the printable characters it types, bounded; (2) else `Macro on [token]`, naming the trigger in the layout's dialect; (3) else `UnnamedMacroName` = `"Unnamed macro"` (an unbound Gen2 macro). |
-| `DeriveTypedText(macro)` | Half (1) on its own — the typed-text preview a list shows beside a *named* macro too. |
+| `DeriveTypedText(macro)` | Half (1) on its own. `DeriveDisplayName`'s first step, exposed because a preview of what a macro *types* is worth showing beside one that already carries a name; the Macros tab searched on it until [#140](https://github.com/migus88/kinesis-edit/issues/140), and nothing in the app calls it directly today. |
 
 What counts as typed: key-ups, modifier keys, `SingleEvent` speed/delay pseudo-keys (05 §3.12) and any modified keystroke that is not merely shifted contribute nothing (Ctrl+C types no text). A shifted keystroke uses `KeyDefinition.ShiftedValue`; letters and digits spell themselves as their **file token** (`DisplayText` is the capitalised caption, which would render `hello` as `HELLO`); the eleven punctuation positions of 05 §3.2 carry a small explicit unshifted-character map, since the table spells the unshifted character only inside display captions.
 
 **A derived name is never stored.** `Macro.Name` stays empty for it, so it follows the macro's content instead of freezing, and the settings layer writes no key.
 
-### `MacroLibrary`
+**`AreSameName` and `Disambiguate` are gone with the library** (#141). Both existed only to make a name an identity — one to decide that two macros were the same one, the other to keep two same-named-but-different macros apart with a `" (2)"` suffix. With nothing grouping by name, two keys may carry the same name and it means nothing beyond two labels reading alike; **no disambiguation runs anywhere in the app**.
 
-- `new MacroLibrary(layout)`; `Layout`, `UsesFlatMacroList`, `Entries`, `Refresh()`.
-- `static EnumerateSites(layout)` → every `MacroSite` in a fixed order: layers by index → keys by index → slots 1..5, then `layout.Macros` in list order. It covers exactly the macros `EnumerateMacros()` yields, except that one instance parked at two places yields **two sites** — it really is on two positions. TKO edge zones are outside it, like every other counter.
-- `static ApplyNames(layout, Func<MacroSite, string?>)` — the load step: stamp stored names onto a freshly parsed (always unnamed) layout. Call it **before** constructing the library; grouping is by name.
-- Queries: `Find(name)` (trimmed, case-insensitive), `FindByMacro(macro)` (by reference), `CreateUniqueName(name)`, `EnumerateStoredNames()`.
-- Edits: `Rename(entry, name)`, `Propagate(entry)`, `Delete(entry)`, `AssignTo(entry, key, slot = 0)`, `Duplicate(entry)`.
+### `MacroSites`
 
-`MacroLibraryEntry` = `Name` (unique, never empty), `IsExplicitlyNamed`, `Canonical` (the first site's macro), `Sites`, `SiteCount`. `MacroSite` = `LayerIndex`, `TriggerKeyCode`, `SlotNumber` (**0** in the flat list), `Macro`, `Key` (**null** in the flat list), `IsInFlatList`.
+`MacroSite` = `LayerIndex`, `TriggerKeyCode`, `SlotNumber` (**0** in the flat list), `Macro` (reference identity — the object to edit), `Key` (**null** in the flat list), `IsInFlatList`. A site is a *location*, and nothing more.
 
-**Which store applies is read off the layout, never off a device id** — `Key is null` says "flat list", `UsesFlatMacroList` says which write path `AssignTo`/`Duplicate` take. Sites use `TriggerKey`, so `fn1s`/`keyt` keep the 05 §1.3 exception (invariant 4); a site keyed by the position would write a settings key the next load never looks up.
+- `const FlatListSlot` = **0** — the slot value of a macro in the Gen2 flat list (06 §1).
+- `const FirstEmptySlot` = **-1** — `MacroPlacement.CopyTo`'s "wherever it fits". Deliberately **not** `FlatListSlot`: one value meaning both "wherever it fits" and "the flat-list slot" leaves a caller unable to say which it meant.
+- `Enumerate(layout)` → every `MacroSite` in a fixed order: layers by index → keys by index → slots 1..5, then `layout.Macros` in list order. It covers exactly the macros `EnumerateMacros()` yields, except that one instance parked at two places yields **two sites** — it really is on two positions. There is **no `UsesFlatMacroList` branch**: an empty flat list simply contributes nothing. TKO edge zones are outside it, like every other counter.
+- `ApplyNames(layout, Func<MacroSite, string?>)` — the load step: stamp stored names onto a freshly parsed (always unnamed) layout, the lookup typically hitting `AppSettings.MacroNames` through `Settings.MacroNameKey`.
+- `EnumerateStoredNames(layout)` → one `(MacroSite, name)` pair per site whose `Macro.Name` is **non-empty** — everything the settings layer persists. Hand the whole list to `AppSettings.WithMacroNamesForProfile`, which turns everything missing from it into a removal ([settings.md](settings.md)), so a cleared name needs no separate delete.
 
-**Load-time reconciliation is deterministic and lossless.** Sites group together when their macros carry the same name (`AreSameName`), are both named or both unnamed, **and** hold equivalent content (`IsEquivalentTo`). Same name + different content is two macros, kept apart by `Disambiguate` — never merged, never dropped. Unnamed macros take their derived name and a derived collision is disambiguated the same way. A group that was *explicitly* named has its resolved name **stamped back onto every one of its macros**, so the disambiguation survives the save; a derived name is never stamped.
+**Which store applies is read off the layout, never off a device id** — `Key is null` says "flat list". Sites use `TriggerKey`, so `fn1s`/`keyt` keep the 05 §1.3 exception (invariant 4); a site keyed by the position would write a settings key the next load never looks up, and the name would round-trip to nothing, silently.
 
-Edits, and what each one costs:
+**`ApplyNames` writes every site, including the ones with no stored name.** A lookup returning null or blank *resets* that macro's name to the empty string rather than leaving it alone — which is what makes the stamp a faithful picture of the file for a layout straight off the parser, and is also the hazard: re-running it over a layout the user has been editing wipes every unsaved rename with nothing on screen to say so. A caller that keeps layouts alive across profile switches must run it only on a genuine load ([keyboard-editor.md](keyboard-editor.md), the cache-hit guard).
 
-- **`Rename`** writes every site's `Macro.Name`. Blank clears it, and the macro falls back to a derived name (its settings key is removed on the next save). Renaming onto a name another entry holds is not refused: same content → the two **merge** into one entry with both sites (which is exactly "this key runs that macro too"); different content → the rebuild disambiguates.
-- **`Propagate`** rewrites every non-canonical site from `Canonical` — keystrokes (deep-copied), speed, repeat, co-triggers and name — leaving the site's own layer/trigger/slot alone. Co-triggers travel with the content, so two sites on the *same* trigger key end up colliding and `Validate()` reports `MacroTriggerCollision`; reported, never refused.
-- **`Delete`** removes **every** site (`SetMacro(slot, null)` / `RemoveMacro`), which is why the tab must say what a macro is assigned to before it goes.
-- **`AssignTo`** copies the canonical onto another key: `slot` 1..5 must be empty, `0` = `FirstEmptySlot` takes the guarded `AssignMacro` path, and on a flat-list device the slot must be `0`. Returns **null**, never throws, when refused (restricted position, occupied slot, all five full, a key outside this layout). Device *limits* are not consulted — still `Validate()`'s job.
-- **`Duplicate`** puts an independently named copy on the canonical site's own key/layer (next free slot, or a new flat-list entry); null when there is no room. The copy is **always explicitly named**, even when the original is not — an unnamed duplicate would derive the same name from the same content and be grouped straight back into the original. It sits on the same trigger with the same co-triggers, so it is a duplicate trigger by construction and `Validate()` says so.
+**The harvest emits whatever `Macro.Name` holds**, and that is the whole rule — no grouping, no "explicitly named" flag, no suffix. It is behaviourally what the library did, because the library stamped each group's resolved name back onto every one of its macros; `Macro.Name` is simply the honest source now. Two keys carrying the same name yield **two independent pairs**, and a site whose macro is unnamed is **absent** — which is exactly what keeps a derived display name out of `app_settings.txt` and following the macro's content instead of freezing.
 
-`Entries` is a **snapshot**: every edit rebuilds it, each mutating method returns the fresh entry, and passing a stale one throws `ArgumentException`.
+### `MacroPlacement`
 
-`EnumerateStoredNames()` returns one `(MacroSite, name)` pair per site of an **explicitly named** entry only — everything the settings layer persists. Hand the whole list to `AppSettings.WithMacroNamesForProfile`, which turns everything missing from it into a removal ([settings.md](settings.md)).
+The two write paths a macro editor needs beyond editing the instance it already has. **A copy is a copy** (05 §1.5), and **refusals return rather than throw**: a restricted position, a full key, an occupied slot and a key from another layout are all states a user reaches by clicking, so they are answers (`null` / `false`). Only null arguments throw. Device *limits* (macro counts, keystroke budgets) are not consulted here either — still `Validate()`'s job.
+
+- `CopyTo(layout, source, target, slot = FirstEmptySlot)` → the **clone** it placed, or **null**. It clones the source, re-stamps the clone's `LayerIndex` and `TriggerKey` from the destination (the copy sits where it landed, not where it came from), then places it: on a flat-list layout it appends to `layout.Macros` and only `FirstEmptySlot`/`FlatListSlot` mean anything; on a slot device `FirstEmptySlot` takes the guarded `KeyboardKey.AssignMacro` path and an explicit 1..5 slot must be empty. Refused for a slot outside that range (including `FlatListSlot` on a slot device — it names no slot at all), a target that is not in this layout, a position that rejects macros (06 §2.2), an occupied slot, and every slot full.
+- `Remove(layout, key, macro, slot)` → whether anything was removed. Flat list → `layout.RemoveMacro`; otherwise slot `slot` of `key`. **It matches by reference**: the slot is cleared only when it really holds *that* instance, so a stale slot number removes nothing and returns false, and every other slot — and every other key carrying a macro that merely looks the same — is untouched. A flat-list caller may pass `key: null`.
 
 ## Validation
 
@@ -201,9 +201,9 @@ Results are deterministic: findings ordered by layer index then by first key ind
    **`MacroLengthMetric` is the one place that picks between them**: `UsesSerializedTextLength(layout)` (= `layout.UsesFlatMacroList`), `Measure(macro, layout)` and `UnitFor(layout)`. `Validate()` reports the number `Measure` returns, so a UI budget readout built on the other metric would contradict the gate that stops the save — which is exactly why the choice is not left to each caller.
 4. **Trigger identity ≠ position.** Macro lookups use `TriggerKey`, remaps use `PositionKey`; they differ wherever a position carries an explicit position token, and `fn1s`/`keyt` invert the rule back to `OriginalKey` (05 §1.3, §1.5).
 5. **Indices are dense and stable.** 0..N−1 per layer, unique, and the same physical position keeps its index — and its `PositionKey` — across every layer of a device (05 §7.4).
-6. **Copies, never shared instances.** Layer building and `CopyFrom`/`Clone` deep-copy macros; only the immutable `KeyDefinition` records are shared (05 §1.5). `MacroLibrary` does not weaken this: "one macro on two keys" is two instances kept in step by `Propagate`, never one object in two slots.
-7. **A name never changes a macro's identity as a macro.** `Macro.Name` is outside `IsEquivalentTo` (the 05 §1.2 content comparison) and outside `CollidesWith` (the 06 §5 duplicate-trigger rule). Those two answer what the *firmware* sees, and no name a user types may turn a duplicate trigger into a legal one. Grouping by name is `MacroLibrary`'s job and nothing else's.
-8. **Names live in the settings file, not the layout file.** 04 has no comment syntax and an unrecognised line is dropped on the first save, so a parsed layout is always unnamed; `MacroLibrary.ApplyNames` stamps them from `app_settings.txt` on load and `EnumerateStoredNames` collects them for the save ([settings.md](settings.md)). Never key a name by `Macro.Id` — it is a fresh `Guid` per edit and reaches no file.
+6. **Copies, never shared instances.** Layer building, `CopyFrom`/`Clone` and `MacroPlacement.CopyTo` all deep-copy macros; only the immutable `KeyDefinition` records are shared (05 §1.5). "One macro on two keys" is two independent instances that stay independent — editing either leaves the other alone, exactly as the file says (06 §1). Nothing in this module puts one object in two slots, and nothing keeps two of them in step.
+7. **A name is a label on a place, and never an identity.** `Macro.Name` is outside `IsEquivalentTo` (the 05 §1.2 content comparison) and outside `CollidesWith` (the 06 §5 duplicate-trigger rule): those two answer what the *firmware* sees, and no name a user types may turn a duplicate trigger into a legal one. Nothing groups macros by name either — two sites carrying the same name are two macros, and no code anywhere may start reading a match as sameness (that was `MacroLibrary`, deleted by #141).
+8. **Names live in the settings file, not the layout file.** 04 has no comment syntax and an unrecognised line is dropped on the first save, so a parsed layout is always unnamed; `MacroSites.ApplyNames` stamps them from `app_settings.txt` on load and `MacroSites.EnumerateStoredNames` collects them for the save ([settings.md](settings.md)). Never key a name by `Macro.Id` — it is a fresh `Guid` per edit and reaches no file. And never let a **derived** display name reach `Macro.Name`: the harvest emits every non-empty one, so a derived name written into the model would be persisted as if the user had typed it and would then freeze against the content it was derived from.
 
 ## Deliberately not here
 

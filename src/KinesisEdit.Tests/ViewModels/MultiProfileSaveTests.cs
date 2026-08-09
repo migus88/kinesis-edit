@@ -501,8 +501,8 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Records a macro on the open profile's digit-1 position and renames it through the
-        /// editor's one rename path.
+        /// Records a macro on the open profile's digit-1 position and renames it through the rail's
+        /// inline name field — the app's one rename path.
         /// </summary>
         private void RenameTheFirstMacro(KeyboardEditorViewModel editor, string name)
         {
@@ -526,7 +526,10 @@ namespace KinesisEdit.Tests.ViewModels
 
             editor.Inspector.Deactivate();
 
-            Assert.NotNull(editor.RenameMacro(editor.MacroLibrary!.Entries[0], name));
+            // Through the panel's inline name field: the app's one rename path since issue #141.
+            panel.MacroName = name;
+
+            Assert.True(editor.HasUnsavedMacroNames);
         }
 
         private async Task<KeyboardEditorViewModel> CreateLoadedEditorAsync()

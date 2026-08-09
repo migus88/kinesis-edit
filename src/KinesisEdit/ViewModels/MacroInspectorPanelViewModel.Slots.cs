@@ -66,6 +66,16 @@ namespace KinesisEdit.ViewModels
             set => SelectSlot(value);
         }
 
+        /// <summary>
+        /// The same answer as a bare number, and what the <b>editor</b> reads when it arms a macro
+        /// copy: which slot of the selected position the panel is editing, or
+        /// <see cref="MacroSites.FlatListSlot"/> on a board that keeps its macros in one per-layout
+        /// list (06 §1) and has no slots to name. A caller outside this panel wants the slot, not
+        /// the dropdown row that carries it — and would otherwise have to spell the flat-list
+        /// fallback itself, in a second place, from a null.
+        /// </summary>
+        public int SelectedSlotNumber => _selectedSlot?.Slot ?? MacroSites.FlatListSlot;
+
         private IReadOnlyList<MacroSlotOption> _slotOptions = [];
         private MacroSlotOption? _selectedSlot;
 
@@ -82,6 +92,19 @@ namespace KinesisEdit.ViewModels
         private void ResetSlotChoice()
         {
             _hasChosenSlot = false;
+        }
+
+        /// <summary>
+        /// Pins the panel to the slot it is on without the user having touched the dropdown. One
+        /// caller: <c>DeleteMacro</c>. Emptying a slot is as clear a statement about which slot is
+        /// meant as picking it from the list, and without this the fallback in
+        /// <see cref="ReadMacro"/> would answer the delete by opening some <em>other</em> populated
+        /// slot of the same key — so the panel would jump to a macro the user did not ask for and
+        /// the deletion would leave nothing on screen to show for itself.
+        /// </summary>
+        private void ClaimSlotChoice()
+        {
+            _hasChosenSlot = true;
         }
 
         /// <summary>
@@ -161,6 +184,7 @@ namespace KinesisEdit.ViewModels
             _selectedSlot = option;
 
             OnPropertyChanged(nameof(SelectedSlot));
+            OnPropertyChanged(nameof(SelectedSlotNumber));
         }
 
         /// <summary>

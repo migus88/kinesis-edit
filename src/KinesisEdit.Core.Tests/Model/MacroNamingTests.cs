@@ -6,8 +6,8 @@ namespace KinesisEdit.Core.Tests.Model
 {
     /// <summary>
     /// The naming rules of <see cref="MacroNaming"/>: what a stored name may look like (it rides a
-    /// line-oriented settings file, so it is one trimmed, bounded line), when two names are the
-    /// same name, and what an unnamed macro is called.
+    /// line-oriented settings file, so it is one trimmed, bounded line) and what an unnamed macro
+    /// is called.
     /// </summary>
     public class MacroNamingTests
     {
@@ -54,50 +54,6 @@ namespace KinesisEdit.Core.Tests.Model
             var once = MacroNaming.Sanitize("  Sign-off\nblock  " + new string('y', 40));
 
             Assert.Equal(once, MacroNaming.Sanitize(once));
-        }
-
-        [Theory]
-        [InlineData("Sign-off", "sign-off", true)]
-        [InlineData("Sign-off", "  SIGN-OFF  ", true)]
-        [InlineData("Sign-off", "Sign off", false)]
-        [InlineData(null, "", true)]
-        [InlineData(null, "  ", true)]
-        [InlineData("", "Sign-off", false)]
-        public void AreSameName_ComparesTrimmedAndCaseInsensitively(string? a, string? b, bool expected)
-        {
-            Assert.Equal(expected, MacroNaming.AreSameName(a, b));
-        }
-
-        [Theory]
-        [InlineData("Sign-off", 1, "Sign-off")]
-        [InlineData("Sign-off", 2, "Sign-off (2)")]
-        [InlineData("Sign-off", 11, "Sign-off (11)")]
-        public void Disambiguate_AppendsTheOrdinalFromTwoOnwards(string name, int ordinal, string expected)
-        {
-            Assert.Equal(expected, MacroNaming.Disambiguate(name, ordinal));
-        }
-
-        [Fact]
-        public void Disambiguate_WithAMaximumLengthName_StaysWithinTheBound()
-        {
-            var name = new string('x', MacroNaming.MaxNameLength);
-
-            var disambiguated = MacroNaming.Disambiguate(name, 2);
-
-            Assert.True(disambiguated.Length <= MacroNaming.MaxNameLength);
-            Assert.EndsWith(" (2)", disambiguated);
-        }
-
-        [Fact]
-        public void Disambiguate_WithABlankName_FallsBackToTheUnnamedName()
-        {
-            Assert.Equal(MacroNaming.UnnamedMacroName, MacroNaming.Disambiguate("  ", 1));
-        }
-
-        [Fact]
-        public void Disambiguate_WithOrdinalBelowOne_Throws()
-        {
-            Assert.Throws<ArgumentOutOfRangeException>(() => MacroNaming.Disambiguate("Sign-off", 0));
         }
 
         [Fact]

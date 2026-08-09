@@ -61,6 +61,7 @@ namespace KinesisEdit.ViewModels
         private EventHandler _remapAssignedHandler = null!;
         private EventHandler _tapAndHoldAssignedHandler = null!;
         private EventHandler _macroInspectorAssignedHandler = null!;
+        private EventHandler _macroInspectorNameChangedHandler = null!;
 
         /// <summary>
         /// Whether the capture service is running <b>because a rail panel asked for it</b>. It is the
@@ -193,9 +194,14 @@ namespace KinesisEdit.ViewModels
                 _urlLauncher,
                 _recentTokens);
 
-            // The Macro panel reaches the editor's ONE MacroLibrary through a function rather than a
-            // stored instance: the library arrives with the profile and is replaced by a load or an
-            // import, and two libraries over one layout would be two sources of truth.
+            // The Macro panel's footer runs two of this editor's commands — the armed macro copy and
+            // its cancel (KeyboardEditorViewModel.Legend.cs) — injected exactly as the rail's own
+            // footer takes CopyKeyCommand/CancelCopyKeyCommand. The panel neither owns nor duplicates
+            // the armed state: there is one CopySource, one prompt and one Escape route.
+            //
+            // It no longer resolves a MacroLibrary (issue #141): the library was an app-level
+            // identity over macros the hardware keeps as independent copies, and the panel's name
+            // dropdown that read it is an inline field over Macro.Name now.
             //
             // It no longer takes the session's recent-token store (issue #139): #128's chord composer
             // hosted a fourth picker over it, and the composer that replaced it sets a step's key from
@@ -203,15 +209,18 @@ namespace KinesisEdit.ViewModels
             _macroInspectorPanel = new MacroInspectorPanelViewModel(
                 Device,
                 _urlLauncher,
-                () => MacroLibrary);
+                CopyMacroCommand,
+                CancelCopyKeyCommand);
 
             _remapAssignedHandler = (_, _) => RefreshCounters();
             _tapAndHoldAssignedHandler = (_, _) => OnTapAndHoldAssigned();
             _macroInspectorAssignedHandler = (_, _) => OnMacroInspectorAssigned();
+            _macroInspectorNameChangedHandler = (_, _) => OnMacroNameChanged();
 
             _remapPanel.Assigned += _remapAssignedHandler;
             _tapAndHoldPanel.Assigned += _tapAndHoldAssignedHandler;
             _macroInspectorPanel.Assigned += _macroInspectorAssignedHandler;
+            _macroInspectorPanel.NameChanged += _macroInspectorNameChangedHandler;
 
             var inspector = new KeyInspectorViewModel(
                 ResetKeyCommand,
@@ -342,11 +351,38 @@ namespace KinesisEdit.ViewModels
         /// The rail's Macro panel wrote to the profile's macros. Same shape as
         /// <see cref="OnTapAndHoldAssigned"/>, and required for the same reason: Core announces
         /// nothing, so the cap is re-read by hand (its macro dot) and then the funnel rebuilds the
-        /// counters, the library, the advisories, the legend and the dirty flag.
+        /// counters, the advisories, the legend and the dirty flag.
+        /// <para>
+        /// It ends in <see cref="NotifyCommands"/> as well, because a macro that has just been
+        /// created or deleted changes the answer to "is there a macro to copy" —
+        /// <c>CopyMacroCommand</c>'s predicate, which nothing else re-asks after a model write.
+        /// </para>
         /// </summary>
         private void OnMacroInspectorAssigned()
         {
             SelectedKey?.RefreshFromModel();
+
+            RefreshCounters();
+
+            NotifyCommands();
+        }
+
+        /// <summary>
+        /// The rail's Macro panel renamed the open macro. <b>A different bit from
+        /// <see cref="OnMacroInspectorAssigned"/></b>, which is why the panel raises a second event:
+        /// a name is not in <c>layout&lt;n&gt;.txt</c> at all, so no session can see it move and
+        /// only the per-profile rename mark makes it unsaved work
+        /// (<c>KeyboardEditorViewModel.MacroNames.cs</c>).
+        /// <para>
+        /// The funnel runs anyway. Nothing about a name moves a counter, but the mark is folded into
+        /// <c>IsDirty</c> by <c>RefreshDirtyState</c>, which is the funnel's own tail — and the
+        /// legend and the rail are refreshed from the same place, so one call keeps every reader of
+        /// the name honest instead of a list somebody has to maintain.
+        /// </para>
+        /// </summary>
+        private void OnMacroNameChanged()
+        {
+            MarkMacroNamesDirty();
 
             RefreshCounters();
         }
@@ -407,6 +443,7 @@ namespace KinesisEdit.ViewModels
             _remapPanel.Assigned -= _remapAssignedHandler;
             _tapAndHoldPanel.Assigned -= _tapAndHoldAssignedHandler;
             _macroInspectorPanel.Assigned -= _macroInspectorAssignedHandler;
+            _macroInspectorPanel.NameChanged -= _macroInspectorNameChangedHandler;
 
             // Belt to that brace: a panel that never announced itself cannot leave a claim behind.
             if (_isInspectorCapturing)

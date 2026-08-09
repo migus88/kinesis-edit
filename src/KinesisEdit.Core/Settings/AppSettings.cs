@@ -226,7 +226,7 @@ namespace KinesisEdit.Core.Settings
         /// device file holds nine profiles' names and saving one must never delete another's.
         /// <para>
         /// Hand it the complete current picture of the profile —
-        /// <c>MacroLibrary.EnumerateStoredNames()</c> mapped through
+        /// <c>MacroSites.EnumerateStoredNames(layout)</c> mapped through
         /// <see cref="MacroNameKey.TryCreate"/> — and renames, deletions and unassignments all
         /// resolve by themselves: whatever is gone becomes a removal.
         /// </para>

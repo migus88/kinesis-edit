@@ -40,14 +40,16 @@ namespace KinesisEdit.Core.Model
         /// in this app's own <c>settings/app_settings.txt</c>
         /// (<see cref="Settings.MacroNameKey"/>). A freshly parsed layout therefore always has
         /// empty names until that file is applied over it
-        /// (<see cref="MacroLibrary.ApplyNames"/>).
+        /// (<see cref="MacroSites.ApplyNames"/>), and only a non-empty name is harvested back out
+        /// (<see cref="MacroSites.EnumerateStoredNames"/>).
         /// </para>
         /// <para>
         /// <b>Naming never changes a macro's identity as a macro.</b> <see cref="IsEquivalentTo"/>
         /// (the §1.2 content comparison) and <see cref="CollidesWith"/> (the 06 §5 duplicate-trigger
         /// rule) deliberately ignore this property: those two answer content and trigger questions
         /// that decide what the firmware does, and a naming feature must never be able to turn a
-        /// collision into a non-collision. Grouping *by name* is <see cref="MacroLibrary"/>'s job.
+        /// collision into a non-collision. A name is a label on one place, not a link between two:
+        /// two keys carrying the same name carry two independent macros (06 §1).
         /// </para>
         /// </summary>
         public string Name

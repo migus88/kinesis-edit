@@ -417,9 +417,8 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(_profiles.SessionToReturn.Layout, editor.Layout);
             Assert.Equal(1, editor.ModifiedKeyCount);
 
-            // The picture, the macro library and the selection all come from the new model.
+            // The picture and the selection both come from the new model.
             Assert.Same(editor.Layout!.Layers[0].Keys[0], editor.Layers[0].Keys[0].Key);
-            Assert.Same(editor.Layout, editor.MacroLibrary!.Layout);
             Assert.Null(editor.SelectedKey);
 
             // ...and the line the parser could not apply is shown, not dropped (04 §5).

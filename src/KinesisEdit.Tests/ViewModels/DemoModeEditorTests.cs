@@ -1,6 +1,7 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Lighting;
+using KinesisEdit.Core.Model;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
@@ -68,7 +69,10 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(editor.BoardLegend.RemappedCount > 0);
             Assert.True(editor.BoardLegend.MacroCount > 0);
             Assert.Contains(editor.Layers[0].Keys, key => key.IsMacro);
-            Assert.NotEmpty(editor.MacroLibrary!.Entries);
+
+            // ...and the fixture's macros really are sitting on places the name walk can see, which
+            // is what a stored name is keyed by (issue #141).
+            Assert.NotEmpty(MacroSites.Enumerate(editor.Layout!));
         }
 
         [Fact]

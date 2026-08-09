@@ -210,12 +210,15 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
+            // Named by its class rather than by being the panel's only one: since issue #141 the
+            // name field is a second real TextBox here, and it stands the recording down for the
+            // same reason — this case is about the millisecond count specifically.
             var field = view.GetVisualDescendants()
                 .OfType<MacroInspectorPanelView>()
                 .Single()
                 .GetVisualDescendants()
                 .OfType<TextBox>()
-                .Single(box => box.IsEffectivelyVisible);
+                .Single(box => box.IsEffectivelyVisible && box.Classes.Contains("monoValue"));
 
             Assert.Contains("monoValue", field.Classes);
 
