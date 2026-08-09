@@ -1126,19 +1126,18 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            var provisional = Assert.Single(view.GetVisualDescendants().OfType<WrapPanel>());
-            var captions = provisional.Children.OfType<Button>().Select(button => button.Content as string).ToArray();
+            var provisional = ActionRowOf(view);
 
             Assert.Equal(
                 new[]
                 {
                     "Reset Layout",
-                    KeyboardEditorViewModel.DiscardChangesCaption,
                     "Special Action",
+                    KeyboardEditorViewModel.DiscardChangesCaption,
                     "Export",
                     "Import"
                 },
-                captions);
+                CaptionsOf(provisional));
 
             // The new one is bound to the editor's own command, and to nothing else: the button is
             // the only surface `Discard changes` has, so a caption with no command behind it would
@@ -1157,6 +1156,72 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Same(editor.ResetLayerCommand, moved.Command);
             Assert.Same(editor.ResetKeyCommand, editor.Inspector.ResetKeyCommand);
+        }
+
+        /// <summary>
+        /// Every button in the action row belongs to the tab it is shown on (issue #135). The row
+        /// used to draw all five everywhere and let <c>CanExecute</c> sort it out, which put
+        /// <c>Reset Layout</c> on the Lighting tab and <c>Special Action</c> on Settings — actions
+        /// that read as if they were about the screen in front of the user.
+        /// <para>
+        /// <b><c>Special Action</c> is a Layout button</b>, not a Macros one: it inserts into the
+        /// macro the KEY INSPECTOR's Macro panel is editing, and that rail is on Keys. The Macros
+        /// tab is a library. <b><c>Export</c> and <c>Import</c> stay everywhere</b>, deliberately —
+        /// they are profile-scoped file actions that no single tab owns, and every tab is a view of
+        /// the one profile.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData(EditorTab.Keys, new[] { "Reset Layout", "Special Action", "Discard changes", "Export", "Import" })]
+        [InlineData(EditorTab.Macros, new[] { "Discard changes", "Export", "Import" })]
+        [InlineData(EditorTab.Lighting, new[] { "Discard changes", "Export", "Import" })]
+        [InlineData(EditorTab.Settings, new[] { "Export", "Import" })]
+        public async Task TheActionRow_OnEachTab_HoldsOnlyThatTabsActions(EditorTab tab, string[] expected)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            editor.SelectedTab = tab;
+
+            host.Capture();
+
+            var provisional = ActionRowOf(view);
+
+            Assert.Equal(expected, CaptionsOf(provisional));
+
+            // The caption asserted above is the literal the view carries, so the one that is also a
+            // view-model const is pinned against it here rather than duplicated in the data rows.
+            Assert.Equal("Discard changes", KeyboardEditorViewModel.DiscardChangesCaption);
+        }
+
+        /// <summary>
+        /// The editor's action row, <b>by name</b>. It is no longer the only <see cref="WrapPanel"/>
+        /// in the tree — the Lighting tab's zone chips and the Settings tab each bring one — so the
+        /// old "the single WrapPanel" lookup found two the moment the row became per-tab.
+        /// </summary>
+        private static WrapPanel ActionRowOf(Control view)
+        {
+            return Assert.Single(
+                view.GetVisualDescendants().OfType<WrapPanel>(),
+                panel => panel.Name == "ActionRow");
+        }
+
+        /// <summary>
+        /// The captions of the buttons a panel is actually <b>showing</b>. Visibility is the point
+        /// since issue #135 — an action row scoped to its tab is one whose hidden buttons are not
+        /// in this list.
+        /// </summary>
+        private static string[] CaptionsOf(Panel panel)
+        {
+            return panel.Children
+                .OfType<Button>()
+                .Where(button => button.IsVisible)
+                .Select(button => (button.Content as string)!)
+                .ToArray();
         }
 
         [AvaloniaTheory]

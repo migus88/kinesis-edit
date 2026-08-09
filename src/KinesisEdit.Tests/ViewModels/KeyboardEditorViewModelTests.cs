@@ -1433,10 +1433,55 @@ namespace KinesisEdit.Tests.ViewModels
             var request = Assert.Single(_notifications.MessageBoxes);
 
             Assert.Equal(KeyboardEditorViewModel.ResetLayoutTitle, request.Title);
-            Assert.Equal(KeyboardEditorViewModel.ResetLayoutConfirmation, request.Message);
+            Assert.Equal(
+                KeyboardEditorViewModel.BuildResetLayoutConfirmation(editor.ProfileCaption),
+                request.Message);
             Assert.Equal(NotificationKeys.ResetLayer, request.SuppressionKey);
             Assert.NotEqual(KeyboardEditorViewModel.ResetLayerConfirmation, request.Message);
             Assert.Equal(0, editor.ModifiedKeyCount);
+        }
+
+        /// <summary>
+        /// The prompt names the profile it is about to clear, and says the others are safe (issue
+        /// #135). The command always cleared only the open profile; the old wording — "every layer
+        /// of this profile", affirmed by a button reading "Clear all layers" — was read as every
+        /// profile, which since #133 really are all open at once.
+        /// </summary>
+        [Fact]
+        public async Task ResetLayoutCommand_NamesTheProfileItClears_AndSaysTheOthersAreSafe()
+        {
+            var editor = await CreateLoadedEditorAsync();
+
+            ConfirmTheNextReset();
+
+            editor.ResetLayoutCommand.Execute(null);
+
+            var request = Assert.Single(_notifications.MessageBoxes);
+
+            Assert.Equal("Profile 1", editor.ProfileCaption);
+            Assert.Contains("Profile 1", request.Message, StringComparison.Ordinal);
+            Assert.Contains("No other profile is touched", request.Message, StringComparison.Ordinal);
+            Assert.Equal("Clear Profile 1", request.YesCaption);
+            Assert.DoesNotContain(
+                KeyboardEditorViewModel.ResetLayoutFallbackScope,
+                request.Message,
+                StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Demo mode reads no profile, so there is no number to name and the prompt says
+        /// "this profile" instead. The sentence and the button must name the same scope.
+        /// </summary>
+        [Fact]
+        public void ResetLayoutStrings_WithNoProfileToName_FallBackToThisProfile()
+        {
+            Assert.Contains(
+                KeyboardEditorViewModel.ResetLayoutFallbackScope,
+                KeyboardEditorViewModel.BuildResetLayoutConfirmation(string.Empty),
+                StringComparison.Ordinal);
+            Assert.Equal(
+                "Clear " + KeyboardEditorViewModel.ResetLayoutFallbackScope,
+                KeyboardEditorViewModel.BuildResetLayoutConfirmCaption(string.Empty));
         }
 
         [Fact]

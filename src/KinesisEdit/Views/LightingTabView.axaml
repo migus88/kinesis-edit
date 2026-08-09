@@ -131,13 +131,22 @@
            statement ABOUT the board, so it is the board's own width and its ends line up with the
            board's ends.
 
-           IT IS ON SCREEN WHATEVER THE MODE IS, and 2f is the proof: the board it draws this row on
-           is running WAVE, which ignores paint. The painted colours belong to the layer rather than
-           to the effect over them — "the colors are still on file" — and the 40% paint layer exists
-           precisely so they can be seen and edited under a mode that will not use them. A row that
-           came and went with the mode would take the controls off the one screen the design chose
-           to illustrate them on. Whether this board can paint at all is settled by the tab existing
-           (LightingTabViewModel.IsSupported); the mode must not answer it twice.
+           IT IS ON SCREEN WHATEVER THE MODE IS, AND INERT IN MOST OF THEM (issue #135). The row
+           stays — mockup 2f draws it on a board running WAVE, and a row that came and went with the
+           mode would take the controls off the one screen the design chose to illustrate them on —
+           but its two buttons are DISABLED wherever the mode has no per-key colour, which is every
+           mode but Freestyle, Breathe and Frozen Wave, and clicking a cap there does nothing.
+
+           THAT REVERSES 2f's OWN READING, deliberately. The painted colours do belong to the layer
+           rather than to the effect over them — "the colors are still on file" — and the 40% paint
+           layer still shows them under a mode that will not use them. What changed is whether they
+           can be EDITED there: the firmware reads no per-key colour line in Wave (§2.2 writes
+           none), so offering a selection was offering a write the board would never honour. The
+           caption beside the buttons still reports the selection, which is empty in those modes.
+
+           Whether this board can paint AT ALL is still settled by the tab existing
+           (LightingTabViewModel.IsSupported). The mode answers a different question — whether the
+           paint is editable right now — and that is LightingTabViewModel.CanSelectKeys.
 
            `Clear` EMPTIES THE SELECTION (issue #131) — it is the other half of `Select all`, which
            is the button it stands beside. It used to paint the selected keys black, and that read
@@ -199,7 +208,14 @@
 
            The `zoneButton` bridge (Styles/Buttons.axaml -> the `ToggleSegment` control theme) stays:
            what is used of it is the neutral chip face and its hover/press ramp, and the theme's
-           `.selected` state is simply never entered here. -->
+           `.selected` state is simply never entered here.
+
+           THE CHIPS ARE DISABLED IN A MODE WITH NO PER-KEY COLOUR (issue #135), through
+           SelectZoneCommand's own CanExecute — a zone press is a selection, so it is gated with the
+           rest of them. `Reset All` IS NOT, deliberately: it erases the per-key colours the layer
+           carries on file, which exist and are worth erasing whatever effect is running over them.
+           It is a file action, not a selection one. -->
+
 
       <Grid Grid.Row="3"
             ColumnDefinitions="*,Auto"

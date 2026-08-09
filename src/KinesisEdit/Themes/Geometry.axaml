@@ -105,14 +105,19 @@
        as absurd on a large display: at 2560 wide the Freestyle Edge RGB's 695x196 board was drawn
        2238x631, with 40px legends on caps the size of a fist.
 
-       1.5 is the largest step that still reads as a keyboard rather than as a wall of caps, and it
-       is reached at ~1050px of board width - a little above the 1000px default window, so the
-       default and the 720x480 floor are both below the cap and unchanged by it. Beyond it the
-       board stays centred and the extra space becomes canvas.
+       1.5 was that judgement's answer and it was too tight (issue #135): on a large display the
+       board stopped growing with most of the window still empty, and users asked for the room. The
+       cap is 3.0 - twice what #123 set - which is reached at ~2100px of board width, i.e. only on a
+       genuinely large window. Below it nothing moved: the cap is not a size, it is where growth
+       stops, and the 1000px default window and the 720x480 floor both sit well under it.
+
+       IT IS STILL A CAP RATHER THAN "no limit". The 2560-wide case above is what it exists for -
+       past some point a bigger picture stops being easier to read - and 3.0 moves that point out
+       rather than removing it. Beyond it the board stays centred and the extra space becomes canvas.
 
        BoardScaleHost itself defaults to no cap: the policy is this token plus the one call site in
        Controls/KeyboardView.axaml, so a host used anywhere else is unaffected. -->
-  <x:Double x:Key="BoardScaleMax">1.5</x:Double>
+  <x:Double x:Key="BoardScaleMax">3.0</x:Double>
 
   <!-- And how far it may be shrunk. Fitting the board to its slot (issue #123) makes every row that
        shares the column a claim on the picture, and on the Lighting tab those rows can win: at the

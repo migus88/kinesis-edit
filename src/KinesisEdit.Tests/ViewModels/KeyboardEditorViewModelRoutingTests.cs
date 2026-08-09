@@ -125,7 +125,7 @@ namespace KinesisEdit.Tests.ViewModels
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
             Assert.True(key.IsModified);
-            Assert.Equal("Remap (1)", editor.RemapCounterCaption);
+            Assert.Equal(1, editor.ModifiedKeyCount);
             Assert.Equal(0, editor.MacroCount);
         }
 
@@ -229,7 +229,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.True(key.IsModified);
             Assert.Equal(TestLayouts.Gen1Key("esc"), key.Key.ModifiedOrOriginalKey);
-            Assert.Equal("Remap (1)", editor.RemapCounterCaption);
+            Assert.Equal(1, editor.ModifiedKeyCount);
             Assert.False(editor.IsListening);
             Assert.False(editor.CancelRemapCommand.CanExecute(null));
         }
@@ -541,18 +541,20 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(editor.BeginRemapCommand.CanExecute(null));
         }
 
+        /// <summary>
+        /// The count itself, which outlived the "Macro (n)" toolbar caption issue #135 removed: it
+        /// is what <c>RefreshCounters()</c> moves, and that funnel ends in <c>RefreshDirtyState()</c>.
+        /// </summary>
         [Fact]
-        public async Task MacroCounterCaption_FollowsTheProfilesMacroCount()
+        public async Task MacroCount_FollowsTheProfilesMacros()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            Assert.Equal("Macro (0)", editor.MacroCounterCaption);
+            Assert.Equal(0, editor.MacroCount);
 
             RecordAMacro(editor, "a");
 
             Assert.Equal(1, editor.MacroCount);
-            Assert.Equal("Macro (1)", editor.MacroCounterCaption);
-            Assert.Equal("Macro (7)", KeyboardEditorViewModel.BuildMacroCounterCaption(7));
         }
 
         [Fact]
@@ -571,7 +573,6 @@ namespace KinesisEdit.Tests.ViewModels
             editor.ResetLayoutCommand.Execute(null);
 
             Assert.Equal(0, editor.MacroCount);
-            Assert.Equal("Macro (0)", editor.MacroCounterCaption);
             Assert.Empty(editor.MacroLibraryPanel.Rows);
         }
 

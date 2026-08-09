@@ -208,15 +208,15 @@ namespace KinesisEdit.Tests.ViewModels
                 Assert.NotEmpty(tab.DirectionHint);
             }
 
-            // The picker is on screen in every mode whose paint can reach the file, because a
-            // colour paints the layer's own keys whatever effect is running over them — so its
-            // line has two forms and, wherever it is drawn, always one of them.
-            if (tab.Parameters.AcceptsPaint)
+            // The picker is on screen in every mode that has a colour of some kind (issue #135
+            // moved that gate off AcceptsPaint), and its line has two forms: it names the board
+            // only where the board can actually be painted.
+            if (tab.Parameters.AcceptsAnyColor)
             {
                 Assert.Equal(
-                    tab.Parameters.AcceptsAnyColor
+                    tab.CanSelectKeys
                         ? LightingHintCatalog.PickerWithSwatchHint
-                        : LightingHintCatalog.PickerPaintOnlyHint,
+                        : LightingHintCatalog.PickerSwatchOnlyHint,
                     tab.PickerHint);
             }
         }
@@ -286,9 +286,14 @@ namespace KinesisEdit.Tests.ViewModels
             // panel routes through Core rather than that Core is right about itself.
             var tab = CreateAttachedTab();
 
-            // One key selected, because Apply's own gate is the selection and the point below is
-            // that the MODE does not gate it. The selection survives a mode change on purpose.
+            // One key selected to start from, taken in a per-key mode — which since issue #135 is
+            // the only kind of mode a selection can be taken in. What the assertions below turn on
+            // is whether the switch to `mode` keeps that selection or drops it, and the answer is
+            // exactly HasPerKeyColors.
+            SelectMode(tab, LightingMode.Freestyle);
             tab.SelectKeyCommand.Execute(tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(1, tab.Selection.Count);
 
             SelectMode(tab, mode);
 
@@ -305,12 +310,21 @@ namespace KinesisEdit.Tests.ViewModels
             // mode here can hold paint whether or not it has a swatch.
             Assert.Equal(acceptsPaint, tab.Parameters.AcceptsPaint);
 
-            // ...and the paint controls are NOT among the things the mode decides: the colours they
-            // manage are the layer's, so every one of them is reachable in every mode.
-            Assert.True(tab.SelectZoneCommand.CanExecute(tab.Zones[0]));
+            // ...and the selection controls ARE among the things the mode decides (issue #135).
+            // A mode whose file body is not per-key colour lines has no selection to offer, so the
+            // one taken above is gone and every command that grows or holds one is unavailable.
+            // This reversed the old rule, which was that none of them was gated on the mode.
+            Assert.Equal(hasPerKeyColors, tab.CanSelectKeys);
+            Assert.Equal(hasPerKeyColors, tab.Selection.HasSelection);
+            Assert.Equal(hasPerKeyColors, tab.SelectZoneCommand.CanExecute(tab.Zones[0]));
+            Assert.Equal(hasPerKeyColors, tab.SelectAllKeysCommand.CanExecute(null));
+            Assert.Equal(hasPerKeyColors, tab.PaintSelectionCommand.CanExecute(null));
+            Assert.Equal(hasPerKeyColors, tab.ClearSelectionCommand.CanExecute(null));
+
+            // `Reset All` is deliberately NOT gated with them: it erases the per-key colours the
+            // layer carries on file, which exist and are worth erasing whatever effect is running
+            // over them. It is a file action, not a selection one.
             Assert.True(tab.ResetAllCommand.CanExecute(null));
-            Assert.True(tab.PaintSelectionCommand.CanExecute(null));
-            Assert.True(tab.ClearSelectionCommand.CanExecute(null));
         }
 
         [AvaloniaFact]
@@ -597,6 +611,10 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            // A per-key mode, because that is the only kind a selection exists in (issue #135).
+            SelectMode(tab, LightingMode.Freestyle);
+
             tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
 
             Assert.Equal(1, tab.Selection.Count);
@@ -615,6 +633,9 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            SelectMode(tab, LightingMode.Freestyle);
+
             tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
 
             Assert.Equal(1, tab.Selection.Count);
@@ -631,6 +652,8 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            SelectMode(tab, LightingMode.Freestyle);
 
             var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
 
@@ -660,6 +683,8 @@ namespace KinesisEdit.Tests.ViewModels
 
             tab.Attach(new LightingModel(), boards);
 
+            SelectMode(tab, LightingMode.Freestyle);
+
             tab.SelectKeyCommand.Execute(boards[0].Keys[3]);
             tab.ExtendSelectionCommand.Execute(boards[0].Keys[6]);
 
@@ -683,6 +708,9 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            SelectMode(tab, LightingMode.Freestyle);
+
             tab.ExtendSelectionCommand.Execute(boards[0].Keys[5]);
 
             Assert.Equal(1, tab.Selection.Count);
@@ -700,6 +728,8 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab();
 
             tab.Attach(new LightingModel(), boards);
+
+            SelectMode(tab, LightingMode.Freestyle);
 
             Assert.False(tab.ClearSelectionCommand.CanExecute(null));
 
@@ -940,69 +970,148 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, tab.Selection.Count);
         }
 
+        /// <summary>
+        /// A layer whose <b>stored</b> mode has no per-key colour opens locked (issue #135). The
+        /// gate lives in <c>RefreshParameters</c> rather than in <c>SelectMode</c> precisely for
+        /// this: <c>Attach</c> and a layer switch both reach it, so a profile read off the drive in
+        /// Wave is unselectable from its first frame without anything having to pick a mode first.
+        /// </summary>
         [AvaloniaFact]
-        public void Selection_SurvivesAModeChangeAndIsEmptiedByALayerChange()
+        public void ALayerStoredInAModeWithNoPerKeyColour_OpensLocked()
         {
-            var tab = CreateAttachedTab();
+            var lighting = new LightingModel();
+
+            lighting.TopLayer.Mode = LightingMode.Wave;
+            lighting.FnLayer.Mode = LightingMode.Freestyle;
+
+            var tab = CreateAttachedTab(lighting: lighting);
+
+            Assert.Equal(LightingMode.Wave, tab.SelectedMode);
+            Assert.False(tab.CanSelectKeys);
+            Assert.False(tab.SelectAllKeysCommand.CanExecute(null));
+
+            tab.SelectKeyCommand.Execute(tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(0, tab.Selection.Count);
+
+            // The other layer is stored in a per-key mode, so moving to it unlocks the board — the
+            // gate follows what is shown, and a layer switch runs the same RefreshParameters.
+            tab.SelectLayerCommand.Execute(tab.Layers[1]);
+
+            Assert.True(tab.CanSelectKeys);
+
+            tab.SelectKeyCommand.Execute(tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+
+            Assert.Equal(1, tab.Selection.Count);
+        }
+
+        /// <summary>
+        /// A selection survives a move between two modes that both have per-key colours, and is
+        /// emptied by a move to one that has none (issue #135) — and by a layer change, which it
+        /// always was, because the keys it names belong to the layer that is leaving.
+        /// <para>
+        /// The first half is what keeps the rail usable: Freestyle and Breathe paint the same map,
+        /// so comparing them must not cost the user their selection. The second is the new rule.
+        /// </para>
+        /// </summary>
+        [AvaloniaFact]
+        public void Selection_SurvivesABetweenPerKeyModes_AndIsEmptiedByOneWithout()
+        {
+            var tab = CreateAttachedTabInAPerKeyMode();
             var boards = tab.Board!;
+            var key = boards.Keys[TestLayouts.RgbDigitOneKeyIndex];
 
-            tab.SelectKeyCommand.Execute(boards.Keys[TestLayouts.RgbDigitOneKeyIndex]);
+            tab.SelectKeyCommand.Execute(key);
 
+            SelectMode(tab, LightingMode.Breathe);
+
+            Assert.True(tab.CanSelectKeys);
+            Assert.Equal(1, tab.Selection.Count);
+            Assert.True(key.IsLightingSelected);
+
+            // Wave's file body is `[wave]>[spdN][dirX]` and nothing else (§2.2), so there is no
+            // per-key colour for a selection to be about.
             SelectMode(tab, LightingMode.Wave);
 
-            // Picking a mode is how the user finds out what these keys look like under it.
+            Assert.False(tab.CanSelectKeys);
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.False(key.IsLightingSelected);
+
+            // Back in a per-key mode the board is live again — the lock is a property of the mode
+            // showing, never a latch that has to be undone.
+            SelectMode(tab, LightingMode.Freestyle);
+
+            Assert.True(tab.CanSelectKeys);
+
+            tab.SelectKeyCommand.Execute(key);
+
             Assert.Equal(1, tab.Selection.Count);
-            Assert.True(boards.Keys[TestLayouts.RgbDigitOneKeyIndex].IsLightingSelected);
 
             tab.SelectLayerCommand.Execute(tab.Layers[1]);
 
             Assert.Equal(0, tab.Selection.Count);
-            Assert.False(boards.Keys[TestLayouts.RgbDigitOneKeyIndex].IsLightingSelected);
+            Assert.False(key.IsLightingSelected);
         }
 
+        /// <summary>
+        /// THE REVERSAL OF MOCKUP 2f (issue #135). 2f draws "Paint · 2 keys selected", "Select all"
+        /// and "Clear" on a board running WAVE, beside the sentence "the colors are still on file",
+        /// and until now this app followed it: the paint belongs to the layer rather than to the
+        /// effect over it, so the controls that manage it were reachable in every mode.
+        /// <para>
+        /// In use that offered a write the hardware never performs — §2.2 gives Wave no per-key
+        /// colour line at all, so the firmware reads none. Selecting keys there is now refused: no
+        /// selection can be taken, the two bulk buttons are disabled, and a cap click is inert.
+        /// What survives is the <i>display</i> half of 2f's sentence, asserted below — colours
+        /// already on file still show at 40% under the effect.
+        /// </para>
+        /// </summary>
         [AvaloniaFact]
-        public void Painting_InAPaintIgnoringMode_IsReachableAndWritesTheColours()
+        public void Painting_InAPaintIgnoringMode_IsRefused_ButTheColoursOnFileStillShow()
         {
-            // Mockup 2f draws "Paint · 2 keys selected", "Select all" and "Clear" on a board running
-            // WAVE — a mode that ignores paint — beside the sentence "the colors are still on file".
-            // The paint layer belongs to the layer, not to the effect over it, so the controls that
-            // manage it are reachable whatever is selected in the rail.
             var lighting = new LightingModel();
             var boards = BuildBoards(lighting);
             var tab = CreateTab();
+            var key = boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex];
 
             tab.Attach(lighting, boards);
-            SelectMode(tab, LightingMode.Wave);
 
-            Assert.False(tab.Parameters.HasPerKeyColors);
-
-            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
-
-            Assert.Equal(1, tab.Selection.Count);
-            Assert.True(tab.PaintSelectionCommand.CanExecute(null));
-            Assert.True(tab.ClearSelectionCommand.CanExecute(null));
-
+            // Paint one key in a mode that can, then leave for one that cannot.
+            SelectMode(tab, LightingMode.Freestyle);
+            tab.SelectKeyCommand.Execute(key);
             tab.Picker.Color = new LedColor(1, 2, 3);
-            tab.PaintSelectionCommand.Execute(null);
 
             Assert.Equal(new LedColor(1, 2, 3), lighting.TopLayer.KeyColors[TestLayouts.Gen1Key("1").Code]);
 
-            // ...and the mode still decides how that colour is DRAWN, which is the question the
-            // controls' reachability is not: Wave shows it at 40% under the travelling effect.
+            SelectMode(tab, LightingMode.Wave);
+
+            Assert.False(tab.Parameters.HasPerKeyColors);
+            Assert.False(tab.CanSelectKeys);
+            Assert.Equal(0, tab.Selection.Count);
+
+            // The board does not respond, and neither bulk button is available.
+            tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+            tab.ExtendSelectionCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
+
+            Assert.Equal(0, tab.Selection.Count);
+            Assert.False(tab.SelectAllKeysCommand.CanExecute(null));
+            Assert.False(tab.ClearSelectionCommand.CanExecute(null));
+            Assert.False(tab.PaintSelectionCommand.CanExecute(null));
+            Assert.False(tab.SelectZoneCommand.CanExecute(tab.Zones[0]));
+
+            // Nothing reached the model: the one painted key is still the only one on file.
+            Assert.Equal(
+                new LedColor(1, 2, 3),
+                Assert.Single(lighting.TopLayer.KeyColors).Value);
+
+            // ...and the mode still decides how that colour is DRAWN, which is the half of 2f that
+            // survives: Wave shows it at 40% under the travelling effect.
             tab.AdvancePreview(0.1);
 
             Assert.Equal(
                 KeyColorOverlay.ToHex(LedPreviewTint.Soften(new LedColor(1, 2, 3))),
-                boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintColorHex);
-            Assert.Equal(
-                LightingEffectFrame.PaintOpacityDimmed,
-                boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex].PaintOpacity);
-
-            // The erase reaches it too, so a colour painted under a paint-ignoring mode is not
-            // stranded: black is "no colour" (§2.1) whatever effect is running over it.
-            tab.Picker.Color = LedColor.Black;
-
-            Assert.Empty(lighting.TopLayer.KeyColors);
+                key.PaintColorHex);
+            Assert.Equal(LightingEffectFrame.PaintOpacityDimmed, key.PaintOpacity);
         }
 
         [AvaloniaFact]
@@ -1020,13 +1129,20 @@ namespace KinesisEdit.Tests.ViewModels
                 VDriveConnectionStatus.NotDetected));
 
             tab.Attach(lighting, boards);
-            SelectMode(tab, LightingMode.Wave);
+
+            // The colours are laid down in a per-key mode — since issue #135 the only kind that has
+            // a selection — and the layer is then carried INTO Wave, which is the crossing this
+            // test is about. Before #135 they were painted under Wave directly; what is asserted
+            // has not changed, only the route to it.
+            SelectMode(tab, LightingMode.Freestyle);
 
             tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitOneKeyIndex]);
             tab.SelectKeyCommand.Execute(boards[0].Keys[TestLayouts.RgbDigitTwoKeyIndex]);
             tab.Picker.Color = new LedColor(87, 196, 216);
 
             var painted = new Dictionary<int, LedColor>(lighting.TopLayer.KeyColors);
+
+            SelectMode(tab, LightingMode.Wave);
 
             Assert.Equal(2, painted.Count);
 
@@ -1158,7 +1274,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             // Plain subtraction: a zone whose keys are all selected comes back out on the next
             // press, which is what makes a mis-aimed zone recoverable without emptying everything.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
 
             tab.SelectZoneCommand.Execute(wasd);
@@ -1175,7 +1291,7 @@ namespace KinesisEdit.Tests.ViewModels
         [AvaloniaFact]
         public void SelectZoneCommand_OverAnotherZone_AddsToTheSelectionRatherThanReplacingIt()
         {
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
             var arrows = tab.Zones.Single(zone => zone.Caption == "Arrow");
 
@@ -1201,7 +1317,7 @@ namespace KinesisEdit.Tests.ViewModels
             //
             // Each button now acts on its own keys and shows nothing, so the sequence is arithmetic:
             // +29, +0 (already in), -4.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var game = tab.Zones.Single(zone => zone.Caption == "Game");
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
 
@@ -1241,7 +1357,7 @@ namespace KinesisEdit.Tests.ViewModels
             // selected — and the NEXT press on Game took the select branch and put the four back
             // instead of removing twenty-five. "Un-toggling the buttons below sometimes doesn't
             // deselect", in the report's words.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var wasd = tab.Zones.Single(zone => zone.Caption == "WASD");
             var game = tab.Zones.Single(zone => zone.Caption == "Game");
             var total = tab.Board!.Keys.Count;
@@ -1272,7 +1388,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             // `All` is a superset of every other zone, which is what made it the worst latch on the
             // row. As a plain button it is unremarkable: everything in, everything out.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var all = tab.Zones.Single(zone => zone.Caption == "All");
 
             tab.SelectZoneCommand.Execute(all);
@@ -1297,7 +1413,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             // The view binds IsEnabled to the command, so the gate has to announce itself or Apply
             // stays grey over a board full of selected keys.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var announced = 0;
 
             tab.PaintSelectionCommand.CanExecuteChanged += (_, _) => announced++;
@@ -1485,13 +1601,16 @@ namespace KinesisEdit.Tests.ViewModels
             // that lights every key at intensity 1.0 — Wave, Solid and Spectrum all do, and the
             // paint drawn under them would be covered outright. It is a per-key answer: an
             // unpainted cap has nothing to reveal, so its effect stays at full strength.
-            var tab = CreateAttachedTab();
+            var tab = CreateAttachedTabInAPerKeyMode();
             var painted = tab.Board!.Keys[TestLayouts.RgbDigitOneKeyIndex];
+
+            // Painted where painting is possible, then carried into Wave (issue #135) — the cap's
+            // colour is the layer's either way, and what is asserted is how Wave DRAWS it.
+            tab.SelectKeyCommand.Execute(painted);
+            tab.Picker.Color = new LedColor(0, 0, 255);
 
             SelectMode(tab, LightingMode.Wave);
 
-            tab.SelectKeyCommand.Execute(painted);
-            tab.Picker.Color = new LedColor(0, 0, 255);
             tab.AdvancePreview(0.1);
 
             Assert.True(painted.ShowsPaintOverEffect);
@@ -1782,6 +1901,28 @@ namespace KinesisEdit.Tests.ViewModels
             var tab = CreateTab(snapshot, motionSettings);
 
             tab.Attach(model, BuildBoards(model));
+
+            return tab;
+        }
+
+        /// <summary>
+        /// An attached tab switched into <b>Freestyle</b> — a mode with per-key colours.
+        /// <para>
+        /// Since issue #135 a selection can exist only in such a mode, and a fresh
+        /// <see cref="LightingModel"/> opens in <c>Disabled</c> (the enum's zero), where the board
+        /// is locked. Every test about selecting, painting or zoning therefore starts here, and
+        /// says so in its own first line rather than inheriting a paintable mode from a shared
+        /// fixture — which is how a whole suite ends up asserting one arrangement of the world.
+        /// </para>
+        /// </summary>
+        private LightingTabViewModel CreateAttachedTabInAPerKeyMode(
+            DeviceSnapshot? snapshot = null,
+            LightingModel? lighting = null,
+            IMotionSettings? motionSettings = null)
+        {
+            var tab = CreateAttachedTab(snapshot, lighting, motionSettings);
+
+            SelectMode(tab, LightingMode.Freestyle);
 
             return tab;
         }

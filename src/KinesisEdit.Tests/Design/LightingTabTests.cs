@@ -50,6 +50,9 @@ namespace KinesisEdit.Tests.Design
             var lighting = (LightingTabViewModel)view.DataContext!;
             var board = lighting.Board!;
 
+            // A per-key mode, because since issue #135 that is the only kind with a selection.
+            SelectMode(lighting, LightingMode.Freestyle);
+
             lighting.SelectKeyCommand.Execute(board.Keys[0]);
             lighting.SelectKeyCommand.Execute(board.Keys[3]);
 
@@ -203,11 +206,12 @@ namespace KinesisEdit.Tests.Design
             // offers, what is on screen has to equal what Core says the mode accepts — the very
             // table LightingModeParametersTests holds Core to, read here off the glass instead.
             //
-            // The picker is in the matrix on its own column, AcceptsPaint: it is on screen wherever
-            // the per-key colours it paints can reach the file, which is every mode but the two
-            // that write nothing — those colours belong to the LAYER rather than to the effect
-            // running over them (mockup 2f: "the colors are still on file"), and a layer with no
-            // file body has nowhere to keep them. See ThePicker_IsAbsentUnderAModeThatWritesNothing.
+            // The picker is in the matrix on its own column, AcceptsAnyColor: it is on screen
+            // wherever the mode has a colour of some kind for it to write — an effect swatch, a
+            // base swatch, or per-key colours. Issue #135 moved that gate off AcceptsPaint: once
+            // only a per-key mode has a selection to paint, a mode with no swatch and no selection
+            // (Wave, Spectrum, Pulse) was left showing a wheel that writes nothing.
+            // See ThePicker_IsAbsentUnderAModeThatWritesNothing.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(LightingModeRailView).FullName!);
@@ -238,7 +242,7 @@ namespace KinesisEdit.Tests.Design
                 Assert.DoesNotContain(arrows, button => button.Classes.Contains("unavailable"));
 
                 Assert.Equal(
-                    parameters.AcceptsPaint,
+                    parameters.AcceptsAnyColor,
                     Descendants<ColorPickerView>(view).Any(picker => picker.IsEffectivelyVisible));
             }
         }
@@ -280,9 +284,10 @@ namespace KinesisEdit.Tests.Design
             var texts = VisibleTexts(view);
 
             Assert.False(lighting.Parameters.AcceptsPaint);
+            Assert.False(lighting.Parameters.AcceptsAnyColor);
             Assert.DoesNotContain(Descendants<ColorPickerView>(view), picker => picker.IsEffectivelyVisible);
             Assert.DoesNotContain(LightingModeRailView.PickerLabel, texts);
-            Assert.DoesNotContain(LightingHintCatalog.PickerPaintOnlyHint, texts);
+            Assert.DoesNotContain(LightingHintCatalog.PickerSwatchOnlyHint, texts);
             Assert.DoesNotContain(LightingHintCatalog.PickerWithSwatchHint, texts);
 
             // What is left is the mode itself and the one line that says why there is nothing else:
@@ -429,9 +434,12 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public async Task PaintingUnderAPaintIgnoringMode_ReachesTheCapsAtFortyPercent()
         {
-            // The other half of the rule, at the glass: the controls being on screen is only worth
-            // something if pressing them shows. Painting under Wave lands on the cap, dimmed under
-            // the travelling effect rather than replaced by it.
+            // The other half of the rule, at the glass: a colour on file shows under an effect that
+            // does not read it, dimmed rather than replaced.
+            //
+            // Since issue #135 the colour has to be laid down in a per-key mode and the layer then
+            // carried into Wave — a cap click under Wave is inert now. What is asserted is the same
+            // as it was: how Wave DRAWS a colour the layer already carries.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
@@ -439,18 +447,25 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            SelectMode(lighting, LightingMode.Wave);
+            SelectMode(lighting, LightingMode.Freestyle);
 
             var key = lighting.Board!.Keys[0];
 
             ClickCap(host, view, key, RawInputModifiers.None);
 
             lighting.Picker.Color = new LedColor(87, 196, 216);
+
+            Assert.Equal(1, lighting.Selection.Count);
+
+            SelectMode(lighting, LightingMode.Wave);
+
             lighting.AdvancePreview(0.1);
 
             host.Capture();
 
-            Assert.Equal(1, lighting.Selection.Count);
+            // The mode switch emptied the selection — that is the new rule — and the colour it left
+            // behind is what this test is about.
+            Assert.Equal(0, lighting.Selection.Count);
             Assert.True(key.HasPaintColor);
 
             // The cap wears the SOFTENED colour, not the stored one (issue #124) — and the
@@ -479,7 +494,10 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ToVariant(variantName));
 
-            SelectMode(lighting, LightingMode.Wave);
+            // Painted in a per-key mode and carried into Wave (issue #135): a cap click under Wave
+            // no longer selects, and the pixels this test reads are about how Wave draws a colour
+            // the layer already holds.
+            SelectMode(lighting, LightingMode.Freestyle);
 
             var keys = lighting.Board!.Keys;
             var painted = keys[0];
@@ -489,7 +507,10 @@ namespace KinesisEdit.Tests.Design
             lighting.Picker.Color = new LedColor(0, 0, 255);
 
             // The selection ring would draw over the cap's own face, and the question here is the
-            // face — so the paint is applied and then let go of, exactly as a user would.
+            // face. The mode switch empties the selection anyway; the explicit Clear stays because
+            // this test must not depend on that for its subject to be visible.
+            SelectMode(lighting, LightingMode.Wave);
+
             lighting.Selection.Clear();
             lighting.AdvancePreview(0.1);
 

@@ -416,7 +416,6 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.NotSame(originalLayout, editor.Layout);
             Assert.Same(_profiles.SessionToReturn.Layout, editor.Layout);
             Assert.Equal(1, editor.ModifiedKeyCount);
-            Assert.Equal("Remap (1)", editor.RemapCounterCaption);
 
             // The picture, the macro library and the selection all come from the new model.
             Assert.Same(editor.Layout!.Layers[0].Keys[0], editor.Layers[0].Keys[0].Key);

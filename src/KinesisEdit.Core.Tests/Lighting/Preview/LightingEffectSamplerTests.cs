@@ -15,10 +15,16 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
         private const double GridRows = 3.0;
 
         /// <summary>
-        /// The hardware measurement <see cref="LightingSpeedScale"/> is calibrated on: a Rebound
-        /// bar crosses the Freestyle Edge RGB board edge to edge in 4.0 s at the default speed.
+        /// The hardware measurements <see cref="LightingSpeedScale"/> is calibrated on: a Rebound
+        /// bar crosses the Freestyle Edge RGB board edge to edge in 5.0 s at speed 1, 3.0 s at the
+        /// default speed 5 and 1.0 s at speed 9.
         /// </summary>
-        private const double MeasuredReboundEdgeToEdgeSeconds = 4.0;
+        public static TheoryData<int, double> MeasuredReboundEdgeToEdgeSeconds => new()
+        {
+            { LayerLightingState.MinimumSpeed, 5.0 },
+            { LayerLightingState.DefaultSpeed, 3.0 },
+            { LayerLightingState.MaximumSpeed, 1.0 },
+        };
 
         /// <summary>Part-way through a sweep, where some keys are behind the band's head and some are not.</summary>
         private const double MidSweepPhase = 0.35;
@@ -137,14 +143,16 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
         }
 
         /// <summary>
-        /// The one measurement the whole preview clock rests on, pinned as behaviour rather than
-        /// as arithmetic: at the default speed a Rebound bar takes 4.0 s to cross the board. Its
-        /// travel is a triangle wave, so that is half a cycle — the bar is back where it started
-        /// after 8.0 s. Break this and the preview no longer matches the hardware it was timed
-        /// against (issue #131).
+        /// The measurements the whole preview clock rests on, pinned as behaviour rather than as
+        /// arithmetic: a Rebound bar takes 5.0 s to cross the board at speed 1, 3.0 s at the
+        /// default 5 and 1.0 s at speed 9. Its travel is a triangle wave, so each is half a cycle —
+        /// the bar is back where it started after twice that. Break this and the preview no longer
+        /// matches the hardware it was timed against (issue #135, recalibrating #131's single
+        /// anchor onto three).
         /// </summary>
-        [Fact]
-        public void Sample_WithReboundAtTheDefaultSpeed_CrossesTheBoardInTheMeasuredFourSeconds()
+        [Theory]
+        [MemberData(nameof(MeasuredReboundEdgeToEdgeSeconds))]
+        public void Sample_WithRebound_CrossesTheBoardInTheMeasuredTime(int speed, double measuredSeconds)
         {
             var sampler = new LightingEffectSampler();
             var keys = new[]
@@ -153,16 +161,16 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
                 new LightingPreviewKey(2, 1.0, 0.5)
             };
             var state = CreateState(LightingMode.Rebound);
+            state.Speed = speed;
 
-            Assert.Equal(LayerLightingState.DefaultSpeed, state.Speed);
             Assert.Equal(LightingDirection.Left, state.Direction);
 
             // Rebound's directions are axes rather than headings (§3): "left" means it travels
             // along X, so the bar starts on the left-hand key and is on the right-hand one when
             // the triangle peaks, half a cycle later.
             var start = sampler.Sample(state, keys, 0.0);
-            var farEdge = sampler.Sample(state, keys, MeasuredReboundEdgeToEdgeSeconds);
-            var backAgain = sampler.Sample(state, keys, MeasuredReboundEdgeToEdgeSeconds * 2.0);
+            var farEdge = sampler.Sample(state, keys, measuredSeconds);
+            var backAgain = sampler.Sample(state, keys, measuredSeconds * 2.0);
 
             Assert.Equal(1.0, start.Cells[1].Intensity, 9);
             Assert.False(start.Cells.ContainsKey(2));

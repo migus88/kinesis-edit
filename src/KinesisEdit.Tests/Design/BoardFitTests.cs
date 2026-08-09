@@ -75,8 +75,9 @@ namespace KinesisEdit.Tests.Design
             var tabs = RectOf(Single<TabStrip>(view), host);
 
             // The action row under the whole content area: the one thing the overflowing board was
-            // painted over, so it is the neighbour worth naming.
-            var actions = RectOf(Single<WrapPanel>(view), host);
+            // painted over, so it is the neighbour worth naming. Located BY NAME since issue #135 —
+            // the Lighting tab's zone chips are a WrapPanel too, and this test runs on both tabs.
+            var actions = RectOf(ActionRowOf(view), host);
 
             AssertInsideTheWindow(picture, host, "The picture");
             AssertInsideTheWindow(legend, host, "The legend row");
@@ -315,6 +316,14 @@ namespace KinesisEdit.Tests.Design
         private static T Single<T>(Control view) where T : Visual
         {
             return Assert.Single(view.GetVisualDescendants().OfType<T>(), item => item.IsEffectivelyVisible);
+        }
+
+        /// <summary>The editor's action row, by name — see the call site for why not by type.</summary>
+        private static WrapPanel ActionRowOf(Control view)
+        {
+            return Assert.Single(
+                view.GetVisualDescendants().OfType<WrapPanel>(),
+                panel => panel.Name == "ActionRow" && panel.IsEffectivelyVisible);
         }
 
         /// <summary>The two margins around a centred block, which have to agree to within a pixel.</summary>

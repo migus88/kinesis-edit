@@ -100,10 +100,14 @@
                        IsVisible="{Binding HasMountPath}" />
           </StackPanel>
 
+          <!-- NO COUNTERS (issue #135). Spec 10's app puts "Remap (n)" and "Macro (n)" here; the
+               handoff's toolbar is `Home · divider · device name + mount path · right: Save +
+               status pill` and nothing else, and the counts were noise at the far end of a bar the
+               user reads for the save state. Nothing was lost: the legend row under the board
+               carries both counts for the layer they are about, and the Macros tab has its own
+               meter. ModifiedKeyCount/MacroCount stay on the view model — RefreshCounters() is the
+               funnel every layout write goes through and it ends in RefreshDirtyState(). -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-            <TextBlock Text="{Binding RemapCounterCaption}" Classes="meta muted" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding MacroCounterCaption}" Classes="meta muted" VerticalAlignment="Center" />
-
             <TextBlock Text="{x:Static vm:KeyboardEditorViewModel.SavingCaption}"
                        Classes="meta muted"
                        VerticalAlignment="Center"
@@ -519,22 +523,52 @@
 
                  `Discard changes` (issue #133) joined them, next to `Reset Layout` because the two
                  are neighbours in meaning and opposites in direction: a reset clears the profile to
-                 factory defaults, a discard puts back what was loaded. Its scope FOLLOWS THIS ROW's
-                 own reason for being here — the row is on every tab, and the command reverts the
-                 half of the session the open tab edits (layout on Keys/Macros, lighting on
-                 Lighting, nothing on Settings, which is outside the session's dirty model).
+                 factory defaults, a discard puts back what was loaded. Its scope FOLLOWS THE OPEN
+                 TAB — the command reverts the half of the session that tab edits (layout on
+                 Keys/Macros, lighting on Lighting, nothing on Settings, which is outside the
+                 session's dirty model).
+
+                 EVERY BUTTON IS NOW SCOPED TO THE TAB IT BELONGS TO (issue #135). The row used to
+                 draw all five everywhere and let CanExecute sort it out, which put `Reset Layout`
+                 on the Lighting tab and `Special Action` on Settings — actions that read as if
+                 they were about the screen the user was looking at. The gate is the same EnumMatch
+                 on SelectedTab that the rail, the splitter and both layer switches use.
+
+                 Layout    Reset Layout · Special Action · Discard changes · Export · Import
+                 Macros                                    Discard changes · Export · Import
+                 Lighting                                  Discard changes · Export · Import
+                 Settings                                                    Export · Import
+
+                 `Special Action` is a LAYOUT button, not a Macros one: it inserts into the macro
+                 the KEY INSPECTOR's Macro panel is editing (CanInsertIntoMacro asks
+                 Inspector.SelectedMode), and that rail is on Keys. The Macros tab is a library.
+
+                 `Discard changes` is ABSENT on Settings rather than disabled — CanDiscardChanges
+                 already refuses there, and the law is absent-never-disabled.
+
+                 EXPORT AND IMPORT STAY ON EVERY TAB, deliberately. They are profile-scoped file
+                 actions — Export writes layout and led together, Import classifies whichever it is
+                 handed — so no single tab owns them, and every tab is a view of the one profile.
 
                  Nothing here is the design's shape — it exists so every action stays reachable and
-                 keeps working in the meantime, on every tab.
-
-                 Every button reports its own availability through its command's CanExecute, so
-                 there is no visibility logic here. -->
-            <WrapPanel Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
-              <Button Content="Reset Layout" Command="{Binding ResetLayoutCommand}" Margin="6,0,0,4" />
+                 keeps working in the meantime. Availability inside a tab is still each command's
+                 own CanExecute; this row decides membership only. -->
+            <!-- NAMED, because it is no longer the only WrapPanel in the tree: the Lighting tab's
+                 zone chips and the Settings tab both bring one, and a test that located this row
+                 as "the single WrapPanel" started finding two the moment the row became per-tab. -->
+            <WrapPanel x:Name="ActionRow" Grid.Row="1" HorizontalAlignment="Right" Margin="0,12,0,0">
+              <Button Content="Reset Layout"
+                      Command="{Binding ResetLayoutCommand}"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}"
+                      Margin="6,0,0,4" />
+              <Button Content="Special Action"
+                      Command="{Binding InsertSpecialActionCommand}"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}"
+                      Margin="6,0,0,4" />
               <Button Content="{x:Static vm:KeyboardEditorViewModel.DiscardChangesCaption}"
                       Command="{Binding DiscardChangesCommand}"
+                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter='Keys,Macros,Lighting'}"
                       Margin="6,0,0,4" />
-              <Button Content="Special Action" Command="{Binding InsertSpecialActionCommand}" Margin="6,0,0,4" />
               <Button Content="Export" Command="{Binding ExportCommand}" Margin="6,0,0,4" />
               <Button Content="Import" Command="{Binding ImportCommand}" Margin="6,0,0,4" />
             </WrapPanel>
