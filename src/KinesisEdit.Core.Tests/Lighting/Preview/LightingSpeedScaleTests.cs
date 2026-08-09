@@ -4,60 +4,59 @@ using KinesisEdit.Core.Lighting.Preview;
 namespace KinesisEdit.Core.Tests.Lighting.Preview
 {
     /// <summary>
-    /// Pins the speed curve: the documented anchors (24 s at speed 1, the measured 8 s at the
-    /// default 5, 24/9 s at speed 9), that it is strictly monotonic across the 1-9 range
-    /// <see cref="LayerLightingState"/> declares, and that out-of-range input clamps rather than
-    /// running off the end.
+    /// Pins the speed curve: the three measured anchors (10 s at speed 1, 6 s at the default 5, 2 s
+    /// at speed 9), that the ramp between them is linear rather than geometric, that it is strictly
+    /// monotonic across the 1-9 range <see cref="LayerLightingState"/> declares, and that
+    /// out-of-range input clamps rather than running off the end.
     /// </summary>
     public class LightingSpeedScaleTests
     {
         private const int Precision = 9;
 
         /// <summary>
-        /// The hardware measurement the whole scale is calibrated on: a Rebound bar crosses the
-        /// Freestyle Edge RGB's board edge to edge in 4.0 s at the default speed 5.
+        /// The three hardware measurements the whole scale is calibrated on: a Rebound bar crosses
+        /// the Freestyle Edge RGB's board edge to edge in these many seconds at speeds 1, 5 and 9.
+        /// Rebound is a triangle wave, so each is <i>half</i> a cycle.
         /// </summary>
-        private const double MeasuredReboundEdgeToEdgeSeconds = 4.0;
+        public static TheoryData<int, double> MeasuredReboundEdgeToEdgeSeconds => new()
+        {
+            { LayerLightingState.MinimumSpeed, 5.0 },
+            { LayerLightingState.DefaultSpeed, 3.0 },
+            { LayerLightingState.MaximumSpeed, 1.0 },
+        };
 
         [Theory]
-        [InlineData(LayerLightingState.MinimumSpeed, LightingSpeedScale.SlowestPeriodSeconds)]
-        [InlineData(LayerLightingState.DefaultSpeed, 8.0)]
-        [InlineData(LayerLightingState.MaximumSpeed, LightingSpeedScale.FastestPeriodSeconds)]
-        public void PeriodSecondsFor_AtTheDocumentedAnchors_MatchesThem(int speed, double expectedSeconds)
+        [InlineData(LayerLightingState.MinimumSpeed, 10.0)]
+        [InlineData(LayerLightingState.DefaultSpeed, 6.0)]
+        [InlineData(LayerLightingState.MaximumSpeed, 2.0)]
+        public void PeriodSecondsFor_AtTheMeasuredAnchors_MatchesThem(int speed, double expectedSeconds)
         {
             Assert.Equal(expectedSeconds, LightingSpeedScale.PeriodSecondsFor(speed), Precision);
         }
 
         /// <summary>
-        /// The anchor itself, stated on its own so a future recalibration has to face it: speed 5
-        /// is 8.0 s, not "whatever the geometric middle happens to be".
+        /// Rebound travels as a triangle wave, so edge-to-edge is half a cycle. Half the period at
+        /// each measured speed must therefore be what was timed on the hardware; the behavioural
+        /// half of this pin lives in <c>LightingEffectSamplerTests</c>.
         /// </summary>
-        [Fact]
-        public void PeriodSecondsFor_AtTheDefaultSpeed_IsTheMeasuredEightSecondPeriod()
+        [Theory]
+        [MemberData(nameof(MeasuredReboundEdgeToEdgeSeconds))]
+        public void PeriodSecondsFor_Halved_IsTheMeasuredReboundEdgeToEdgeTime(int speed, double measuredSeconds)
         {
-            Assert.Equal(8.0, LightingSpeedScale.PeriodSecondsFor(LayerLightingState.DefaultSpeed), Precision);
+            var halfPeriod = LightingSpeedScale.PeriodSecondsFor(speed) / 2.0;
+
+            Assert.Equal(measuredSeconds, halfPeriod, Precision);
         }
 
         /// <summary>
-        /// Rebound travels as a triangle wave, so edge-to-edge is half a cycle. Half of the
-        /// default period must therefore be the 4.0 s that was measured on the hardware; the
-        /// behavioural half of this pin lives in <c>LightingEffectSamplerTests</c>.
+        /// The end points, stated on their own so a future recalibration has to face them rather
+        /// than inherit them from whichever curve happens to be in the file.
         /// </summary>
         [Fact]
-        public void PeriodSecondsFor_HalvedAtTheDefaultSpeed_IsTheMeasuredReboundEdgeToEdgeTime()
+        public void TheAnchors_AreTheMeasuredPeriods()
         {
-            var halfPeriod = LightingSpeedScale.PeriodSecondsFor(LayerLightingState.DefaultSpeed) / 2.0;
-
-            Assert.Equal(MeasuredReboundEdgeToEdgeSeconds, halfPeriod, Precision);
-        }
-
-        [Fact]
-        public void PeriodSecondsFor_AcrossTheWholeKnob_SpansTheDocumentedNineToOneRatio()
-        {
-            Assert.Equal(
-                LightingSpeedScale.SpeedSpanRatio,
-                LightingSpeedScale.SlowestPeriodSeconds / LightingSpeedScale.FastestPeriodSeconds,
-                Precision);
+            Assert.Equal(10.0, LightingSpeedScale.SlowestPeriodSeconds, Precision);
+            Assert.Equal(2.0, LightingSpeedScale.FastestPeriodSeconds, Precision);
         }
 
         [Fact]
@@ -71,16 +70,37 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
             }
         }
 
+        /// <summary>
+        /// The curve is <b>linear</b>: every step of the knob takes the same number of seconds off
+        /// the period. It used to be geometric — the same multiplier per step — and the third
+        /// measurement is what replaced it: a geometric ramp anchored at 10 s and 2 s puts speed 5
+        /// at 4.47 s, and the board says 6 s.
+        /// </summary>
         [Fact]
-        public void PeriodSecondsFor_EveryStep_IsTheSameMultiplier()
+        public void PeriodSecondsFor_EveryStep_TakesOffTheSameNumberOfSeconds()
         {
-            var firstRatio = LightingSpeedScale.PeriodSecondsFor(2) / LightingSpeedScale.PeriodSecondsFor(1);
+            var firstStep = LightingSpeedScale.PeriodSecondsFor(1) - LightingSpeedScale.PeriodSecondsFor(2);
+
+            Assert.Equal(1.0, firstStep, Precision);
 
             for (var speed = LayerLightingState.MinimumSpeed + 1; speed < LayerLightingState.MaximumSpeed; speed++)
             {
-                var ratio = LightingSpeedScale.PeriodSecondsFor(speed + 1) / LightingSpeedScale.PeriodSecondsFor(speed);
+                var step = LightingSpeedScale.PeriodSecondsFor(speed) - LightingSpeedScale.PeriodSecondsFor(speed + 1);
 
-                Assert.Equal(firstRatio, ratio, Precision);
+                Assert.Equal(firstStep, step, Precision);
+            }
+        }
+
+        /// <summary>
+        /// The whole curve in one line — <c>period = 11 − speed</c> — which is the fit through the
+        /// three measurements and the cheapest way to state what this class does.
+        /// </summary>
+        [Fact]
+        public void PeriodSecondsFor_AcrossTheRange_IsElevenMinusTheSpeed()
+        {
+            for (var speed = LayerLightingState.MinimumSpeed; speed <= LayerLightingState.MaximumSpeed; speed++)
+            {
+                Assert.Equal(11.0 - speed, LightingSpeedScale.PeriodSecondsFor(speed), Precision);
             }
         }
 
@@ -123,7 +143,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
                 1.0 / LightingSpeedScale.FastestPeriodSeconds,
                 LightingSpeedScale.CyclesPerSecond(LayerLightingState.MaximumSpeed),
                 Precision);
-            Assert.Equal(0.125, LightingSpeedScale.CyclesPerSecond(LayerLightingState.DefaultSpeed), Precision);
+            Assert.Equal(1.0 / 6.0, LightingSpeedScale.CyclesPerSecond(LayerLightingState.DefaultSpeed), Precision);
         }
     }
 }

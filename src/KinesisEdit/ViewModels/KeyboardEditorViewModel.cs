@@ -120,15 +120,50 @@ namespace KinesisEdit.ViewModels
         public const string ResetLayoutTitle = "Reset Layout";
 
         /// <summary>
+        /// What the reset prompts call the profile when there is no number to name — demo mode,
+        /// which reads no file and so has no <see cref="ProfileCaption"/>.
+        /// </summary>
+        public const string ResetLayoutFallbackScope = "this profile";
+
+        /// <summary>
         /// The whole-profile prompt. Same shape as the layer's, and deliberately different words:
         /// the two scopes share one suppression key, so the sentence is the only thing that tells
         /// the user which of them is about to run.
+        /// <para>
+        /// <b>It names the profile, and says the others are safe</b> (issue #135). The command has
+        /// always cleared the open profile and only that one — it calls
+        /// <c>KeyboardLayout.Reset()</c> on the open session's layout and never walks the session
+        /// cache — but the old wording ("every layer of this profile", affirmed by a button reading
+        /// <c>Clear all layers</c>) was read as <i>every profile</i>, which is the one mistake a
+        /// reset prompt must not invite. Since #133 the editor really does hold several profiles in
+        /// memory at once, so the reassurance is load-bearing rather than decorative.
+        /// </para>
         /// </summary>
-        public const string ResetLayoutConfirmation =
-            "Do you want to clear every remap and macro on every layer of this profile? Nothing is written to the keyboard until you save.";
+        public static string BuildResetLayoutConfirmation(string profileCaption)
+        {
+            return "Do you want to clear every remap and macro on every layer of "
+                   + ResolveResetScope(profileCaption)
+                   + "? No other profile is touched, and nothing is written to the keyboard until you save.";
+        }
 
-        /// <summary>The affirmative of the whole-profile prompt. It still answers <c>Yes</c>.</summary>
-        public const string ResetLayoutConfirmCaption = "Clear all layers";
+        /// <summary>
+        /// The affirmative of the whole-profile prompt, named after what it does (mockup 1k) and —
+        /// since issue #135 — after <em>what it does it to</em>. It still answers <c>Yes</c>.
+        /// </summary>
+        public static string BuildResetLayoutConfirmCaption(string profileCaption)
+        {
+            return "Clear " + ResolveResetScope(profileCaption);
+        }
+
+        /// <summary>
+        /// What the two reset strings call the thing being cleared: the profile's own caption when
+        /// there is one, and <see cref="ResetLayoutFallbackScope"/> when there is not. One helper so
+        /// the sentence and the button can never name different scopes.
+        /// </summary>
+        private static string ResolveResetScope(string profileCaption)
+        {
+            return string.IsNullOrWhiteSpace(profileCaption) ? ResetLayoutFallbackScope : profileCaption;
+        }
 
         /// <summary>The way out of either reset prompt. It still answers <c>No</c>.</summary>
         public const string ResetDeclineCaption = "Cancel";
@@ -167,21 +202,6 @@ namespace KinesisEdit.ViewModels
         public static string BuildProfileCaption(int profileNumber)
         {
             return ProfileCaptionPrefix + profileNumber.ToString(CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>Prefix of the "Macro (n)" counter of specs/10-apps-and-ui.md.</summary>
-        public const string MacroCounterPrefix = "Macro";
-
-        /// <summary>Builds the "Remap (n)" counter of specs/10-apps-and-ui.md.</summary>
-        public static string BuildRemapCounterCaption(int modifiedKeyCount)
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"Remap ({modifiedKeyCount})");
-        }
-
-        /// <summary>Builds the "Macro (n)" counter of specs/10-apps-and-ui.md.</summary>
-        public static string BuildMacroCounterCaption(int macroCount)
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"{MacroCounterPrefix} ({macroCount})");
         }
 
         /// <summary>Renders one unapplied layout line for the invalid-line list (04 §5.2).</summary>
@@ -281,37 +301,30 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _profileCaption, value);
         }
 
-        /// <summary>Remapped positions across every layer (<see cref="KeyboardLayout.ModifiedKeyCount"/>).</summary>
+        /// <summary>
+        /// Remapped positions across every layer (<see cref="KeyboardLayout.ModifiedKeyCount"/>).
+        /// <para>
+        /// <b>Nothing renders this any more</b> — issue #135 took the toolbar's <c>Remap (n)</c>
+        /// caption off screen — and it is still load-bearing: <see cref="RefreshCounters"/> is the
+        /// funnel every layout write passes through, and it ends in
+        /// <see cref="RefreshDirtyState"/>. The count is what tells that funnel it ran.
+        /// </para>
+        /// </summary>
         public int ModifiedKeyCount
         {
             get => _modifiedKeyCount;
-            private set
-            {
-                if (SetProperty(ref _modifiedKeyCount, value))
-                {
-                    OnPropertyChanged(nameof(RemapCounterCaption));
-                }
-            }
+            private set => SetProperty(ref _modifiedKeyCount, value);
         }
 
-        /// <summary>The "Remap (n)" counter of specs/10-apps-and-ui.md.</summary>
-        public string RemapCounterCaption => BuildRemapCounterCaption(ModifiedKeyCount);
-
-        /// <summary>Macros across the whole profile (<see cref="KeyboardLayout.MacroCount"/>).</summary>
+        /// <summary>
+        /// Macros across the whole profile (<see cref="KeyboardLayout.MacroCount"/>). Off screen
+        /// since issue #135 and kept for the reason <see cref="ModifiedKeyCount"/> is.
+        /// </summary>
         public int MacroCount
         {
             get => _macroCount;
-            private set
-            {
-                if (SetProperty(ref _macroCount, value))
-                {
-                    OnPropertyChanged(nameof(MacroCounterCaption));
-                }
-            }
+            private set => SetProperty(ref _macroCount, value);
         }
-
-        /// <summary>The "Macro (n)" counter of specs/10-apps-and-ui.md.</summary>
-        public string MacroCounterCaption => BuildMacroCounterCaption(MacroCount);
 
         /// <summary>Lines of the loaded file that could not be applied (04 §5); shown, never dropped silently.</summary>
         public IReadOnlyList<string> InvalidLineMessages
@@ -1916,7 +1929,10 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            if (!await ConfirmResetAsync(ResetLayoutTitle, ResetLayoutConfirmation, ResetLayoutConfirmCaption).ConfigureAwait(true))
+            if (!await ConfirmResetAsync(
+                    ResetLayoutTitle,
+                    BuildResetLayoutConfirmation(ProfileCaption),
+                    BuildResetLayoutConfirmCaption(ProfileCaption)).ConfigureAwait(true))
             {
                 return;
             }

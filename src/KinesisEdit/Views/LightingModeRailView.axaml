@@ -313,18 +313,26 @@
                It is the very same ColorPickerViewModel the tab holds, so the ten premixed swatches
                and the twelve `cust_color_N` slots are the ones the Settings tab's strip shares.
 
-               IT IS ON SCREEN IN EVERY MODE WHOSE PAINT REACHES THE FILE, including the two that
-               have no swatch of their own. A colour picked here paints the keys selected on the
-               board, and those colours are the LAYER's (§4) — the line under it is what says which
-               of the two is happening.
+               IT IS ON SCREEN IN EVERY MODE THAT HAS SOMETHING FOR IT TO WRITE — Parameters.
+               AcceptsAnyColor, i.e. the mode carries an effect swatch, a base swatch, or per-key
+               colours. The line under it says which of them a pick lands on.
 
-               AND ABSENT IN THE TWO THAT WRITE NOTHING (Parameters.AcceptsPaint). specs/07-lighting.md
-               §2.2 gives Off and Pitch Black no file body at all, which is why
-               LightingSectionSerializer returns before its first line: there is no effect for a
-               colour to show through and no line for one to land on. Drawing a colour wheel under
-               "The backlight is off for this layer, and nothing is written to the file for it" was
-               the defect a captured frame caught — the rail promised a write the file cannot hold,
-               in the one control that had been left ungated.
+               THE GATE MOVED OFF AcceptsPaint WITH ISSUE #135, and it had to. It used to be on
+               screen in every mode whose paint reaches the file, including the ones with no swatch
+               of their own, because a colour picked here painted the keys selected on the board.
+               Now that only a per-key mode has a selection to paint, that reading leaves modes like
+               Wave — no swatch, no selectable keys — showing a colour wheel that writes NOTHING.
+               AcceptsAnyColor is exactly "this mode has a colour of some kind", and every per-key
+               mode satisfies it (Core derives the effect swatch from WritesEffectColor OR
+               HasPerKeyColors), so nothing that can still be painted lost its picker.
+
+               IT WAS ALREADY ABSENT IN THE TWO THAT WRITE NOTHING. specs/07-lighting.md §2.2 gives
+               Off and Pitch Black no file body at all, which is why LightingSectionSerializer
+               returns before its first line: there is no effect for a colour to show through and no
+               line for one to land on. Drawing a colour wheel under "The backlight is off for this
+               layer, and nothing is written to the file for it" was the defect a captured frame
+               caught — the rail promised a write the file cannot hold, in the one control that had
+               been left ungated. AcceptsAnyColor is false in both, so they stay excluded.
 
                IT IS LAST, AND A FRAME IS WHY. It sat directly under the colour swatches, where it
                reads best — and it is ~460px tall, so on a 680px window it pushed Speed and
@@ -335,7 +343,7 @@
                target still puts its editor on screen the way the disclosure used to. -->
           <Border x:Name="PickerSection"
                   Classes="inspectorSection"
-                  IsVisible="{Binding Parameters.AcceptsPaint}">
+                  IsVisible="{Binding Parameters.AcceptsAnyColor}">
             <StackPanel Spacing="6">
               <TextBlock Text="{x:Static views:LightingModeRailView.PickerLabel}" Classes="sectionLabel" />
 

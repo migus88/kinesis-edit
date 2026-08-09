@@ -213,6 +213,7 @@ namespace KinesisEdit.ViewModels
             {
                 if (SetProperty(ref _parameters, value))
                 {
+                    OnPropertyChanged(nameof(CanSelectKeys));
                     OnPropertyChanged(nameof(ModeHint));
                     OnPropertyChanged(nameof(SpeedHint));
                     OnPropertyChanged(nameof(DirectionHint));
@@ -222,6 +223,31 @@ namespace KinesisEdit.ViewModels
                 }
             }
         }
+
+        /// <summary>
+        /// Whether keys can be selected — and therefore painted — under the selected mode. It is
+        /// <see cref="LightingModeParameters.HasPerKeyColors"/> verbatim: the mode's file body is
+        /// per-key colour lines (07 §2.2), i.e. <b>Freestyle, Breathe and Frozen Wave</b>, and on
+        /// the Edge RGB's menu that is Freestyle and Breathe.
+        /// <para>
+        /// <b>This reversed a deliberate decision, on the user's own reading of the screen</b>
+        /// (issue #135). Until now nothing on the paint row was gated on the mode: painted colours
+        /// belong to the layer rather than to the effect over them, so mockup 2f draws the row live
+        /// under Wave and the caps showed the paint at 40% beneath the running effect. In use that
+        /// read as an offer the hardware does not honour — the firmware never reads a per-key colour
+        /// in Wave — so selecting keys there is now refused rather than explained.
+        /// </para>
+        /// <para>
+        /// It gates the four commands that can grow or hold a selection, and
+        /// <see cref="RefreshParameters"/> empties the selection the moment it goes false. It does
+        /// <b>not</b> gate <see cref="SelectKeyCommand"/>/<see cref="ExtendSelectionCommand"/>
+        /// through <c>CanExecute</c>: a cap binds that command directly, so a false answer would
+        /// disable every <c>Button</c> on the board and <c>:disabled</c> outranks every other state
+        /// in the keycap theme — a dead-looking board instead of an inert one. Those two refuse
+        /// inside the handler.
+        /// </para>
+        /// </summary>
+        public bool CanSelectKeys => Parameters.HasPerKeyColors;
 
         // ===== The rail's inline explanations (issue #128) =====================================
         // One line under each control saying what it means IN THE SELECTED MODE — the ask being
@@ -241,8 +267,8 @@ namespace KinesisEdit.ViewModels
         /// <summary>What the direction arrows steer, in this mode.</summary>
         public string DirectionHint => LightingHintCatalog.ForDirection(SelectedMode);
 
-        /// <summary>What the colour picker writes — the swatch above it, the paint selection, or both.</summary>
-        public string PickerHint => LightingHintCatalog.ForPicker(Parameters.AcceptsAnyColor);
+        /// <summary>What the colour picker writes — the swatch above it, or the swatch and the paint selection.</summary>
+        public string PickerHint => LightingHintCatalog.ForPicker(CanSelectKeys);
 
         /// <summary>The effect-color swatch.</summary>
         public LightingColorSlotViewModel EffectColor { get; }
@@ -508,32 +534,36 @@ namespace KinesisEdit.ViewModels
             SelectDirectionCommand = new RelayCommand<LightingDirectionViewModel>(SelectDirection);
             SetSpeedCommand = new RelayCommand<int>(speed => Speed = speed, _ => Parameters.AcceptsSpeed);
 
-            // NONE OF THE PAINT COMMANDS IS GATED ON THE MODE. The painted colours belong to the
-            // layer, not to the effect running over them (mockup 2f: "the colors are still on
-            // file"), so the controls that manage them are reachable whenever this tab is —
-            // which is already "this board has per-key RGB", because that is what puts the tab on
-            // screen at all (IsSupported). What the mode decides is how the paint is *drawn*:
-            // directly, or at 40% under the effect (LightingModeParameters.RendersPaintDirectly).
-            //
-            // PaintSelectionCommand's CanExecute below is not an exception to that: it asks about
-            // the SELECTION, a fact about what the user pointed at, not about the effect running.
+            // EVERY PAINT COMMAND IS GATED ON THE MODE (issue #135). Until now none of them was:
+            // the painted colours belong to the layer rather than to the effect running over them
+            // (mockup 2f: "the colors are still on file"), so the controls that manage them were
+            // reachable whenever this tab was. What that offered in practice was a selection the
+            // firmware would never read — Wave has no per-key colour line at all — so the gate is
+            // now CanSelectKeys, i.e. Core's HasPerKeyColors, and what the mode decides is whether
+            // the paint can be edited rather than only how it is drawn.
             //
             // THE FIRST THREE ARE PAINT GESTURES AND `Select all` IS NOT. See
             // PaintWhatTheGestureSelects: pointing at keys on the board is how a colour lands now
             // that the Apply button is gone, and a bulk selector must never be one.
+            //
+            // THE TWO BOARD GESTURES CARRY NO CanExecute — see CanSelectKeys for why a false one
+            // would draw a dead board — so they refuse inside PaintWhatTheGestureSelects instead.
             SelectZoneCommand = new RelayCommand<LightingZoneViewModel>(
-                zone => PaintWhatTheGestureSelects(() => SelectZone(zone)));
+                zone => PaintWhatTheGestureSelects(() => SelectZone(zone)),
+                _ => CanSelectKeys);
             SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(
                 key => PaintWhatTheGestureSelects(() => Selection.Toggle(key)));
             ExtendSelectionCommand = new RelayCommand<KeyboardKeyViewModel>(
                 key => PaintWhatTheGestureSelects(() => Selection.Extend(key)));
-            SelectAllKeysCommand = new RelayCommand(Selection.SelectAll);
+            SelectAllKeysCommand = new RelayCommand(Selection.SelectAll, () => CanSelectKeys);
             // `Clear` is the other half of `Select all`, so it moves the SELECTION and not the
-            // paint (issue #131). Same gate as PaintSelectionCommand's, and for the same reason.
-            ClearSelectionCommand = new RelayCommand(Selection.Clear, () => Selection.HasSelection);
-            // The one gate is the selection, not the mode: painting nothing is not a paint, and a
-            // control that claims otherwise is a lie the user only finds out about by pressing it.
-            PaintSelectionCommand = new RelayCommand(() => PaintSelection(Picker.Color), () => Selection.HasSelection);
+            // paint (issue #131). Same gates as PaintSelectionCommand's, and for the same reasons.
+            ClearSelectionCommand = new RelayCommand(Selection.Clear, () => CanSelectKeys && Selection.HasSelection);
+            // Painting nothing is not a paint, and a control that claims otherwise is a lie the
+            // user only finds out about by pressing it.
+            PaintSelectionCommand = new RelayCommand(
+                () => PaintSelection(Picker.Color),
+                () => CanSelectKeys && Selection.HasSelection);
             ResetAllCommand = new AsyncRelayCommand(ResetAllAsync);
 
             // ONE SUBSCRIPTION, NOT A LIST OF CALL SITES, and subscribed after the commands exist
@@ -754,6 +784,19 @@ namespace KinesisEdit.ViewModels
         private void RefreshParameters()
         {
             Parameters = LightingModeParameters.For(_device.DeviceId, SelectedMode, IsLayerCustomizationAvailable);
+
+            // THE ONE PLACE THE SELECTION IS EMPTIED FOR THE MODE (issue #135), and it is here
+            // rather than in SelectMode because this is the one place Parameters is written: a mode
+            // pick, a layer switch and the load itself all pass through it, so a layer whose stored
+            // mode has no per-key colour opens unselectable without any of them remembering to ask.
+            // It is called unconditionally rather than behind a HasSelection guard: Clear() also
+            // drops the shift-click ANCHOR, which outlives an emptied selection and would otherwise
+            // survive into the next per-key mode. Its notification on an already-empty selection
+            // costs one re-ask of two CanExecutes.
+            if (!CanSelectKeys)
+            {
+                Selection.Clear();
+            }
 
             EffectColor.IsVisible = Parameters.AcceptsEffectColor;
             BaseColor.IsVisible = Parameters.AcceptsBaseColor;
@@ -1013,6 +1056,16 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void PaintWhatTheGestureSelects(Action gesture)
         {
+            // THE REFUSAL FOR THE TWO BOARD GESTURES (issue #135). A cap click and a shift-click run
+            // reach this without a CanExecute in front of them — one would disable every cap — so a
+            // mode with no per-key colour is turned away here, before the gesture runs. Nothing is
+            // selected and nothing is painted; the board simply does not respond, which is what a
+            // locked board should do.
+            if (!CanSelectKeys)
+            {
+                return;
+            }
+
             var before = new HashSet<KeyboardKeyViewModel>(Selection.Keys);
 
             gesture();
@@ -1203,15 +1256,24 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-asks the one command whose availability the mode decides. The paint commands are
-        /// deliberately absent: none of them carries a gate the <i>mode</i> can move, because the
-        /// colours they manage are the layer's rather than the effect's.
-        /// <see cref="PaintSelectionCommand"/>'s own gate is the selection, and it is re-asked from
-        /// <see cref="OnSelectionChanged"/> instead.
+        /// Re-asks every command whose availability the mode decides. Since issue #135 that is the
+        /// speed bars <i>and</i> the four selection commands: <see cref="CanSelectKeys"/> is a
+        /// function of <see cref="Parameters"/>, so a mode pick moves all of them at once.
+        /// <para>
+        /// The two board gestures are deliberately not here — they carry no <c>CanExecute</c> at
+        /// all (see <see cref="CanSelectKeys"/>). <see cref="PaintSelectionCommand"/> and
+        /// <see cref="ClearSelectionCommand"/> are re-asked from <see cref="OnSelectionChanged"/>
+        /// too, because their other term is the selection; being asked from both places is
+        /// correct and idempotent.
+        /// </para>
         /// </summary>
         private void NotifyCommands()
         {
             SetSpeedCommand.NotifyCanExecuteChanged();
+            SelectZoneCommand.NotifyCanExecuteChanged();
+            SelectAllKeysCommand.NotifyCanExecuteChanged();
+            ClearSelectionCommand.NotifyCanExecuteChanged();
+            PaintSelectionCommand.NotifyCanExecuteChanged();
         }
     }
 }

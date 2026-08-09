@@ -25,7 +25,7 @@ namespace KinesisEdit.ViewModels
     public static class LightingHintCatalog
     {
         /// <summary>
-        /// What the picker does while the selected mode has a colour swatch of its own: it edits
+        /// What the picker does in a <b>per-key</b> mode — Freestyle, Breathe, Frozen Wave: it edits
         /// whichever swatch is highlighted, and — because a colour always paints the current paint
         /// selection (specs/07-lighting.md §4) — the keys picked on the board too.
         /// </summary>
@@ -33,16 +33,21 @@ namespace KinesisEdit.ViewModels
             "Edits the highlighted swatch above, and paints any keys selected on the board.";
 
         /// <summary>
-        /// What it does while the mode has none. That is <b>Spectrum, Wave and Pulse</b>: §2.2
-        /// writes no colour of their own, but they do write a layer, and the per-key colours are
-        /// the <i>layer's</i> — so the picker is still the colour a paint gesture uses. Off and
-        /// Pitch Black have no swatch either and once read this line too, wrongly: they write
-        /// nothing at all (§2.2), so the picker is not drawn in them and this never speaks for
-        /// them.
+        /// What it does in a mode that has a swatch but <b>no per-key colour</b> — Solid, Reactive,
+        /// Ripple, Rebound and the rest. Since issue #135 keys cannot be selected in those modes at
+        /// all, so the picker edits the swatch and nothing else; saying so is what keeps the second
+        /// half of <see cref="PickerWithSwatchHint"/> from becoming a promise the board refuses.
+        /// <para>
+        /// It replaced <c>PickerPaintOnlyHint</c>, which described the opposite arrangement — no
+        /// swatch, paint only — for Spectrum, Wave and Pulse. Those modes have neither a swatch nor
+        /// a selection now, so the rail draws them no picker (its gate moved to
+        /// <see cref="Core.Lighting.Preview.LightingModeParameters.AcceptsAnyColor"/>) and the line
+        /// had nothing left to speak for.
+        /// </para>
         /// </summary>
-        public const string PickerPaintOnlyHint =
-            "This mode supplies its own colours. What you pick here paints the keys you select on "
-            + "the board — those colours stay on file and show through under the effect.";
+        public const string PickerSwatchOnlyHint =
+            "Edits the highlighted swatch above. This mode has no per-key colours, so nothing on "
+            + "the board is painted.";
 
         /// <summary>What the mode does, from §3's "Visual behavior:" paragraph and §2.2's grammar.</summary>
         public static string ForMode(LightingMode mode)
@@ -242,19 +247,20 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// What the colour picker under the swatches writes. Two answers, because a mode with no
-        /// colour of its own still has a picker: the per-key colours belong to the <i>layer</i>
-        /// (§4), not to the effect running over them. Neither answer is asked for in Off or Pitch
-        /// Black — the rail draws no picker where nothing is written
-        /// (<see cref="Core.Lighting.Preview.LightingModeParameters.AcceptsPaint"/>).
+        /// What the colour picker under the swatches writes. Two answers, and since issue #135 the
+        /// question they turn on is whether the mode has per-key colours: every mode that draws a
+        /// picker at all edits its highlighted swatch, and only a per-key mode also paints the
+        /// board. Neither answer is asked for in a mode with no colour of any kind — the rail draws
+        /// no picker there
+        /// (<see cref="Core.Lighting.Preview.LightingModeParameters.AcceptsAnyColor"/>).
         /// </summary>
-        /// <param name="acceptsAnyColor">
-        /// <see cref="Core.Lighting.Preview.LightingModeParameters.AcceptsAnyColor"/> — Core's
+        /// <param name="paintsSelectedKeys">
+        /// <see cref="Core.Lighting.Preview.LightingModeParameters.HasPerKeyColors"/> — Core's
         /// answer, never re-derived here.
         /// </param>
-        public static string ForPicker(bool acceptsAnyColor)
+        public static string ForPicker(bool paintsSelectedKeys)
         {
-            return acceptsAnyColor ? PickerWithSwatchHint : PickerPaintOnlyHint;
+            return paintsSelectedKeys ? PickerWithSwatchHint : PickerSwatchOnlyHint;
         }
     }
 }

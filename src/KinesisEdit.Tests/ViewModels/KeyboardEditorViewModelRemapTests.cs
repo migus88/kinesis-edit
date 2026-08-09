@@ -120,7 +120,6 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(key.IsModified);
             Assert.Equal("Z", key.Caption);
             Assert.Equal(1, editor.ModifiedKeyCount);
-            Assert.Equal("Remap (1)", editor.RemapCounterCaption);
             Assert.False(editor.IsListening);
             Assert.False(key.IsListening);
             Assert.Equal(1, _capture.StopCount);
@@ -197,7 +196,6 @@ namespace KinesisEdit.Tests.ViewModels
             // specs/04-layout-file-format.md §2.1: assigning a key its own action clears the remap.
             Assert.False(key.IsModified);
             Assert.Equal(0, editor.ModifiedKeyCount);
-            Assert.Equal("Remap (0)", editor.RemapCounterCaption);
         }
 
         [Fact]
