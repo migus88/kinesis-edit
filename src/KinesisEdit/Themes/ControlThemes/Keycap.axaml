@@ -24,7 +24,9 @@
 
          `.paintSelected` IS NOT IN THE LADDER EITHER, and never will be: it paints no face at all.
          It beats nothing and loses to nothing except `:disabled`, which takes its ring the way it
-         takes `.selected`'s — a dead cap wears no accent. It does not fight `.selected` (they own
+         takes `.selected`'s — a dead cap wears no accent — and except the SURFACE: it is drawn
+         only where `.lighting` is, because the selection it shows belongs to that board (#131; see
+         PAINT-SELECTED below). It does not fight `.selected` (they own
          different elements and a cap may wear both), it does not fight the face states (the
          Lighting board's face is the key's own colour, drawn by the cap's content, not by this
          theme), and it does not fight focus, which owns the border as it always does.
@@ -415,19 +417,27 @@
       ring is therefore the WHOLE signal rather than the loudest part of one, which is why issue
       #128 was reported here first and why the ring is opaque: a state with nothing to fall back on
       cannot be drawn in an alpha over a colour nobody chose. The grammar is the same one
-      `.selected` uses — the two never need to be told apart, because they are never on screen
-      together (the Layout board has no paint selection and the Lighting board draws no inspector
-      selection of its own).
+      `.selected` uses, and the two are told apart by the SURFACE.
+
+      `.lighting` IS PART OF THE STATE, and that is issue #131. This used to read `.paintSelected`
+      alone, on the premise that the two selections "are never on screen together". THAT PREMISE IS
+      FALSE, and falsely for the reason written three paragraphs up: both tabs render the same cap
+      view models, so a key picked on the Lighting board carries `IsLightingSelected` on the LAYOUT
+      board too — where it drew a full accent ring and border on a cap the user had never selected
+      and could not deselect from there. The ring belongs to the board that owns the selection, so
+      it is qualified by the picture's own answer, exactly as the four badges are qualified by
+      `.stateBadges`. Nothing is cleared on a tab switch: the paint selection SURVIVES the trip and
+      is simply not drawn where it means nothing.
 
       `:not(:disabled)` for the reason every accent state here carries it: BaseButton's disabled
       face is applied first, and an unqualified class would leave a dead cap wearing a live ring.
       `:not(:focus-visible)` on the border for the reason every other border setter carries it:
       focus owns the border whenever it is visible.
     -->
-    <Style Selector="^.paintSelected:not(:disabled):not(:focus-visible)">
+    <Style Selector="^.lighting.paintSelected:not(:disabled):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
-    <Style Selector="^.paintSelected:not(:disabled) /template/ Border#PaintRing">
+    <Style Selector="^.lighting.paintSelected:not(:disabled) /template/ Border#PaintRing">
       <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHaloStrong}" />
     </Style>
 
@@ -462,7 +472,10 @@
       listening and paint-selected at once, and a ring left behind by the thicker border would sit
       a pixel in on exactly the cap being pressed.
 
-      Qualified exactly as the thickness above is, so the three can never drift apart.
+      Qualified exactly as the thickness above is, so the three can never drift apart — and
+      deliberately NOT qualified by `.lighting`, unlike the paint ring's own shadow: this is where
+      the element sits, not whether it is painted, and geometry that only held on one board is the
+      drift the shared qualification exists to prevent.
     -->
     <Style Selector="^.listening:not(:disabled) /template/ Border#Ring">
       <Setter Property="Margin" Value="-1" />

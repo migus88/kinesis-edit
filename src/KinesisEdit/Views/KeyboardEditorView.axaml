@@ -380,37 +380,20 @@
                      THE BOARD IS THE LAYOUT TAB'S ALONE SINCE ISSUE #93. The Macros tab used to
                      dock its editor beside this picture; it is a library now (mockup 1i) and takes
                      the whole content area for itself. -->
-                <Grid RowDefinitions="Auto,*"
-                      IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
-                  <!--
-                    No "Esc cancels" here: while a key is listening the capture service swallows
-                    every physical key, Escape included, so Escape is assigned like any other key (a
-                    keyboard must be able to carry an Escape remap). Cancelling is therefore a
-                    pointer action.
-                  -->
-                  <StackPanel Grid.Row="0"
-                              Orientation="Horizontal"
-                              Spacing="12"
-                              Margin="0,0,0,8"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding IsListening}">
-                    <!-- The banner pulses with the cap it belongs to; the class is bound rather
-                         than fixed so the animation only runs while something is actually
-                         listening. -->
-                    <TextBlock Text="Press a key to assign it to the highlighted key."
-                               Classes="control statusWarning"
-                               Classes.recording="{Binding IsListening}"
-                               VerticalAlignment="Center" />
-                    <Button Content="Cancel"
-                            Command="{Binding CancelRemapCommand}"
-                            VerticalAlignment="Center" />
-                  </StackPanel>
+                <Panel IsVisible="{Binding SelectedTab, Converter={StaticResource EnumMatch}, ConverterParameter=Keys}">
+                  <!-- The listening banner, the keyboard canvas and its legend row, centred as ONE
+                       block in the content area (handoff § "Screens → 3. Layout tab": "Content =
+                       keyboard canvas (centered, both split halves as separate panels with 26px
+                       gutter) + legend row"). The three share one container so the row is exactly as
+                       wide as the board and its ends line up with the board's, which is how mockups
+                       1e/2a draw it.
 
-                  <!-- The keyboard canvas and its legend row, centred as one block in the content
-                       area (handoff § "Screens → 3. Layout tab": "Content = keyboard canvas
-                       (centered, both split halves as separate panels with 26px gutter) + legend
-                       row"). The two share one container so the row is exactly as wide as the board
-                       and its ends line up with the board's, which is how mockups 1e/2a draw it.
+                       THE BANNER IS INSIDE THE BLOCK, and that is not tidiness: the block is what
+                       the column centres, so a reserved band ABOVE it would push the picture half a
+                       band below the middle of the screen for ever — which BoardFitTests reads as
+                       an off-centre board and is right to. Inside, the band is part of the thing
+                       being centred, the board keeps the middle of the space the screen has, and
+                       the notice sits with the picture it is about.
 
                        IT IS A GRID, AND NOT A StackPanel, AND THAT IS THE WHOLE OF ISSUE #123's
                        SECOND HALF. A vertically-oriented StackPanel measures its children with
@@ -431,23 +414,70 @@
                        (Controls/KeyboardView.axaml), so the `keyboardBoard` inset surround this
                        used to carry would be a second frame around them; the canvas here is the
                        content area itself. -->
-                  <Grid Grid.Row="1"
-                        RowDefinitions="*,Auto"
+                  <Grid RowDefinitions="Auto,*,Auto"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         IsVisible="{Binding SelectedLayer, Converter={x:Static data:ObjectConverters.IsNotNull}}">
-                    <controls:KeyboardView Grid.Row="0"
+                    <!--
+                      THE LISTENING BANNER. No "Esc cancels" in it: while a key is listening the
+                      capture service swallows every physical key, Escape included, so Escape is
+                      assigned like any other key (a keyboard must be able to carry an Escape
+                      remap). Cancelling is therefore a pointer action.
+
+                      ITS ROW IS RESERVED, NOT COLLAPSED (issue #131), exactly as the advisory
+                      strip's is (issue #119, Views/AdvisoryStripView.axaml, whose header carries
+                      the full reasoning). This Panel carries no IsVisible: it holds the row whether
+                      or not a key is listening, and only its CONTENTS come and go. Arming a key
+                      used to grow the row from nothing to a 32px bar and its 8px of air, which
+                      shrank the star row under it, made BoardScaleHost re-fit, and moved the board
+                      20px down at the exact moment the user was looking at one cap and about to
+                      press a key for it. Holding the floor costs 40px of a screen that already
+                      budgeted them and moves nothing, ever.
+
+                      RESERVED IS NOT DRAWN: with nothing listening the band paints nothing at all —
+                      no text, no button, no ground of its own — because a permanent "Press a key"
+                      would be an instruction that is false most of the time.
+
+                      THE 32 IS THE BANNER'S OWN HEIGHT, not a designed dimension: `Cancel` is the
+                      tallest thing in the row and stands at the control height its theme gives it,
+                      so there is no geometry token to name here (the handoff draws no listening
+                      bar). Nothing keeps the two numbers in step but the test that keeps this
+                      honest — EditorChromeTests.ArmingAKeyForRemap_MovesTheBoardNotAtAll compares
+                      the board's window-space bounds armed against unarmed, so a banner that
+                      outgrows this floor fails there rather than on somebody's screen.
+                    -->
+                    <Panel Grid.Row="0"
+                           MinHeight="32"
+                           Margin="0,0,0,8">
+                      <StackPanel Orientation="Horizontal"
+                                  Spacing="12"
+                                  VerticalAlignment="Center"
+                                  IsVisible="{Binding IsListening}">
+                        <!-- The banner pulses with the cap it belongs to; the class is bound rather
+                             than fixed so the animation only runs while something is actually
+                             listening. -->
+                        <TextBlock Text="Press a key to assign it to the highlighted key."
+                                   Classes="control statusWarning"
+                                   Classes.recording="{Binding IsListening}"
+                                   VerticalAlignment="Center" />
+                        <Button Content="Cancel"
+                                Command="{Binding CancelRemapCommand}"
+                                VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Panel>
+
+                    <controls:KeyboardView Grid.Row="1"
                                            DataContext="{Binding SelectedLayer}"
                                            HorizontalAlignment="Center"
                                            KeySelectedCommand="{Binding $parent[views:KeyboardEditorView].((vm:KeyboardEditorViewModel)DataContext).SelectKeyCommand}" />
 
                     <!-- ~14px below the board, as the mock spaces it. The row counts the state of
                          the layer on screen and carries `Copy key…` and `Reset layer`. -->
-                    <views:BoardLegendView Grid.Row="1"
+                    <views:BoardLegendView Grid.Row="2"
                                            DataContext="{Binding BoardLegend}"
                                            Margin="0,14,0,0" />
                   </Grid>
-                </Grid>
+                </Panel>
 
                 <!-- The Macros tab (mockup 1i) — a library, not an editor, and since issue #93 it
                      takes the whole content area rather than docking beside the board. It draws no

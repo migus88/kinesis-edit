@@ -8,11 +8,20 @@ namespace KinesisEdit.ViewModels
     /// Core's <see cref="LightingZoneCatalog"/> — a list of key codes — so the button carries no
     /// key knowledge and a device with no zones simply yields no buttons.
     /// <para>
-    /// <b>Since issue #124 a zone is a selection, not a paint.</b> Clicking it toggles its keys in
-    /// the paint selection and writes no colour; Apply is what commits one. So the button has a
-    /// selected state, and it is pushed in by <see cref="LightingTabViewModel"/> rather than worked
-    /// out here — the answer depends on which layer is shown and on the whole current selection,
-    /// and neither is a fact this button has any business holding.
+    /// <b>It is a plain button, and it holds no state at all (issue #131).</b> Between #124 and
+    /// #131 it carried an <c>IsSelected</c> that <see cref="LightingTabViewModel"/> pushed in on
+    /// every selection change — "every one of my keys is currently selected" — and the zones
+    /// <b>overlap</b>: <c>All</c> contains everything, <c>Left Module ⊃ Game ⊃ WASD</c>. So one
+    /// button's click changed another button's face, which is what the user saw as the buttons
+    /// interfering with each other: taking WASD back out of the selection un-lit <c>Game</c> while
+    /// twenty-five of Game's keys stayed selected, and after <c>Select all</c> every button was lit
+    /// so the next click on one of them re-selected instead of deselecting.
+    /// </para>
+    /// <para>
+    /// A latch whose meaning is "a set relation with a set somebody else can move" cannot be shown
+    /// honestly on an overlapping family, so it is not shown at all: each button adds its own keys
+    /// or removes them (<c>LightingTabViewModel.SelectZoneCommand</c>) and nothing it does can
+    /// change how another one looks.
     /// </para>
     /// </summary>
     public sealed class LightingZoneViewModel : ViewModelBase
@@ -47,21 +56,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public IReadOnlyList<int> KeyCodes => _definition.KeyCodes;
 
-        /// <summary>
-        /// Whether every one of this zone's keys — resolved for the layer on screen — is currently
-        /// in the paint selection. It follows the selection <b>from any source</b>: a click on a
-        /// cap, "Select all", "Clear", another zone, a layer switch. See
-        /// <see cref="LightingPaintSelection.Changed"/>, which is what makes that true by
-        /// construction rather than by a list of call sites.
-        /// </summary>
-        public bool IsSelected
-        {
-            get => _isSelected;
-            set => SetProperty(ref _isSelected, value);
-        }
-
         private readonly LightingZoneDefinition _definition;
-        private bool _isSelected;
 
         /// <summary>Creates one zone button over a catalog row.</summary>
         public LightingZoneViewModel(LightingZoneDefinition definition)

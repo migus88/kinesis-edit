@@ -51,12 +51,13 @@ Rationale (spec 03 §5.3): the firmware only reloads its files once the v-Drive 
 - `MacVDriveEjector` — runs `diskutil unmount <root>` through `IProcessRunner` (`SystemProcessRunner` wraps `Process`; tests use a fake). **`unmount`, not `eject`, is deliberate** (decision on issue #6): the spec only requires flush + release, and unmount lets the volume cleanly re-mount. This is new behavior — legacy hid eject on macOS entirely.
 - `UnsupportedVDriveEjector` — `IsSupported` false; `Eject` returns a failed `VDriveEjectResult`, never throws. Windows (lock–dismount–eject sequence, spec 03 §5.3) and Linux are later issues; the interface is designed for them now.
 - `VDriveEject.CreateForCurrentPlatform()` — macOS → real ejector, everything else → unsupported.
-  **It belongs at a composition root or a shared default — never inline inside an operation.** The
-  app names it once when wiring `DeviceEjectService`; `ProfileSession` names it once for the shared
-  default it falls back to when `Load` was given no ejector ([profiles.md](profiles.md) "The service
-  seam"), so a session handed an ejector saves without ever spawning `diskutil`. That save was the
-  last operation in the solution that called the factory inline, which is the shape that pins a code
-  path to the platform.
+  **It belongs at a composition root — never inline inside an operation.** The app names it exactly
+  once, wiring `DeviceEjectService` → `VDriveEjectNotifier` → the dashboard card's `Eject` button
+  ([app-shell.md](app-shell.md)), and that is now the module's **only** consumer. `ProfileSession`
+  used to hold a second, defaulted one and eject at the end of every save; issue #131 removed it,
+  because a drive released as a side effect of a save is what docs/design/README.md's "Nothing
+  ejects implicitly" forbids ([profiles.md](profiles.md) "The service seam"). Nothing in the
+  solution calls the factory inline.
 
 ## Load-bearing invariants
 

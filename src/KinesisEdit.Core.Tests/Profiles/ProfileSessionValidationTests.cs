@@ -36,7 +36,6 @@ namespace KinesisEdit.Core.Tests.Profiles
             Assert.False(result.Success);
             Assert.Contains(result.Violations, violation => violation.Kind == ModelViolationKind.MultiModifiersNotSupported);
             Assert.Null(result.PostSaveMessage);
-            Assert.False(result.Ejected);
             Assert.Equal(originalBytes, File.ReadAllBytes(drive.GetLayoutFilePath(DeviceId.FreestyleEdge, 1)));
         }
     }

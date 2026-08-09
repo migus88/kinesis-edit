@@ -31,6 +31,16 @@ namespace KinesisEdit.Converters
     /// requires. A cap under a fill too faint to matter is treated as unlit for the same reason —
     /// see <see cref="MinimumFillAlpha"/>.
     /// </para>
+    /// <para>
+    /// <b>The surface's own answer is the fifth value, and it is a value rather than a style</b>
+    /// because a local binding on <c>Foreground</c> outranks every style setter: a caption gated by
+    /// a class would keep whatever this converter last said. So the picture's <c>ShowsLighting</c>
+    /// is handed in beside the four layer values, and a board that draws no lit face converts to
+    /// <see cref="AvaloniaProperty.UnsetValue"/> whatever colour the key carries. The Keys tab shares
+    /// its cap view models with the Lighting tab and its keys are painted at load, so without that
+    /// gate a caption was coloured for a fill nothing draws — <c>#14181B</c> on the dark theme's
+    /// raised cap is 1.15:1, and the legends went nearly invisible in both variants (issue #131).
+    /// </para>
     /// </summary>
     public sealed class LitLabelBrushConverter : IMultiValueConverter
     {
@@ -123,14 +133,18 @@ namespace KinesisEdit.Converters
 
         /// <summary>
         /// Returns the label brush for the fill described by
-        /// <c>[PaintColorHex, PaintOpacity, EffectColorHex, EffectIntensity]</c>, or
-        /// <see cref="AvaloniaProperty.UnsetValue"/> when the cap is unlit.
+        /// <c>[PaintColorHex, PaintOpacity, EffectColorHex, EffectIntensity, ShowsLighting]</c>, or
+        /// <see cref="AvaloniaProperty.UnsetValue"/> when the cap is unlit — or when the surface
+        /// draws no lit face at all, whatever colour the key carries.
         /// </summary>
         public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
         {
             ArgumentNullException.ThrowIfNull(values);
 
-            if (values.Count < 4)
+            // The surface first: a board that draws no fill can have no fill to read a label off.
+            // Anything but a `true` there — a missing value, a binding that has not resolved yet —
+            // means "not the lighting board", which is the side that leaves the style in charge.
+            if (values.Count < 5 || values[4] is not true)
             {
                 return AvaloniaProperty.UnsetValue;
             }

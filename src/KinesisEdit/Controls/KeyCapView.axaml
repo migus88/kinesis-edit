@@ -178,6 +178,16 @@
            produces nothing, and the style's own token is what paints. See
            Converters/LitLabelBrushConverter for the threshold and why it is that number.
 
+           ...AND THE SURFACE DECIDES WHETHER THE FILL DECIDES ANYTHING (issue #131). ShowsLighting
+           is the fifth value for the same reason the panel above is gated on it — the two tabs
+           render the SAME cap view models, and the Keys tab's caps are painted at load, before the
+           Lighting tab has ever been opened. Ungated, the caption was coloured for a fill nothing
+           draws: KeycapLitLabelDark on the dark theme's raised cap is 1.15:1 and KeycapLitLabelLight
+           on the light theme's is 1.09:1, so a multi-colour led file made the legends of the Keys
+           tab near-invisible in BOTH variants. The gate is a converter VALUE and not a style,
+           because a local binding on Foreground outranks every style setter there is: a class-gated
+           style would never take, and the caption would keep whatever the converter last said.
+
            It is handed the two layers in the converter's own order — paint under effect — which is
            the order they are drawn in for every mode that RENDERS the paint. A mode that ignores it
            draws the same paint over the effect instead (see the fill panel above), so the caption
@@ -202,6 +212,7 @@
             <Binding Path="PaintOpacity" />
             <Binding Path="EffectColorHex" />
             <Binding Path="EffectIntensity" />
+            <Binding Path="$parent[controls:KeyCapView].ShowsLighting" />
           </MultiBinding>
         </TextBlock.Foreground>
       </TextBlock>

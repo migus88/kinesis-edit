@@ -14,6 +14,15 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
         private const double GridColumns = 4.0;
         private const double GridRows = 3.0;
 
+        /// <summary>
+        /// The hardware measurement <see cref="LightingSpeedScale"/> is calibrated on: a Rebound
+        /// bar crosses the Freestyle Edge RGB board edge to edge in 4.0 s at the default speed.
+        /// </summary>
+        private const double MeasuredReboundEdgeToEdgeSeconds = 4.0;
+
+        /// <summary>Part-way through a sweep, where some keys are behind the band's head and some are not.</summary>
+        private const double MidSweepPhase = 0.35;
+
         [Theory]
         [InlineData(LightingMode.Starlight)]
         [InlineData(LightingMode.Ripple)]
@@ -127,6 +136,43 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
                 $"The slow layer should barely have started, but its intensity is {slowCell.Intensity}.");
         }
 
+        /// <summary>
+        /// The one measurement the whole preview clock rests on, pinned as behaviour rather than
+        /// as arithmetic: at the default speed a Rebound bar takes 4.0 s to cross the board. Its
+        /// travel is a triangle wave, so that is half a cycle — the bar is back where it started
+        /// after 8.0 s. Break this and the preview no longer matches the hardware it was timed
+        /// against (issue #131).
+        /// </summary>
+        [Fact]
+        public void Sample_WithReboundAtTheDefaultSpeed_CrossesTheBoardInTheMeasuredFourSeconds()
+        {
+            var sampler = new LightingEffectSampler();
+            var keys = new[]
+            {
+                new LightingPreviewKey(1, 0.0, 0.5),
+                new LightingPreviewKey(2, 1.0, 0.5)
+            };
+            var state = CreateState(LightingMode.Rebound);
+
+            Assert.Equal(LayerLightingState.DefaultSpeed, state.Speed);
+            Assert.Equal(LightingDirection.Left, state.Direction);
+
+            // Rebound's directions are axes rather than headings (§3): "left" means it travels
+            // along X, so the bar starts on the left-hand key and is on the right-hand one when
+            // the triangle peaks, half a cycle later.
+            var start = sampler.Sample(state, keys, 0.0);
+            var farEdge = sampler.Sample(state, keys, MeasuredReboundEdgeToEdgeSeconds);
+            var backAgain = sampler.Sample(state, keys, MeasuredReboundEdgeToEdgeSeconds * 2.0);
+
+            Assert.Equal(1.0, start.Cells[1].Intensity, 9);
+            Assert.False(start.Cells.ContainsKey(2));
+
+            Assert.Equal(1.0, farEdge.Cells[2].Intensity, 9);
+            Assert.False(farEdge.Cells.ContainsKey(1));
+
+            AssertSameCells(start, backAgain);
+        }
+
         [Fact]
         public void Sample_OverAFullCycle_ReturnsToWhereItStarted()
         {
@@ -234,7 +280,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
 
             for (var step = 0; step < 40; step++)
             {
-                var frame = sampler.Sample(state, keys, step * 0.13);
+                var frame = sampler.Sample(state, keys, SecondsAt(state, step / 12.0));
 
                 foreach (var key in keys.Skip(1))
                 {
@@ -261,7 +307,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
 
             for (var step = 0; step < 20; step++)
             {
-                var frame = sampler.Sample(state, keys, step * 0.11);
+                var frame = sampler.Sample(state, keys, SecondsAt(state, step / 12.0));
 
                 if (frame.Cells.TryGetValue(keys[0].KeyCode, out var cell))
                 {
@@ -309,7 +355,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
 
             for (var step = 0; step < 60; step++)
             {
-                var frame = sampler.Sample(state, keys, step * 0.09);
+                var frame = sampler.Sample(state, keys, SecondsAt(state, step * 0.075));
 
                 foreach (var (_, cell) in frame.Cells)
                 {
@@ -331,7 +377,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
 
             state.BaseColor = new LedColor(20, 20, 60);
 
-            var frame = sampler.Sample(state, keys, 0.44);
+            var frame = sampler.Sample(state, keys, SecondsAt(state, MidSweepPhase));
 
             Assert.Equal(keys.Count, frame.Cells.Count);
         }
@@ -346,7 +392,7 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
             // The default base color is black, which is "no color" (§2.1): only the sweep is lit.
             Assert.Equal(LedColor.Black, state.BaseColor);
 
-            var frame = sampler.Sample(state, keys, 0.44);
+            var frame = sampler.Sample(state, keys, SecondsAt(state, MidSweepPhase));
 
             Assert.InRange(frame.Cells.Count, 1, keys.Count - 1);
         }
@@ -411,10 +457,13 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
                 var state = CreatePaintedState(mode, keys);
                 var lit = false;
 
-                // Several cycles' worth: the pseudo-random effects reseed once per cycle.
+                // Five cycles' worth, sampled 24 times a cycle: the pseudo-random effects reseed
+                // once per cycle, so the horizon has to be counted in cycles rather than in
+                // seconds — a fixed 6 s window stopped covering even one cycle when issue #131
+                // recalibrated the clock to 8 s at the default speed.
                 for (var step = 0; step < 120 && !lit; step++)
                 {
-                    lit = sampler.Sample(state, keys, step * 0.05).Cells.Count > 0;
+                    lit = sampler.Sample(state, keys, SecondsAt(state, step / 24.0)).Cells.Count > 0;
                 }
 
                 Assert.True(lit, $"{mode} never lit a key across a whole cycle.");
@@ -440,6 +489,18 @@ namespace KinesisEdit.Core.Tests.Lighting.Preview
 
             Assert.Empty(frame.Cells);
             Assert.Equal(LightingEffectFrame.PaintOpacityDimmed, frame.PaintOpacity);
+        }
+
+        /// <summary>
+        /// <paramref name="cycles"/> into <paramref name="state"/>'s cycle, in seconds. Every
+        /// phase-sensitive assertion here names a fraction of the cycle rather than an absolute
+        /// instant, so recalibrating <see cref="LightingSpeedScale"/> moves the clock without
+        /// moving what the test is looking at — issue #131 changed the period 6.67× and every
+        /// hard-coded second landed somewhere else in the effect.
+        /// </summary>
+        private static double SecondsAt(LayerLightingState state, double cycles)
+        {
+            return cycles * LightingSpeedScale.PeriodSecondsFor(state.Speed);
         }
 
         private static LayerLightingState CreateState(LightingMode mode)

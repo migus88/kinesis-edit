@@ -490,6 +490,58 @@ namespace KinesisEdit.Tests.Design
                     && text.StartsWith(KeyboardEditorViewModel.ProfileCaptionPrefix, StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// Issue #131's third defect, and the same claim the advisory strip's row already makes:
+        /// arming a key must move nothing. The listening banner used to hide itself whole, so the
+        /// Keys tab's <c>Auto</c> row grew from nothing to a 32 px bar and its 8 px of air the
+        /// moment a cap was armed — the star row under it shrank, <c>BoardScaleHost</c> re-fitted,
+        /// and the board slid 20 px down and away from the very cap the user was about to press a
+        /// key for. Its row is reserved now and only its contents come and go.
+        /// <para>
+        /// Measured in <b>window</b> coordinates, both position and size, because a board that
+        /// merely kept its size while sliding down the screen is exactly the defect; and at a window
+        /// small enough that the fit is height-bound as well as width-bound, so a lost row would
+        /// have to shrink the picture rather than only move it.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task ArmingAKeyForRemap_MovesTheBoardNotAtAll(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName), 1000, 560);
+
+            host.Capture();
+
+            var resting = RectOf(ShownBoard(view), host);
+
+            Assert.False(editor.IsListening, "The scene armed a key before the test did.");
+
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+            editor.BeginRemapCommand.Execute(null);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(editor.IsListening, "The remap never started, so nothing was measured.");
+            Assert.Equal(resting, RectOf(ShownBoard(view), host));
+
+            // ...and back again, because a banner that reserved its row only while it was up would
+            // pass the first half of this and move the board on the way out.
+            editor.CancelRemapCommand.Execute(null);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(editor.IsListening);
+            Assert.Equal(resting, RectOf(ShownBoard(view), host));
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
