@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Firmware;
@@ -14,16 +15,22 @@ using KinesisEdit.ViewModels.Advisories;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The key inspector's Macro panel (mockup <c>2i</c>): the inline name field and the footer's
-    /// two macro actions, recording, the footer meters, the co-triggers, and the three
-    /// <see cref="Refresh"/> shapes every rail panel has to survive — a null key, the key it already
+    /// The key inspector's Macro panel: the slot chips, the Trigger strip, the composer, the
+    /// footer's two macro actions, recording, the meters and the repeat stepper — and the three
+    /// <see cref="Refresh"/> shapes every rail panel has to survive: a null key, the key it already
     /// had, and somebody else's mutation.
+    /// <para>
+    /// The <c>MacroName_*</c> set went with issue #146's removal of the inline name field. What
+    /// replaces it is one case in the other direction — that the panel writes <c>Macro.Name</c>
+    /// nowhere at all — plus <c>KeyboardEditorViewModelMacroNameTests</c>, which is where "a stored
+    /// name survives a load and a save with no rename path" belongs.
+    /// </para>
     /// </summary>
     public sealed class MacroInspectorPanelViewModelTests
     {
         private readonly FakeUrlLauncher _urlLauncher = new();
 
-        [Fact]
+        [AvaloniaFact]
         public void Strings_MatchTheMockVerbatim()
         {
             Assert.Equal("Macro", MacroInspectorPanelViewModel.PanelTitle);
@@ -36,22 +43,31 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(KeyInspectorViewModel.CancelCopyCaption, MacroInspectorPanelViewModel.CancelCopyCaption);
             Assert.Equal("Delete", MacroInspectorPanelViewModel.DeleteMacroCaption);
 
+            // Two record buttons, two captions (issue #146). A bare `Record` on both said nothing
+            // about which one starts a take and which one takes a single key.
+            Assert.Equal("Record sequence", MacroInspectorPanelViewModel.RecordSequenceCaption);
+            Assert.Equal("Record key", MacroInspectorPanelViewModel.RecordKeyCaption);
+            Assert.Equal("Stop", MacroInspectorPanelViewModel.RecordingCaption);
+
             // A DELIBERATE deviation from mockup 2i, which ends the banner "Esc stops." (issue
             // #122, AC 2): Escape is a remappable position, so a macro has to be able to record one
             // — and a banner that offers it as the way out while the keystroke is being appended as
-            // a step is exactly the lie this panel's capture rules exist to avoid. The rest of the
-            // sentence is the mock's, verbatim.
+            // a step is exactly the lie this panel's capture rules exist to avoid.
+            //
+            // The step number went with issue #146, which took the numbers off the rows: a banner
+            // counting up to a label nothing on screen carries would point at nothing.
             Assert.Equal(
-                "Recording into step 04 — your typing goes here, not into the app. "
+                "Recording — your typing goes here, not into the app. "
                 + "Click Stop, or anywhere else, to finish.",
-                MacroInspectorPanelViewModel.BuildRecordingBanner("04"));
+                MacroInspectorPanelViewModel.RecordingBannerText);
             Assert.DoesNotContain(
                 "Esc",
-                MacroInspectorPanelViewModel.RecordingBannerFormat,
+                MacroInspectorPanelViewModel.RecordingBannerText,
                 StringComparison.Ordinal);
-            Assert.Equal(
-                "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.",
-                MacroInspectorPanelViewModel.CaptureRule);
+            Assert.DoesNotContain(
+                "{0}",
+                MacroInspectorPanelViewModel.RecordingBannerText,
+                StringComparison.Ordinal);
 
             // Issue #128's honest sentence about what recording CANNOT do, reworded for #139. It
             // names the user's own example, it does not blame the app — the chord is taken above the
@@ -63,24 +79,41 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Contains("tick the modifiers", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
 
             // The single-shot banner is a different sentence from the run's, because it means
-            // something different: one keystroke, onto the step the composer is pointed at.
+            // something different: one keystroke, onto the step the composer is pointed at. It names
+            // that row as "the selected step" rather than by number, which is both what survives
+            // #146 and the more honest phrasing — the row is the one wearing the selection ring.
             Assert.Equal(
-                "Recording step 02 — the next key you press becomes this step. "
+                "Recording the selected step — the next key you press becomes it. "
                 + "Click Stop, or anywhere else, to cancel.",
-                MacroInspectorPanelViewModel.BuildStepCaptureBanner("02"));
-            Assert.Equal("Playback speed", MacroInspectorPanelViewModel.SpeedMeterLabel);
+                MacroInspectorPanelViewModel.StepCaptureBannerText);
+            Assert.DoesNotContain(
+                "{0}",
+                MacroInspectorPanelViewModel.StepCaptureBannerText,
+                StringComparison.Ordinal);
+
+            // `Playback speed` until #146: the mock draws `Speed ──●── 5 of 9` on one row of a rail
+            // that also has to hold the slider.
+            Assert.Equal("Speed", MacroInspectorPanelViewModel.SpeedMeterLabel);
             Assert.Equal("this macro", MacroInspectorPanelViewModel.MacroLengthMeterLabel);
             Assert.Equal("layout keystrokes", MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
+            Assert.Equal("chars", MacroInspectorPanelViewModel.LayoutKeystrokeUnit);
+            Assert.Equal(" · ", MacroInspectorPanelViewModel.MeterJoin);
 
             // The fourth, since issue #140 moved 06 §6's profile-wide count here from the Macros
             // tab's footer. Its label is the tab's own wording, kept verbatim.
             Assert.Equal("macros", MacroInspectorPanelViewModel.MacroCountMeterLabel);
 
+            // The two header strips of #137, one row and one label each since #146 drew them side
+            // by side. `SLOTS` is plural: it labels the whole chip strip, not the slot under edit.
+            Assert.Equal("SLOTS", MacroInspectorPanelViewModel.SlotSectionLabel);
+            Assert.Equal("TRIGGER", MacroInspectorPanelViewModel.TriggerSectionLabel);
+            Assert.Equal("+", MacroInspectorPanelViewModel.TriggerJoin);
+
             // spec 02's verbatim refusal, carried over from the old macro panel.
             Assert.Equal("You cannot assign a macro to a modifier key", MacroInspectorPanelViewModel.RestrictedKeyMessage);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Mode_IsTheMacroSlotAndItWantsTheWideRail()
         {
             var panel = Create();
@@ -91,7 +124,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(panel.WantsWideRail);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Refresh_WithNoKey_RefusesPolitelyAndShowsNothing()
         {
             var panel = Create();
@@ -104,7 +137,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(panel.IsRecording);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Refresh_OnAModifierPosition_CarriesTheSpecRefusal()
         {
             var scene = new Scene(this);
@@ -115,7 +148,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroInspectorPanelViewModel.RestrictedKeyMessage, scene.Panel.UnavailableReason);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Refresh_WithTheSameKeyTwice_KeepsWhatWasBeingEdited()
         {
             var scene = new Scene(this);
@@ -129,7 +162,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("[a]", scene.Panel.Steps.Items[0].TokenText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Refresh_AfterAForeignMutation_ReReadsAndWritesNothing()
         {
             var scene = new Scene(this);
@@ -152,7 +185,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(macroCount - 1, scene.Layout.MacroCount);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Refresh_MovingToAnotherKey_StopsRecording()
         {
             var scene = new Scene(this);
@@ -167,7 +200,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.IsRecording);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void RecordCommand_AnnouncesItselfAndTakesTheNextKeystroke()
         {
             var scene = new Scene(this);
@@ -187,26 +220,82 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal("[a]", Assert.Single(scene.Panel.Steps.Items).TokenText);
 
-            // Still armed: 2i's banner counts up as the macro grows, so one press is not the end of
-            // a recording.
+            // Still armed: a take runs until it is stopped, so one press is not the end of a
+            // recording — the sequence header's count is what moves as it grows.
             Assert.True(scene.Panel.IsRecording);
-            Assert.Equal("02", scene.Panel.Steps.NextStepNumberText);
+            Assert.Equal("1 step", scene.Panel.StepCountText);
         }
 
-        [Fact]
-        public void RecordingBanner_NamesTheStepTheNextKeystrokeLandsIn()
+        /// <summary>
+        /// One sentence per arm, and neither depends on anything but which arm is live (issue #146
+        /// took the step numbers out of both).
+        /// </summary>
+        [AvaloniaFact]
+        public void RecordingBanner_FollowsTheArmAndNamesNoStepNumber()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a", "b", "c");
+            scene.Panel.RecordCommand.Execute(null);
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildRecordingBanner("04"),
-                scene.Panel.RecordingBanner);
+            Assert.Equal(MacroInspectorPanelViewModel.RecordingBannerText, scene.Panel.RecordingBanner);
+
+            scene.Panel.ReceiveKeystroke(Captured("a"));
+            scene.Panel.ReceiveKeystroke(Captured("b"));
+
+            // Three keystroke-lengths later it still reads the same: there is no number in it to
+            // move, which is the whole of the change.
+            Assert.Equal(MacroInspectorPanelViewModel.RecordingBannerText, scene.Panel.RecordingBanner);
+
+            scene.Panel.Deactivate();
+            scene.SelectStep(0);
+            scene.Panel.RecordStepKeyCommand.Execute(null);
+
+            Assert.Equal(MacroInspectorPanelViewModel.StepCaptureBannerText, scene.Panel.RecordingBanner);
         }
 
-        [Fact]
+        /// <summary>
+        /// The Sequence header's step count — <c>no steps</c> / <c>1 step</c> / <c>5 steps</c>. It is
+        /// the step list's own <see cref="MacroInspectorStepsViewModel.CountText"/>, forwarded, and
+        /// it has to be <b>announced</b>: nothing else on the panel raises it, and the header would
+        /// otherwise keep reading the count the rail opened on.
+        /// </summary>
+        [AvaloniaFact]
+        public void StepCountText_FollowsTheRowsAndIsAnnounced()
+        {
+            var scene = new Scene(this);
+            var announced = 0;
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            scene.Panel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MacroInspectorPanelViewModel.StepCountText))
+                {
+                    announced++;
+                }
+            };
+
+            Assert.Equal("no steps", scene.Panel.StepCountText);
+
+            scene.Record("a");
+
+            Assert.Equal("1 step", scene.Panel.StepCountText);
+
+            scene.Record("b", "c");
+
+            Assert.Equal("3 steps", scene.Panel.StepCountText);
+            Assert.Equal(scene.Panel.Steps.CountText, scene.Panel.StepCountText);
+            Assert.True(announced > 0);
+
+            // The ＋ placeholder is a row the user is looking at, so it counts — a header reading
+            // `3 steps` over four visible rows would be counting something else.
+            scene.Panel.InsertStepCommand.Execute(null);
+
+            Assert.Equal("4 steps", scene.Panel.StepCountText);
+        }
+
+        [AvaloniaFact]
         public void ReceiveKeystroke_WhileNotRecording_WritesNothing()
         {
             var scene = new Scene(this);
@@ -217,7 +306,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(scene.Panel.Steps.Items);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Deactivate_StandsTheRecordingDown()
         {
             var scene = new Scene(this);
@@ -234,7 +323,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// "Editing in place" means the first recorded keystroke <b>is</b> the macro: there is no
         /// Assign button in this panel and none is wanted.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Recording_OnAKeyWithNoMacro_CreatesAndAssignsOne()
         {
             var scene = new Scene(this);
@@ -253,7 +342,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, macro.LayerIndex);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Recording_WhenTheProfileIsAtItsMacroCount_RefusesAndSaysSo()
         {
             var scene = new Scene(this);
@@ -275,7 +364,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Key.Key.IsMacro);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Meters_ReadTheDevicesOwnBudgets_WithTheSpaceGroupedNumbers()
         {
             var scene = new Scene(this);
@@ -294,7 +383,40 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.DoesNotContain(",", scene.Panel.LayoutKeystrokeMeter.Caption, StringComparison.Ordinal);
         }
 
-        [Fact]
+        /// <summary>
+        /// The speed meter reads <c>5 of 9</c> and the three budgets read <c>n / m</c> (issue #146's
+        /// mock). It is one type with one separator argument rather than two types: the arithmetic
+        /// and the over-budget rule are identical, and only the English differs — <c>5 / 9</c> would
+        /// claim the macro has used five ninths of something.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheSpeedMeter_ReadsNOfM_WhileEveryBudgetKeepsItsSlash()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.Speed = scene.Panel.SpeedMinimum + 1;
+
+            Assert.Equal(
+                $"{scene.Panel.Speed} of {scene.Panel.SpeedMaximum}",
+                scene.Panel.SpeedMeter.Caption);
+            Assert.Contains(MacroMeterViewModel.OfSeparator, scene.Panel.SpeedMeter.Caption, StringComparison.Ordinal);
+
+            foreach (var budget in new[]
+                     {
+                         scene.Panel.MacroLengthMeter,
+                         scene.Panel.LayoutKeystrokeMeter,
+                         scene.Panel.MacroCountMeter
+                     })
+            {
+                Assert.Contains(MacroMeterViewModel.CaptionSeparator, budget.Caption, StringComparison.Ordinal);
+                Assert.DoesNotContain(MacroMeterViewModel.OfSeparator, budget.Caption, StringComparison.Ordinal);
+            }
+        }
+
+        [AvaloniaFact]
         public void MacroCountMeter_ReadsTheProfilesCountAgainstTheDevicesOwnFirmwareGatedLimit()
         {
             // Issue #140's fourth meter, and the only readout of 06 §6's macro count left in the app
@@ -321,7 +443,7 @@ namespace KinesisEdit.Tests.ViewModels
                 scene.Panel.MacroCountMeter.Caption);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MacroCountMeter_OnADeviceThatStatesNoCount_ReadsAsABareNumberThatIsNeverOverBudget()
         {
             // The Advantage2 states no macros-per-layout figure (06 §6), and null is "no limit"
@@ -339,7 +461,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("1", scene.Panel.MacroCountMeter.Caption);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MacroCountMeter_PastTheLimit_GoesOverBudgetAndRefusesNothing()
         {
             // Amber, never an error state, and never a refusal — the profile is reported as it
@@ -357,7 +479,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Panel.MacroCountMeter.IsOverBudget);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Meters_OverBudget_ReportAndNeverRefuse()
         {
             var meter = new MacroMeterViewModel(MacroInspectorPanelViewModel.MacroLengthMeterLabel);
@@ -369,13 +491,22 @@ namespace KinesisEdit.Tests.ViewModels
             meter.Set(7201, 7200);
             Assert.True(meter.IsOverBudget);
 
-            // A null limit is "no limit", never zero — the Advantage2 states no macro count.
+            // A null limit is "no limit", never zero — the Advantage2 states no macro count. That
+            // holds whichever separator the meter was built with: there is nothing to separate.
             meter.Set(9000, null);
             Assert.False(meter.IsOverBudget);
             Assert.Equal("9 000", meter.Caption);
+
+            var speed = new MacroMeterViewModel(
+                MacroInspectorPanelViewModel.SpeedMeterLabel,
+                MacroMeterViewModel.OfSeparator);
+
+            speed.Set(9000, null);
+
+            Assert.Equal("9 000", speed.Caption);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Speed_AssignedOnAKeyWithNoMacro_CreatesTheMacroAndWritesIt()
         {
             var scene = new Scene(this);
@@ -390,17 +521,98 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(scene.Panel.SpeedMaximum, scene.Panel.SpeedMeter.Value);
         }
 
+        /// <summary>
+        /// Repeat is a <c>−</c> / value / <c>+</c> stepper since issue #146, and the two halves write
+        /// through the very path the old slider's setter used — so a stepped value still creates the
+        /// macro on an empty slot, still reaches <c>Macro.RepeatFrequency</c>, and still dirties the
+        /// session through <c>Assigned</c>.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheRepeatStepper_WritesThroughTheSamePathAsTheValue()
+        {
+            var scene = new Scene(this);
+            var assigned = 0;
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.Repeat = scene.Panel.RepeatMinimum;
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.Panel.IncreaseRepeatCommand.Execute(null);
+
+            Assert.Equal(scene.Panel.RepeatMinimum + 1, scene.Panel.Repeat);
+            Assert.Equal(scene.Panel.Repeat, scene.CurrentMacro!.RepeatFrequency);
+            Assert.True(assigned > 0);
+
+            scene.Panel.DecreaseRepeatCommand.Execute(null);
+
+            Assert.Equal(scene.Panel.RepeatMinimum, scene.Panel.Repeat);
+            Assert.Equal(scene.Panel.RepeatMinimum, scene.CurrentMacro.RepeatFrequency);
+        }
+
+        /// <summary>
+        /// Each half goes <b>dead</b> at its own bound rather than clamping silently: a button that
+        /// runs and changes nothing reads as broken rather than as at the end of its range. The
+        /// bounds are the device's (06 §4), never a literal.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheRepeatStepper_IsDeadAtEachBound()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.Repeat = scene.Panel.RepeatMinimum;
+
+            Assert.False(scene.Panel.DecreaseRepeatCommand.CanExecute(null));
+            Assert.True(scene.Panel.IncreaseRepeatCommand.CanExecute(null));
+
+            scene.Panel.DecreaseRepeatCommand.Execute(null);
+
+            Assert.Equal(scene.Panel.RepeatMinimum, scene.Panel.Repeat);
+
+            scene.Panel.Repeat = scene.Panel.RepeatMaximum;
+
+            Assert.False(scene.Panel.IncreaseRepeatCommand.CanExecute(null));
+            Assert.True(scene.Panel.DecreaseRepeatCommand.CanExecute(null));
+
+            scene.Panel.IncreaseRepeatCommand.Execute(null);
+
+            Assert.Equal(scene.Panel.RepeatMaximum, scene.Panel.Repeat);
+        }
+
+        /// <summary>
+        /// <see cref="MacroInspectorPanelViewModel.HasRepeat"/> gates the whole row, so on a board
+        /// whose file keeps no repeat token (the Advantage2 — it models a range and writes no
+        /// <c>{xN}</c>, 06 §3) the stepper cannot run at all.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheRepeatStepper_IsDeadWhereTheFileKeepsNoRepeat()
+        {
+            var scene = new Scene(this, DeviceId.Advantage2);
+
+            scene.SelectFirstMacroKey();
+            scene.Record("a");
+
+            Assert.False(scene.Panel.HasRepeat);
+            Assert.False(scene.Panel.IncreaseRepeatCommand.CanExecute(null));
+            Assert.False(scene.Panel.DecreaseRepeatCommand.CanExecute(null));
+        }
+
         // ===== The slot selector (issue #137) =================================================
         // A key holds up to five macros told apart by their co-triggers (06 §1). Until this strip
         // existed the rail could reach exactly one of them.
 
         /// <summary>
-        /// The dots and the dropdown count the slots the <b>dialect writes</b>, never the five the
-        /// model owns: 3 on the Advantage2 and Freestyle Edge/Pro, 5 on the RGB family. Read off
+        /// The chips count the slots the <b>dialect writes</b>, never the five the model owns: 3 on
+        /// the Advantage2 and Freestyle Edge/Pro, 5 on the RGB family. Read off
         /// <see cref="MacroCapability.PersistedSlotsPerKey"/>, so a device added to the catalog with
         /// a different figure is right by construction.
         /// </summary>
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(DeviceId.Advantage2, 3)]
         [InlineData(DeviceId.FreestyleEdge, 3)]
         [InlineData(DeviceId.FreestyleEdgeRgb, 5)]
@@ -417,8 +629,11 @@ namespace KinesisEdit.Tests.ViewModels
                 Enumerable.Range(Macro.MinMacroIndex, expected),
                 scene.Panel.SlotOptions.Select(option => option.Slot));
 
-            // Nothing is recorded yet, so every dot is hollow and the dropdown opens on slot 1.
+            // Nothing is recorded yet, so every chip reads `+` and the strip opens on slot 1.
             Assert.All(scene.Panel.SlotOptions, option => Assert.False(option.IsOccupied));
+            Assert.All(
+                scene.Panel.SlotOptions,
+                option => Assert.Equal(MacroSlotOption.EmptyChipText, option.ChipText));
             Assert.Equal(Macro.MinMacroIndex, scene.Panel.SelectedSlot!.Slot);
 
             scene.Record("a");
@@ -428,13 +643,49 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
+        /// A chip carries its slot's number when the slot holds a macro and a bare <c>+</c> when it
+        /// does not (issue #146), the slot under edit is the one marked selected, and the tooltip
+        /// wording survives the dots and the dropdown that used to own it — a numeral alone is not
+        /// accessible text.
+        /// </summary>
+        [AvaloniaFact]
+        public void SlotChips_CarryTheirNumberWhenOccupied_APlusWhenNot_AndKeepTheirCaption()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            var chips = scene.Panel.SlotOptions;
+
+            Assert.Equal("1", chips[0].ChipText);
+            Assert.Equal("+", chips[1].ChipText);
+            Assert.Equal("Slot 1 — in use", chips[0].Caption);
+            Assert.Equal("Slot 2 — empty", chips[1].Caption);
+
+            // Exactly one chip is selected, and it is the slot the panel is editing.
+            Assert.Same(chips[0], Assert.Single(chips, chip => chip.IsSelected));
+            Assert.Equal(scene.Panel.SelectedSlotNumber, chips[0].Slot);
+
+            // Nothing collides yet, so no chip is ringed.
+            Assert.All(chips, chip => Assert.False(chip.IsColliding));
+
+            scene.Panel.SelectSlotCommand.Execute(chips[2]);
+
+            Assert.Equal(3, scene.Panel.SelectedSlotNumber);
+            Assert.Same(
+                scene.Panel.SlotOptions[2],
+                Assert.Single(scene.Panel.SlotOptions, chip => chip.IsSelected));
+        }
+
+        /// <summary>
         /// <b>The single easiest defect here.</b> <c>ActiveMacroIndex</c> is an in-memory field that
         /// is never serialized (05 §1.3), so a slot pick cannot reach the editor's funnel — which is
         /// the only route to the dirty flag, and would raise an unsaved-changes prompt for a choice
         /// no save could persist. (The Macros tab's <c>Make active</c> already got this right; issue
         /// #140 deleted that surface, so this panel is the only one left that has to.)
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void SelectingASlot_MovesTheActiveSlotAndReReads_WithoutReachingTheEditorsFunnel()
         {
             var scene = new Scene(this);
@@ -460,6 +711,14 @@ namespace KinesisEdit.Tests.ViewModels
 
             // `Assigned` is the panel's ONE hop to RefreshCounters(), and so to IsDirty.
             Assert.Equal(0, assigned);
+
+            // ...and the chip runs the same path, so neither control can dirty the session while the
+            // other does not.
+            scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[0]);
+
+            Assert.Equal(1, scene.Key.Key.ActiveMacroIndex);
+            Assert.Equal(["[a]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(0, assigned);
         }
 
         /// <summary>
@@ -468,7 +727,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// that adds a macro. The one it then creates fills <b>the selected slot</b>, not the first
         /// free one.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void SelectingAnEmptySlot_RecordsIntoThatSlot_AndCreatesNothingBeforeTheFirstKeystroke()
         {
             var scene = new Scene(this);
@@ -501,7 +760,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// a bare number, because a caller outside this panel has no business unwrapping a dropdown
         /// row, and would otherwise have to spell the flat-list fallback a second time.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void SelectedSlotNumber_IsTheSlotUnderEdit_AndZeroWhereThereAreNoSlots()
         {
             var scene = new Scene(this);
@@ -527,7 +786,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// The choice belongs to the position it was made on: moving the rail must open the next key
         /// on whatever slot <em>it</em> carries, not on the number picked for the last one.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void TheSlotChoice_DoesNotFollowTheRailToAnotherPosition()
         {
             var scene = new Scene(this);
@@ -550,7 +809,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// per-layout list (06 §1) and has no slots at all, and a position that refuses macros
         /// (05 §5.3) draws the panel's refusal instead of a strip.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void NoSlotSelector_OnAFlatListBoardOrOnAPositionThatRefusesMacros()
         {
             var flat = new Scene(this, deviceId: DeviceId.Advantage360);
@@ -578,7 +837,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// by a tolerant load records into slot 1 on a Freestyle Edge, not into a slot the very next
         /// save would drop.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void ANewMacro_NeverLandsInASlotTheDialectDoesNotWrite()
         {
             var scene = new Scene(this, deviceId: DeviceId.FreestyleEdge);
@@ -598,8 +857,8 @@ namespace KinesisEdit.Tests.ViewModels
 
         // ===== The Trigger strip (issue #137) =================================================
 
-        [Fact]
-        public void TheStrip_OffersTheThreeLeftHandLatchesAndTheTriggerToken()
+        [AvaloniaFact]
+        public void TheStrip_OffersTheThreeLeftHandLatches()
         {
             var scene = new Scene(this);
 
@@ -612,11 +871,51 @@ namespace KinesisEdit.Tests.ViewModels
 
             // No ⌘ latch: no co-trigger in specs 06 or 10 names one.
             Assert.DoesNotContain(scene.Panel.CoTriggers, latch => latch.Symbol == MacroModifierMarks.WinMark);
-
-            Assert.Equal("[1]", scene.Panel.TriggerTokenText);
         }
 
-        [Fact]
+        /// <summary>
+        /// <b>The latches follow the selected slot</b> (issue #146). They are a fact about the macro
+        /// in the slot under edit, not about the key, and since the two strips now share one row a
+        /// latch left lit from the previous slot would claim a co-trigger the macro on screen does
+        /// not carry. The coupling is <c>SelectSlot → ReadFromModel → RefreshTrigger</c>; it existed
+        /// before this issue and had no test, which is exactly how it would have been refactored
+        /// away.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheLatches_FollowTheSelectedSlot()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            // Slot 1 is co-triggered with ⌃...
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[1]);
+
+            Assert.False(scene.Panel.CoTriggers[0].IsOn);
+            Assert.True(scene.Panel.CoTriggers[1].IsOn);
+
+            // ...and slot 2 with ⇧.
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+            scene.Record("b");
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+
+            Assert.True(scene.Panel.CoTriggers[0].IsOn);
+            Assert.False(scene.Panel.CoTriggers[1].IsOn);
+
+            // Switching back relights the other one, and switching forward again undoes it.
+            scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[0]);
+
+            Assert.False(scene.Panel.CoTriggers[0].IsOn);
+            Assert.True(scene.Panel.CoTriggers[1].IsOn);
+
+            scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[1]);
+
+            Assert.True(scene.Panel.CoTriggers[0].IsOn);
+            Assert.False(scene.Panel.CoTriggers[1].IsOn);
+        }
+
+        [AvaloniaFact]
         public void ALatch_WritesTheMacrosCoTriggers()
         {
             var scene = new Scene(this);
@@ -644,7 +943,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// <see cref="Macro.AddCoTrigger"/> deliberately neither de-duplicates nor refuses, so
         /// holding it is the panel's job.
         /// </summary>
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(DeviceId.FreestyleEdge, 1)]
         [InlineData(DeviceId.Advantage2, 3)]
         [InlineData(DeviceId.FreestyleEdgeRgb, 4)]
@@ -686,7 +985,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// right-hand or generic spelling survives untouched and lights the matching <em>left</em>
         /// latch. Touching any latch is the one moment the panel rewrites the set.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void AFilesRightHandCoTrigger_SurvivesLoad_LightsTheLeftLatch_AndNormalizesOnTheFirstTouch()
         {
             var scene = new Scene(this);
@@ -729,39 +1028,39 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(assigned > 0);
         }
 
-        [Fact]
-        public void TriggerStatus_ReadsBarePressUntilACoTriggerIsSet()
+        /// <summary>
+        /// <b>The status is the advisory or nothing</b> (issue #146). It used to read
+        /// <c>bare press · no collision</c> at rest — a line under every macro on every key saying
+        /// that nothing was wrong — and the mock draws no line there at all.
+        /// <see cref="MacroInspectorPanelViewModel.IsTriggerAdvisory"/> is now exactly "there is
+        /// something to say", which is what the view binds <c>IsVisible</c> to.
+        /// </summary>
+        [AvaloniaFact]
+        public void TriggerStatus_SaysNothingAtRest_WhateverTheCoTriggersAre()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a");
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildTriggerStatus(
-                    MacroInspectorPanelViewModel.BarePressStatus,
-                    MacroInspectorPanelViewModel.NoCollisionStatus),
-                scene.Panel.TriggerStatus);
-            Assert.Equal("bare press · no collision", scene.Panel.TriggerStatus);
+            Assert.Equal(string.Empty, scene.Panel.TriggerStatus);
             Assert.False(scene.Panel.IsTriggerAdvisory);
 
             scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildTriggerStatus(
-                    MacroInspectorPanelViewModel.CoTriggeredStatus,
-                    MacroInspectorPanelViewModel.NoCollisionStatus),
-                scene.Panel.TriggerStatus);
+            Assert.Equal(string.Empty, scene.Panel.TriggerStatus);
             Assert.False(scene.Panel.IsTriggerAdvisory);
         }
 
         /// <summary>
         /// 06 §5's duplicate-trigger rule, named on the slot it collides with — which is the whole
         /// reason the slot selector can drop the tab's <c>ACTIVE</c> badge: every populated slot is
-        /// live, and what tells them apart is this.
+        /// live, and what tells them apart is this. <b>Both sides of the clash are ringed</b>: two
+        /// macros that cannot be told apart are equally at fault, and marking one of them would name
+        /// a culprit where there is only a pair.
         /// </summary>
-        [Fact]
-        public void TriggerStatus_NamesTheCollidingSlot_AndIsAnAmberAdvisory()
+        [AvaloniaFact]
+        public void ACollision_NamesTheSlotInTheAdvisory_AndRingsEverySlotInvolved()
         {
             var scene = new Scene(this);
 
@@ -773,22 +1072,28 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
             scene.Record("b");
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildTriggerStatus(
-                    MacroInspectorPanelViewModel.BarePressStatus,
-                    MacroInspectorPanelViewModel.BuildCollisionStatus(1)),
-                scene.Panel.TriggerStatus);
+            Assert.Equal(MacroInspectorPanelViewModel.BuildCollisionStatus(1), scene.Panel.TriggerStatus);
+            Assert.Equal("collides with slot 1", scene.Panel.TriggerStatus);
             Assert.True(scene.Panel.IsTriggerAdvisory);
 
-            // Give the second one a co-trigger and the pair stops colliding.
+            Assert.True(scene.Panel.SlotOptions[0].IsColliding);
+            Assert.True(scene.Panel.SlotOptions[1].IsColliding);
+            Assert.All(scene.Panel.SlotOptions.Skip(2), chip => Assert.False(chip.IsColliding));
+
+            // The ring is a fact about the key, not about the selection: it stays on both chips from
+            // whichever slot the panel is looking at them.
+            scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[0]);
+
+            Assert.Equal(MacroInspectorPanelViewModel.BuildCollisionStatus(2), scene.Panel.TriggerStatus);
+            Assert.True(scene.Panel.SlotOptions[0].IsColliding);
+            Assert.True(scene.Panel.SlotOptions[1].IsColliding);
+
+            // Give one of them a co-trigger and the pair stops colliding — line and rings together.
             scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildTriggerStatus(
-                    MacroInspectorPanelViewModel.CoTriggeredStatus,
-                    MacroInspectorPanelViewModel.NoCollisionStatus),
-                scene.Panel.TriggerStatus);
+            Assert.Equal(string.Empty, scene.Panel.TriggerStatus);
             Assert.False(scene.Panel.IsTriggerAdvisory);
+            Assert.All(scene.Panel.SlotOptions, chip => Assert.False(chip.IsColliding));
         }
 
         /// <summary>
@@ -796,7 +1101,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// bare macro on either can never fire. Gen2 only, exactly as <c>KeyboardLayoutValidator</c>
         /// gates it — the strip and the validator must not disagree about what the firmware refuses.
         /// </summary>
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(KeyboardKey.Fn1ShiftKeyCode)]
         [InlineData(KeyboardKey.KeypadToggleKeyCode)]
         public void AReservedTrigger_WithNoCoTrigger_IsAnAmberAdvisory(int triggerCode)
@@ -806,19 +1111,12 @@ namespace KinesisEdit.Tests.ViewModels
             scene.SelectByTriggerCode(triggerCode);
             scene.Record("a");
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildTriggerStatus(
-                    MacroInspectorPanelViewModel.BarePressStatus,
-                    MacroInspectorPanelViewModel.ReservedTriggerStatus),
-                scene.Panel.TriggerStatus);
+            Assert.Equal(MacroInspectorPanelViewModel.ReservedTriggerStatus, scene.Panel.TriggerStatus);
             Assert.True(scene.Panel.IsTriggerAdvisory);
 
             scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
 
-            Assert.DoesNotContain(
-                MacroInspectorPanelViewModel.ReservedTriggerStatus,
-                scene.Panel.TriggerStatus,
-                StringComparison.Ordinal);
+            Assert.Equal(string.Empty, scene.Panel.TriggerStatus);
             Assert.False(scene.Panel.IsTriggerAdvisory);
         }
 
@@ -826,7 +1124,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// An ordinary trigger on the very same Gen2 board raises nothing, or the advisory above
         /// would pass for the wrong reason.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void AnOrdinaryGen2Trigger_RaisesNoReservedAdvisory()
         {
             var scene = new Scene(this, deviceId: DeviceId.Advantage360);
@@ -835,10 +1133,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Record("a");
 
             Assert.False(scene.Panel.IsTriggerAdvisory);
-            Assert.DoesNotContain(
-                MacroInspectorPanelViewModel.ReservedTriggerStatus,
-                scene.Panel.TriggerStatus,
-                StringComparison.Ordinal);
+            Assert.Equal(string.Empty, scene.Panel.TriggerStatus);
         }
 
         /// <summary>
@@ -846,7 +1141,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// layout carrying a collision still validates into a <em>report</em>, and every command on
         /// the panel is still runnable while the amber is on screen.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void NeitherAdvisory_RefusesAnything()
         {
             var scene = new Scene(this);
@@ -868,136 +1163,49 @@ namespace KinesisEdit.Tests.ViewModels
                 violation => violation.Kind == ModelViolationKind.MacroTriggerCollision);
         }
 
-        // ===== The name, the copy and the delete (issue #141) =================================
-        // The dropdown over the profile's macro library is gone with the library: there is no
+        // ===== The copy and the delete (issue #141, minus the name field with #146) ============
+        // The dropdown over the profile's macro library went with the library (#141): there is no
         // shared macro on the drive, so a list of "the macros this profile has" was an identity the
-        // hardware does not carry. What is here instead names ONE site.
+        // hardware does not carry. The inline field that replaced it went with the designer's mock,
+        // which draws none — so a macro is identified by the place it fires from, and the two
+        // actions below are all that is left of the section.
 
         /// <summary>
-        /// The field writes the model — and marks the <b>names</b> dirty rather than the layout,
-        /// because a name is not in <c>layoutN.txt</c> at all.
+        /// <b>Nothing on this panel names a macro</b> (issue #146), and it must therefore never
+        /// write <c>Macro.Name</c> either. The harvest on save takes every non-empty name, so a
+        /// panel that quietly stamped a derived one onto the model would put a
+        /// <c>macro_name_*</c> line in <c>app_settings.txt</c> for a name nobody typed — which is
+        /// exactly the trap the watermark existed to avoid, still live now that the field is gone.
         /// </summary>
-        [Fact]
-        public void MacroName_TypedInTheField_WritesTheMacrosOwnName()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a");
-
-            var names = 0;
-            var writes = 0;
-
-            scene.Panel.NameChanged += (_, _) => names++;
-            scene.Panel.Assigned += (_, _) => writes++;
-
-            scene.Panel.MacroName = "Sign-off block";
-
-            Assert.Equal("Sign-off block", scene.CurrentMacro!.Name);
-            Assert.Equal("Sign-off block", scene.Panel.MacroName);
-            Assert.Equal(1, names);
-
-            // A name moves no counter, no advisory and no budget, so the layout's own funnel is
-            // deliberately NOT run for one.
-            Assert.Equal(0, writes);
-        }
-
-        /// <summary>
-        /// The field commits on every focus loss, so committing what is already there must be a
-        /// no-op — otherwise a glance at the field dirties the profile's names.
-        /// </summary>
-        [Fact]
-        public void MacroName_CommittedUnchanged_AnnouncesNoRename()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a");
-
-            scene.Panel.MacroName = "Sign-off block";
-
-            var names = 0;
-
-            scene.Panel.NameChanged += (_, _) => names++;
-
-            scene.Panel.MacroName = "Sign-off block";
-
-            // ...and the same value after Core's own sanitizing, which is what the box hands back
-            // when the user tabs out of a field they only tidied whitespace in.
-            scene.Panel.MacroName = "  Sign-off   block  ";
-
-            Assert.Equal(0, names);
-            Assert.Equal("Sign-off block", scene.CurrentMacro!.Name);
-        }
-
-        /// <summary>A blank commit clears the name; the macro falls back to its derived one.</summary>
-        [Fact]
-        public void MacroName_ClearedToBlank_UnnamesTheMacro()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a");
-
-            scene.Panel.MacroName = "Sign-off block";
-            scene.Panel.MacroName = "   ";
-
-            Assert.Equal(string.Empty, scene.CurrentMacro!.Name);
-            Assert.Equal(string.Empty, scene.Panel.MacroName);
-
-            // The tombstone the next save writes is the settings layer's; what matters here is that
-            // the model really is unnamed again, which is what makes the key removable.
-            Assert.Empty(MacroSites.EnumerateStoredNames(scene.Layout));
-        }
-
-        /// <summary>
-        /// The derived display name is the <b>watermark</b> and is never the text: it is recomputed
-        /// from the macro's content on every load, and the save harvests every non-empty
-        /// <see cref="Macro.Name"/> — so writing it into the field would persist a name for a macro
-        /// nobody named, and freeze it.
-        /// </summary>
-        [Fact]
-        public void MacroNameWatermark_IsTheDerivedName_AndIsNeverWrittenToTheModel()
+        [AvaloniaFact]
+        public void ThePanel_NeverWritesAMacroName()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a", "b");
 
-            Assert.Equal(
-                MacroNaming.DeriveDisplayName(scene.CurrentMacro!, scene.Layout),
-                scene.Panel.MacroNameWatermark);
-            Assert.Equal("ab", scene.Panel.MacroNameWatermark);
-
-            Assert.Equal(string.Empty, scene.Panel.MacroName);
             Assert.Equal(string.Empty, scene.CurrentMacro!.Name);
             Assert.Empty(MacroSites.EnumerateStoredNames(scene.Layout));
 
-            // It follows the content, which is the whole reason it is not stored.
-            scene.Record("c");
+            // Every other control on the panel, over the same macro.
+            scene.SelectStep(0);
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.Panel.StepDelayMilliseconds = 80;
+            scene.Panel.Speed = scene.Panel.SpeedMaximum;
+            scene.Panel.IncreaseRepeatCommand.Execute(null);
+            scene.Panel.ToggleCoTriggerCommand.Execute(scene.Panel.CoTriggers[0]);
+            scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[1]);
 
-            Assert.Equal("abc", scene.Panel.MacroNameWatermark);
-        }
+            Assert.Equal(string.Empty, scene.Key.Key.GetMacro(1)!.Name);
+            Assert.Empty(MacroSites.EnumerateStoredNames(scene.Layout));
 
-        /// <summary>There is nothing to name on an empty slot, and the field says so by being dead.</summary>
-        [Fact]
-        public void WithNoMacro_TheNameFieldIsDeadAndWritesNothing()
-        {
-            var scene = new Scene(this);
+            // ...and a name a load put there is left exactly as it was found.
+            scene.Key.Key.GetMacro(1)!.Name = "Sign-off block";
 
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Refresh();
 
-            Assert.False(scene.Panel.HasMacro);
-            Assert.Equal(string.Empty, scene.Panel.MacroNameWatermark);
-
-            var names = 0;
-
-            scene.Panel.NameChanged += (_, _) => names++;
-
-            scene.Panel.MacroName = "Sign-off block";
-
-            Assert.Equal(0, names);
-            Assert.Equal(0, scene.Layout.MacroCount);
+            Assert.Equal("Sign-off block", scene.Key.Key.GetMacro(1)!.Name);
         }
 
         /// <summary>
@@ -1005,7 +1213,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// is another key carrying a macro that merely looks the same — there is no shared macro to
         /// reach (06 §1).
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void DeleteMacro_EmptiesThisSlotAlone()
         {
             var scene = new Scene(this);
@@ -1054,7 +1262,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// On a flat-list board (06 §1) the same command takes the macro out of the per-layout list,
         /// which is the only store that board has.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void DeleteMacro_OnAFlatListBoard_TakesItOutOfTheLayoutsList()
         {
             var scene = new Scene(this, deviceId: DeviceId.Advantage360);
@@ -1071,7 +1279,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>Nothing to delete on an empty slot, so the command is dead rather than silent.</summary>
-        [Fact]
+        [AvaloniaFact]
         public void DeleteMacro_WithNoMacro_IsDisabled()
         {
             var scene = new Scene(this);
@@ -1090,7 +1298,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// one armed state, one Escape route, one disarm set — and the armed flag is read back off
         /// the cancel command's own <c>CanExecute</c> so the panel cannot drift from it.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void TheCopyPair_IsTheEditorsOwn_AndIsCopyArmedFollowsIt()
         {
             var scene = new Scene(this);
@@ -1126,7 +1334,7 @@ namespace KinesisEdit.Tests.ViewModels
         // The rail's `Revert key` used to run the editor's ClearRemap(), which touches only the
         // remap — so on this panel it did nothing at all, and nothing anywhere kept a "before".
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_PutsBackTheMacroThePositionHadWhenItWasSelected()
         {
             var scene = new Scene(this);
@@ -1163,7 +1371,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.CoTriggers[0].IsOn);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_OnAPositionThatCarriedNoMacro_LeavesItCarryingNone()
         {
             // "There was nothing before" is a state the baseline has to be able to hold: the macro
@@ -1182,7 +1390,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, scene.Layout.MacroCount);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_IsIdempotent()
         {
             // The baseline is read on restore, never consumed, and never re-taken there — so the
@@ -1203,7 +1411,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, scene.Panel.Steps.Count);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheBaseline_SurvivesTheRefreshesTheUsersOwnEditsCause()
         {
             // The trap the panel contract warns about: Refresh runs on EVERY editor refresh, for
@@ -1235,7 +1443,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Single(scene.CurrentMacro!.Keystrokes);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheBaseline_SurvivesDeactivate_BecauseAModeSwitchDoesNotMoveThePosition()
         {
             // Deactivate stands capture down; it does not change what this key held when it was
@@ -1252,7 +1460,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(scene.CurrentMacro);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_RestoresEverySlotAndTheActiveOne()
         {
             // A key holds up to five macros, told apart by their co-triggers (06 §1), and the
@@ -1283,7 +1491,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(3, key.ActiveMacroIndex);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_WithNothingSelected_RefusesSoTheFooterFallsThroughToTheEditor()
         {
             var panel = Create();
@@ -1295,7 +1503,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(panel.TryRevert());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TryRevert_OnAPositionThatCannotCarryAMacro_Refuses()
         {
             // A modifier position (05 §5.3). There is no macro state to put back, so the footer must
@@ -1308,7 +1516,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.TryRevert());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void IsRecordingControl_NamesTheThreeButtonsThatArmCapture_AndNothingElse()
         {
             // What the editor's pointer stand-down asks before it ends a recording: the press that
@@ -1331,7 +1539,7 @@ namespace KinesisEdit.Tests.ViewModels
         // standalone per-row delay editor — three ways to change a macro, none of which could change
         // a step that already existed.
 
-        [Fact]
+        [AvaloniaFact]
         public void TheComposer_WithNothingSelected_IsDeadExceptTheTwoWaysToMakeASelection()
         {
             var scene = new Scene(this);
@@ -1356,7 +1564,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Panel.InsertStepCommand.CanExecute(null));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheComposer_OffersTheFourLeftHandModifiers_AndNoOthers()
         {
             // Authoring is left-only, exactly as the Trigger strip's three latches are (#137). A
@@ -1381,7 +1589,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.All(scene.Panel.ChordModifiers, latch => Assert.False(latch.HasSide));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectingAStep_SeedsTheComposerFromIt()
         {
             var scene = new Scene(this);
@@ -1397,7 +1605,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroStepDelayMode.None, scene.SelectedDelayMode());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void AModifierLatch_WritesTheStepImmediately_AndDirtiesTheSession()
         {
             // There is no Apply here, deliberately: every control writes through the panel's own
@@ -1423,7 +1631,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroModifiers.None, scene.CurrentMacro.Keystrokes[0].Modifiers);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheChordGuard_ClearsTheDirectionBothInTheModelAndInTheControl()
         {
             // 05 §5.8: a modified keystroke's direction is discarded on the way to the file, so a
@@ -1457,7 +1665,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroInspectorStepViewModel.TapAction, scene.Panel.Steps.Items[0].ActionText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void OnAStepWhoseKeyIsAModifier_TheDirectionStaysLiveAndTheLatchesGoDead()
         {
             // The exception 05 §5.8 makes, and its consequence: Keystroke drops any modifier
@@ -1480,7 +1688,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroInspectorStepViewModel.ReleaseAction, scene.Panel.Steps.Items[0].ActionText);
         }
 
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(MacroModifiers.RightShift, MacroModifiers.LeftShift)]
         [InlineData(MacroModifiers.RightControl, MacroModifiers.LeftControl)]
         [InlineData(MacroModifiers.Shift, MacroModifiers.LeftShift)]
@@ -1513,7 +1721,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(assigned > 0);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectingAnAlreadyLeftHandedStep_WritesNothing()
         {
             var scene = new Scene(this);
@@ -1532,7 +1740,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, assigned);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ADelayOnlyRow_EnablesTheDelaySectionAndNothingElse()
         {
             // 06 §2.2 lets a macro open with a delay; the row stays because dropping it would edit
@@ -1559,7 +1767,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.All(scene.Panel.StepDirections, segment => Assert.False(segment.IsEnabled));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheDelaySection_WritesImmediatelyAndHasNoApply()
         {
             var scene = new Scene(this);
@@ -1590,7 +1798,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// latched — so the field it arms never came alive and no number could ever be entered.
         /// The press is an intent: it latches and arms, and the first usable number writes.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void PressingFixed_OnAStepWithNoDelay_LatchesAndArmsTheField_ThenTheFirstNumberWrites()
         {
             var scene = new Scene(this);
@@ -1624,7 +1832,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// became worth fixing with #139: the old editor opened over a row on demand, and this
         /// section is on screen for every selected step.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void TheMillisecondField_IsEmptyWithNoDelay_AndNeverDrawsTheZeroSentinel()
         {
             var scene = new Scene(this);
@@ -1652,7 +1860,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// Typing a number is itself a choice of <c>fixed</c>, so the strip follows it — otherwise a
         /// delay could sit on the step while the segment above still read <c>none</c>.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void TypingANumber_LatchesFixed_WithoutEverPressingTheSegment()
         {
             var scene = new Scene(this);
@@ -1671,7 +1879,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Panel.IsCustomStepDelay);
         }
 
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(0)]
         [InlineData(1000)]
         public void ATypedDelayOutsideTheRange_ReportsSpecElevenPointThreesMessageAndWritesNothing(int delay)
@@ -1689,8 +1897,14 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a"], scene.MacroTokens());
         }
 
-        [Fact]
-        public void TheDelayArrows_ClampToTheSpecsOwnRange()
+        /// <summary>
+        /// The `+`/`-` arrows beside the millisecond field went with issue #146's compose bar, which
+        /// draws a bare field. §11.3's range is unchanged and is still the *field's* — both bounds
+        /// are readable off the panel, both ends of the range are writable, and everything outside
+        /// it is refused by the validation above rather than silently clamped by an arrow.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheDelayField_TakesBothEndsOfTheSpecsOwnRange()
         {
             var scene = new Scene(this);
 
@@ -1698,20 +1912,21 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Record("a");
             scene.SelectStep(0);
 
-            scene.Panel.DecreaseStepDelayCommand.Execute(null);
-
-            Assert.Equal(1, scene.Panel.StepDelayMilliseconds);
             Assert.Equal(1, scene.Panel.MinimumDelayMilliseconds);
             Assert.Equal(999, scene.Panel.MaximumDelayMilliseconds);
 
+            scene.Panel.StepDelayMilliseconds = 1;
+
+            Assert.Equal(1, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(["a", "d001"], scene.MacroTokens());
+
             scene.Panel.StepDelayMilliseconds = 999;
-            scene.Panel.IncreaseStepDelayCommand.Execute(null);
 
             Assert.Equal(999, scene.Panel.StepDelayMilliseconds);
             Assert.Equal(["a", "d999"], scene.MacroTokens());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheDelaySection_BelowTheFirmwareGate_RefusesInPlaceWithTheSpecMessage()
         {
             // 09 §2, answered in place exactly as the Tap & hold panel answers its gate — the
@@ -1738,7 +1953,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a"], scene.MacroTokens());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ThePlaceholder_WritesNothingUntilAKeyLands()
         {
             var scene = new Scene(this);
@@ -1764,7 +1979,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.Steps.HasPlaceholder);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ThePlaceholder_WithNothingSelected_LandsAtTheEnd()
         {
             var scene = new Scene(this);
@@ -1778,7 +1993,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "b", "z"], scene.MacroTokens());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ThePlaceholder_OnAKeyWithNoMacro_MakesTheMacroOnTheFirstKey()
         {
             // "The first keystroke IS the macro" holds for a composed step too — there is no Assign
@@ -1801,7 +2016,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(1, scene.Layout.MacroCount);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ThePlaceholder_IsDiscardedOnDeselect_OnDeactivate_AndWhenTheRailMoves()
         {
             var scene = new Scene(this);
@@ -1827,7 +2042,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.Steps.HasPlaceholder);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheComposersRecord_TakesExactlyOneKeystrokeAndDisarmsItself()
         {
             var scene = new Scene(this);
@@ -1847,7 +2062,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // The header's own button must NOT read Stop: it would be offering to stop a take that
             // was never started.
-            Assert.Equal(MacroInspectorPanelViewModel.RecordCaption, scene.Panel.RecordCommandCaption);
+            Assert.Equal(MacroInspectorPanelViewModel.RecordSequenceCaption, scene.Panel.RecordCommandCaption);
 
             scene.Panel.ReceiveKeystroke(Captured("z"));
 
@@ -1863,7 +2078,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["z", "b"], scene.MacroTokens());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheComposersRecord_ReplacesTheKeyAndKeepsTheStepsDelay()
         {
             var scene = new Scene(this);
@@ -1879,7 +2094,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(80, scene.Panel.Steps.Items[0].DelayMilliseconds);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheTwoArms_AreMutuallyExclusive_BecauseTheyAreOneField()
         {
             // Invariant 5: one keystroke, one target. The panel is ONE IKeystrokeSink with one arm
@@ -1909,7 +2124,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(scene.Panel.IsRecording);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TheRunArm_StillAppendsAtTheEndRegardlessOfTheSelection()
         {
             var scene = new Scene(this);
@@ -1923,8 +2138,8 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "b", "c"], scene.MacroTokens());
         }
 
-        [Fact]
-        public void TheBanner_NamesTheStepTheComposerIsPointedAt()
+        [AvaloniaFact]
+        public void TheBanner_NamesTheSelectedStepRatherThanTheTake()
         {
             var scene = new Scene(this);
 
@@ -1934,12 +2149,15 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.RecordStepKeyCommand.Execute(null);
 
-            Assert.Equal(
-                MacroInspectorPanelViewModel.BuildStepCaptureBanner("02"),
-                scene.Panel.RecordingBanner);
+            // The two sentences are different because the two arms mean different things — the run
+            // appends at the end, this one overwrites the row wearing the selection ring.
+            Assert.Equal(MacroInspectorPanelViewModel.StepCaptureBannerText, scene.Panel.RecordingBanner);
+            Assert.NotEqual(
+                MacroInspectorPanelViewModel.RecordingBannerText,
+                MacroInspectorPanelViewModel.StepCaptureBannerText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Reverting_DropsTheSelectionAndAnyPlaceholder()
         {
             // A revert replaces the position's whole keystroke list; a placeholder held across it
@@ -1960,7 +2178,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(scene.CurrentMacro);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void AReorder_CarriesTheSelectionWithTheStep()
         {
             // MoveStep rebuilds every row, so a cached "selected index" goes stale — the selection

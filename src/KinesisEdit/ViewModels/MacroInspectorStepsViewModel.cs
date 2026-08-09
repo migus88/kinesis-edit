@@ -9,9 +9,15 @@ using KinesisEdit.Services;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The step editor of the key inspector's Macro panel (mockup <c>2i</c>): the numbered rows, the
-    /// selection every edit is aimed at, the reorder, the per-row delete, the <c>＋</c> placeholder,
-    /// and <b>every write to the macro's keystroke list</b>.
+    /// The step editor of the key inspector's Macro panel: the rows, the selection every edit is
+    /// aimed at, the reorder, the per-row delete, the <c>＋</c> placeholder, and <b>every write to
+    /// the macro's keystroke list</b>.
+    ///
+    /// <para><b>The rows carry no numbers since issue #146.</b> Mockup <c>2i</c> drew them
+    /// <c>01</c>…<c>07</c>; the designer's mock draws a token chip and an action word, and the count
+    /// once, in the header (<see cref="CountText"/>). A per-row ordinal in a list that is reordered
+    /// by dragging is a label that is right only until the gesture it invites — and it cost a column
+    /// of a rail that had to hold a chip, an action, a delay and a delete.</para>
     ///
     /// <para><b>It is the model gateway, and the composer is the surface</b> (issue #139). The four
     /// things a step has — its key, its held modifiers, its direction and the delay behind it — are
@@ -53,22 +59,21 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed class MacroInspectorStepsViewModel : ViewModelBase
     {
-        /// <summary>The section heading, verbatim from mockup <c>2i</c>.</summary>
-        public const string SectionTitle = "Steps";
-
-        /// <summary>First half of the reorder affordance, <c>drag ⠿ · ⌥↑↓</c>: the word before the mark.</summary>
-        public const string ReorderHintPrefix = "drag";
-
         /// <summary>
-        /// The keyboard half of it on macOS, <b>without the Option glyph</b>: U+2325 is in neither
-        /// embedded IBM Plex family, so it is <em>drawn</em> as <c>IconOption</c> beside this text
-        /// rather than typed — exactly as the layer chips do it since issue #109. The two arrows
-        /// are U+2191/U+2193, which both families carry.
+        /// The section heading. Mockup <c>2i</c> wrote it <c>Steps</c>; issue #146's mock writes
+        /// <c>Sequence</c>, which is also what the header's record button records — a sequence, not
+        /// a step — and what the composer beneath it is deliberately <em>not</em> called.
         /// </summary>
-        public const string MacReorderShortcut = "· ↑↓";
+        public const string SectionTitle = "Sequence";
 
-        /// <summary>How the same gesture is spelled everywhere else — ⌥ is Alt on every platform.</summary>
-        public const string PlainReorderShortcut = "· Alt+↑↓";
+        /// <summary>What <see cref="CountText"/> reads on a macro with nothing in it.</summary>
+        public const string StepCountZero = "no steps";
+
+        /// <summary>What it reads on a macro of one — spelled out rather than <c>1 steps</c>.</summary>
+        public const string StepCountOne = "1 step";
+
+        /// <summary>What it reads on every other count; <c>{0}</c> is the number of rows.</summary>
+        public const string StepCountFormat = "{0} steps";
 
         /// <summary>The trailing row's caption, verbatim from mockup <c>2i</c> (the <c>＋</c> is geometry).</summary>
         public const string InsertStepCaption = "insert step";
@@ -80,6 +85,12 @@ namespace KinesisEdit.ViewModels
         /// What the drag handle is for, as a tooltip. This app's wording. The modifier is spelled
         /// in <b>words</b>, not as <c>⌥</c>: a tooltip is a bare string with nowhere to hang a
         /// drawn mark, and U+2325 is in neither embedded family.
+        /// <para>
+        /// <b>It is the only place the reorder shortcut is written down now</b> (issue #146). The
+        /// header's <c>drag ⠿ · ⌥↑↓</c> block went with the mock, which puts the step count there
+        /// instead — so this tooltip has to keep naming the accelerator, or the keyboard half of the
+        /// reorder becomes undiscoverable.
+        /// </para>
         /// </summary>
         public const string MacReorderHandleHint = "Drag to reorder, or press Option+↑ / Option+↓";
 
@@ -117,24 +128,13 @@ namespace KinesisEdit.ViewModels
         public static string ReorderHandleHint { get; } =
             KeyCaption.IsMacOs ? MacReorderHandleHint : PlainReorderHandleHint;
 
-        /// <summary>The keyboard spelling of the reorder gesture for this platform.</summary>
-        public static string BuildReorderShortcut(bool isMacOs)
-        {
-            return isMacOs ? MacReorderShortcut : PlainReorderShortcut;
-        }
-
         /// <summary>
-        /// The keyboard half of the reorder affordance as this platform spells it — <c>· ⌥↑↓</c> on
-        /// macOS, <c>· Alt+↑↓</c> elsewhere. Fixed for the life of the panel; the accelerator it
-        /// promises is kept by <c>Input/EditorShortcuts</c>, which maps ⌥ to <c>Alt</c> everywhere.
+        /// How many rows the list holds, as the Sequence header states it beside its title —
+        /// <c>no steps</c>, <c>1 step</c>, <c>5 steps</c>. It counts <see cref="Items"/>, so an open
+        /// <c>＋</c> placeholder is included: the number labels what the user is looking at, and a
+        /// header reading <c>4 steps</c> over five visible rows would be counting something else.
         /// </summary>
-        public string ReorderShortcut { get; } = BuildReorderShortcut(KeyCaption.IsMacOs);
-
-        /// <summary>
-        /// Whether the drawn <c>⌥</c> shows beside <see cref="ReorderShortcut"/>. macOS only: every
-        /// other platform reads <c>Alt+</c> in the text itself and must not draw a second modifier.
-        /// </summary>
-        public bool ShowsOptionMark { get; } = KeyCaption.IsMacOs;
+        public string CountText => BuildCountText(_items.Count);
 
         /// <summary>
         /// The rows, in playback order — the macro's steps, plus the <c>＋</c> placeholder when one
@@ -149,7 +149,7 @@ namespace KinesisEdit.ViewModels
                 {
                     OnPropertyChanged(nameof(HasItems));
                     OnPropertyChanged(nameof(Count));
-                    OnPropertyChanged(nameof(NextStepNumberText));
+                    OnPropertyChanged(nameof(CountText));
                 }
             }
         }
@@ -159,14 +159,6 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>How many rows there are, the placeholder included.</summary>
         public int Count => _items.Count;
-
-        /// <summary>
-        /// The number the next <em>recorded</em> step will take — what the trailing
-        /// <c>＋ insert step</c> row is numbered and what the recording banner names (mockup
-        /// <c>2i</c>: "Recording into step 04"). It counts the macro's real steps, so an open
-        /// placeholder does not inflate it: a run recording appends at the end regardless.
-        /// </summary>
-        public string NextStepNumberText => MacroInspectorStepViewModel.FormatNumber(_blockCount + 1);
 
         /// <summary>
         /// The row every composer control is aimed at, and the row <c>⌥↑↓</c> moves. It is this
@@ -281,7 +273,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// How many real rows the macro produced at the last rebuild — <see cref="Items"/> minus the
-        /// placeholder. What <see cref="NextStepNumberText"/> counts.
+        /// placeholder. It is what every block index is bounded against; <see cref="CountText"/>
+        /// deliberately counts the <em>rows</em> instead, because that is what is on screen.
         /// </summary>
         private int _blockCount;
 
@@ -803,6 +796,21 @@ namespace KinesisEdit.ViewModels
             }
         }
 
+        /// <summary>
+        /// The header's count in words and figures. Three shapes rather than one format, because
+        /// <c>0 steps</c> reads as a count of nothing where <c>no steps</c> reads as an empty macro,
+        /// and <c>1 steps</c> is simply wrong.
+        /// </summary>
+        private static string BuildCountText(int count)
+        {
+            return count switch
+            {
+                <= 0 => StepCountZero,
+                1 => StepCountOne,
+                _ => string.Format(CultureInfo.InvariantCulture, StepCountFormat, count)
+            };
+        }
+
         private void SelectByPosition(int position)
         {
             SelectedStep = position >= 1 && position <= _items.Count ? _items[position - 1] : null;
@@ -962,8 +970,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Draws the placeholder when <paramref name="blockIndex"/> is the block it sits before. It
-        /// is rebuilt rather than carried, because its row number is get-only and every other row's
-        /// moves with it.
+        /// is rebuilt rather than carried, because its <see cref="MacroInspectorStepViewModel.Position"/>
+        /// is get-only and every other row's moves with it.
         /// </summary>
         private void AppendPlaceholder(List<MacroInspectorStepViewModel> rows, int blockIndex)
         {

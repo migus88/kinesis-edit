@@ -6,13 +6,13 @@ using KinesisEdit.Core.Model;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The Macro panel's <b>Trigger strip</b> (issue #137): what the key has to be pressed <em>with</em>
-    /// for this macro to fire, and whether anything else on the key already claims that combination.
+    /// The Macro panel's <b>Trigger strip</b> (issue #137, redrawn by #146): what the key has to be
+    /// pressed <em>with</em> for this macro to fire, and whether anything else on the key already
+    /// claims that combination.
     ///
     /// <code>
-    /// TRIGGER
-    /// [⇧] [⌃] [⌥]  +  [hk7]
-    /// bare press · no collision
+    /// SLOTS [1][2][+][+][+]              TRIGGER + [⇧][⌃][⌥]
+    ///                       collides with slot 1
     /// </code>
     ///
     /// <para><b>Three latches, not six, and not four — a deliberate deviation</b> recorded in
@@ -24,6 +24,12 @@ namespace KinesisEdit.ViewModels
     /// examples are <c>{lshft}</c>/<c>{rctrl}</c>), so a <c>⌘</c> latch would author a token no
     /// firmware is documented to honour — a macro that silently never fires.</para>
     ///
+    /// <para><b>The latches sit on the slot row, and they follow the slot</b> (issue #146). They are
+    /// a fact about the macro in the slot under edit, not about the key, so switching chips re-reads
+    /// them: <c>SelectSlot → ReadFromModel → RefreshTrigger</c>. That coupling is load bearing now
+    /// that the two strips share a row — a latch left lit from the previous slot would claim a
+    /// co-trigger the macro on screen does not carry.</para>
+    ///
     /// <para><b>Preserve on load, normalize on edit.</b> A file that carries <c>{rshft}</c> or the
     /// generic <c>{shft}</c> keeps it and lights the <c>⇧</c> latch, so the user can see the
     /// co-trigger exists; opening a key must not rewrite a co-trigger the user only looked at, and
@@ -31,10 +37,20 @@ namespace KinesisEdit.ViewModels
     /// spellings of the latches that are lit — which is the only moment the panel is entitled to
     /// change what the file says.</para>
     ///
-    /// <para><b>The status is an advisory and never a refusal.</b> A collision is what
+    /// <para><b>The status is an advisory, and since issue #146 it is <em>only</em> an advisory.</b>
+    /// It used to read <c>bare press · no collision</c> at rest, which is a line of text under every
+    /// macro on every key saying that nothing is wrong; the mock draws nothing there, and so does
+    /// this. <see cref="TriggerStatus"/> is now the advisory or the empty string, and
+    /// <see cref="IsTriggerAdvisory"/> is exactly "there is one". A collision is what
     /// <c>KeyboardLayout.Validate</c> reports as <c>MacroTriggerCollision</c> and it reports rather
     /// than blocks (docs/app/keyboard-model.md, invariant 1); the reserved-trigger rule of 06 §5 is
     /// the same. Both are amber, never red, and neither is reachable from a <c>CanExecute</c>.</para>
+    ///
+    /// <para><b>There is one collision computation, not two.</b> The slot chips need every slot
+    /// involved in a clash and the status needs the first slot the macro under edit clashes with;
+    /// <see cref="ResolveCollisionStatus"/> answers both at once and
+    /// <see cref="RefreshSlotsAndTrigger"/> is what makes sure it is asked once. Two walks of the
+    /// same five slots would be two chances to disagree about what collides.</para>
     ///
     /// <para>Split into a partial for the reason <c>MacroInspectorPanelViewModel.Composer.cs</c> was:
     /// the main file is already long and docs/guides/Coding Conventions.md forbids growing it into a
@@ -45,22 +61,14 @@ namespace KinesisEdit.ViewModels
         /// <summary>The section label over the strip. This app's wording.</summary>
         public const string TriggerSectionLabel = "TRIGGER";
 
-        /// <summary>Between the latches and the trigger token, as 06 §5's own examples read.</summary>
+        /// <summary>
+        /// Between the label and the latches, as 06 §5's own examples read. It used to sit between
+        /// the latches and the trigger token; issue #146 dropped the token — the rail header already
+        /// names the position — so the <c>+</c> moved to the label it now qualifies.
+        /// </summary>
         public const string TriggerJoin = "+";
 
-        /// <summary>Between the two halves of the status readout. U+00B7; both embedded families carry it.</summary>
-        public const string StatusSeparator = " · ";
-
-        /// <summary>The status's first half when the macro carries no co-trigger at all.</summary>
-        public const string BarePressStatus = "bare press";
-
-        /// <summary>Its first half when the macro does carry one (06 §5).</summary>
-        public const string CoTriggeredStatus = "co-triggered";
-
-        /// <summary>Its second half when nothing else on the key claims the same combination.</summary>
-        public const string NoCollisionStatus = "no collision";
-
-        /// <summary>Its second half when another <b>slot</b> of this key claims it (06 §5).</summary>
+        /// <summary>The advisory when another <b>slot</b> of this key claims the same combination (06 §5).</summary>
         public const string CollisionSlotFormat = "collides with slot {0}";
 
         /// <summary>
@@ -85,16 +93,10 @@ namespace KinesisEdit.ViewModels
             return string.Format(CultureInfo.InvariantCulture, CoTriggerLimitMessageFormat, limit);
         }
 
-        /// <summary>Builds the collision half of the status, naming the slot it collides with.</summary>
+        /// <summary>Builds the collision advisory, naming the slot it collides with.</summary>
         public static string BuildCollisionStatus(int slot)
         {
             return string.Format(CultureInfo.InvariantCulture, CollisionSlotFormat, slot);
-        }
-
-        /// <summary>Joins the two halves of the readout: <c>bare press · no collision</c>.</summary>
-        public static string BuildTriggerStatus(string trigger, string collision)
-        {
-            return trigger + StatusSeparator + collision;
         }
 
         /// <summary>The three left-hand co-trigger latches of 06 §5 — see the type's remarks.</summary>
@@ -107,43 +109,36 @@ namespace KinesisEdit.ViewModels
         public bool HasCoTriggers => MaxCoTriggers > 0;
 
         /// <summary>
-        /// The position's trigger key as the open board's dialect spells it — <c>[hk7]</c>. Mono:
-        /// it is literally what the layout file carries on the trigger side of the macro line
-        /// (06 §3). Empty while the panel has nothing to edit.
-        /// </summary>
-        public string TriggerTokenText
-        {
-            get => _triggerTokenText;
-            private set => SetProperty(ref _triggerTokenText, value);
-        }
-
-        /// <summary>
-        /// The readout right of the latches: <c>bare press · no collision</c>, or the advisory that
-        /// replaces its second half. Empty while the panel has nothing to edit.
+        /// The one amber line the strip can draw, or the empty string. It is <b>the advisory alone</b>
+        /// since issue #146: <c>collides with slot 3</c>, <c>collides with another macro on this
+        /// key</c>, or <c>needs a co-trigger to fire</c>. At rest there is nothing to say and nothing
+        /// is drawn — see the type's remarks.
         /// </summary>
         public string TriggerStatus
         {
             get => _triggerStatus;
-            private set => SetProperty(ref _triggerStatus, value);
+            private set
+            {
+                if (SetProperty(ref _triggerStatus, value))
+                {
+                    OnPropertyChanged(nameof(IsTriggerAdvisory));
+                }
+            }
         }
 
         /// <summary>
-        /// Whether the readout is an advisory, and so amber. It is a colour <em>role</em> and never
-        /// a brush (docs/app/design-system.md, invariant 10), and it gates nothing: a colliding or
-        /// reserved trigger still saves.
+        /// Whether there is an advisory to draw — and so, exactly, whether
+        /// <see cref="TriggerStatus"/> says anything. It is what the line's <c>IsVisible</c> binds,
+        /// and the amber it is painted in is a colour <em>role</em> and never a brush
+        /// (docs/app/design-system.md, invariant 10). It gates nothing else: a colliding or reserved
+        /// trigger still saves.
         /// </summary>
-        public bool IsTriggerAdvisory
-        {
-            get => _isTriggerAdvisory;
-            private set => SetProperty(ref _isTriggerAdvisory, value);
-        }
+        public bool IsTriggerAdvisory => _triggerStatus.Length > 0;
 
         /// <summary>Turns one co-trigger on or off, enforcing the device's cap (06 §5).</summary>
         public IRelayCommand<MacroCoTriggerViewModel> ToggleCoTriggerCommand { get; private set; } = null!;
 
-        private string _triggerTokenText = string.Empty;
         private string _triggerStatus = string.Empty;
-        private bool _isTriggerAdvisory;
 
         /// <summary>
         /// Builds the strip. Called from the constructor, which is why the properties above carry a
@@ -160,19 +155,29 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-reads the whole strip off the model — the latches, the trigger token and the status.
-        /// It writes nothing, which is the half of the "preserve on load" rule that matters: a file's
-        /// right-hand or generic co-trigger is only ever <em>read</em> here.
+        /// Re-reads both halves of the panel's one header row off the model, resolving the collision
+        /// <b>once</b> for the two of them. Every caller goes through here rather than through
+        /// <c>RefreshSlots</c> and <c>RefreshTrigger</c> in turn: the chips' rings and the status
+        /// line are two renderings of one answer, and a second walk of the key's slots is a second
+        /// answer waiting to differ from the first.
         /// </summary>
-        private void RefreshTrigger()
+        private void RefreshSlotsAndTrigger()
+        {
+            var collision = ResolveCollisionStatus();
+
+            RefreshSlots(collision);
+            RefreshTrigger(collision);
+        }
+
+        /// <summary>
+        /// Re-reads the strip off the model — the latches and the status. It writes nothing, which
+        /// is the half of the "preserve on load" rule that matters: a file's right-hand or generic
+        /// co-trigger is only ever <em>read</em> here.
+        /// </summary>
+        private void RefreshTrigger(MacroCollision collision)
         {
             RefreshCoTriggers();
-
-            TriggerTokenText = IsAvailable && _key is { } key
-                ? KeyboardKeyViewModel.FormatToken(key.Key.TriggerKey, _dialect)
-                : string.Empty;
-
-            RefreshTriggerStatus();
+            RefreshTriggerStatus(collision);
         }
 
         /// <summary>
@@ -263,39 +268,28 @@ namespace KinesisEdit.ViewModels
             OnMacroWritten();
         }
 
-        private void RefreshTriggerStatus()
+        /// <summary>
+        /// Picks the one sentence the strip has to say, or none at all. The reserved rule comes first
+        /// because it is the stronger fact: such a macro cannot fire at all, so naming a collision
+        /// instead would answer a smaller question.
+        /// </summary>
+        private void RefreshTriggerStatus(MacroCollision collision)
         {
             if (!IsAvailable || _key is null)
             {
                 TriggerStatus = string.Empty;
-                IsTriggerAdvisory = false;
 
                 return;
             }
 
-            var coTriggerCount = _macro?.CoTriggerCount ?? 0;
-            var trigger = coTriggerCount > 0 ? CoTriggeredStatus : BarePressStatus;
-
-            // The reserved rule comes first because it is the stronger fact: such a macro cannot
-            // fire at all, so naming a collision instead would answer a smaller question.
-            if (coTriggerCount == 0 && IsReservedTrigger())
+            if ((_macro?.CoTriggerCount ?? 0) == 0 && IsReservedTrigger())
             {
-                TriggerStatus = BuildTriggerStatus(trigger, ReservedTriggerStatus);
-                IsTriggerAdvisory = true;
+                TriggerStatus = ReservedTriggerStatus;
 
                 return;
             }
 
-            if (ResolveCollisionStatus() is { Length: > 0 } collision)
-            {
-                TriggerStatus = BuildTriggerStatus(trigger, collision);
-                IsTriggerAdvisory = true;
-
-                return;
-            }
-
-            TriggerStatus = BuildTriggerStatus(trigger, NoCollisionStatus);
-            IsTriggerAdvisory = false;
+            TriggerStatus = collision.Status;
         }
 
         /// <summary>
@@ -315,51 +309,122 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// 06 §5's duplicate-trigger rule over the macros that share this position's trigger key,
-        /// walked in persisted-slot order so the slot named is the first one that collides. Empty
-        /// when nothing collides. <see cref="Macro.CollidesWith"/> owns the comparison, so the
-        /// readout and <c>Validate()</c> can never disagree.
+        /// answered <b>once</b> for the two surfaces that need it — the chips' amber rings and the
+        /// strip's amber line. <see cref="Macro.CollidesWith"/> owns the comparison, so neither
+        /// readout can disagree with <c>Validate()</c>.
         /// </summary>
-        private string ResolveCollisionStatus()
+        private MacroCollision ResolveCollisionStatus()
         {
-            if (_macro is not { } macro || _key is not { } key)
+            if (!IsAvailable || _key is not { } key)
             {
-                return string.Empty;
+                return MacroCollision.None;
             }
 
-            if (_usesMacroSlots)
-            {
-                for (var slot = Macro.MinMacroIndex; slot <= _persistedSlots; slot++)
-                {
-                    var other = key.Key.GetMacro(slot);
+            return _usesMacroSlots ? ResolveSlotCollision(key.Key) : ResolveFlatListCollision(key.Key);
+        }
 
-                    if (other is null || ReferenceEquals(other, macro))
+        /// <summary>
+        /// The collision over the key's <b>persisted</b> slots, walked in slot order.
+        ///
+        /// <para><b>Every slot on either side of a clash is reported</b>, because the chips ring a
+        /// pair: two macros that cannot be told apart are equally at fault, and marking only one of
+        /// them would name a culprit where there is none. The <em>status</em> is narrower on purpose
+        /// — it is about the macro under edit, and it names the first slot that one collides with,
+        /// which is what makes "collides with slot 3" a sentence the user can act on.</para>
+        /// </summary>
+        private MacroCollision ResolveSlotCollision(KeyboardKey key)
+        {
+            var colliding = new List<int>();
+            var status = string.Empty;
+
+            for (var slot = Macro.MinMacroIndex; slot <= _persistedSlots; slot++)
+            {
+                if (key.GetMacro(slot) is not { } macro)
+                {
+                    continue;
+                }
+
+                for (var other = Macro.MinMacroIndex; other <= _persistedSlots; other++)
+                {
+                    if (other == slot || key.GetMacro(other) is not { } rival || !macro.CollidesWith(rival))
                     {
                         continue;
                     }
 
-                    if (macro.CollidesWith(other))
+                    colliding.Add(slot);
+
+                    if (status.Length == 0 && ReferenceEquals(macro, _macro))
                     {
-                        return BuildCollisionStatus(slot);
+                        status = BuildCollisionStatus(other);
                     }
+
+                    break;
                 }
-
-                return string.Empty;
             }
 
-            if (_layout is not { } layout)
+            return colliding.Count == 0 ? MacroCollision.None : new MacroCollision(status, colliding);
+        }
+
+        /// <summary>
+        /// The same rule on a flat-list board (06 §1), where there is no slot to name and none to
+        /// ring: two macros can share a trigger and a layer there just as readily, and the sentence
+        /// is all the panel can offer.
+        /// </summary>
+        private MacroCollision ResolveFlatListCollision(KeyboardKey key)
+        {
+            if (_macro is not { } macro || _layout is not { } layout)
             {
-                return string.Empty;
+                return MacroCollision.None;
             }
 
-            foreach (var other in layout.FindMacros(_layer?.Index ?? Macro.UnassignedIndex, key.Key.TriggerKey.Code))
+            foreach (var other in layout.FindMacros(_layer?.Index ?? Macro.UnassignedIndex, key.TriggerKey.Code))
             {
                 if (!ReferenceEquals(other, macro) && macro.CollidesWith(other))
                 {
-                    return CollisionStatus;
+                    return new MacroCollision(CollisionStatus, []);
                 }
             }
 
-            return string.Empty;
+            return MacroCollision.None;
+        }
+
+        /// <summary>
+        /// One resolution of 06 §5's duplicate-trigger rule, as the two surfaces that draw it need
+        /// it: the sentence for the macro <b>under edit</b>, and every slot of the key taking part
+        /// in a clash. They are one object rather than two calls because the walk that finds one
+        /// finds the other, and because a chip ringed amber beside a strip saying nothing — or the
+        /// reverse — is exactly the disagreement a second walk would eventually produce.
+        /// </summary>
+        private sealed class MacroCollision
+        {
+            /// <summary>Nothing on this key collides with anything.</summary>
+            public static MacroCollision None { get; } = new(string.Empty, []);
+
+            /// <summary>The advisory for the macro under edit, or the empty string.</summary>
+            public string Status { get; }
+
+            private readonly IReadOnlyList<int> _slots;
+
+            /// <summary>Builds one resolution; <paramref name="slots"/> is in persisted-slot order.</summary>
+            public MacroCollision(string status, IReadOnlyList<int> slots)
+            {
+                Status = status;
+                _slots = slots;
+            }
+
+            /// <summary>Whether <paramref name="slot"/> is one of the slots taking part.</summary>
+            public bool Includes(int slot)
+            {
+                for (var index = 0; index < _slots.Count; index++)
+                {
+                    if (_slots[index] == slot)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
         }
     }
 }

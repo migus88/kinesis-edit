@@ -1772,8 +1772,8 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task EffectiveInspectorRailWidth_WhileTheMacroPanelShows_NeverGoesBelowTheMacroWidth()
         {
-            // The handoff's 300 is honoured as a FLOOR: a rail dragged narrow still gives macro
-            // editing the room its step list needs.
+            // The macro entitlement is honoured as a FLOOR: a rail dragged narrow still gives macro
+            // editing the room its step list and its composer need.
             var editor = await CreateLoadedEditorAsync();
 
             editor.InspectorRailWidth = HostPreferences.MinimumInspectorRailWidth;
@@ -1789,14 +1789,15 @@ namespace KinesisEdit.Tests.ViewModels
         public async Task EffectiveInspectorRailWidth_WhenTheUserDraggedWider_KeepsTheDraggedWidth()
         {
             // ...and it is a floor rather than an override, which is the deviation issue #119
-            // recorded: a user who dragged to 460 is not yanked back to 300 by opening a macro.
+            // recorded: a user who dragged to 500 is not yanked back to the macro width by opening
+            // a macro.
             var editor = await CreateLoadedEditorAsync();
 
-            editor.InspectorRailWidth = 460;
+            editor.InspectorRailWidth = 500;
 
             SelectMacroMode(editor);
 
-            Assert.Equal(460, editor.EffectiveInspectorRailWidth);
+            Assert.Equal(500, editor.EffectiveInspectorRailWidth);
         }
 
         [Fact]
@@ -1838,7 +1839,7 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task Rail_WhileTheMacroPanelShows_RaisesTheFloorForTheKeysTabOnly()
         {
-            // THE LIGHTING TAB MUST NOT INHERIT THE 300 PX FLOOR. It exists for the macro panel's
+            // THE LIGHTING TAB MUST NOT INHERIT THE MACRO FLOOR. It exists for the macro panel's
             // step list, and the Lighting tab has no macro panel — a rail widened there would be
             // widened for a reason that does not exist on that tab. The Keys tab binds
             // EffectiveWidth, the Lighting tab binds Width, and this is the difference.

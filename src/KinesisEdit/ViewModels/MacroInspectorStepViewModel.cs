@@ -5,9 +5,10 @@ using KinesisEdit.Core.Model;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One row of the key inspector's step editor (mockup <c>2i</c>), drawn exactly as the mock
-    /// draws it: <c>01 [lshift] press</c>, <c>02 [b] LS held</c>, <c>03 [lshift] release</c>,
-    /// <c>04 [e] tap</c>, <c>07 [enter] tap · 80 ms</c>.
+    /// One row of the key inspector's step editor, drawn as issue #146's mock draws it — a token
+    /// chip, an action word, and the delay behind it: <c>[lshft] press</c>, <c>[b] ⇧ held</c>,
+    /// <c>[ent] tap · 80 ms</c>. Mockup <c>2i</c> numbered every row <c>01</c>…<c>07</c>; those
+    /// numbers are gone and only <see cref="Position"/> is left of them.
     ///
     /// <para><b>A row is a step plus the delay that follows it.</b> A macro's delay is itself a
     /// keystroke in the stream (a <c>{d080}</c>/<c>{dran}</c> pseudo-key, 06 §2.2) — but the mock
@@ -69,12 +70,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>Unit of a custom delay, as the mock writes it — <c>80 ms</c>.</summary>
         public const string MillisecondSuffix = " ms";
 
-        /// <summary>Two-digit row number, as the mock numbers the steps: <c>01</c>, <c>07</c>.</summary>
-        public static string FormatNumber(int position)
-        {
-            return position.ToString("00", CultureInfo.InvariantCulture);
-        }
-
         /// <summary>The delay a row carries, spelled the way the mock spells it.</summary>
         public static string FormatDelay(int milliseconds, bool isRandom)
         {
@@ -108,11 +103,13 @@ namespace KinesisEdit.ViewModels
             return new MacroInspectorStepViewModel(position);
         }
 
-        /// <summary>1-based position of the row in the list — what <c>01</c> counts.</summary>
+        /// <summary>
+        /// 1-based position of the row in the list. It is <b>not drawn</b> since issue #146 took the
+        /// step numbers off the rows; it survives because it is how the list re-establishes its
+        /// selection across a rebuild (<c>SelectByPosition</c>) and how a placeholder is created at
+        /// the index it was opened at.
+        /// </summary>
         public int Position { get; }
-
-        /// <summary>The row number as drawn: <c>01</c>.</summary>
-        public string NumberText { get; }
 
         /// <summary>
         /// The struck key as the file spells it — <c>[lshift]</c> — or an empty string on a
@@ -268,7 +265,6 @@ namespace KinesisEdit.ViewModels
 
             Position = position;
             KeystrokeIndex = keystrokeIndex;
-            NumberText = FormatNumber(position);
             IsDelayOnly = isDelayOnly;
 
             TokenText = isDelayOnly ? string.Empty : KeyboardKeyViewModel.FormatToken(keystroke.Key, dialect);
@@ -294,7 +290,6 @@ namespace KinesisEdit.ViewModels
         private MacroInspectorStepViewModel(int position)
         {
             Position = position;
-            NumberText = FormatNumber(position);
             IsPlaceholder = true;
 
             TokenText = string.Empty;

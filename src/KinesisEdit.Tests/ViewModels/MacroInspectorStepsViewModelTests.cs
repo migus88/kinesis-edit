@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Firmware;
 using KinesisEdit.Core.Keys;
@@ -27,7 +28,7 @@ namespace KinesisEdit.Tests.ViewModels
     {
         private readonly FakeUrlLauncher _urlLauncher = new();
 
-        [Fact]
+        [AvaloniaFact]
         public void Strings_MatchTheSpecVerbatim()
         {
             Assert.Equal("Random Delay (1-150ms)", MacroInspectorStepsViewModel.RandomDelayCaption);
@@ -36,27 +37,77 @@ namespace KinesisEdit.Tests.ViewModels
                 "Please select a timing delay between 1ms and 999ms. To achieve a longer delay, insert multiple delays back-to-back.",
                 MacroInspectorStepsViewModel.InvalidDelayMessage);
 
-            // Mockup 2i's own heading and reorder affordance.
-            Assert.Equal("Steps", MacroInspectorStepsViewModel.SectionTitle);
-            Assert.Equal("drag", MacroInspectorStepsViewModel.ReorderHintPrefix);
+            // `Steps` until issue #146; the designer's mock writes `Sequence`, which is also what
+            // the header's record button records.
+            Assert.Equal("Sequence", MacroInspectorStepsViewModel.SectionTitle);
             Assert.Equal("insert step", MacroInspectorStepsViewModel.InsertStepCaption);
+
+            Assert.Equal("no steps", MacroInspectorStepsViewModel.StepCountZero);
+            Assert.Equal("1 step", MacroInspectorStepsViewModel.StepCountOne);
+            Assert.Equal("{0} steps", MacroInspectorStepsViewModel.StepCountFormat);
         }
 
-        [Fact]
-        public void ReorderShortcut_SpellsTheSameModifierOnBothPlatforms()
+        /// <summary>
+        /// <b>The grip's tooltip is the only place the reorder shortcut is written down now</b>
+        /// (issue #146): the header's <c>drag ⠿ · ⌥↑↓</c> block went with the mock, which puts the
+        /// step count there instead. So the tooltip must still name the accelerator, or the keyboard
+        /// half of the reorder becomes undiscoverable — and it must name it in <b>words</b>, because
+        /// a tooltip is a bare string and U+2325 is in neither embedded family.
+        /// </summary>
+        [AvaloniaFact]
+        public void ReorderHandleHint_StillNamesTheShortcutOnBothPlatforms()
         {
-            // ⌥ is Alt everywhere — only the spelling changes, exactly as the layer chips do it.
-            // The macOS spelling carries NO ⌥: U+2325 is in neither embedded family, so the mark
-            // is drawn beside this text (IconOption, gated by ShowsOptionMark) rather than typed —
-            // the same resolution issue #109 made for the layer chips.
-            Assert.Equal("· ↑↓", MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: true));
-            Assert.Equal("· Alt+↑↓", MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: false));
-            Assert.DoesNotContain('⌥', MacroInspectorStepsViewModel.BuildReorderShortcut(isMacOs: true));
-            Assert.DoesNotContain('⌥', MacroInspectorStepsViewModel.ReorderHandleHint);
+            Assert.Equal(
+                "Drag to reorder, or press Option+↑ / Option+↓",
+                MacroInspectorStepsViewModel.MacReorderHandleHint);
+            Assert.Equal(
+                "Drag to reorder, or press Alt+↑ / Alt+↓",
+                MacroInspectorStepsViewModel.PlainReorderHandleHint);
+
+            foreach (var hint in new[]
+                     {
+                         MacroInspectorStepsViewModel.MacReorderHandleHint,
+                         MacroInspectorStepsViewModel.PlainReorderHandleHint
+                     })
+            {
+                Assert.DoesNotContain('⌥', hint);
+                Assert.Contains('↑', hint);
+                Assert.Contains('↓', hint);
+            }
+
+            Assert.Contains(
+                MacroInspectorStepsViewModel.ReorderHandleHint,
+                new[]
+                {
+                    MacroInspectorStepsViewModel.MacReorderHandleHint,
+                    MacroInspectorStepsViewModel.PlainReorderHandleHint
+                });
         }
 
-        [Fact]
-        public void Load_WithNoMacro_ShowsNothingAndNumbersTheFirstStepOne()
+        /// <summary>
+        /// The Sequence header's count — three shapes, because <c>0 steps</c> reads as a count of
+        /// nothing where <c>no steps</c> reads as an empty macro, and <c>1 steps</c> is wrong.
+        /// </summary>
+        [AvaloniaFact]
+        public void CountText_ReadsTheRowsInWordsAndFigures()
+        {
+            var steps = Create();
+
+            steps.Load(null);
+
+            Assert.Equal("no steps", steps.CountText);
+
+            steps.Load(MacroOf("a"));
+
+            Assert.Equal("1 step", steps.CountText);
+
+            steps.Load(MacroOf("a", "b", "c"));
+
+            Assert.Equal("3 steps", steps.CountText);
+        }
+
+        [AvaloniaFact]
+        public void Load_WithNoMacro_ShowsNothing()
         {
             var steps = Create();
 
@@ -64,10 +115,10 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Empty(steps.Items);
             Assert.False(steps.HasItems);
-            Assert.Equal("01", steps.NextStepNumberText);
+            Assert.Equal(0, steps.Count);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Load_RendersEachStepAsTheMockDrawsIt()
         {
             var steps = Create();
@@ -83,13 +134,14 @@ namespace KinesisEdit.Tests.ViewModels
 
             steps.Load(macro);
 
-            Assert.Equal(["01", "02", "03", "04"], steps.Items.Select(step => step.NumberText));
+            // No numbers on the rows since issue #146 — only positions, which nothing draws.
+            Assert.Equal([1, 2, 3, 4], steps.Items.Select(step => step.Position));
             Assert.Equal("[lshft]", steps.Items[0].TokenText);
             Assert.Equal(MacroInspectorStepViewModel.PressAction, steps.Items[0].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.HeldAction, steps.Items[1].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.ReleaseAction, steps.Items[2].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.TapAction, steps.Items[3].ActionText);
-            Assert.Equal("05", steps.NextStepNumberText);
+            Assert.Equal("4 steps", steps.CountText);
         }
 
         /// <summary>
@@ -98,7 +150,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// both come out as the bare mark; the two halves still come out separately because no one
         /// face in the app can set a Latin <c>R</c> and a <c>⇧</c> at once.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Load_DrawsHeldModifiersAsMarksAndNotAsTheFilesCodes()
         {
             var steps = Create();
@@ -146,7 +198,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// The two rows that carry no modifier set at all: a step that <em>is</em> a modifier (05
         /// §5.1 attaches no modifier string to one) and a bare delay.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Load_DrawsNoMarksOnAModifierKeyOrABareDelay()
         {
             var steps = Create();
@@ -168,7 +220,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// <c>held</c> is read off the modifier <b>flags</b>, not off a rendered string — a bit the
         /// display drops is still a bit the step was struck with.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Load_CallsAStepHeldWheneverItCarriesModifiers()
         {
             var steps = Create();
@@ -187,7 +239,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// Mockup 2i draws <c>07 [enter] tap · 80 ms</c>: the delay is a keystroke of its own in the
         /// file, and a <b>qualifier of the step it follows</b> on screen.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Load_FoldsADelayIntoTheStepItFollows()
         {
             var steps = Create();
@@ -207,7 +259,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(step.IsRandomDelay);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Load_WithALeadingDelay_GivesItARowOfItsOwn()
         {
             // The mock never draws this, but the file can hold it, and dropping it would be editing
@@ -227,7 +279,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("[a]", steps.Items[1].TokenText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MoveStep_ReordersTheMacroAndReportsIt()
         {
             var steps = Create();
@@ -247,7 +299,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// The reason a row is a step <em>plus its delay</em>: moving one without the other would
         /// silently retime the macro.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void MoveStep_CarriesTheStepsOwnDelayWithIt()
         {
             var steps = Create();
@@ -264,7 +316,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["b", "a", "d080"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(-1, 0)]
         [InlineData(0, 3)]
         [InlineData(1, 1)]
@@ -279,7 +331,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "b", "c"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MoveStepUpCommand_MovesTheSelectedStepAndFollowsIt()
         {
             var steps = Create();
@@ -299,7 +351,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("[c]", steps.SelectedStep.TokenText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MoveStepCommands_AtTheEndsOfTheList_CannotRun()
         {
             var steps = Create();
@@ -315,7 +367,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.MoveStepDownCommand.CanExecute(null));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MoveStepCommands_WithNothingSelected_CannotRun()
         {
             var steps = Create();
@@ -326,7 +378,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.MoveStepDownCommand.CanExecute(null));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void RemoveStepCommand_DropsTheRowAndItsDelayTogether()
         {
             var steps = Create();
@@ -347,7 +399,7 @@ namespace KinesisEdit.Tests.ViewModels
         // through the row it is pointed at — every edit lands here, and every one of them rebuilds
         // the whole keystroke list from the rows rather than patching an index.
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedKey_ReplacesTheKeyAndKeepsTheStepsOwnDelay()
         {
             var steps = Create();
@@ -368,7 +420,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(80, steps.Items[0].DelayMilliseconds);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedModifiers_ClearsAnExplicitDirection_AndDoesNotBringItBack()
         {
             // 05 §5.8: a modified keystroke's direction is discarded on the way to the file. The
@@ -391,7 +443,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroInspectorStepViewModel.TapAction, steps.Items[0].ActionText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDirection_OnAChord_IsRefused()
         {
             var macro = MacroOf("a");
@@ -406,7 +458,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(KeyDirection.None, macro.Keystrokes[0].UpDown);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDirection_OnAModifierKeyStep_IsAllowed()
         {
             // The exception 05 §5.8 makes: a key that IS a modifier keeps press/release, and
@@ -422,7 +474,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(MacroInspectorStepViewModel.PressAction, steps.Items[0].ActionText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void InsertPlaceholder_DrawsARowAndWritesNothingToTheMacro()
         {
             var macro = MacroOf("a", "b");
@@ -437,11 +489,16 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(steps.Items[1].IsPlaceholder);
             Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
 
-            // The row is numbered where it sits, and everything after it moved down with it.
-            Assert.Equal(["01", "02", "03"], steps.Items.Select(step => step.NumberText));
+            // The row sits where it was opened, and everything after it moved down with it. The
+            // positions are no longer drawn (issue #146) but they are still what the list
+            // re-establishes its selection by, so they still have to be right.
+            Assert.Equal([1, 2, 3], steps.Items.Select(step => step.Position));
+
+            // ...and the header counts the rows the user can see, the placeholder among them.
+            Assert.Equal("3 steps", steps.CountText);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void InsertPlaceholder_WithNothingSelected_LandsAtTheEnd()
         {
             var macro = MacroOf("a", "b");
@@ -454,7 +511,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(steps.Items[^1], steps.SelectedStep);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedKey_OnThePlaceholder_InsertsTheStepWhereTheRowWasDrawn()
         {
             var macro = MacroOf("a", "b");
@@ -470,7 +527,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(steps.Items[1], steps.SelectedStep);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void SelectingAnotherStep_DiscardsThePlaceholder_AndSelectsWhatWasClicked()
         {
             var macro = MacroOf("a", "b");
@@ -490,7 +547,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void DiscardPlaceholder_DropsTheRowAndTheSelectionWithIt()
         {
             var macro = MacroOf("a");
@@ -505,7 +562,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.DiscardPlaceholder());
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Load_WithAnotherMacro_DropsAnOpenPlaceholder()
         {
             var steps = Create();
@@ -518,7 +575,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(steps.SelectedStep);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Load_WithTheSameMacro_KeepsAnOpenPlaceholder()
         {
             // Every unrelated write ends in a counter refresh that re-loads the same macro. A
@@ -533,7 +590,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(steps.HasPlaceholder);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void MoveStep_WithAnOpenPlaceholder_IsRefused()
         {
             var macro = MacroOf("a", "b");
@@ -548,7 +605,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ARemovedStep_LeavesTheSelectionOnTheRowThatTookItsPlace()
         {
             // The rows are rebuilt by every write, so a cached row reference is stale — the
@@ -564,7 +621,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(steps.Items[1], steps.SelectedStep);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ARemovedLastStep_LeavesTheSelectionOnWhatIsLeft()
         {
             var macro = MacroOf("a", "b");
@@ -577,7 +634,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Same(Assert.Single(steps.Items), steps.SelectedStep);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ARowFoldsInTheDelayBehindIt_SoTheComposerCanSeedItselfFromTheRow()
         {
             var steps = Create();
@@ -592,7 +649,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.Items[0].IsRandomDelay);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void ARowCarryingTheRandomDelay_ReportsItAsRandomAndNotAsZeroMilliseconds()
         {
             // 11 §11.3's `dran` and a custom delay are two different answers, never one value with
@@ -609,7 +666,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, steps.Items[0].DelayMilliseconds);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_WithNothingSelected_WritesNothing()
         {
             var macro = MacroOf("a");
@@ -621,7 +678,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(0)]
         [InlineData(1000)]
         public void TrySetSelectedDelay_OutsideTheRange_WritesNothing(int delay)
@@ -632,7 +689,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_WithTheRandomDelay_WritesTheRandomDelayKey()
         {
             var steps = SelectFirstStep(out var macro);
@@ -642,7 +699,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("random", steps.Items[0].DelayText);
         }
 
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(1, "d001")]
         [InlineData(50, "d050")]
         [InlineData(250, "d250")]
@@ -655,7 +712,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", token], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_Twice_ReplacesTheDelayRatherThanAddingASecond()
         {
             var steps = SelectFirstStep(out var macro);
@@ -666,7 +723,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "d120"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_FromCustomToRandom_ReplacesTheKeyRatherThanKeepingBoth()
         {
             var steps = SelectFirstStep(out var macro);
@@ -677,7 +734,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", MacroDelayTokens.RandomToken], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_WithNone_TakesTheDelayOffTheStep()
         {
             var steps = SelectFirstStep(out var macro);
@@ -689,7 +746,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.Items[0].HasDelay);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_WithNoneOnADelayOnlyRow_DropsTheRow()
         {
             var steps = Create();
@@ -705,7 +762,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(steps.Items);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_OnADelayOnlyRow_ReplacesTheDelayItself()
         {
             // 06 §2.2 lets a macro open with a delay, and dropping such a row would edit the file
@@ -727,7 +784,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// §11.3's own contract: a delay the panel produced must survive being written to the layout
         /// file and read back (06 §2.2), both as text and as model content.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void AppliedDelays_RoundTrippedThroughTheLayoutFile_SurviveUnchanged()
         {
             var parsed = ParseRgb("{q}>{a}");
@@ -756,7 +813,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// text back as the generated codes 10085 + N. The <b>file text</b> is identical in both
         /// directions — which is the interoperability contract — but the key-table identity is not.
         /// </summary>
-        [Theory]
+        [AvaloniaTheory]
         [InlineData(125)]
         [InlineData(500)]
         public void AppliedDelay_AtALegacyFixedValueOnTheRgb_KeepsItsTextButNotItsKeyIdentity(int delay)
@@ -780,7 +837,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(10085 + delay, roundTripped.Keystrokes[^1].Key.Code);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Delays_OnAnUngatedBoard_AreAvailable()
         {
             var steps = Create(DeviceId.FreestyleEdgeRgb, Firmware(1, 0, 0));
@@ -790,7 +847,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(steps.CanUpdateFirmware);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Delays_OnAFreestyleAtTheGate_AreAvailable()
         {
             var steps = Create(DeviceId.FreestyleEdge, Firmware(1, 0, 340));
@@ -798,7 +855,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(steps.AreDelaysAvailable);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void Delays_InDemoMode_BypassTheGate()
         {
             var steps = Create(DeviceId.FreestyleEdge, new FirmwareState { IsDemoMode = true });
@@ -810,7 +867,7 @@ namespace KinesisEdit.Tests.ViewModels
         /// The gate is answered <b>in place</b> now, not as a message box: a modal refusal for a
         /// surface already on screen would interrupt nothing.
         /// </summary>
-        [Fact]
+        [AvaloniaFact]
         public void Delays_OnAFreestyleBelowTheGate_RefuseInPlaceWithTheSpecMessage()
         {
             var steps = Create(DeviceId.FreestyleEdge, Firmware(1, 0, 339));
@@ -821,7 +878,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(FirmwareFeatureGate.UpdateFirmwareButtonCaption, steps.UpdateFirmwareCaption);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void TrySetSelectedDelay_BelowTheFirmwareGate_WritesNothing()
         {
             var macro = MacroOf("a");
@@ -835,7 +892,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public void UpdateFirmwareCommand_WhenTheGateRefuses_OpensTheDevicesSupportPage()
         {
             var steps = Create(DeviceId.FreestyleEdge, Firmware(1, 0, 339));
@@ -848,7 +905,7 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>Drift guard against the gate row that stores the same refusal (09 §2).</summary>
-        [Fact]
+        [AvaloniaFact]
         public void FirmwareRefusalMessage_MatchesTheGateRowThatStoresIt()
         {
             Assert.Equal(

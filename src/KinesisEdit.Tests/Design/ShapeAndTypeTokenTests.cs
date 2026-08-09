@@ -98,7 +98,10 @@ namespace KinesisEdit.Tests.Design
         [InlineData("HeightTabBar", 38)]
         [InlineData("HeightAdvisoryStrip", 30)]
         [InlineData("WidthInspectorRail", 268)]
-        [InlineData("WidthInspectorRailWide", 300)]
+        // 440 since issue #146, up from the handoff's 300: the redesigned Macro panel draws a step
+        // row and the composer's first row as single lines, and neither fits in 300. It is still a
+        // floor inside the band below, which KeyboardEditorViewModelTests pins to the C# constant.
+        [InlineData("WidthInspectorRailWide", 440)]
         // The band the rail's drag seam moves between (issue #119). They are what the grid column's
         // own MinWidth/MaxWidth are set from, and KeyboardEditorViewModelTests pins each to the
         // HostPreferences constant that clamps the stored width — so a token moved here without its

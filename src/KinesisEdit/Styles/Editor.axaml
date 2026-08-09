@@ -145,28 +145,25 @@
     <Setter Property="Fill" Value="{DynamicResource StatusErrorBrush}" />
   </Style>
 
-  <!-- ===== The macro slot dots ===============================================================
-       One per macro slot the dialect writes, in the key inspector's Macro panel (issue #137):
-       hollow for an empty slot, filled for one that holds a macro. Geometry rather than a
-       character, for `recordDot`'s reason — U+25CF is in neither embedded family.
+  <!-- The same dot ON A BUTTON THAT IS NOT RED (issue #146): the macro composer's `Record key`,
+       which is a `secondary` and not a `recordAction`, because the panel already carries one red
+       Record — the header's `Record sequence` — and two of them would say the sequence and the
+       single step were the same weight of act.
 
-       `BadgeMacro` and no other hue: purple already means "there is a macro here" on this app's key
-       caps, so the dot and the cap's badge say one thing in one colour. Deliberately NOT the accent,
-       which has exactly two sanctioned meanings and "occupied" is neither — which is also why the
-       filled dot is not how the strip shows WHICH slot is being edited. The dropdown beside it
-       names that, and the caption is each dot's tooltip. -->
-  <Style Selector="Ellipse.macroSlotDot">
-    <Setter Property="Width" Value="8" />
-    <Setter Property="Height" Value="8" />
-    <Setter Property="Fill" Value="Transparent" />
-    <Setter Property="Stroke" Value="{DynamicResource SurfaceLineHighBrush}" />
-    <Setter Property="StrokeThickness" Value="1" />
+       The dot is muted while the arm is idle and goes red by DROPPING this class the moment the
+       SingleStep arm goes live, which is also when the 1.4s pulse starts. So red still means "this
+       is recording now" everywhere in the app, and a standing grey dot is only the affordance
+       saying where recording would start. -->
+  <Style Selector="Ellipse.recordDot.standby">
+    <Setter Property="Fill" Value="{DynamicResource TextBodyMutedBrush}" />
   </Style>
 
-  <Style Selector="Ellipse.macroSlotDot.filled">
-    <Setter Property="Fill" Value="{DynamicResource BadgeMacroBrush}" />
-    <Setter Property="Stroke" Value="{DynamicResource BadgeMacroBrush}" />
-  </Style>
+  <!-- `Ellipse.macroSlotDot` and `.macroSlotDot.filled` were deleted with issue #146. They were the
+       rail's slot strip (#137) — hollow for an empty slot, filled for an occupied one — and the
+       strip is a row of `Button.macroChip` now: the chip carries the slot's NUMBER, so "occupied"
+       is said by the caption rather than by a fill, and "which one am I editing" by the accent ring
+       rather than by a drop-down beside it. Nothing draws a dot any more, so the classes went with
+       their one call site. -->
 
   <!-- The `↵` of the selected row's `↵ assign` hint — drawn, not typed, for the same reason. It is
        TextSecondary rather than the accent: the row it sits in is already filled with the 14%
@@ -204,10 +201,24 @@
     <Setter Property="Padding" Value="9,7" />
   </Style>
 
+  <!-- ===== The macro chips ===================================================================
+       One class for the Macro panel's three rows of small latches — the SLOTS strip's numbered
+       chips, the TRIGGER strip's co-triggers and the composer's four modifier latches — because the
+       mock draws all three identically and they mean the same kind of thing.
+
+       A bridge and nothing else: `MacroChip` in Themes/ControlThemes/Pills.axaml owns the face, the
+       34x30 box, the `.selected` accent ring and the `.colliding` amber one, and a setter here would
+       outrank it. It is NOT `toggleSegment`, which the composer's direction and delay strips keep —
+       that theme fills its on-state with the full accent, and this one rings it; the theme's own
+       header says why. -->
+  <Style Selector="Button.macroChip">
+    <Setter Property="Theme" Value="{StaticResource MacroChip}" />
+  </Style>
+
   <!-- ===== The macro step editor =============================================================
-       The rows of mockup 2i's `Steps` list, inside the 300px rail. Each row is a Button on the
-       `RowButton` control theme (so hover, press and `.selected` are the theme's, not this file's)
-       carrying its number, its token, what it does and the delay behind it.
+       The rows of the `Sequence` list, inside the 440px rail. Each row is a Button on the
+       `RowButton` control theme (so hover and press are the theme's, not this file's) carrying its
+       token chip, what it does and the delay behind it.
 
        NOTHING HERE IS A GLYPH. The drag grip is `IconDragHandle` and the insert affordance
        `IconInsert`, both drawn by the Icon control: U+283F and U+FF0B are in neither embedded IBM
@@ -231,24 +242,94 @@
   <!-- The step list is BOUNDED (issue #139), the same way and for the same kind of reason
        `ScrollViewer.tokenPickerResults` above is: a macro runs to hundreds of keystrokes (06 §6),
        and an unbounded list pushed everything under it out of the rail's own scroll. It got worse
-       when the composer became always-visible — the one control that can edit step 03 was below
+       when the composer became always-visible — the one control that can edit a step was below
        forty rows of list, so a long macro made its own steps uneditable.
 
-       A MaxHeight rather than a Height: a three-step macro must collapse to three rows rather than
-       reserve a hole under them. 220 is roughly seven rows at the row's own 6,4 rhythm — enough
-       that a short macro never scrolls at all, and short enough that the composer and the footer
-       meters stay on screen beside it in a 300 px rail. -->
+       IT IS A FIXED `Height` SINCE ISSUE #146, not the MaxHeight it was, and the difference is the
+       whole point of the mock's standing compose bar: the composer is PINNED under the list and
+       must not move. With a MaxHeight the list is as tall as its contents, so recording a step,
+       deleting one or landing on an empty macro slid the composer — the modifier latches, the key
+       field and `Record key` — up or down the rail under the pointer, between one click and the
+       next. A fixed box costs an empty gap under a two-step macro and buys a composer that is
+       always in the same place.
+
+       280 is eight rows at the row's own 6,4 rhythm. Under a 440px rail that leaves the composer,
+       the Speed/Repeat block and the footer on screen together at the 680px default window. -->
   <Style Selector="ScrollViewer.macroStepList">
-    <Setter Property="MaxHeight" Value="220" />
+    <Setter Property="Height" Value="280" />
   </Style>
 
   <!-- One step row. It is a Button so the whole row is the hit target for selecting the step that
-       ⌥↑↓ moves; the theme is RowButton, which already carries the selected face. -->
+       ⌥↑↓ moves; the theme is RowButton, which carries its hover and press.
+
+       IT NO LONGER WEARS `.selected` (issue #146). The selection ring has to span the grip and the
+       `×` as well as the row body — the mock rings the whole row — and those two sit OUTSIDE this
+       button, because a button may not nest inside another button. So `Border.macroStepRowFrame`
+       below wraps all three and carries the ring, and the row keeps only the hit target and the
+       hover. `RowButton`'s own `.selected` face is untouched and still serves `Classes="rowButton"`
+       elsewhere; nothing here overrides it, because a setter that fought a control theme would be
+       the very thing this layer exists to stop. -->
   <Style Selector="Button.macroStepRow">
     <Setter Property="Theme" Value="{StaticResource RowButton}" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="6,4" />
+  </Style>
+
+  <!-- The ring around a whole step row: grip, row body and delete mark alike. Transparent at rest
+       and present-but-transparent rather than absent, so acquiring the ring on selection costs no
+       reflow and the rows do not shift by a pixel as the selection moves down the list.
+
+       AccentSelectionFill inside an AccentBrush hairline is the app's existing "this is the one you
+       are editing" (Border.inspectorKeyTile says it about the selected key), which is what keeps
+       the step list's selection and the rail's header reading as one statement. -->
+  <Style Selector="Border.macroStepRowFrame">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+  </Style>
+
+  <Style Selector="Border.macroStepRowFrame.selected">
+    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+  </Style>
+
+  <!-- The key a step strikes, as a chip: the modifier marks and the token in one bordered box
+       (`⌃2`), so a chord reads as one keystroke rather than as three words in a row.
+
+       `MacroStepKey` is the app's purple for exactly this (docs/app/design-system.md), and it is set
+       here as TextElement.Foreground ON THE CHIP rather than as a colour on either run inside it.
+       That is trap 4 of this panel: `.keySymbol` deliberately carries no colour and a `muted` run
+       beside it would have to be overridden per state — an INHERITED foreground on the container
+       reaches both runs, and only one place says what colour a struck key is.
+
+       Hidden entirely on a delay-only row (`HasToken` false), which is why the chip is a Border in
+       the row rather than a border on the row: there is nothing to draw a box around there. -->
+  <Style Selector="Border.macroStepToken">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource MacroStepKeyBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource MacroStepKeyBrush}" />
+  </Style>
+
+  <!-- The `80 ms` pill at the right of a step that waits. Accent, because a delay is something the
+       user PUT there — "you changed this" is one of the accent's two sanctioned meanings — and the
+       row's other two runs are the key (purple) and the action word (body), so the third role is
+       already spoken for. A row with no delay draws an em dash in `meta muted` instead and never
+       this pill: an empty accent box would be a statement about nothing.
+
+       `AccentBrush` and NOT `AccentText` for the type, which is the distinction the token registry
+       spells out and this file already leans on once (`Icon.assignHint` above): AccentText is the
+       colour that rides a SOLID accent fill — near-black on dark, white on light — and this pill has
+       no fill at all, so it would be invisible in one variant and near-invisible in the other. -->
+  <Style Selector="Border.macroStepDelay">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}" />
   </Style>
 
   <!-- `Border.macroDelayEditor` was deleted with issue #139. It framed the per-row delay editor —
@@ -258,9 +339,64 @@
        joining `modeOption` in the orphaned column. -->
 
   <!-- `Border.macroSlotCard` was deleted with issue #140. It framed one slot card of the deleted
-       macro section's left half, which was its only call site, so the class went with the view.
-       `Ellipse.macroSlotDot` above is a DIFFERENT thing and stays — it is the rail's slot strip,
-       which is where a macro's slot is picked now. -->
+       macro section's left half, which was its only call site, so the class went with the view. The
+       rail's own slot strip — a DIFFERENT thing, and the two are easy to confuse — is
+       `Button.macroChip` above since issue #146. -->
+
+  <!-- ===== The macro composer ================================================================
+       The `COMPOSE A STEP` block, pinned under the step list (issue #146). It is a bordered box
+       rather than another hairlined section of the rail, and that is what the mock's own title is
+       about: everything above it EDITS the sequence and everything inside it BUILDS one step, so
+       the block has to read as a tool sitting on the panel rather than as the next paragraph of it.
+
+       SurfaceInset inside a SurfaceLine hairline is the same "quiet interior" the token picker's
+       result frame and `Border.hintBlock` use; PaddingCard's 14 would be too generous for a box
+       already inside the section's own 12, so it carries the 12 step of the scale — spelled as a
+       literal because `Space12` is an x:Double and markup cannot compose a Thickness out of one
+       (the argument Themes/Geometry.axaml already makes for the card grid's three gap keys). -->
+  <Style Selector="Border.composerBox">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+
+  <!-- The composer's key readout — the field that shows which key the step strikes.
+
+       IT IS NOT AN `actionField`, and the difference is the point. A TokenField records the next
+       keypress when it is clicked and goes amber while it is armed; this one only REPORTS what the
+       step already holds, because arming is `Record key` beside it. Wearing the armed field's face
+       would promise a click that does nothing.
+
+       SurfaceLineHigh rather than SurfaceLine: it sits on the composer's own inset fill, where the
+       plain hairline all but disappears. MinHeight 32 is the TextBox step (MonoValueField's), so the
+       readout and the millisecond box on the row below line up rather than missing by two pixels. -->
+  <Style Selector="Border.macroComposerKey">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- The `− 1 +` group of the Repeat row: one bordered box holding two `Button.ghost` around the
+       value, so the three read as one control rather than as two buttons that happen to flank a
+       number.
+
+       It replaced a Slider, which is why it is a group and not a spin box: repeat is an integer in
+       a small device range (06 §6), and a slider could neither be read exactly nor stepped by one.
+       The captions are the arithmetic signs `−` and `+` at the call site rather than icons — they
+       are characters both embedded families carry, and a drawn mark would need two more entries in
+       the icon catalog to say what U+2212 already says. -->
+  <Style Selector="Border.numericStepper">
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
+  </Style>
 
   <!-- ===== Lighting mode menu ================================================================
        One full-width row per mode, the selected one accent-filled. `ModeOption` carries the rail's

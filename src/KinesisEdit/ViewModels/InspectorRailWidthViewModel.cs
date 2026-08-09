@@ -16,24 +16,30 @@ namespace KinesisEdit.ViewModels
     /// </para>
     /// <para>
     /// <b>The two tabs read different properties of it, deliberately.</b> The Keys tab binds
-    /// <see cref="EffectiveWidth"/>, because its macro panel is entitled to the handoff's 300 px;
-    /// the Lighting tab binds <see cref="Width"/>, because it has no macro panel and a floor that
-    /// leaked onto it would widen a rail for a reason that does not exist there.
+    /// <see cref="EffectiveWidth"/>, because its macro panel is entitled to
+    /// <see cref="MacroRailWidth"/>; the Lighting tab binds <see cref="Width"/>, because it has no
+    /// macro panel and a floor that leaked onto it would widen a rail for a reason that does not
+    /// exist there.
     /// </para>
     /// </summary>
     public sealed class InspectorRailWidthViewModel : ViewModelBase
     {
         /// <summary>
-        /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>, 300 px in
-        /// docs/design/handoff.md § Geometry). A <b>floor</b> on <see cref="EffectiveWidth"/>,
-        /// never a replacement — see there.
+        /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>). A
+        /// <b>floor</b> on <see cref="EffectiveWidth"/>, never a replacement — see there.
+        /// <para>
+        /// <b>440, not the handoff's 300</b> (docs/design/handoff.md § Geometry says 300 "on the
+        /// macro-editing variant"), and the deviation is issue #146's: the redesigned Macro panel
+        /// draws a step row and the composer's first row as single lines, and neither fits in 300.
+        /// Recorded in docs/app/design-system.md's deviation list.
+        /// </para>
         /// <para>
         /// Written as a plain number rather than read out of <c>Themes/Geometry.axaml</c>: a view
         /// model may not depend on Avalonia resources (app-shell.md invariant 8), and the token and
         /// this constant are pinned to each other by a test.
         /// </para>
         /// </summary>
-        public const double MacroRailWidth = 300;
+        public const double MacroRailWidth = 440;
 
         /// <summary>
         /// How wide the user has dragged the rail, in DIPs — clamped into
@@ -76,13 +82,13 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The width the Keys tab's rail is drawn at: the user's, or <b>at least</b> the 300 px the
-        /// handoff gives macro editing while the Macro panel is showing.
+        /// The width the Keys tab's rail is drawn at: the user's, or <b>at least</b>
+        /// <see cref="MacroRailWidth"/> while the Macro panel is showing.
         /// <para>
         /// A <b>floor, not an override</b> — the deliberate deviation of issue #119. The macro width
         /// was a style setter that replaced the rail's width outright, which would have yanked a user
-        /// who dragged to 420 back to 300 the moment they opened a macro. Taking the maximum honours
-        /// the handoff's 300 without undoing a drag.
+        /// who dragged to 500 back to the macro width the moment they opened a macro. Taking the
+        /// maximum honours the entitlement without undoing a drag.
         /// </para>
         /// </summary>
         public double EffectiveWidth => _isWide ? Math.Max(_width, MacroRailWidth) : _width;

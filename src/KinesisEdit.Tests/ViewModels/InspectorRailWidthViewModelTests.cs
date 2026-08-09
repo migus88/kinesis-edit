@@ -145,10 +145,28 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
+        public void MacroRailWidth_StaysInsideTheBandTheSeamCanReach()
+        {
+            // The floor moved to 440 with issue #146, and it is only a floor if the seam can be
+            // dragged to both sides of it: a macro width outside the band would be a width the
+            // clamp refuses, so the rail would open at one number and store another. Asserted
+            // against the clamp itself rather than against the two constants, because the clamp is
+            // what the stored width actually goes through.
+            Assert.InRange(
+                InspectorRailWidthViewModel.MacroRailWidth,
+                HostPreferences.MinimumInspectorRailWidth,
+                HostPreferences.MaximumInspectorRailWidth);
+
+            Assert.Equal(
+                InspectorRailWidthViewModel.MacroRailWidth,
+                HostPreferences.ClampInspectorRailWidth(InspectorRailWidthViewModel.MacroRailWidth));
+        }
+
+        [AvaloniaFact]
         public void EffectiveWidth_WhileWide_NeverGoesBelowTheMacroWidth()
         {
-            // The handoff's 300 honoured as a FLOOR: a rail dragged narrow still gives macro editing
-            // the room its step list needs.
+            // The macro entitlement honoured as a FLOOR: a rail dragged narrow still gives macro
+            // editing the room its step list and its composer need.
             var rail = new InspectorRailWidthViewModel
             {
                 Width = HostPreferences.MinimumInspectorRailWidth,
@@ -163,14 +181,15 @@ namespace KinesisEdit.Tests.ViewModels
         public void EffectiveWidth_WhenTheUserDraggedWider_KeepsTheDraggedWidth()
         {
             // ...and it is a floor rather than an override, which is the deviation issue #119
-            // recorded: a user who dragged to 460 is not yanked back to 300 by opening a macro.
+            // recorded: a user who dragged to 500 is not yanked back to the macro width by opening
+            // a macro.
             var rail = new InspectorRailWidthViewModel
             {
-                Width = 460,
+                Width = 500,
                 IsWide = true
             };
 
-            Assert.Equal(460, rail.EffectiveWidth);
+            Assert.Equal(500, rail.EffectiveWidth);
         }
 
         [AvaloniaFact]
