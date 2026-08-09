@@ -39,8 +39,6 @@ namespace KinesisEdit.Tests.Design
             [typeof(TokenPickerCategoryViewModel)] = "ItemTemplate in Views/TokenPickerView.axaml (the filter chips).",
             [typeof(TokenPickerGroupViewModel)] = "Type-matched DataTemplate in Views/TokenPickerView.axaml (a counted header, one line of the flat result list).",
             [typeof(TokenPickerRowViewModel)] = "Type-matched DataTemplate in Views/TokenPickerView.axaml (a result row, a sibling of its header rather than a child).",
-            [typeof(MacroSlotViewModel)] = "DataTemplate in Views/MacroLibraryView.axaml (the slot cards).",
-            [typeof(MacroLibraryRowViewModel)] = "DataTemplate in Views/MacroLibraryView.axaml (one row per named macro).",
             [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroInspectorPanelView.axaml (the co-trigger toggles).",
             [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
             [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
@@ -68,7 +66,7 @@ namespace KinesisEdit.Tests.Design
             [typeof(InspectorRailWidthViewModel)] = "Bound as Rail.* onto the rail ColumnDefinition of Views/KeyboardEditorView.axaml and Views/LightingTabView.axaml; it draws nothing itself.",
             [typeof(CustomSwatchesViewModel)] = "Bound as Swatches inside Views/AppPreferencesView.axaml.",
             [typeof(MacroInspectorStepsViewModel)] = "Bound as Steps.* inside Views/MacroInspectorPanelView.axaml.",
-            [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter inside Views/MacroInspectorPanelView.axaml, and as the three meters of Views/MacroLibraryView.axaml."
+            [typeof(MacroMeterViewModel)] = "Bound as SpeedMeter / MacroLengthMeter / LayoutKeystrokeMeter / MacroCountMeter inside Views/MacroInspectorPanelView.axaml."
         };
 
         /// <summary>Every concrete view model the app declares.</summary>

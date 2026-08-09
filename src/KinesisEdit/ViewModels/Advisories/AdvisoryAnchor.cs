@@ -1,10 +1,11 @@
 namespace KinesisEdit.ViewModels.Advisories
 {
     /// <summary>
-    /// Where an advisory belongs on screen: the section that shows it, and — where the source knew
-    /// — the layer, the key position and the macro slot it is about. Everything is optional but the
-    /// tab, because the sources report at different resolutions: the tap-and-hold count is a
-    /// property of the whole layout, a duplicate token is a property of one position.
+    /// Where an advisory belongs on screen: the section that shows it, the surface within that
+    /// section that reviews it, and — where the source knew — the layer, the key position and the
+    /// macro slot it is about. Everything is optional but the tab, because the sources report at
+    /// different resolutions: the tap-and-hold count is a property of the whole layout, a duplicate
+    /// token is a property of one position.
     /// <para>
     /// The indices are the model's own (<see cref="Core.Model.KeyboardLayer.Index"/>,
     /// <see cref="Core.Model.KeyboardKey.Index"/>, and the 1-based macro slot of 06 §1), which is
@@ -16,6 +17,15 @@ namespace KinesisEdit.ViewModels.Advisories
     {
         /// <summary>The section the advisory is shown in.</summary>
         public required EditorTab Tab { get; init; }
+
+        /// <summary>
+        /// The surface within that section that <c>Review N</c> opens — the board by default, the
+        /// key inspector's Macro panel for a macro budget. <see cref="Tab"/> says <em>where</em> the
+        /// advisory is shown and this says <em>what</em> reviewing it points at; since issue #140
+        /// the Layout tab carries both kinds, so the tab alone can no longer answer the second
+        /// question. See <see cref="AdvisorySurface"/> for why it is stated rather than inferred.
+        /// </summary>
+        public AdvisorySurface Surface { get; init; }
 
         /// <summary>The layer it sits on, or null when it is layout-wide.</summary>
         public int? LayerIndex { get; init; }

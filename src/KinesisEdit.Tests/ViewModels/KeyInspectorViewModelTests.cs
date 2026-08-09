@@ -215,8 +215,8 @@ namespace KinesisEdit.Tests.ViewModels
 
         /// <summary>
         /// The Macro tab hosts a panel like every other mode since issue #93 — it used to bridge out
-        /// to the Macros tab, and navigating away from the board when a mode tab is pressed was the
-        /// placeholder, not the design.
+        /// to a section of its own, and navigating away from the board when a mode tab is pressed was
+        /// the placeholder, not the design. Issue #140 deleted the section it bridged to.
         /// </summary>
         [Fact]
         public void TheMacroTab_HostsItsPanelAndWidensTheRail()

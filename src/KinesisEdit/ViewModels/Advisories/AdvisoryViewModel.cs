@@ -34,6 +34,9 @@ namespace KinesisEdit.ViewModels.Advisories
         /// <summary>The section this is shown in.</summary>
         public EditorTab Tab => Anchor.Tab;
 
+        /// <summary>The surface within that section that <c>Review</c> opens.</summary>
+        public AdvisorySurface Surface => Anchor.Surface;
+
         /// <summary>The layer it sits on, or null when it is layout-wide.</summary>
         public int? LayerIndex => Anchor.LayerIndex;
 

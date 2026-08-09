@@ -25,7 +25,7 @@ namespace KinesisEdit.ViewModels
     /// <see cref="KeyboardKeyViewModel"/>/<see cref="KeyboardLayerViewModel"/>.
     /// </para>
     /// </summary>
-    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable, IMacroLibraryHost
+    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -179,7 +179,7 @@ namespace KinesisEdit.ViewModels
         public const string DiscardChangesTitle = "Discard Changes";
 
         /// <summary>
-        /// The prompt on the Keys and Macros tabs. It names <b>both</b> halves of the scope — what
+        /// The prompt on the Layout tab. It names <b>both</b> halves of the scope — what
         /// goes and what stays — because the whole point of the action is that it is not the whole
         /// profile.
         /// </summary>
@@ -376,7 +376,7 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// The editor's sections, filtered by what the device carries
-        /// (<see cref="EditorTabViewModel.CreateAll"/>): Layout and Macros always, Settings where
+        /// (<see cref="EditorTabViewModel.CreateAll"/>): Layout always, Settings where
         /// the board has a settings file, Lighting only where its led file is the model
         /// <see cref="LightingTabViewModel"/> edits. Every entry opens a working section — a
         /// feature the board lacks is not rendered at all rather than disabled.
@@ -404,17 +404,6 @@ namespace KinesisEdit.ViewModels
             get => _selectedTab;
             set => SelectTab(value);
         }
-
-        /// <summary>
-        /// The Macros tab — a <b>library</b> since issue #93, not an editor (mockup <c>2i</c>:
-        /// "the Macros tab is a library, not the editor"). Built once, eagerly, over device facts
-        /// alone, and pushed the editor's state by <see cref="RefreshMacroLibraryPanel"/>; it reaches
-        /// the editor's <b>one</b> <see cref="MacroLibrary"/> through a function, never a copy.
-        /// </summary>
-        public MacroLibraryViewModel MacroLibraryPanel { get; }
-
-        /// <summary>Whether the Macros tab is the open section.</summary>
-        public bool IsMacroLibraryVisible => _selectedTab == EditorTab.Macros;
 
         /// <summary>
         /// The feature panel rendered over the editor — Tap and Hold, Macro Timing Delays, Search
@@ -593,7 +582,7 @@ namespace KinesisEdit.ViewModels
         /// It has somewhere to write now. On the Layout tab it puts the caret in the <b>key
         /// inspector's</b> own search field, where ↵ assigns the picked action to the selected
         /// position — which is what the accelerator was always meant to do, and could not before the
-        /// rail existed. With a macro open on the Macros tab it <b>is</b> the insertion picker
+        /// rail existed. With the rail on its Macro panel it <b>is</b> the insertion picker
         /// (<see cref="InsertSpecialActionCommand"/>): finding a token there means inserting it.
         /// </para>
         /// </summary>
@@ -794,11 +783,6 @@ namespace KinesisEdit.ViewModels
             _inspectorPropertyChangedHandler = OnInspectorPropertyChanged;
 
             Inspector.PropertyChanged += _inspectorPropertyChangedHandler;
-
-            // The Macros tab. Built here and never rebuilt: everything it needs at construction is a
-            // device fact, and it reaches the profile's ONE MacroLibrary through a function because
-            // the library arrives with the profile and is replaced by a load or an import.
-            MacroLibraryPanel = new MacroLibraryViewModel(device, this, () => MacroLibrary);
 
             SelectTab(EditorTab.Keys);
 
@@ -1126,8 +1110,8 @@ namespace KinesisEdit.ViewModels
 
             // Listening belongs to the keyboard picture, which only the Layout tab draws, so it is
             // ended here or the capture service keeps swallowing keystrokes behind the section the
-            // user moved to. There is no second consumer to stand down any more: the Macros tab is a
-            // library and records nothing (issue #93), and the rail is deactivated just below.
+            // user moved to. There is no second consumer to stand down: the rail is the app's one
+            // recording surface and it is deactivated just below.
             CancelRemap();
 
             // An armed copy is finished with a click on the board; a section that does not draw
@@ -1142,8 +1126,6 @@ namespace KinesisEdit.ViewModels
             // The property name is passed explicitly: the caller-member default would name this
             // method rather than the property the view is bound to.
             SetProperty(ref _selectedTab, tab, nameof(SelectedTab));
-
-            OnPropertyChanged(nameof(IsMacroLibraryVisible));
 
             foreach (var entry in Tabs)
             {
@@ -1251,12 +1233,10 @@ namespace KinesisEdit.ViewModels
                 CancelRemap();
                 ClearSelectedKey();
 
-                // Nothing is selected, so the rail has nothing to be about: it collapses and its
-                // Auto column measures zero. A selection change writes nothing, so it never reaches
-                // RefreshCounters — hence the explicit push here and in SelectKeyDirectly. The
-                // Macros tab's slot branch is about the selection too, so it follows.
+                // Nothing is selected, so the rail has nothing to be about. A selection change
+                // writes nothing, so it never reaches RefreshCounters — hence the explicit push
+                // here and in SelectKeyDirectly.
                 RefreshInspector();
-                RefreshMacroLibraryPanel();
 
                 return;
             }
@@ -1297,7 +1277,6 @@ namespace KinesisEdit.ViewModels
             SelectedKey = key;
 
             RefreshInspector();
-            RefreshMacroLibraryPanel();
         }
 
         private void ClearSelectedKey()
@@ -1515,7 +1494,7 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// ⌘F. With a macro open on the Macros tab this <em>is</em> the insertion picker, so the
+        /// ⌘F. With the rail on its Macro panel this <em>is</em> the insertion picker, so the
         /// token the user searches for is inserted where they were working. Everywhere else it puts
         /// the caret in the <b>key inspector's</b> search field — the rail is not modal, so nothing
         /// is opened over anything: the picker is already on screen beside the board, and ↵ on a row
@@ -1736,7 +1715,7 @@ namespace KinesisEdit.ViewModels
         /// legend row's five layer-scoped counts, and the dirty flag behind the amber Save.
         /// <b>Every path that can write to the layout ends here</b> — a captured remap, the three
         /// resets, a completed key copy, an accepted tap-and-hold, every write the key inspector's
-        /// Macro panel announces, every edit the Macros tab makes, and <see cref="Apply"/> after a
+        /// Macro panel announces, and <see cref="Apply"/> after a
         /// load or an import. Core announces nothing, so a path that skips it leaves everything
         /// stale.
         /// </summary>
@@ -1821,9 +1800,9 @@ namespace KinesisEdit.ViewModels
         /// position, on the key inspector's Macro panel. The strip's other callback, for the same
         /// reason the key half is one: the board and the rail are this class's.
         /// <para>
-        /// An anchor names a <em>site</em> (layer, key, slot) and the Macros tab lists one row per
-        /// <em>name</em>, so a review that merely highlighted a row could be pointing at a macro
-        /// that fires from three places. Landing on the anchored position is the answer that is
+        /// An anchor names a <em>site</em> (layer, key, slot) while a macro is one logical thing that
+        /// may fire from three of them, so a review that merely highlighted the macro could be
+        /// pointing at all three at once. Landing on the anchored position is the answer that is
         /// always about the one the advisory is about.
         /// </para>
         /// </summary>
@@ -1903,9 +1882,9 @@ namespace KinesisEdit.ViewModels
             layer.Layer.Reset();
             layer.RefreshFromModel();
 
-            // KeyboardLayer.Reset clears every rule including the macro slots, so the rail and the
-            // Macros tab are both sitting on macros that no longer exist. RefreshCounters rebuilds
-            // the library snapshot and pushes both.
+            // KeyboardLayer.Reset clears every rule including the macro slots, so the rail is
+            // sitting on macros that no longer exist. RefreshCounters rebuilds the library snapshot
+            // and pushes it.
             RefreshCounters();
         }
 

@@ -168,7 +168,7 @@ serializer for it.
 ## Reverting one file — `RevertLayout` / `RevertLighting`
 
 Added for the editor's `Discard changes` ([#133](https://github.com/migus88/kinesis-edit/issues/133)),
-which is scoped to **one page of one profile**: on the Keys/Macros tabs it throws the layout edits
+which is scoped to **one page of one profile**: on the Layout tab it throws the layout edits
 away and on the Lighting tab the led ones ([keyboard-editor.md](keyboard-editor.md)).
 
 **It is `Import`'s shape from a different source.** `RevertLayout` re-parses `_originalLayoutLines`

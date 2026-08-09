@@ -75,8 +75,12 @@ namespace KinesisEdit.ViewModels.Advisories
         /// <summary>
         /// The advisories one section shows. With <paramref name="layerIndex"/> the Layout tab is
         /// narrowed to that layer — plus the layout-wide ones, which are true on every layer and so
-        /// are shown on every layer. Every other tab ignores the layer: the macro list shows the
-        /// whole profile.
+        /// are shown on every layer. Every other tab ignores the layer.
+        /// <para>
+        /// <b>The macro budgets are narrowed by it too</b>, since issue #140 anchored them on the
+        /// Layout tab: they name a site on a layer, the strip is the open layer's, and exempting
+        /// them would make the Keys scope rule conditional on the surface.
+        /// </para>
         /// </summary>
         public IReadOnlyList<AdvisoryViewModel> ForTab(EditorTab tab, int? layerIndex = null)
         {
@@ -159,9 +163,13 @@ namespace KinesisEdit.ViewModels.Advisories
         }
 
         /// <summary>
-        /// Whether one row of the macro list carries an advisory. Identity is the slot's:
-        /// layer + key + 1-based slot, exactly what <see cref="ModelViolation"/> reports for a
-        /// slot-based macro (06 §1).
+        /// Whether one macro carries an advisory. Identity is the slot's: layer + key + 1-based
+        /// slot, exactly what <see cref="ModelViolation"/> reports for a slot-based macro (06 §1).
+        /// <para>
+        /// It matches on <see cref="AdvisorySurface.MacroPanel"/> rather than on a tab: every
+        /// advisory the Layout tab shows is anchored at <see cref="EditorTab.Keys"/> since issue
+        /// #140, and the surface is what still tells a macro budget from a duplicate token.
+        /// </para>
         /// <para>
         /// <b>A flat-list macro never matches.</b> The Advantage360 keeps its macros in one list and
         /// <see cref="KeyboardLayout.Validate"/> anchors a finding there by layer alone — there is
@@ -180,7 +188,7 @@ namespace KinesisEdit.ViewModels.Advisories
 
             foreach (var advisory in _advisories)
             {
-                if (advisory.Tab == EditorTab.Macros
+                if (advisory.Surface == AdvisorySurface.MacroPanel
                     && advisory.LayerIndex == layerIndex
                     && advisory.KeyIndex == keyIndex
                     && advisory.MacroIndex == slot)
@@ -237,29 +245,35 @@ namespace KinesisEdit.ViewModels.Advisories
 
                         break;
 
+                    // The three macro budgets are shown on the Layout tab like everything else since
+                    // issue #140 — there is no macro section any more — but Review opens the rail's
+                    // Macro panel rather than selecting a cap, which is what the surface says.
                     case ModelViolationKind.MacroLengthExceeded:
                         advisories.Add(Create(
-                            EditorTab.Macros,
+                            EditorTab.Keys,
                             violation,
                             AdvisoryText.MacroCharacters(actual, limit),
-                            AdvisoryText.MacroCharactersDetail(actual, limit)));
+                            AdvisoryText.MacroCharactersDetail(actual, limit),
+                            AdvisorySurface.MacroPanel));
 
                         break;
 
                     case ModelViolationKind.MacroKeystrokeBudgetExceeded:
                         advisories.Add(Create(
-                            EditorTab.Macros,
+                            EditorTab.Keys,
                             violation,
                             AdvisoryText.LayoutKeystrokeBudget(actual, limit),
-                            AdvisoryText.LayoutKeystrokeBudgetDetail(actual, limit)));
+                            AdvisoryText.LayoutKeystrokeBudgetDetail(actual, limit),
+                            AdvisorySurface.MacroPanel));
 
                         break;
 
                     case ModelViolationKind.MacroCoTriggerLimitExceeded:
                         advisories.Add(Create(
-                            EditorTab.Macros,
+                            EditorTab.Keys,
                             violation,
-                            AdvisoryText.CoTriggers(actual, limit)));
+                            AdvisoryText.CoTriggers(actual, limit),
+                            surface: AdvisorySurface.MacroPanel));
 
                         break;
                 }
@@ -291,16 +305,23 @@ namespace KinesisEdit.ViewModels.Advisories
             }
         }
 
+        /// <summary>
+        /// Anchors one validator finding. <paramref name="surface"/> defaults to
+        /// <see cref="AdvisorySurface.Board"/>, so the non-macro sources say nothing about it and
+        /// keep pointing <c>Review</c> at the cap.
+        /// </summary>
         private static AdvisoryViewModel Create(
             EditorTab tab,
             ModelViolation violation,
             string message,
-            string? detail = null)
+            string? detail = null,
+            AdvisorySurface surface = AdvisorySurface.Board)
         {
             return new AdvisoryViewModel(
                 new AdvisoryAnchor
                 {
                     Tab = tab,
+                    Surface = surface,
                     LayerIndex = violation.LayerIndex,
                     KeyIndex = violation.KeyIndex,
                     MacroIndex = violation.MacroIndex

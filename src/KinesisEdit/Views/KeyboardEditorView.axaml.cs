@@ -465,9 +465,8 @@ namespace KinesisEdit.Views
             e.Handled = true;
 
             // The editor's own "nothing is selected" path: it cancels a listen, drops the cap's
-            // ring and pushes the rail — and the Macros tab's slot branch — through the same funnel
-            // a click on empty board space does. Reimplementing any of that here would be a second
-            // set of rules to keep in step.
+            // ring and pushes the rail through the same funnel a click on empty board space does.
+            // Reimplementing any of that here would be a second set of rules to keep in step.
             viewModel.SelectKeyCommand.Execute(null);
         }
 
@@ -590,7 +589,7 @@ namespace KinesisEdit.Views
         }
 
         /// <summary>
-        /// Focuses the landed cap on whichever board is on screen — the Layout/Macros picture and
+        /// Focuses the landed cap on whichever board is on screen — the Layout picture and
         /// the Lighting tab's are two <see cref="KeyboardView"/>s over the same layer, and only one
         /// of them is ever visible.
         /// </summary>

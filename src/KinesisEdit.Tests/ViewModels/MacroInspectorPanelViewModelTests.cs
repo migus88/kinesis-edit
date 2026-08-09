@@ -67,6 +67,10 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal("this macro", MacroInspectorPanelViewModel.MacroLengthMeterLabel);
             Assert.Equal("layout keystrokes", MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
 
+            // The fourth, since issue #140 moved 06 §6's profile-wide count here from the Macros
+            // tab's footer. Its label is the tab's own wording, kept verbatim.
+            Assert.Equal("macros", MacroInspectorPanelViewModel.MacroCountMeterLabel);
+
             // spec 02's verbatim refusal, carried over from the old macro panel.
             Assert.Equal("You cannot assign a macro to a modifier key", MacroInspectorPanelViewModel.RestrictedKeyMessage);
         }
@@ -133,7 +137,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.Assigned += (_, _) => assigned++;
 
-            // Somebody else — a reset, an import, the Macros tab — empties the position.
+            // Somebody else — a reset, an import, a copy — empties the position.
             scene.Key.Key.ClearMacros();
 
             scene.Refresh();
@@ -286,6 +290,69 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void MacroCountMeter_ReadsTheProfilesCountAgainstTheDevicesOwnFirmwareGatedLimit()
+        {
+            // Issue #140's fourth meter, and the only readout of 06 §6's macro count left in the app
+            // now that the Macros tab is gone. Its maximum is MacroLimits' — firmware-gated by
+            // 09 §2 — and NEVER a literal, which is asserted by comparing against the resolver
+            // rather than against a number.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Equal(MacroInspectorPanelViewModel.MacroCountMeterLabel, scene.Panel.MacroCountMeter.Label);
+            Assert.Equal(MacroLimits.ResolveMaxMacroCount(scene.Device), scene.Panel.MacroCountMeter.Limit);
+            Assert.NotNull(scene.Panel.MacroCountMeter.Limit);
+            Assert.Equal(0, scene.Panel.MacroCountMeter.Value);
+
+            scene.Record("a");
+
+            // It counts the PROFILE's macros, not this position's, so recording one moves it.
+            Assert.Equal(scene.Layout.MacroCount, scene.Panel.MacroCountMeter.Value);
+            Assert.Equal(1, scene.Panel.MacroCountMeter.Value);
+            Assert.False(scene.Panel.MacroCountMeter.IsOverBudget);
+            Assert.Equal(
+                $"1 / {MacroLimits.ResolveMaxMacroCount(scene.Device)}",
+                scene.Panel.MacroCountMeter.Caption);
+        }
+
+        [Fact]
+        public void MacroCountMeter_OnADeviceThatStatesNoCount_ReadsAsABareNumberThatIsNeverOverBudget()
+        {
+            // The Advantage2 states no macros-per-layout figure (06 §6), and null is "no limit"
+            // rather than zero — a board whose count could never be met would read as permanently
+            // over budget, which is the opposite of what the file says.
+            var scene = new Scene(this, DeviceId.Advantage2);
+
+            Assert.Null(MacroLimits.ResolveMaxMacroCount(scene.Device));
+
+            scene.Select(scene.Layout.Layers[0].Keys.First(key => key.CanAssignMacro).Index);
+            scene.Record("a");
+
+            Assert.Null(scene.Panel.MacroCountMeter.Limit);
+            Assert.False(scene.Panel.MacroCountMeter.IsOverBudget);
+            Assert.Equal("1", scene.Panel.MacroCountMeter.Caption);
+        }
+
+        [Fact]
+        public void MacroCountMeter_PastTheLimit_GoesOverBudgetAndRefusesNothing()
+        {
+            // Amber, never an error state, and never a refusal — the profile is reported as it
+            // stands. The macros are put there behind the panel so the meter is measured against a
+            // model the panel did not build, which is the half a record-driven case cannot show.
+            var scene = new Scene(this);
+            var limit = MacroLimits.ResolveMaxMacroCount(scene.Device)!.Value;
+
+            TestLayouts.FillMacroSlots(scene.Layout, limit + 1);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Equal(limit + 1, scene.Panel.MacroCountMeter.Value);
+            Assert.Equal(limit, scene.Panel.MacroCountMeter.Limit);
+            Assert.True(scene.Panel.MacroCountMeter.IsOverBudget);
+        }
+
+        [Fact]
         public void Meters_OverBudget_ReportAndNeverRefuse()
         {
             var meter = new MacroMeterViewModel(MacroInspectorPanelViewModel.MacroLengthMeterLabel);
@@ -359,7 +426,8 @@ namespace KinesisEdit.Tests.ViewModels
         /// <b>The single easiest defect here.</b> <c>ActiveMacroIndex</c> is an in-memory field that
         /// is never serialized (05 §1.3), so a slot pick cannot reach the editor's funnel — which is
         /// the only route to the dirty flag, and would raise an unsaved-changes prompt for a choice
-        /// no save could persist. The Macros tab's <c>Make active</c> already gets this right.
+        /// no save could persist. (The Macros tab's <c>Make active</c> already got this right; issue
+        /// #140 deleted that surface, so this panel is the only one left that has to.)
         /// </summary>
         [Fact]
         public void SelectingASlot_MovesTheActiveSlotAndReReads_WithoutReachingTheEditorsFunnel()

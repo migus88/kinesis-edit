@@ -304,7 +304,7 @@
       <StaticResource x:Key="ToggleSwitchKnobFillOnDisabled" ResourceKey="TextDisabledBrush" />
 
       <!-- ===== Expander ========================================================================
-           The editor's macro list. Fluent types most of these as `Color` rather than a brush, so
+           The editor's invalid-line block. Fluent types most of these as `Color` rather than a brush, so
            the aliases point at the Color half of the token pair; the handful it types as a brush
            are marked by their target. -->
       <StaticResource x:Key="ExpanderHeaderBackground" ResourceKey="SurfaceBarColor" />

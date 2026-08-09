@@ -197,27 +197,6 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheMacrosTab_BridgesItsSearchFieldAndItsRowActions()
-        {
-            // The tab is hosted in a ContentControl's template, so none of it exists until that
-            // section is open.
-            using var scenes = new ViewSceneFactory();
-
-            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
-
-            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
-
-            var editor = (KeyboardEditorViewModel)view.DataContext!;
-
-            editor.SelectedTab = EditorTab.Macros;
-
-            host.Capture();
-
-            AssertClassCarriesTheme(view, "searchField", "SearchField");
-            AssertClassCarriesTheme(view, "secondary", "SecondaryButton");
-        }
-
-        [AvaloniaFact]
         public async Task ThePedalsEntryPanel_BridgesItsToggleAndItsTokenField()
         {
             // Both live inside the panel that opens under the input being programmed, so they exist
@@ -581,12 +560,17 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.Equal(0, strip.SelectedIndex);
 
-            strip.SelectedIndex = 1;
+            // The strip is positional, so the section it opens is looked up rather than written
+            // out: issue #140 deleted the tab that used to sit at 1, and a renumbered literal would
+            // have gone on passing against a different section.
+            var lighting = editor.Tabs.Single(tab => tab.Tab == EditorTab.Lighting);
 
-            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
-            Assert.True(editor.Tabs[1].IsSelected, "The chosen tab's own IsSelected did not follow.");
+            strip.SelectedIndex = editor.Tabs.ToList().IndexOf(lighting);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[0]);
+            Assert.Equal(EditorTab.Lighting, editor.SelectedTab);
+            Assert.True(lighting.IsSelected, "The chosen tab's own IsSelected did not follow.");
+
+            editor.SelectTabCommand.Execute(editor.Tabs.Single(tab => tab.Tab == EditorTab.Keys));
 
             Assert.Equal(0, strip.SelectedIndex);
         }

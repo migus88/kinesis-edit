@@ -114,8 +114,8 @@ namespace KinesisEdit.ViewModels.Advisories
 
         /// <summary>
         /// <c>Review N</c>: moves the selection to the next thing the open section has a note
-        /// about — a key cap on the Layout tab, a macro row on the Macros tab — and cycles round on
-        /// each further press.
+        /// about — a key cap, or the macro the rail's Macro panel would open — and cycles round on
+        /// each further press. Which of the two is the anchor's <see cref="AdvisorySurface"/>.
         /// <para>
         /// <b>It selects; it never starts a remap.</b> Reviewing is reading, and putting the cap
         /// into listening state would eat the user's next keystroke. It carries no
@@ -187,6 +187,12 @@ namespace KinesisEdit.ViewModels.Advisories
         /// Walks the open section's anchored advisories, one per press. The Layout tab's strip is
         /// narrowed to the shown layer, so a key anchor is always on the board in front of the user
         /// and nothing here has to switch layers.
+        /// <para>
+        /// <b>The callback is chosen by the anchor's own <see cref="AdvisorySurface"/>, never by the
+        /// open tab.</b> Since issue #140 one tab shows both kinds — a duplicate token is about a
+        /// cap, a macro budget is about the rail's Macro panel — so the tab cannot decide, and the
+        /// anchor already states which surface it belongs to.
+        /// </para>
         /// </summary>
         private void ReviewAdvisories()
         {
@@ -201,7 +207,7 @@ namespace KinesisEdit.ViewModels.Advisories
 
             var anchor = targets[_reviewIndex].Anchor;
 
-            if (_tab == EditorTab.Macros)
+            if (anchor.Surface == AdvisorySurface.MacroPanel)
             {
                 _selectMacro(anchor);
 

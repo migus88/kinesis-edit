@@ -184,12 +184,16 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task Tabs_ForALitDeviceWithSettings_AreTheFourAndAllOpen()
+        public async Task Tabs_ForALitDeviceWithSettings_AreTheThreeAndAllOpen()
         {
+            // Three since issue #140 deleted the Macros tab. The strip is exactly
+            // [Keys, Lighting, Settings] on an RGB board — asserted as a sequence rather than by
+            // index, because a positional assertion is what silently passed on the wrong tab once
+            // the middle one was removed.
             var editor = await CreateLoadedEditorAsync();
 
             Assert.Equal(
-                new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
+                new[] { EditorTab.Keys, EditorTab.Lighting, EditorTab.Settings },
                 editor.Tabs.Select(tab => tab.Tab));
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
             Assert.True(editor.Tabs[0].IsSelected);
@@ -228,26 +232,15 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task SelectedTab_SetToTheMacrosTab_Opens()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            editor.SelectedTab = EditorTab.Macros;
-
-            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
-            Assert.True(editor.Tabs[1].IsSelected);
-            Assert.True(editor.IsMacroLibraryVisible);
-        }
-
-        [Fact]
         public async Task SelectTabCommand_ForTheLightingTab_OpensIt()
         {
             var editor = await CreateLoadedEditorAsync();
+            var lighting = editor.Tabs.Single(tab => tab.Tab == EditorTab.Lighting);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[2]);
+            editor.SelectTabCommand.Execute(lighting);
 
             Assert.Equal(EditorTab.Lighting, editor.SelectedTab);
-            Assert.True(editor.Tabs[2].IsSelected);
+            Assert.True(lighting.IsSelected);
         }
 
         [Fact]
@@ -308,12 +301,13 @@ namespace KinesisEdit.Tests.ViewModels
         public async Task SelectTabCommand_ForTheSettingsTab_OpensIt()
         {
             var editor = await CreateLoadedEditorAsync();
+            var settings = editor.Tabs.Single(tab => tab.Tab == EditorTab.Settings);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[3]);
+            editor.SelectTabCommand.Execute(settings);
 
             Assert.Equal(EditorTab.Settings, editor.SelectedTab);
-            Assert.True(editor.Tabs[3].IsSelected);
-            Assert.False(editor.Tabs[0].IsSelected);
+            Assert.True(settings.IsSelected);
+            Assert.False(editor.Tabs.Single(tab => tab.Tab == EditorTab.Keys).IsSelected);
         }
 
         [Fact]
@@ -1296,8 +1290,8 @@ namespace KinesisEdit.Tests.ViewModels
 
         /// <summary>
         /// Records one keystroke into <paramref name="key"/>'s macro through the key inspector's
-        /// Macro panel — the app's one macro editor since issue #93. The Macros tab is a library and
-        /// records nothing.
+        /// Macro panel — the app's one macro editor since issue #93, and its only macro surface at
+        /// all since issue #140 deleted the library tab beside it.
         /// </summary>
         private void RecordAMacro(KeyboardEditorViewModel editor, KeyboardKeyViewModel key)
         {

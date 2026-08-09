@@ -11,11 +11,12 @@ namespace KinesisEdit.ViewModels
     /// largest in the app and docs/guides/Coding Conventions.md forbids growing it into a god
     /// class. Everything here is the same class and runs on the same rules.
     ///
-    /// <para><b>There is exactly one library per open profile, and it is this one.</b> The rail's
-    /// Macro panel and the Macros tab are two views of the same identity — "every macro has a name,
-    /// so the tab lists them once" — and two <c>MacroLibrary</c> instances over one
-    /// <c>KeyboardLayout</c> would be two snapshots that disagree the moment either is edited.
-    /// Whoever needs it asks <see cref="MacroLibrary"/>; nobody constructs a second.</para>
+    /// <para><b>There is exactly one library per open profile, and it is this one.</b> "Every macro
+    /// has a name", so a macro on two keys is one identity with two sites — and two
+    /// <c>MacroLibrary</c> instances over one <c>KeyboardLayout</c> would be two snapshots that
+    /// disagree the moment either is edited. Whoever needs it asks <see cref="MacroLibrary"/>;
+    /// nobody constructs a second. Its one production reader is the rail's Macro panel, whose name
+    /// dropdown is built from the snapshot.</para>
     ///
     /// <para><b>Names are not in the layout file.</b> They ride <c>settings/app_settings.txt</c> as
     /// <c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>
@@ -34,8 +35,8 @@ namespace KinesisEdit.ViewModels
     ///
     /// <para><b>Nothing here throws on a store that cannot write.</b> Demo mode and a drive with no
     /// <c>app_settings.txt</c> both discard the write; the names still live on
-    /// <see cref="Macro.Name"/> for the rest of the session, so the library, the dropdown and the
-    /// Macros tab behave identically.</para>
+    /// <see cref="Macro.Name"/> for the rest of the session, so the library and the dropdown behave
+    /// identically.</para>
     /// </summary>
     public sealed partial class KeyboardEditorViewModel
     {
@@ -86,9 +87,9 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Renames every site of <paramref name="entry"/> and marks the session dirty. This is the
-        /// <b>one</b> rename path in the app: the Macros tab runs it, and the key inspector's Macro
-        /// panel deliberately does not offer one (mockup <c>2i</c> — the tab is the library, the
-        /// rail is the editor).
+        /// <b>one</b> rename path in the app. The key inspector's Macro panel deliberately does not
+        /// offer one: its name dropdown <em>picks</em> a macro, it never renames one (mockup
+        /// <c>2i</c>).
         /// <para>
         /// Returns the fresh entry, because every library mutation rebuilds the snapshot and the one
         /// that was passed in is stale afterwards. Null when there is no library, or when
@@ -133,9 +134,15 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Records that a name moved <b>in the open profile</b>. Public so the Macros tab's own
-        /// edits — a rename that goes through <see cref="RenameMacro"/> already does this, a delete
-        /// or a duplicate does not — can say so without reaching into the set.
+        /// Records that a name moved <b>in the open profile</b>. Public so an edit that moves names
+        /// about without renaming anything — a delete, a duplicate; a rename goes through
+        /// <see cref="RenameMacro"/>, which already does this — can say so without reaching into
+        /// the set.
+        /// <para>
+        /// <b>It has no production caller since issue #140</b> removed the surface that offered
+        /// those two edits. It is kept, with its tests, because issue #141 is what decides the fate
+        /// of the library layer as a whole.
+        /// </para>
         /// </summary>
         public void MarkMacroNamesDirty()
         {
@@ -306,8 +313,8 @@ namespace KinesisEdit.ViewModels
         /// profile's layout.
         /// <para>
         /// Building a second library is legal here and only here. Invariant 27 — one library per
-        /// profile — is about the <em>open</em> profile, whose library the rail and the Macros tab
-        /// both read; this one is read once, inside this method, and dropped. It can be built at
+        /// profile — is about the <em>open</em> profile, whose library the rail reads; this one is
+        /// read once, inside this method, and dropped. It can be built at
         /// all because a name lives on <c>Macro.Name</c>, i.e. on the model the other session is
         /// holding, not on the library.
         /// </para>

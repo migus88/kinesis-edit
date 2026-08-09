@@ -29,8 +29,8 @@ namespace KinesisEdit.Views
     /// <para>
     /// <b>Not ticking off screen.</b> The tab is hosted in a <see cref="ContentControl"/> whose own
     /// <c>IsVisible</c> is bound, so switching sections does <i>not</i> detach this view — it merely
-    /// stops being effectively visible, and a preview repainting ~76 caps behind the Macros tab or
-    /// behind the dashboard is a defect rather than a cost. Avalonia's
+    /// stops being effectively visible, and a preview repainting ~76 caps behind the Settings tab
+    /// or behind the dashboard is a defect rather than a cost. Avalonia's
     /// <c>IsEffectivelyVisible</c> is not an <c>AvaloniaProperty</c> and cannot be observed, so the
     /// view watches <c>IsVisible</c> on itself <i>and on every visual ancestor</i> — which is what
     /// the hosting <see cref="ContentControl"/> actually flips — and recomputes from the chain.

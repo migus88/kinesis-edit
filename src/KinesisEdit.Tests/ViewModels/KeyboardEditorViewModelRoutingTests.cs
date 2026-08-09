@@ -13,8 +13,8 @@ namespace KinesisEdit.Tests.ViewModels
     /// panel is open.
     /// <para>
     /// Since issue #93 the <b>only</b> surface that records a macro is the key inspector's Macro
-    /// panel; the Macros tab is a library and takes no keystroke at all. Every "a macro is
-    /// recording" case below therefore arms the rail.
+    /// panel — and since issue #140 the only surface that edits one at all, the library tab beside
+    /// it having been deleted. Every "a macro is recording" case below therefore arms the rail.
     /// </para>
     /// </summary>
     public sealed class KeyboardEditorViewModelRoutingTests : IDisposable
@@ -28,55 +28,6 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeVDriveFileService _files = new();
         private readonly FakeUrlLauncher _urlLauncher = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
-
-        [Fact]
-        public async Task Tabs_TheMacrosTab_IsTheSecondOneAndIsReachable()
-        {
-            // The precondition of every routing test below: the panel these tests drive is behind
-            // an open tab. Which sections the strip carries for which device is
-            // EditorTabViewModelTests' and KeyboardEditorViewModelTests' subject, not this file's.
-            var editor = await CreateLoadedEditorAsync();
-
-            Assert.Equal(EditorTab.Keys, editor.Tabs[0].Tab);
-            Assert.Equal(EditorTab.Macros, editor.Tabs[1].Tab);
-            Assert.True(editor.SelectTabCommand.CanExecute(editor.Tabs[1]));
-        }
-
-        [Fact]
-        public async Task SelectTabCommand_ForTheMacrosTab_ShowsTheLibraryAndTheLayoutTabHidesItAgain()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            Assert.NotNull(editor.MacroLibraryPanel);
-            Assert.False(editor.IsMacroLibraryVisible);
-
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-
-            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
-            Assert.True(editor.IsMacroLibraryVisible);
-
-            editor.SelectTabCommand.Execute(editor.Tabs[0]);
-
-            Assert.False(editor.IsMacroLibraryVisible);
-        }
-
-        [Fact]
-        public async Task MacroLibrary_SlotBranch_FollowsTheBoardsSelection()
-        {
-            var editor = await CreateLoadedEditorAsync();
-            var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
-
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-            editor.SelectKeyCommand.Execute(key);
-
-            Assert.NotEmpty(editor.MacroLibraryPanel.Slots);
-
-            editor.SelectLayerCommand.Execute(editor.Layers[1]);
-
-            // A layer switch drops the selection, and the tab's slot branch follows it.
-            Assert.Empty(editor.MacroLibraryPanel.Slots);
-            Assert.Equal(MacroLibraryViewModel.NoKeySubtitle, editor.MacroLibraryPanel.Subtitle);
-        }
 
         [Fact]
         public async Task RecordCommand_StartsCaptureAndStoppingItStopsCapture()
@@ -602,7 +553,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             RecordAMacro(editor, "a");
 
-            Assert.Single(editor.MacroLibraryPanel.Rows);
+            // The profile's own library, which is what the refresh funnel rebuilds. The Macros tab
+            // that used to render it is gone (issue #140); the library behind it is not.
+            Assert.Single(editor.MacroLibrary!.Entries);
 
             // The reset scopes confirm first (NotificationKeys.ResetLayer), and the fake answers
             // Ok by default rather than the Yes the guard waits for.
@@ -611,7 +564,7 @@ namespace KinesisEdit.Tests.ViewModels
             editor.ResetLayoutCommand.Execute(null);
 
             Assert.Equal(0, editor.MacroCount);
-            Assert.Empty(editor.MacroLibraryPanel.Rows);
+            Assert.Empty(editor.MacroLibrary!.Entries);
         }
 
         [Fact]
@@ -625,7 +578,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             panel.RecordCommand.Execute(null);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
+            editor.SelectTabCommand.Execute(editor.Tabs.Single(tab => tab.Tab == EditorTab.Lighting));
 
             Assert.False(panel.IsRecording);
             Assert.False(_capture.IsCapturing);

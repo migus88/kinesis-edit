@@ -7,7 +7,7 @@ namespace KinesisEdit.ViewModels
     /// <see cref="KinesisEdit.Core.Keys.KeyRegistry"/>: the words in the key table are
     /// specs/05-key-model.md §3.7's own, they are what the key is *called*, and every surface with
     /// room for them still prints them — the key inspector's prose, its mono token field, the
-    /// macro step rows, the co-trigger captions and the macro library's header all resolve through
+    /// macro step rows and the co-trigger captions all resolve through
     /// <see cref="KeyCaption"/> and are untouched. Only the legend on the cap is abbreviated, and
     /// only because the cap is 28 px wide.
     /// </para>

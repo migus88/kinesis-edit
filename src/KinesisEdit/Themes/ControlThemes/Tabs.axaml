@@ -5,7 +5,7 @@
     BaseButton carries the template, the geometry, the type step, the focus ring and the disabled
     face that ModeOption at the bottom of this file derives from.
 
-      TabStrip / TabStripItem  the editor's section strip: Layout, Macros, Lighting, Settings.
+      TabStrip / TabStripItem  the editor's section strip: Layout, Lighting, Settings.
       ModeOption               one row of the lighting mode rail.
 
     These are Avalonia's own TabStrip and TabStripItem — the header row of a tab control without a

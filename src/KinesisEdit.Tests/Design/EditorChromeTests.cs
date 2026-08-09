@@ -310,14 +310,17 @@ namespace KinesisEdit.Tests.Design
                 $"The advisory strip runs to {strip.Right}, past the rail's left edge at {rail.Left}.");
         }
 
-        [AvaloniaTheory]
-        [InlineData(EditorTab.Macros)]
-        [InlineData(EditorTab.Settings)]
-        public async Task OnASectionWithNoRail_TheColumnAndItsSeam_CollapseToNothing(EditorTab tab)
+        [AvaloniaFact]
+        public async Task OnASectionWithNoRail_TheColumnAndItsSeam_CollapseToNothing()
         {
-            // The Macros library and the Settings panel take the whole content width and always did.
-            // A fixed-pixel column keeps its width however invisible its contents are, so "no rail
-            // here" has to be spelled on the column — this is what says it was.
+            // The Settings panel takes the whole content width and always did. A fixed-pixel column
+            // keeps its width however invisible its contents are, so "no rail here" has to be
+            // spelled on the column — this is what says it was.
+            //
+            // A [Theory] over two sections until issue #140: the Macros tab was the other one, and
+            // Settings is now the only section of the editor without a rail.
+            const EditorTab tab = EditorTab.Settings;
+
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -362,7 +365,7 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task TheTabBarRow_CarriesTheLayoutSwitchOnThreeTabsAndTheLightingSwitchOnTheFourth()
+        public async Task TheTabBarRow_CarriesTheLayoutSwitchOnEveryTabButLightingAndTheLightingSwitchOnThatOne()
         {
             // Issue #128. There are two "layers" in this app and they are not the same object —
             // ledN.txt's against layoutN.txt's — so the editor has two switchers; but the tab bar has
@@ -384,7 +387,7 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains(LayerSwitchOf(view), tabBar.GetVisualDescendants());
             Assert.Contains(LightingLayerSwitchOf(view), tabBar.GetVisualDescendants());
 
-            foreach (var tab in new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Settings })
+            foreach (var tab in new[] { EditorTab.Keys, EditorTab.Settings })
             {
                 editor.SelectedTab = tab;
 
@@ -911,17 +914,53 @@ namespace KinesisEdit.Tests.Design
             var strip = view.GetVisualDescendants().OfType<TabStrip>().Single();
             var captions = CaptionsOf(strip);
 
-            Assert.Equal(new[] { "Layout", "Macros", "Settings" }, captions);
+            Assert.Equal(new[] { "Layout", "Settings" }, captions);
             Assert.All(
                 Enumerable.Range(0, strip.ItemCount),
                 index => Assert.True(strip.ContainerFromIndex(index)!.IsEnabled));
         }
 
+        [AvaloniaFact]
+        public void NoConverterParameterAnywhere_StillNamesTheDeletedMacrosTab()
+        {
+            // THE ONE THING THAT DOES NOT SELF-CORRECT. EnumMatchConverter matches by NAME, so a
+            // leftover ConverterParameter='Keys,Macros,Settings' throws nothing, resolves to
+            // nothing, and quietly stops matching one section — with every rendered assertion in
+            // this file still green. Issue #140 found these by grep; this is the grep, kept.
+            var offenders = new List<string>();
+
+            foreach (var (path, xaml) in AuthoredXaml.Files())
+            {
+                foreach (Match match in Regex.Matches(
+                    AuthoredXaml.WithoutComments(xaml),
+                    "ConverterParameter=(?<value>'[^']*'|[^\\s\"}]+)"))
+                {
+                    var value = match.Groups["value"].Value.Trim('\'');
+
+                    if (value.Split(',').Any(name => name.Trim() == "Macros"))
+                    {
+                        offenders.Add($"{path}: {match.Value}");
+                    }
+                }
+            }
+
+            Assert.True(offenders.Count == 0, $"These parameters name a deleted tab: {string.Join(", ", offenders)}.");
+
+            // Not vacuous: the editor really does drive its sections through this converter, so a
+            // scan that found nothing at all would be reading the wrong files.
+            Assert.Contains(
+                "ConverterParameter='Keys,Lighting'",
+                AuthoredXaml.Files()["Views/KeyboardEditorView.axaml"],
+                StringComparison.Ordinal);
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheLightingBoard_RendersAllFourTabs(string variantName)
+        public async Task TheLightingBoard_RendersAllThreeTabs(string variantName)
         {
+            // Three since issue #140: the strip an RGB board carries is exactly
+            // Layout / Lighting / Settings, with no gap or stretched pill where the fourth was.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -932,7 +971,10 @@ namespace KinesisEdit.Tests.Design
 
             var strip = view.GetVisualDescendants().OfType<TabStrip>().Single();
 
-            Assert.Equal(new[] { "Layout", "Macros", "Lighting", "Settings" }, CaptionsOf(strip));
+            Assert.Equal(new[] { "Layout", "Lighting", "Settings" }, CaptionsOf(strip));
+            Assert.Equal(
+                new[] { EditorTab.Keys, EditorTab.Lighting, EditorTab.Settings },
+                ((KeyboardEditorViewModel)view.DataContext!).Tabs.Select(tab => tab.Tab));
         }
 
         [AvaloniaTheory]
@@ -1164,16 +1206,15 @@ namespace KinesisEdit.Tests.Design
         /// <c>Reset Layout</c> on the Lighting tab and <c>Special Action</c> on Settings — actions
         /// that read as if they were about the screen in front of the user.
         /// <para>
-        /// <b><c>Special Action</c> is a Layout button</b>, not a Macros one: it inserts into the
-        /// macro the KEY INSPECTOR's Macro panel is editing, and that rail is on Keys. The Macros
-        /// tab is a library. <b><c>Export</c> and <c>Import</c> stay everywhere</b>, deliberately —
-        /// they are profile-scoped file actions that no single tab owns, and every tab is a view of
-        /// the one profile.
+        /// <b><c>Special Action</c> is a Layout button</b>: it inserts into the macro the KEY
+        /// INSPECTOR's Macro panel is editing, and that rail is on Keys — which since issue #140 is
+        /// the only section a macro is edited from at all. <b><c>Export</c> and <c>Import</c> stay
+        /// everywhere</b>, deliberately — they are profile-scoped file actions that no single tab
+        /// owns, and every tab is a view of the one profile.
         /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData(EditorTab.Keys, new[] { "Reset Layout", "Special Action", "Discard changes", "Export", "Import" })]
-        [InlineData(EditorTab.Macros, new[] { "Discard changes", "Export", "Import" })]
         [InlineData(EditorTab.Lighting, new[] { "Discard changes", "Export", "Import" })]
         [InlineData(EditorTab.Settings, new[] { "Export", "Import" })]
         public async Task TheActionRow_OnEachTab_HoldsOnlyThatTabsActions(EditorTab tab, string[] expected)

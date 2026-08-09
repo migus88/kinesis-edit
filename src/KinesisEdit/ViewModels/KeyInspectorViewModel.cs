@@ -46,8 +46,9 @@ namespace KinesisEdit.ViewModels
     /// <para><b>The Macro tab is a panel like the others (issue #93).</b> It hosts
     /// <see cref="MacroInspectorPanelViewModel"/> — mockup <c>2i</c>'s "selecting a key edits its
     /// macro right here" — and the rail is <b>never narrower than 300 px</b> while it is showing
-    /// (<see cref="IsWide"/>). It used to bridge out to the Macros tab; navigating away from the
-    /// board when a mode tab is pressed was the placeholder, not the design.</para>
+    /// (<see cref="IsWide"/>). It used to bridge out to a macro section of its own; navigating away
+    /// from the board when a mode tab is pressed was the placeholder, not the design, and since
+    /// issue #140 there is nowhere else for it to go.</para>
     ///
     /// <para><b><c>Multi-mod</c> is not drawn on this board.</b> The tab is built only where
     /// <c>KeyboardKey.SupportsMultiModifiers</c> is true; elsewhere it is absent, not disabled

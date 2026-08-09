@@ -24,7 +24,7 @@
     config file" — a count of remapped keys is the app talking, so it is sans; LEGEND is a section
     label, which the type scale defines as 10/600 uppercase mono.
 
-    SCOPE: the Layout/Macros board only. The Lighting tab's picture draws no state badges
+    SCOPE: the Layout board only. The Lighting tab's picture draws no state badges
     (KeyboardView.ShowsStateBadges), so it counts no states either - the handoff's "every board view
     carries a legend row" is honoured where state is on screen. Recorded in docs/app/keyboard-editor.md.
   -->

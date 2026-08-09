@@ -27,7 +27,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>Caption of the tap-and-hold tab. The ampersand is the mockups' own.</summary>
         public const string TapAndHoldCaption = "Tap & hold";
 
-        /// <summary>Caption of the macro tab — a bridge to the Macros tab, not a panel (issue #93).</summary>
+        /// <summary>Caption of the macro tab — the app's one macro editor (issues #93, #137, #140).</summary>
         public const string MacroCaption = "Macro";
 
         /// <summary>Caption of the multi-modifier tab, drawn only where the firmware has it.</summary>

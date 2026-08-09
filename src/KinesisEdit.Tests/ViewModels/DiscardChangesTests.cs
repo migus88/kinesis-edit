@@ -70,24 +70,6 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public async Task DiscardChanges_OnTheMacrosTab_RevertsTheLayout()
-        {
-            // A macro IS layout content — it lives in layout<n>.txt — so the Macros tab goes with
-            // Keys rather than getting a scope of its own.
-            var editor = await CreateLoadedEditorAsync();
-            var session = _profiles.SessionToReturn!;
-
-            editor.SelectedTab = EditorTab.Macros;
-
-            Answer(MessageBoxResult.Yes);
-
-            await editor.DiscardChangesCommand.ExecuteAsync(null);
-
-            Assert.Equal(1, session.RevertLayoutCallCount);
-            Assert.Equal(0, session.RevertLightingCallCount);
-        }
-
-        [AvaloniaFact]
         public async Task DiscardChanges_OnTheSettingsTab_IsRefused()
         {
             // The settings file is outside the session's dirty comparison entirely, so there is

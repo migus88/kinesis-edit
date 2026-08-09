@@ -9,8 +9,8 @@
              x:Class="KinesisEdit.Views.MacroInspectorPanelView"
              x:DataType="vm:MacroInspectorPanelViewModel">
   <!--
-    The key inspector's Macro panel (mockup 2i) — "selecting a key edits its macro right here; the
-    Macros tab is a library, not the editor".
+    The key inspector's Macro panel (mockup 2i) — "selecting a key edits its macro right here". It
+    is the app's ONE macro editor since issue #140; there is no second surface for any of it.
 
     THE RAIL IS 300px WIDE WHILE THIS PANEL IS SHOWING, not 268. The handoff states both widths and
     this is the macro-editing variant; the rail sets it off the panel's own WantsWideRail, so this
@@ -181,7 +181,7 @@
       <!-- ===== The slot ======================================================================
            WHICH OF THE KEY'S MACROS IS BEING EDITED (issue #137). A key holds up to five macros
            told apart by their co-triggers (06 §1); until this strip existed the rail could reach
-           only one of them and the Macros tab's slot cards were the only way to the rest.
+           only one of them and the rest were unreachable from the board.
 
            ONE DOT PER SLOT THE DIALECT WRITES, never the five the model owns: `PersistedSlotsPerKey`
            is 3 on the Advantage2 and Freestyle Edge/Pro and 5 on the RGB family, and a macro put in
@@ -319,8 +319,8 @@
            "The macro is picked by name from a dropdown — Sign-off block ▾ — with the reuse note
            'Named, so it can be picked for another key from this same dropdown. Also on [f7] · Fn.'"
 
-           PICKING IS ASSIGNING; RENAMING IS THE MACROS TAB'S. 2i splits the two deliberately, so
-           there is no name field here — only the list of what the profile already holds. -->
+           PICKING IS ASSIGNING; IT IS NEVER RENAMING. 2i splits the two deliberately, so there is
+           no name field here — only the list of what the profile already holds. -->
       <Border Classes="inspectorSection">
         <StackPanel Spacing="6">
           <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.NameLabel}" Classes="sectionLabel" />
@@ -814,7 +814,13 @@
       <!-- ===== The footer meters =============================================================
            2i's three readings, in its order: `Playback speed 3 / 5`, `this macro 128 / 500`,
            `layout keystrokes 5 140 / 7 200`. Over budget goes AMBER and still saves — the layout
-           is written as it stands and the board truncates. -->
+           is written as it stands and the board truncates.
+
+           A FOURTH ROW SINCE ISSUE #140: `macros 24 / 100`, 06 §6's profile-wide count. It was the
+           Macros tab's footer meter and the tab is gone, so this is the only place that limit is
+           readable now; dropping a working readout of a real device limit silently is what the
+           capability law is against. Amber like its neighbours, never an error ramp, and its
+           maximum comes from the device's MacroCapability through MacroLimits — never a literal. -->
       <Border Classes="inspectorSection">
         <StackPanel Spacing="8">
           <StackPanel Spacing="4">
@@ -844,6 +850,15 @@
                          Classes.statusWarning="{Binding LayoutKeystrokeMeter.IsOverBudget}"
                          VerticalAlignment="Center" />
             </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" Text="{Binding MacroCountMeter.Label}" Classes="body" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding MacroCountMeter.Caption}"
+                         Classes="monoValue"
+                         Classes.statusWarning="{Binding MacroCountMeter.IsOverBudget}"
+                         VerticalAlignment="Center" />
+            </Grid>
           </StackPanel>
 
           <!-- Speed itself, beside the reading that counts it. -->
@@ -855,8 +870,8 @@
                   IsVisible="{Binding HasSpeed}" />
 
           <!-- REPEAT STAYS. Mockup 2i draws only speed; repeat is supported by the devices this app
-               edits today and there is nowhere else left to set it once the Macros tab becomes a
-               library, so dropping it would be dropping a feature silently. Recorded as a deviation
+               edits today and this panel is the only place left to set it, so dropping it would be
+               dropping a working feature silently. Recorded as a deviation
                in docs/app/design-system.md. THE CO-TRIGGERS LEFT THIS BLOCK with issue #137: they
                are the Trigger strip in the header now, where they sit beside the trigger token they
                qualify and the collision they cause.

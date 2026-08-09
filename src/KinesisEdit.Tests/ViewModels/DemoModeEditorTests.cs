@@ -61,10 +61,14 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(editor.MacroCount > 0, $"expected macros, got {editor.MacroCount}");
             Assert.Equal(1, editor.Layout!.TapAndHoldCount);
 
-            // Which reach the board and the legend row, not only the model.
+            // Which reach the board and the legend row, not only the model. The macro half was read
+            // off the Macros tab's rows until issue #140 deleted it; the board's own macro dots and
+            // the legend row's count are the surfaces that carry it now.
             Assert.Contains(editor.Layers[0].Keys, key => key.IsModified);
             Assert.True(editor.BoardLegend.RemappedCount > 0);
-            Assert.NotEmpty(editor.MacroLibraryPanel.Rows);
+            Assert.True(editor.BoardLegend.MacroCount > 0);
+            Assert.Contains(editor.Layers[0].Keys, key => key.IsMacro);
+            Assert.NotEmpty(editor.MacroLibrary!.Entries);
         }
 
         [Fact]

@@ -132,8 +132,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void AMacroPastItsCharacterBudget_IsAnchoredToItsSlot()
+        public void AMacroPastItsCharacterBudget_IsAnchoredToItsSlotOnTheLayoutTabsMacroPanel()
         {
+            // Issue #140: the Macros tab is gone, so a macro budget is shown on the Layout tab like
+            // everything else and the anchor's SURFACE — not its tab — is what says `Review N` opens
+            // the rail's Macro panel rather than selecting a cap.
             var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
             var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
             var key = FindMacroKey(layout);
@@ -142,20 +145,83 @@ namespace KinesisEdit.Tests.ViewModels
 
             var advisories = EditorAdvisories.Build(layout);
             var advisory = Assert.Single(
-                advisories.ForTab(EditorTab.Macros),
+                advisories.ForTab(EditorTab.Keys),
                 candidate => candidate.Message.Contains("characters", StringComparison.Ordinal));
 
-            Assert.Equal(EditorTab.Macros, advisory.Tab);
+            Assert.Equal(EditorTab.Keys, advisory.Tab);
+            Assert.Equal(AdvisorySurface.MacroPanel, advisory.Surface);
             Assert.Equal(0, advisory.LayerIndex);
             Assert.Equal(key.Index, advisory.KeyIndex);
             Assert.Equal(1, advisory.MacroIndex);
             Assert.Equal(AdvisoryText.MacroCharacters(limit + 1, limit), advisory.Message);
 
+            // HasAdvisoryForMacro still answers after the move. It filters on the surface, not on
+            // the tab it used to name — filtering on the tab would have it answer false for
+            // everything, silently, with every other assertion here still green.
             Assert.True(advisories.HasAdvisoryForMacro(0, key.Index, 1));
             Assert.False(advisories.HasAdvisoryForMacro(0, key.Index, 2));
 
             // A flat-list row names no key, and Validate gives no per-macro identity for one.
             Assert.False(advisories.HasAdvisoryForMacro(0, null, 0));
+        }
+
+        [Fact]
+        public void ADuplicateTokenAndAMacroBudget_ShareATabAndAreToldApartByTheirSurface()
+        {
+            // The whole reason AdvisorySurface exists. Both kinds are on EditorTab.Keys now, so the
+            // tab can no longer decide which callback `Review N` runs — and a duplicate token must
+            // still select its cap while a macro budget still opens the rail's Macro panel.
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layer = layout.Layers[0];
+            var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
+
+            layer.Keys[TestLayouts.RgbDigitOneKeyIndex].Remap(layer.Keys[0].OriginalKey);
+            layer.Keys[TestLayouts.RgbDigitThreeKeyIndex].SetMacro(1, CreateMacro(layout, limit + 1));
+
+            var anchored = EditorAdvisories.Build(layout).ForTab(EditorTab.Keys, layer.Index);
+
+            Assert.All(anchored, advisory => Assert.Equal(EditorTab.Keys, advisory.Tab));
+
+            var macros = anchored.Where(advisory => advisory.Surface == AdvisorySurface.MacroPanel).ToArray();
+            var board = anchored.Where(advisory => advisory.Surface == AdvisorySurface.Board).ToArray();
+
+            Assert.Equal(TestLayouts.RgbDigitThreeKeyIndex, Assert.Single(macros).KeyIndex);
+            Assert.Equal(2, board.Length);
+            Assert.All(board, advisory => Assert.Null(advisory.MacroIndex));
+        }
+
+        [Fact]
+        public void AFlatListMacroAdvisory_KeepsTheMacroPanelSurfaceWithNoSlotAtAll()
+        {
+            // THE CASE THE FIELD EXISTS FOR, at the source. The Advantage 360 keeps its macros in one
+            // flat list and Validate anchors a finding there with neither a key nor a slot (06 §1) —
+            // so inferring the surface from `MacroIndex is not null` would call exactly these board
+            // notes and send them to key selection. The surface is STATED, never guessed.
+            var layout = KeyboardLayout.Create(DeviceId.Advantage360);
+
+            Assert.True(layout.UsesFlatMacroList, "The Advantage 360 stopped using the flat macro list.");
+
+            var limit = layout.Device.Macros.MaxCoTriggersPerMacro!.Value;
+            var macro = layout.CreateMacro();
+
+            macro.LayerIndex = layout.Layers[0].Index;
+            macro.TriggerKey = TestLayouts.Gen1Key("f1").Code;
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("a")));
+
+            foreach (var token in new[] { "lshft", "rshft", "lctrl", "rctrl", "lalt", "ralt" }.Take(limit + 1))
+            {
+                macro.AddCoTrigger(TestLayouts.Gen1Key(token));
+            }
+
+            layout.AddMacro(macro);
+
+            var advisory = Assert.Single(
+                EditorAdvisories.Build(layout).ForTab(EditorTab.Keys),
+                candidate => candidate.Message.Contains("co-trigger", StringComparison.Ordinal));
+
+            Assert.Equal(AdvisorySurface.MacroPanel, advisory.Surface);
+            Assert.Null(advisory.MacroIndex);
+            Assert.Null(advisory.KeyIndex);
         }
 
         [Fact]
@@ -180,10 +246,14 @@ namespace KinesisEdit.Tests.ViewModels
 
             var advisories = EditorAdvisories.Build(layout);
             var advisory = Assert.Single(
-                advisories.ForTab(EditorTab.Macros),
+                advisories.ForTab(EditorTab.Keys),
                 candidate => candidate.Message.Contains("layout keystroke budget", StringComparison.Ordinal));
 
             Assert.Equal(AdvisoryText.LayoutKeystrokeBudget(layout.TotalKeystrokes, budget), advisory.Message);
+            Assert.Equal(AdvisorySurface.MacroPanel, advisory.Surface);
+
+            // No position at all, so `Review N` filters it out of the rotation — there is nothing to
+            // select for it, which is why the surface alone cannot be the whole answer.
             Assert.Null(advisory.KeyIndex);
         }
 
@@ -203,10 +273,12 @@ namespace KinesisEdit.Tests.ViewModels
             key.SetMacro(1, macro);
 
             var advisory = Assert.Single(
-                EditorAdvisories.Build(layout).ForTab(EditorTab.Macros),
+                EditorAdvisories.Build(layout).ForTab(EditorTab.Keys),
                 candidate => candidate.Message.Contains("co-trigger", StringComparison.Ordinal));
 
             Assert.Equal(AdvisoryText.CoTriggers(limit + 1, limit), advisory.Message);
+            Assert.Equal(EditorTab.Keys, advisory.Tab);
+            Assert.Equal(AdvisorySurface.MacroPanel, advisory.Surface);
             Assert.Equal(key.Index, advisory.KeyIndex);
             Assert.Equal(1, advisory.MacroIndex);
         }
@@ -233,24 +305,69 @@ namespace KinesisEdit.Tests.ViewModels
 
             layout.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].Remap(layout.Layers[0].Keys[0].OriginalKey);
             layout.Layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].Remap(layout.Layers[1].Keys[0].OriginalKey);
-            FindMacroKey(layout).SetMacro(1, CreateMacro(layout, limit + 1));
+
+            // On a position of its own, clear of the duplicate group. Since issue #140 the macro
+            // budget is a LAYER-0 Layout-tab advisory and counts as a position there, so putting it
+            // on a cap that already carries a duplicate would hide exactly the arithmetic below.
+            layout.Layers[0].Keys[TestLayouts.RgbDigitThreeKeyIndex].SetMacro(1, CreateMacro(layout, limit + 1));
 
             var advisories = EditorAdvisories.Build(layout);
             var onLayerZero = advisories.ForTab(EditorTab.Keys, 0).Count;
             var onLayerOne = advisories.ForTab(EditorTab.Keys, 1).Count;
 
-            Assert.True(onLayerZero >= 2, $"Layer 0 reported {onLayerZero} advisories.");
-            Assert.True(onLayerOne >= 2, $"Layer 1 reported {onLayerOne} advisories.");
+            // Three on layer 0: the duplicate token's two positions plus the macro that joined them
+            // when its own tab was deleted. Two on layer 1.
+            Assert.Equal(3, onLayerZero);
+            Assert.Equal(2, onLayerOne);
 
             // No advisory here is layout-wide, so the two layers partition the Layout tab exactly.
             Assert.Equal(onLayerZero + onLayerOne, advisories.CountForTab(EditorTab.Keys));
             Assert.Equal(onLayerZero, advisories.CountForLayer(0));
             Assert.Equal(onLayerOne, advisories.CountForLayer(1));
 
-            Assert.Equal(1, advisories.CountForTab(EditorTab.Macros));
+            // ...and the Layout tab is now the only section with anything to say at all.
             Assert.Equal(0, advisories.CountForTab(EditorTab.Lighting));
             Assert.Equal(0, advisories.CountForTab(EditorTab.Settings));
-            Assert.Equal(advisories.CountForTab(EditorTab.Keys) + 1, advisories.Total);
+            Assert.Equal(advisories.CountForTab(EditorTab.Keys), advisories.Total);
+        }
+
+        [Fact]
+        public void AMacroAdvisory_IsNarrowedToItsLayerAndCountedAsAPositionInTheSummary()
+        {
+            // DECISION 2 OF ISSUE #140, stated as a test so it stays deliberate. The Macros tab
+            // showed every macro advisory in the profile at once; anchored at EditorTab.Keys they
+            // take the Layout tab's scope rules instead — narrowed by ForTab(Keys, layer) and
+            // counted as a position in that layer's summary, exactly like every other Keys advisory.
+            // This is a VISIBLE BEHAVIOUR CHANGE and the deliberate half of the trade.
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var limit = layout.Device.Macros.MaxCharactersPerMacro!.Value;
+            var key = layout.Layers[1].Keys[TestLayouts.RgbDigitThreeKeyIndex];
+
+            key.SetMacro(1, CreateMacro(layout, limit + 1));
+
+            var advisories = EditorAdvisories.Build(layout);
+
+            // Narrowed: it is on layer 1's strip and on no other layer's.
+            Assert.Single(advisories.ForTab(EditorTab.Keys, 1));
+            Assert.Empty(advisories.ForTab(EditorTab.Keys, 0));
+
+            // Counted as a position — CountForLayer counts caps, and a macro budget names one.
+            Assert.Equal(1, advisories.CountForLayer(1));
+            Assert.Equal(0, advisories.CountForLayer(0));
+
+            // And it reaches the sentence: alone it speaks for itself, and beside a duplicate it is
+            // one of the positions the layer summary counts.
+            Assert.Equal(AdvisoryText.MacroCharacters(limit + 1, limit), advisories.SummaryFor(EditorTab.Keys, 1));
+
+            layout.Layers[1].Keys[TestLayouts.RgbDigitTwoKeyIndex].Remap(layout.Layers[1].Keys[0].OriginalKey);
+
+            var withDuplicate = EditorAdvisories.Build(layout);
+
+            Assert.Equal(3, withDuplicate.CountForLayer(1));
+            Assert.Contains(
+                "keys carry advisory notes on this layer",
+                withDuplicate.SummaryFor(EditorTab.Keys, 1),
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -297,7 +414,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var advisories = EditorAdvisories.Build(layout);
 
-            Assert.Equal(string.Empty, advisories.SummaryFor(EditorTab.Macros));
+            Assert.Equal(string.Empty, advisories.SummaryFor(EditorTab.Lighting));
             Assert.Equal(string.Empty, advisories.SummaryFor(EditorTab.Settings));
             Assert.NotEqual(string.Empty, advisories.SummaryFor(EditorTab.Keys, 0));
         }
@@ -544,7 +661,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.True(onLayout >= 2);
 
-            editor.SelectedTab = EditorTab.Macros;
+            editor.SelectedTab = EditorTab.Settings;
 
             Assert.Equal(0, editor.AdvisoryStrip.AdvisoryCount);
             Assert.Equal(string.Empty, editor.AdvisoryStrip.AdvisorySummary);

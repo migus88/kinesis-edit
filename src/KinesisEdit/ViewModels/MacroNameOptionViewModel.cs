@@ -14,7 +14,7 @@ namespace KinesisEdit.ViewModels
     /// <para>
     /// The <b>empty</b> option — <see cref="IsNone"/> — is how the dropdown says "this key has no
     /// macro yet". It carries no entry, and picking it is not an action: the panel refuses it, so
-    /// the dropdown can never be the thing that deletes a macro. Deleting is the Macros tab's.
+    /// the dropdown can never be the thing that deletes a macro. Picking a name is assigning one.
     /// </para>
     /// </summary>
     public sealed class MacroNameOptionViewModel : ViewModelBase

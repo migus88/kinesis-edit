@@ -231,8 +231,11 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheFooterMeters_ReadOutTheThreeBudgetsTheMockNames(string variantName)
+        public async Task TheFooterMeters_ReadOutTheFourBudgetsTheMockNames(string variantName)
         {
+            // FOUR since issue #140 moved `macros n / m` here from the deleted Macros tab's footer.
+            // The new row is the only readout of that device limit left in the app, so its label,
+            // its caption and its place in the stack are all part of the claim.
             using var scenes = new ViewSceneFactory();
 
             var panel = await scenes.CreateMacroInspectorPanelAsync();
@@ -247,8 +250,68 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains(MacroInspectorPanelViewModel.SpeedMeterLabel, texts);
             Assert.Contains(MacroInspectorPanelViewModel.MacroLengthMeterLabel, texts);
             Assert.Contains(MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.MacroCountMeterLabel, texts);
             Assert.Contains(panel.MacroLengthMeter.Caption, texts);
             Assert.Contains(panel.LayoutKeystrokeMeter.Caption, texts);
+            Assert.Contains(panel.MacroCountMeter.Caption, texts);
+        }
+
+        /// <summary>
+        /// Issue #140's own row, at the glass: <c>macros n / m</c> sits in line with the three
+        /// meters it joined and inside the 300 px rail. A view-model test cannot see either — a
+        /// fourth row that wrapped, overflowed or landed out of column would satisfy every
+        /// assertion about the meter and still be visibly wrong on the panel.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheMacroCountRow_LinesUpWithItsNeighboursAndStaysInsideTheRail(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            var labels = new[]
+            {
+                MacroInspectorPanelViewModel.MacroLengthMeterLabel,
+                MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel,
+                MacroInspectorPanelViewModel.MacroCountMeterLabel
+            };
+
+            var rows = labels
+                .Select(label => Assert.Single(
+                    view.GetVisualDescendants().OfType<TextBlock>(),
+                    block => block.IsEffectivelyVisible && block.Text == label))
+                .ToArray();
+
+            var captions = new[] { panel.MacroLengthMeter, panel.LayoutKeystrokeMeter, panel.MacroCountMeter }
+                .Select(meter => Assert.Single(
+                    view.GetVisualDescendants().OfType<TextBlock>(),
+                    block => block.IsEffectivelyVisible && block.Text == meter.Caption))
+                .ToArray();
+
+            // One column for the labels, one for the values: the new row is in both of them.
+            Assert.All(rows, row => Assert.Equal(LeftEdgeOf(rows[0], view), LeftEdgeOf(row, view), precision: 3));
+            Assert.All(
+                captions,
+                caption => Assert.Equal(RightEdgeOf(captions[0], view), RightEdgeOf(caption, view), precision: 3));
+
+            // Stacked, not overlapping: each row sits below the one before it.
+            Assert.True(
+                rows[1].TranslatePoint(default, view)!.Value.Y < rows[2].TranslatePoint(default, view)!.Value.Y,
+                "The macro-count row is not below the layout-keystroke row it joined.");
+
+            // MEASURED, never pinned to a number — the rail's rule.
+            Assert.All(
+                rows.Concat(captions),
+                block => Assert.True(
+                    RightEdgeOf(block, view) <= WideRailWidth,
+                    $"'{block.Text}' runs {RightEdgeOf(block, view) - WideRailWidth:0.#} px off the rail."));
         }
 
         /// <summary>
@@ -878,7 +941,8 @@ namespace KinesisEdit.Tests.Design
         /// <summary>
         /// The slot strip: one dot per <b>persisted</b> slot, filled for the occupied ones, and a
         /// dropdown naming the slot under edit. No <c>ACTIVE</c> badge and no <c>Make active</c> —
-        /// those belong to the Macros tab's cards, and this panel refuses both.
+        /// those belonged to the Macros tab's cards, which issue #140 deleted, and this panel
+        /// refuses both.
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
@@ -915,8 +979,12 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains(MacroInspectorPanelViewModel.SlotSectionLabel, texts);
             Assert.Contains(panel.SelectedSlot!.Caption, texts);
 
-            Assert.DoesNotContain(MacroSlotViewModel.ActiveBadge, texts);
-            Assert.DoesNotContain(MacroSlotViewModel.MakeActiveCaption, texts);
+            // The literals, not the constants: issue #140 deleted MacroSlotViewModel with the tab
+            // that owned them, and the claim — this panel says neither of these things — outlives
+            // its owner. Written out on purpose so the assertion cannot quietly disappear with a
+            // type.
+            Assert.DoesNotContain("ACTIVE", texts);
+            Assert.DoesNotContain("Make active", texts);
         }
 
         /// <summary>The status line's own run, found by the text the view model put there.</summary>
@@ -1402,6 +1470,13 @@ namespace KinesisEdit.Tests.Design
         private static double RightEdgeOf(Control control, Control view)
         {
             return control.TranslatePoint(new Point(control.Bounds.Width, 0), view)?.X
+                   ?? throw new InvalidOperationException("The control is not in the panel's tree.");
+        }
+
+        /// <summary><paramref name="control"/>'s left edge in <paramref name="view"/>'s coordinates.</summary>
+        private static double LeftEdgeOf(Control control, Control view)
+        {
+            return control.TranslatePoint(default, view)?.X
                    ?? throw new InvalidOperationException("The control is not in the panel's tree.");
         }
 

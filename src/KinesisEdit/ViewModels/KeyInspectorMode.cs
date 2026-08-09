@@ -27,9 +27,9 @@ namespace KinesisEdit.ViewModels
         TapAndHold = 1,
 
         /// <summary>
-        /// The position fires a macro (specs/06-macros.md). The inspector <b>bridges</b> to the
-        /// Macros tab for this one rather than hosting an editor: in-place macro editing is issue
-        /// #93's, and macro names do not exist in Core yet.
+        /// The position fires a macro (specs/06-macros.md). The rail's Macro panel is <b>the</b>
+        /// macro editor since issue #140 — the slot selector, the Trigger strip, the step composer
+        /// and the budget meters are all here, and there is no second surface for any of it.
         /// </summary>
         Macro = 2,
 

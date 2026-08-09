@@ -8,28 +8,25 @@ namespace KinesisEdit.ViewModels
     /// filled for the slots that hold a macro, and a dropdown naming the slot under edit.
     ///
     /// <para><b>Why the panel needs one at all.</b> A key holds up to five macros told apart by
-    /// their co-triggers (06 §1), and until now the only way to reach slots 2-5 was the Macros tab's
-    /// slot cards. The rail could edit exactly one of them, so "the Macros tab is a library, not the
-    /// editor" was true of everything except the one thing only the tab could do.</para>
+    /// their co-triggers (06 §1), and until issue #137 the rail could edit exactly one of them —
+    /// the rest were reachable only from a macro section that no longer exists (issue #140). Without
+    /// this selector "the rail is where a macro is edited" would be true of one slot in five.</para>
     ///
     /// <para><b>What the dialect writes, never what the model holds</b>
     /// (<see cref="Core.Devices.MacroCapability.PersistedSlotsPerKey"/>: 3 on the Advantage2 and
     /// Freestyle Edge/Pro, 5 on the RGB family). A macro put in slot 4 of a Freestyle Edge is gone
-    /// at the very next save, so the strip never offers it — the same rule the tab's cards follow,
-    /// and <see cref="KeyboardEditorViewModel"/>'s invariant 14.</para>
+    /// at the very next save, so the strip never offers it —
+    /// <see cref="KeyboardEditorViewModel"/>'s invariant 14.</para>
     ///
     /// <para><b>Selecting a slot does not dirty the session.</b>
     /// <see cref="KeyboardKey.ActiveMacroIndex"/> is an in-memory field that is never serialized
     /// (05 §1.3), so the selection re-reads the panel and deliberately does <em>not</em> reach the
     /// editor's funnel through <c>Assigned</c>. An unsaved-changes prompt for a choice no save could
-    /// persist would be a lie — the Macros tab's <c>Make active</c> already gets this right and this
-    /// matches it.</para>
+    /// persist would be a lie.</para>
     ///
     /// <para><b>There is no <c>ACTIVE</c> badge and no <c>Make active</c>.</b> The dropdown is a
     /// pure <em>editing</em> selector: every populated slot is live on the keyboard, and what tells
-    /// them apart is their co-triggers — which is what the Trigger strip beside it shows. That is
-    /// also why <see cref="MacroSlotViewModel"/> is <b>not</b> reused here: it carries the tab's
-    /// badge and its make-active action, both of which this panel refuses.</para>
+    /// them apart is their co-triggers — which is what the Trigger strip beside it shows.</para>
     ///
     /// <para><b>Absent, never disabled.</b> A flat-list board (<c>UsesFlatMacroList</c>, the
     /// Advantage 360) and a position that refuses macros (05 §5.3) render no selector at all.</para>
@@ -209,13 +206,13 @@ namespace KinesisEdit.ViewModels
     /// <c>DataTemplate</c> in <c>Views/MacroInspectorPanelView.axaml</c>, and a type that never
     /// resolves to a view of its own should not have to be excused in <c>ViewResolutionTests</c>.</para>
     ///
-    /// <para><b>It is not <see cref="MacroSlotViewModel"/>.</b> That one is the Macros tab's card:
-    /// it carries an <c>ACTIVE</c> badge, a <c>Make active</c> action and a library row, and this
-    /// panel deliberately refuses all three.</para>
+    /// <para><b>It is a dropdown row, not a card.</b> The deleted macro section drew each slot as a
+    /// card with an <c>ACTIVE</c> badge and a <c>Make active</c> action; this panel refuses both, so
+    /// nothing of that shape was carried over when the section went (issue #140).</para>
     /// </summary>
     public sealed class MacroSlotOption
     {
-        /// <summary>The dropdown row's wording. This app's, in the shape the tab's cards use.</summary>
+        /// <summary>The dropdown row's wording. This app's.</summary>
         public const string CaptionFormat = "Slot {0} — {1}";
 
         /// <summary>What an unoccupied slot is called.</summary>

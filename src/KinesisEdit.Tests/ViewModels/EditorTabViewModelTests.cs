@@ -13,12 +13,14 @@ namespace KinesisEdit.Tests.ViewModels
     public sealed class EditorTabViewModelTests
     {
         [Fact]
-        public void CreateAll_ForAPerKeyRgbBoardThePanelCanLight_HasAllFourSections()
+        public void CreateAll_ForAPerKeyRgbBoardThePanelCanLight_HasAllThreeSections()
         {
+            // Three since issue #140 deleted the Macros tab: the rail's Macro panel is the app's
+            // one macro editor, so there is no second surface to open.
             var tabs = CreateAll(DeviceId.FreestyleEdgeRgb, isLightingSupported: true);
 
             Assert.Equal(
-                new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Lighting, EditorTab.Settings },
+                new[] { EditorTab.Keys, EditorTab.Lighting, EditorTab.Settings },
                 tabs.Select(tab => tab.Tab));
         }
 
@@ -81,26 +83,47 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void CreateAll_ForTheAdvantage2_IsLayoutMacrosAndSettings()
+        public void CreateAll_ForTheAdvantage2_IsLayoutAndSettings()
         {
             var tabs = CreateAll(DeviceId.Advantage2, isLightingSupported: false);
 
             Assert.Equal(
-                new[] { EditorTab.Keys, EditorTab.Macros, EditorTab.Settings },
+                new[] { EditorTab.Keys, EditorTab.Settings },
                 tabs.Select(tab => tab.Tab));
         }
 
         [Fact]
-        public void CreateAll_TheMacrosTab_IsAlwaysPresent()
+        public void EditorTab_CarriesNoMacrosMember_AndTheThreeThatSurviveKeepTheirNumbers()
         {
-            // Unlike Lighting and Settings, the Macros tab is not capability-filtered: the panel
-            // behind it reads the device's own MacroCapability and says "This device does not
-            // support macros" itself, so the answer lives in one place.
+            // Issue #140 removed the member rather than leaving it declared-but-unused, and that is
+            // load-bearing: two suites walk Enum.GetValues<EditorTab>() and assign SelectedTab, and
+            // SelectTab refuses a tab the strip does not carry — so a stale member would make both
+            // loops silently re-assert the previous tab, green and vacuous. The hole at 2 is left
+            // alone: the three survivors keep the numbers they always had.
+            Assert.DoesNotContain("Macros", Enum.GetNames<EditorTab>());
+            Assert.Equal(
+                new[] { EditorTab.Keys, EditorTab.Lighting, EditorTab.Settings },
+                Enum.GetValues<EditorTab>());
+            Assert.Equal(1, (int)EditorTab.Keys);
+            Assert.Equal(3, (int)EditorTab.Lighting);
+            Assert.Equal(4, (int)EditorTab.Settings);
+        }
+
+        [Fact]
+        public void CreateAll_ForEveryDevice_CarriesNoMacrosSectionAnyMore()
+        {
+            // The macro-less-device answer used to be the Macros tab's ("This device does not
+            // support macros"); it lives in the rail's Macro panel now, which gates on the device's
+            // own MacroCapability. No board gets a macro *section* at all.
             foreach (var device in DeviceCatalog.All)
             {
-                Assert.Single(
-                    EditorTabViewModel.CreateAll(device, isLightingSupported: false),
-                    tab => tab.Tab == EditorTab.Macros);
+                var tabs = EditorTabViewModel.CreateAll(device, LightingTabViewModel.IsSupported(device));
+
+                Assert.All(
+                    tabs,
+                    tab => Assert.Contains(
+                        tab.Tab,
+                        new[] { EditorTab.Keys, EditorTab.Lighting, EditorTab.Settings }));
             }
         }
 
