@@ -114,6 +114,44 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, editor.ModifiedKeyCount);
         }
 
+        /// <summary>
+        /// The composer's one-shot <c>Record</c> (issue #139) is <b>the same sink</b> as the run —
+        /// a second arm mode on the panel, not a fourth routing branch — so it reaches the keystroke
+        /// through branch 1 exactly as everything else on the rail does, and hands capture straight
+        /// back afterwards.
+        /// </summary>
+        [Fact]
+        public async Task KeystrokeCaptured_WhileTheComposerIsArmed_WritesOneStepAndReleasesCapture()
+        {
+            var editor = await CreateLoadedEditorAsync();
+            var key = SelectDigitOne(editor);
+            var panel = OpenMacroPanel(editor);
+
+            panel.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
+
+            panel.RecordCommand.Execute(null);
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+
+            panel.RecordStepKeyCommand.Execute(null);
+
+            Assert.True(_capture.IsCapturing);
+            Assert.True(editor.IsCaptureActive);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("q"));
+
+            // Exactly one keystroke: it wrote the step, disarmed itself, and the editor answered
+            // the RecordingChanged by stopping the service it owns.
+            Assert.Equal("[q]", Assert.Single(panel.Steps.Items).TokenText);
+            Assert.Equal(MacroCaptureMode.None, panel.CaptureMode);
+            Assert.False(_capture.IsCapturing);
+            Assert.False(editor.IsCaptureActive);
+
+            // ...and the board beside it was never touched: the rail's armed panel outranks it.
+            Assert.False(key.IsModified);
+        }
+
         [Fact]
         public async Task KeystrokeCaptured_WithNothingElseWanting_StillRemaps()
         {

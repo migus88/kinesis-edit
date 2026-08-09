@@ -117,7 +117,7 @@ namespace KinesisEdit.Tests.Design
                 // seam now — already covered by the KeyboardEditorView row above.
                 (typeof(LightingTabView).FullName!, "zoneButton", "ToggleSegment"),
                 // MacroDelayOverlayView's `monoValue` row went with the view in #93; the delay is
-                // edited on the step now, and the rail's own field is covered below.
+                // edited in the rail's composer now (#139), and that field is covered below.
 
                 // The key inspector rail (issue #92), which is where the two deleted overlays'
                 // roles now live — and where `FilterChip` finally got the call site #86 wrote it
@@ -139,7 +139,8 @@ namespace KinesisEdit.Tests.Design
 
                 // The rail's Macro panel (issue #93). `monoValue` moved here from the deleted Macro
                 // Timing Delays modal — §11.3's millisecond field is the same typed value in the
-                // same mono face, now beside the step it belongs to — and `macroStepRow` is the
+                // same mono face, and since #139 it sits in the composer, which edits whichever step
+                // is selected rather than opening over one row — and `macroStepRow` is the
                 // step list's own row, which is a RowButton so hover, press and the selected face
                 // are the theme's rather than this panel's.
                 (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),

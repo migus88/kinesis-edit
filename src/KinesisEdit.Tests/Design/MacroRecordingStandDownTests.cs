@@ -178,13 +178,17 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
-        public async Task FocusEnteringTheDelayEditorsField_StandsTheRecordingDown()
+        public async Task FocusEnteringTheComposersMillisecondField_StandsTheRecordingDown()
         {
             // AC 4. The capture service auto-suspends while a TextBox has focus — silently, which
             // is the wrong answer here: the banner would still say "recording" while the digits
             // went into the box. The leak is turned into an explicit stand-down. Reachable in this
             // panel through §11.3's millisecond field, and by Tab as well as by click, which is why
             // it is a focus handler rather than only a pointer one.
+            //
+            // Issue #139 moved that field: the per-row delay editor is gone and the count is typed
+            // in the composer's own THEN WAIT row, which is drawn whether or not a step is selected
+            // and is live once one is. The rule the test guards did not move with it.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -196,10 +200,13 @@ namespace KinesisEdit.Tests.Design
 
             scenes.Capture.RaiseKeystroke(KeyRegistry.FindByToken("a", TokenDialect.Gen1)!);
 
-            panel.Steps.EditDelayCommand.Execute(panel.Steps.Items[0]);
+            // The composer edits the SELECTED step, and its delay row is dead without one — a
+            // disabled field cannot take focus, so the state this test is about would never arise.
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
 
-            Assert.True(panel.Steps.IsDelayEditorOpen);
-            Assert.True(panel.IsRecording);
+            Assert.True(panel.Steps.HasSelection);
+            Assert.True(panel.IsStepDelayEnabled);
+            Assert.True(panel.IsRecording, "Pointing the composer at a step must not end the take.");
 
             host.Capture();
 
@@ -209,6 +216,8 @@ namespace KinesisEdit.Tests.Design
                 .GetVisualDescendants()
                 .OfType<TextBox>()
                 .Single(box => box.IsEffectivelyVisible);
+
+            Assert.Contains("monoValue", field.Classes);
 
             field.Focus();
 

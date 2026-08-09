@@ -10,29 +10,42 @@ namespace KinesisEdit.ViewModels
 {
     /// <summary>
     /// The step editor of the key inspector's Macro panel (mockup <c>2i</c>): the numbered rows, the
-    /// reorder, the per-row delete, and <b>the per-step delay edited in place</b> — which is where
-    /// specs/11-feature-dialogs.md §11.3's <c>Macro Timing Delays</c> dialog went.
+    /// selection every edit is aimed at, the reorder, the per-row delete, the <c>＋</c> placeholder,
+    /// and <b>every write to the macro's keystroke list</b>.
     ///
-    /// <para><b>§11.3's rules survive; only its window is gone.</b> The tokens are still Core's
-    /// (<see cref="MacroDelayTokens"/>: <c>dran</c>, <c>d001</c>..<c>d999</c>, always zero-padded to
-    /// three digits), resolution still goes <b>through the token and never through the code</b>
-    /// (<c>dran</c> and the generated <c>d002</c> share code 10087), the range is still 1-999 with
-    /// the arrows clamped and the typed value validated, and the feature is still gated on
-    /// <see cref="FirmwareFeature.CustomMacroDelays"/> with 09 §2's own refusal wording. What
-    /// changed is that the refusal is answered <em>in place</em>, the way the Tap &amp; hold panel
-    /// answers its gate, rather than as a message box over a surface that is already on screen.</para>
+    /// <para><b>It is the model gateway, and the composer is the surface</b> (issue #139). The four
+    /// things a step has — its key, its held modifiers, its direction and the delay behind it — are
+    /// edited in <c>MacroInspectorPanelViewModel.Composer.cs</c>, which owns no macro and reaches
+    /// this class through the <c>TrySet…</c> methods below. That split exists because
+    /// <see cref="MacroInspectorStepViewModel"/> is a read-only projection that keeps no
+    /// <see cref="Keystroke"/> reference at all: the composer <em>cannot</em> write through the row
+    /// it is pointed at, so it must write through the object that owns <c>_macro</c>.</para>
+    ///
+    /// <para><b>§11.3's rules survive; both its window and its in-place editor are gone.</b> The
+    /// tokens are still Core's (<see cref="MacroDelayTokens"/>: <c>dran</c>, <c>d001</c>..<c>d999</c>,
+    /// always zero-padded to three digits), resolution still goes <b>through the token and never
+    /// through the code</b> (<c>dran</c> and the generated <c>d002</c> share code 10087), the range
+    /// is still 1-999 validated on the way in, and the feature is still gated on
+    /// <see cref="FirmwareFeature.CustomMacroDelays"/> with 09 §2's own refusal wording answered
+    /// <em>in place</em>. What changed with #139 is that there is no longer a per-row
+    /// <c>delay…</c> affordance opening a third surface with its own <c>Set delay</c>: the delay is
+    /// one section of the one composer, and it writes the moment it is touched.</para>
     ///
     /// <para><b>A row is a step plus the delay behind it</b> — see
-    /// <see cref="MacroInspectorStepViewModel"/> for why. Every write therefore rebuilds the whole
-    /// keystroke list from the rows rather than patching an index: a reorder that moved a step
-    /// without its delay would silently retime the macro.</para>
+    /// <see cref="MacroInspectorStepViewModel"/> for why. <b>Every write therefore rebuilds the whole
+    /// keystroke list from the rows</b> (<see cref="ReadBlocks"/> → <c>StepBlock</c> →
+    /// <see cref="WriteBlocks"/>) rather than patching an index: a reorder that moved a step without
+    /// its delay would silently retime the macro, and the same reconstruction is what makes a key
+    /// change, a modifier change and a delay change all land on the right pair of keystrokes. There
+    /// is deliberately <b>no second write path</b>.</para>
     ///
     /// <para><b>The list is deliberately not a <c>SelectingItemsControl</c>.</b> The editor's
     /// keyboard grammar leaves the arrow keys alone whenever a <c>SelectingItemsControl</c>,
     /// <c>RangeBase</c> or text input is in the focused element's ancestry
     /// (<c>KeyboardEditorView.BoardOwnsArrows</c>), so a step list built as a <c>ListBox</c> would
     /// swallow its own <c>⌥↑↓</c>. The rows are plain buttons and the selection is
-    /// <see cref="SelectedStep"/>, this class's own.</para>
+    /// <see cref="SelectedStep"/>, this class's own — which is also what the fixed-height
+    /// <c>ScrollViewer</c> around them must not change.</para>
     ///
     /// <para><b>It writes; it never refreshes the editor.</b> Every mutation ends in
     /// <see cref="Changed"/> and the panel above forwards that to the editor's one refresh funnel.
@@ -73,16 +86,18 @@ namespace KinesisEdit.ViewModels
         /// <summary>The same tooltip everywhere else.</summary>
         public const string PlainReorderHandleHint = "Drag to reorder, or press Alt+↑ / Alt+↓";
 
-        /// <summary>The delay editor's own heading. This app's wording.</summary>
-        public const string DelaySectionTitle = "DELAY AFTER THIS STEP";
-
         /// <summary>§11.3's random-delay caption, verbatim.</summary>
         public const string RandomDelayCaption = "Random Delay (1-150ms)";
 
         /// <summary>§11.3's custom-delay caption, verbatim.</summary>
         public const string CustomDelayCaption = "Custom Delay (1-999ms)";
 
-        /// <summary>§11.3's validation message, verbatim.</summary>
+        /// <summary>
+        /// §11.3's validation message, verbatim. It stays here, beside the gate and the tokens it
+        /// belongs with, even though the field that can now provoke it is the composer's: §11.3 is
+        /// this class's contract, and splitting its three strings across two files is how one of
+        /// them drifts.
+        /// </summary>
         public const string InvalidDelayMessage =
             "Please select a timing delay between 1ms and 999ms. To achieve a longer delay, insert multiple delays back-to-back.";
 
@@ -93,18 +108,6 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string FirmwareRefusalMessage =
             "To utilize custom or random delays, please download and install the latest firmware.";
-
-        /// <summary>Writes the delay editor's choice onto the row. This app's wording.</summary>
-        public const string ApplyDelayCaption = "Set delay";
-
-        /// <summary>Takes the delay off the row again. This app's wording.</summary>
-        public const string ClearDelayCaption = "No delay";
-
-        /// <summary>Closes the delay editor without writing. This app's wording.</summary>
-        public const string CloseDelayCaption = "Done";
-
-        /// <summary>What the delay affordance on a row without one reads. This app's wording.</summary>
-        public const string AddDelayCaption = "delay…";
 
         /// <summary>
         /// The drag handle's tooltip as this platform spells the modifier. Static because the
@@ -133,7 +136,10 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool ShowsOptionMark { get; } = KeyCaption.IsMacOs;
 
-        /// <summary>The rows, in playback order.</summary>
+        /// <summary>
+        /// The rows, in playback order — the macro's steps, plus the <c>＋</c> placeholder when one
+        /// is open. Rebuilt whole on every write.
+        /// </summary>
         public IReadOnlyList<MacroInspectorStepViewModel> Items
         {
             get => _items;
@@ -148,22 +154,23 @@ namespace KinesisEdit.ViewModels
             }
         }
 
-        /// <summary>Whether the macro under edit has any steps at all.</summary>
+        /// <summary>Whether there is anything at all in the list.</summary>
         public bool HasItems => _items.Count > 0;
 
-        /// <summary>How many rows there are.</summary>
+        /// <summary>How many rows there are, the placeholder included.</summary>
         public int Count => _items.Count;
 
         /// <summary>
-        /// The number the next recorded step will take — what the trailing <c>＋ insert step</c> row
-        /// is numbered and what the recording banner names (mockup <c>2i</c>: "Recording into step
-        /// 04").
+        /// The number the next <em>recorded</em> step will take — what the trailing
+        /// <c>＋ insert step</c> row is numbered and what the recording banner names (mockup
+        /// <c>2i</c>: "Recording into step 04"). It counts the macro's real steps, so an open
+        /// placeholder does not inflate it: a run recording appends at the end regardless.
         /// </summary>
-        public string NextStepNumberText => MacroInspectorStepViewModel.FormatNumber(_items.Count + 1);
+        public string NextStepNumberText => MacroInspectorStepViewModel.FormatNumber(_blockCount + 1);
 
         /// <summary>
-        /// The row <c>⌥↑↓</c> moves and the delay editor is pointed at, or null. It is this class's
-        /// own selection, deliberately not a <c>ListBox</c>'s — see the type's remarks.
+        /// The row every composer control is aimed at, and the row <c>⌥↑↓</c> moves. It is this
+        /// class's own selection, deliberately not a <c>ListBox</c>'s — see the type's remarks.
         /// </summary>
         public MacroInspectorStepViewModel? SelectedStep
         {
@@ -188,52 +195,28 @@ namespace KinesisEdit.ViewModels
                 }
 
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(HasSelection));
 
                 MoveStepUpCommand.NotifyCanExecuteChanged();
                 MoveStepDownCommand.NotifyCanExecuteChanged();
+
+                SelectionChanged?.Invoke(this, EventArgs.Empty);
             }
         }
-
-        /// <summary>The row whose delay editor is open, or null. Only ever one at a time.</summary>
-        public MacroInspectorStepViewModel? DelayStep
-        {
-            get => _delayStep;
-            private set
-            {
-                if (SetProperty(ref _delayStep, value))
-                {
-                    OnPropertyChanged(nameof(IsDelayEditorOpen));
-                }
-            }
-        }
-
-        /// <summary>Whether the in-place delay editor is showing.</summary>
-        public bool IsDelayEditorOpen => _delayStep is not null;
 
         /// <summary>
-        /// The custom delay being typed, in milliseconds; 0 means the field is empty. Assigning any
-        /// value un-checks <see cref="IsRandomDelay"/> (§11.3: "typing in the custom field un-checks
-        /// it"). Deliberately <b>unclamped</b> — §11.3 clamps the arrows and validates on accept, so
-        /// an out-of-range value has to survive long enough to be reported.
+        /// Whether anything is selected. It is what the composer's "everything is disabled with no
+        /// selection" rule reads (issue #139) — the one state in which only the Sequence header's
+        /// <c>Record</c> and <c>＋</c> are live, because those two are how a selection comes to exist.
         /// </summary>
-        public int CustomDelayMilliseconds
-        {
-            get => _customDelayMilliseconds;
-            set
-            {
-                if (SetProperty(ref _customDelayMilliseconds, value))
-                {
-                    IsRandomDelay = false;
-                }
-            }
-        }
+        public bool HasSelection => _selectedStep is not null;
 
-        /// <summary>Whether §11.3's random delay is chosen instead of a custom one.</summary>
-        public bool IsRandomDelay
-        {
-            get => _isRandomDelay;
-            set => SetProperty(ref _isRandomDelay, value);
-        }
+        /// <summary>
+        /// Whether a <c>＋</c> placeholder is open. It is a row in <see cref="Items"/> and
+        /// <b>nothing in <c>Macro.Keystrokes</c></b> until a key lands on it — see
+        /// <see cref="MacroInspectorStepViewModel.CreatePlaceholder"/>.
+        /// </summary>
+        public bool HasPlaceholder => _placeholderIndex >= 0;
 
         /// <summary>Lowest custom delay §11.3 accepts (1 ms).</summary>
         public int MinimumDelayMilliseconds => MacroDelayTokens.MinDelayMilliseconds;
@@ -241,26 +224,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Highest custom delay §11.3 accepts (999 ms).</summary>
         public int MaximumDelayMilliseconds => MacroDelayTokens.MaxDelayMilliseconds;
 
-        /// <summary>§11.3's validation message while the choice is unusable, else an empty string.</summary>
-        public string DelayError
-        {
-            get => _delayError;
-            private set
-            {
-                if (SetProperty(ref _delayError, value))
-                {
-                    OnPropertyChanged(nameof(HasDelayError));
-                }
-            }
-        }
-
-        /// <summary>Whether there is a validation message to draw.</summary>
-        public bool HasDelayError => _delayError.Length > 0;
-
         /// <summary>
         /// Whether this device's firmware clears 09 §2's custom/random delay gate. False draws the
-        /// refusal in place of the editor — the sanctioned exception to "absent features are not
-        /// shown, not disabled" — rather than hiding the affordance.
+        /// refusal in place of the composer's delay controls — the sanctioned exception to "absent
+        /// features are not shown, not disabled" — rather than hiding the affordance.
         /// </summary>
         public bool AreDelaysAvailable { get; }
 
@@ -285,40 +252,38 @@ namespace KinesisEdit.ViewModels
         /// <summary><c>⌥↓</c>: moves the selected row one place later.</summary>
         public IRelayCommand MoveStepDownCommand { get; }
 
-        /// <summary>Opens the in-place delay editor over one row.</summary>
-        public IRelayCommand<MacroInspectorStepViewModel> EditDelayCommand { get; }
-
-        /// <summary>Writes the chosen delay onto that row (§11.3's Ok).</summary>
-        public IRelayCommand ApplyDelayCommand { get; }
-
-        /// <summary>Takes the delay off the row.</summary>
-        public IRelayCommand ClearDelayCommand { get; }
-
-        /// <summary>Closes the editor without writing (§11.3's Cancel).</summary>
-        public IRelayCommand CloseDelayCommand { get; }
-
-        /// <summary>The custom field's Up arrow, clamped to 1-999 (§11.3).</summary>
-        public IRelayCommand IncreaseDelayCommand { get; }
-
-        /// <summary>The custom field's Down arrow, clamped to 1-999 (§11.3).</summary>
-        public IRelayCommand DecreaseDelayCommand { get; }
-
         /// <summary>Opens the device's firmware support page; live only while the gate refuses.</summary>
         public IRelayCommand UpdateFirmwareCommand { get; }
 
         /// <summary>Raised after any write to the macro, so the panel can run the editor's funnel.</summary>
         public event EventHandler? Changed;
 
+        /// <summary>
+        /// Raised whenever <see cref="SelectedStep"/> moves, including to null. The composer above
+        /// re-seeds itself from it — and normalizes the newly selected step, which is the one write
+        /// a mere click is entitled to make (issue #139).
+        /// </summary>
+        public event EventHandler? SelectionChanged;
+
         private readonly TokenDialect _dialect;
         private readonly IUrlLauncher _urlLauncher;
         private readonly string? _supportUrl;
         private IReadOnlyList<MacroInspectorStepViewModel> _items = [];
         private MacroInspectorStepViewModel? _selectedStep;
-        private MacroInspectorStepViewModel? _delayStep;
         private Macro? _macro;
-        private string _delayError = string.Empty;
-        private int _customDelayMilliseconds;
-        private bool _isRandomDelay;
+
+        /// <summary>
+        /// Which <b>block</b> the <c>＋</c> placeholder occupies — 0..block count, or -1 for none.
+        /// It is a block index rather than a row index because it is also the insertion point the
+        /// materialized step takes, and rows and blocks diverge by exactly this row while it is open.
+        /// </summary>
+        private int _placeholderIndex = -1;
+
+        /// <summary>
+        /// How many real rows the macro produced at the last rebuild — <see cref="Items"/> minus the
+        /// placeholder. What <see cref="NextStepNumberText"/> counts.
+        /// </summary>
+        private int _blockCount;
 
         /// <summary>
         /// Builds the step editor for one open device. The firmware gate is resolved <b>once</b>,
@@ -341,12 +306,6 @@ namespace KinesisEdit.ViewModels
             RemoveStepCommand = new RelayCommand<MacroInspectorStepViewModel>(Remove);
             MoveStepUpCommand = new RelayCommand(() => MoveSelected(-1), () => CanMoveSelected(-1));
             MoveStepDownCommand = new RelayCommand(() => MoveSelected(1), () => CanMoveSelected(1));
-            EditDelayCommand = new RelayCommand<MacroInspectorStepViewModel>(OpenDelayEditor);
-            ApplyDelayCommand = new RelayCommand(ApplyDelay, () => AreDelaysAvailable);
-            ClearDelayCommand = new RelayCommand(ClearDelay);
-            CloseDelayCommand = new RelayCommand(CloseDelayEditor);
-            IncreaseDelayCommand = new RelayCommand(() => StepDelay(1));
-            DecreaseDelayCommand = new RelayCommand(() => StepDelay(-1));
             UpdateFirmwareCommand = new RelayCommand(OpenSupportPage, () => CanUpdateFirmware);
         }
 
@@ -354,6 +313,12 @@ namespace KinesisEdit.ViewModels
         /// Shows <paramref name="macro"/>'s steps; null empties the list. Called from the panel's
         /// <c>Refresh</c>, so it <b>never writes</b> — a step list that wrote from a refresh would
         /// write on every counter refresh, and forever.
+        ///
+        /// <para><b>A different macro drops the selection and any open placeholder.</b> Both are
+        /// facts about the macro under edit: a placeholder carried across a slot change would point
+        /// at an insertion index in a list it was never measured against. The <em>same</em> macro
+        /// arriving again is the ordinary refresh and keeps both, which is what lets a placeholder
+        /// survive the counter refresh that follows every unrelated write.</para>
         /// </summary>
         public void Load(Macro? macro)
         {
@@ -363,8 +328,27 @@ namespace KinesisEdit.ViewModels
 
             if (isNewMacro)
             {
-                CloseDelayEditor();
+                _placeholderIndex = -1;
+
+                SelectedStep = null;
             }
+
+            Rebuild();
+        }
+
+        /// <summary>
+        /// Takes over a macro that was just created <b>for</b> the open placeholder, keeping it.
+        /// It is <see cref="Load"/> minus the drop, and it exists because the panel's
+        /// <c>EnsureMacro</c> runs in the middle of materializing that placeholder: the macro
+        /// identity really does change at that moment, and answering it by discarding the row the
+        /// new macro was created for would throw the insertion point away between two halves of one
+        /// action.
+        /// </summary>
+        public void Adopt(Macro macro)
+        {
+            ArgumentNullException.ThrowIfNull(macro);
+
+            _macro = macro;
 
             Rebuild();
         }
@@ -376,13 +360,245 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Opens the <c>＋</c> placeholder after the selected row — at the end when nothing is
+        /// selected — and selects it. Nothing is written: the row exists only in <see cref="Items"/>
+        /// until <see cref="TrySetSelectedKey"/> lands a key on it. A placeholder that is already
+        /// open is simply re-selected rather than a second one being made.
+        /// </summary>
+        public void InsertPlaceholder()
+        {
+            if (_placeholderIndex >= 0)
+            {
+                SelectPlaceholder();
+
+                return;
+            }
+
+            var after = BlockIndexOf(_selectedStep);
+
+            _placeholderIndex = after >= 0 ? after + 1 : _blockCount;
+
+            Rebuild();
+
+            SelectPlaceholder();
+        }
+
+        /// <summary>
+        /// Drops an open placeholder without writing anything, and reports whether there was one.
+        /// An abandoned placeholder is discarded the moment the composer stops being about it —
+        /// another row selected, another key, another slot, a revert, or the panel deactivating.
+        /// </summary>
+        public bool DiscardPlaceholder()
+        {
+            if (_placeholderIndex < 0)
+            {
+                return false;
+            }
+
+            _placeholderIndex = -1;
+
+            if (_selectedStep?.IsPlaceholder == true)
+            {
+                SelectedStep = null;
+            }
+
+            Rebuild();
+
+            return true;
+        }
+
+        /// <summary>
+        /// Writes <paramref name="key"/> onto the selected step — or turns the open placeholder into
+        /// a real step carrying it, inserted at exactly the position it was drawn at. The one path
+        /// by which the composer's <c>Record</c> lands a key. False when there is nothing to write
+        /// to, or when the selected row is a bare delay (which has no key to change).
+        /// </summary>
+        public bool TrySetSelectedKey(KeyDefinition key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+
+            if (_macro is null || _selectedStep is not { } step)
+            {
+                return false;
+            }
+
+            if (step.IsPlaceholder)
+            {
+                return TryMaterializePlaceholder(key);
+            }
+
+            if (!TryReadSelectedBlock(out var blocks, out var index))
+            {
+                return false;
+            }
+
+            var current = blocks[index].Keystroke;
+
+            // A fresh keystroke rather than a mutated one: WriteDownUp is a fact about the KEY
+            // (05 §1.1, §3.12), so carrying the old key's value over would be wrong the moment the
+            // two keys disagree. The direction and the pedal marker are facts about the step and do
+            // carry over.
+            var replacement = new Keystroke(key, current.Modifiers)
+            {
+                DiffPressRelease = current.DiffPressRelease
+            };
+
+            replacement.UpDown = replacement.Modifiers == MacroModifiers.None ? current.UpDown : KeyDirection.None;
+
+            blocks[index] = blocks[index] with { Keystroke = replacement };
+
+            return Commit(blocks, index);
+        }
+
+        /// <summary>
+        /// Writes the held-modifier set of the selected step (05 §5.1) — what the composer's four
+        /// latches produce.
+        ///
+        /// <para><b>The chord guard of 05 §5.8, written and not merely masked.</b> A keystroke that
+        /// carries modifiers can have no explicit direction: <see cref="Keystroke.EffectiveDirection"/>
+        /// discards <see cref="Keystroke.UpDown"/> on the way to the file. Masking alone would leave
+        /// the old direction sitting in the model, so unticking the last modifier would bring a
+        /// <c>press</c> the user had visibly lost silently back. Ticking one therefore <b>clears the
+        /// field</b>, and the step stays a <c>tap</c> afterwards.</para>
+        ///
+        /// <para>A step whose key is itself a modifier is the exception the model already enforces:
+        /// <see cref="Keystroke"/> drops any modifier assigned to such a key, so the set lands as
+        /// <see cref="MacroModifiers.None"/> and the direction survives — which is why the composer
+        /// draws the four latches <em>disabled</em> there rather than as controls that do nothing.</para>
+        /// </summary>
+        public bool TrySetSelectedModifiers(MacroModifiers modifiers)
+        {
+            if (!TryReadSelectedBlock(out var blocks, out var index))
+            {
+                return false;
+            }
+
+            var current = blocks[index].Keystroke;
+            var replacement = new Keystroke(current.Key, modifiers)
+            {
+                WriteDownUp = current.WriteDownUp,
+                DiffPressRelease = current.DiffPressRelease
+            };
+
+            replacement.UpDown = replacement.Modifiers == MacroModifiers.None ? current.UpDown : KeyDirection.None;
+
+            if (replacement.IsEquivalentTo(current))
+            {
+                return false;
+            }
+
+            blocks[index] = blocks[index] with { Keystroke = replacement };
+
+            return Commit(blocks, index);
+        }
+
+        /// <summary>
+        /// Writes the selected step's direction — <c>tap</c>, <c>press</c> or <c>release</c>
+        /// (06 §2.2). <b>Refused on a chord</b>: 05 §5.8 would discard the direction on the way to
+        /// the file, so writing one would be promising a step the firmware never plays. The composer
+        /// disables both segments in that state for the same reason.
+        /// </summary>
+        public bool TrySetSelectedDirection(KeyDirection direction)
+        {
+            if (!TryReadSelectedBlock(out var blocks, out var index))
+            {
+                return false;
+            }
+
+            var current = blocks[index].Keystroke;
+
+            if (current.Modifiers != MacroModifiers.None || current.UpDown == direction)
+            {
+                return false;
+            }
+
+            var replacement = new Keystroke(current.Key, current.Modifiers)
+            {
+                UpDown = direction,
+                WriteDownUp = current.WriteDownUp,
+                DiffPressRelease = current.DiffPressRelease
+            };
+
+            blocks[index] = blocks[index] with { Keystroke = replacement };
+
+            return Commit(blocks, index);
+        }
+
+        /// <summary>
+        /// Writes the delay behind the selected step, or takes it off again
+        /// (<see cref="MacroInspectorDelay.None"/>). §11.3's rules in full: the key is resolved
+        /// <b>through the token</b> and never through the code — <c>dran</c> and the generated
+        /// <c>d002</c> share code 10087, so a code lookup would silently turn a 2 ms delay into a
+        /// random one (05 §7) — the range is 1-999, and a firmware that fails 09 §2's gate writes
+        /// nothing at all.
+        ///
+        /// <para>Clearing a <b>delay-only</b> row drops the row, because a row that was nothing but
+        /// a delay has nothing left once it goes.</para>
+        /// </summary>
+        public bool TrySetSelectedDelay(MacroInspectorDelay delay)
+        {
+            if (!AreDelaysAvailable || _macro is null || _selectedStep is not { } step)
+            {
+                return false;
+            }
+
+            var index = BlockIndexOf(step);
+
+            if (index < 0)
+            {
+                return false;
+            }
+
+            var blocks = ReadBlocks();
+
+            if (!delay.IsPresent)
+            {
+                if (blocks[index].IsDelayOnly)
+                {
+                    blocks.RemoveAt(index);
+
+                    WriteBlocks(blocks);
+                    SelectByBlockPosition(Math.Min(index, _blockCount - 1));
+                    Announce();
+
+                    return true;
+                }
+
+                if (blocks[index].Delay is null)
+                {
+                    return false;
+                }
+
+                blocks[index] = blocks[index] with { Delay = null };
+
+                return Commit(blocks, index);
+            }
+
+            if (ResolveDelay(delay) is not { } resolved)
+            {
+                return false;
+            }
+
+            blocks[index] = blocks[index].IsDelayOnly
+                ? new StepBlock(new Keystroke(resolved), null, IsDelayOnly: true)
+                : blocks[index] with { Delay = new Keystroke(resolved) };
+
+            return Commit(blocks, index);
+        }
+
+        /// <summary>
         /// Moves the row at <paramref name="fromIndex"/> to <paramref name="toIndex"/> (both 0-based
         /// row positions) — what a drag lands on, and what <c>⌥↑↓</c> runs one step at a time.
         /// Returns whether anything moved.
+        ///
+        /// <para><b>Refused while a placeholder is open.</b> That row is in no keystroke list, so
+        /// there is no reorder of the macro that could express moving it — and moving another row
+        /// around it would silently change where the placeholder's key is about to land.</para>
         /// </summary>
         public bool MoveStep(int fromIndex, int toIndex)
         {
             if (_macro is null
+                || _placeholderIndex >= 0
                 || fromIndex == toIndex
                 || fromIndex < 0
                 || toIndex < 0
@@ -401,7 +617,7 @@ namespace KinesisEdit.ViewModels
             WriteBlocks(blocks);
 
             // The rows were rebuilt, so the selection has to be re-established by position.
-            SelectByPosition(toIndex + 1);
+            SelectByBlockPosition(toIndex);
 
             Announce();
 
@@ -410,8 +626,31 @@ namespace KinesisEdit.ViewModels
 
         private void Select(MacroInspectorStepViewModel? step)
         {
-            if (step is null || IndexOf(step) < 0)
+            if (step is null)
             {
+                return;
+            }
+
+            if (step.IsPlaceholder)
+            {
+                SelectedStep = step;
+
+                return;
+            }
+
+            var block = BlockIndexOf(step);
+
+            if (block < 0)
+            {
+                return;
+            }
+
+            // Selecting anything else abandons the placeholder — and rebuilds the rows, so the row
+            // that was clicked is gone by the time it is selected. Its block index is not.
+            if (DiscardPlaceholder())
+            {
+                SelectByBlockPosition(block);
+
                 return;
             }
 
@@ -420,12 +659,24 @@ namespace KinesisEdit.ViewModels
 
         private void Remove(MacroInspectorStepViewModel? step)
         {
-            if (_macro is null || step is null)
+            if (step is null)
             {
                 return;
             }
 
-            var index = IndexOf(step);
+            if (step.IsPlaceholder)
+            {
+                DiscardPlaceholder();
+
+                return;
+            }
+
+            if (_macro is null)
+            {
+                return;
+            }
+
+            var index = BlockIndexOf(step);
 
             if (index < 0)
             {
@@ -438,22 +689,21 @@ namespace KinesisEdit.ViewModels
 
             WriteBlocks(blocks);
 
-            CloseDelayEditor();
-            SelectByPosition(Math.Min(index + 1, _items.Count));
+            SelectByBlockPosition(Math.Min(index, _blockCount - 1));
 
             Announce();
         }
 
         private bool CanMoveSelected(int offset)
         {
-            if (_selectedStep is null)
+            if (_selectedStep is null || _selectedStep.IsPlaceholder || _placeholderIndex >= 0)
             {
                 return false;
             }
 
-            var target = IndexOf(_selectedStep) + offset;
+            var target = BlockIndexOf(_selectedStep) + offset;
 
-            return target >= 0 && target < _items.Count;
+            return target >= 0 && target < _blockCount;
         }
 
         private void MoveSelected(int offset)
@@ -463,148 +713,86 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            var index = IndexOf(_selectedStep);
+            var index = BlockIndexOf(_selectedStep);
 
             MoveStep(index, index + offset);
         }
 
         /// <summary>
-        /// Opens the delay editor over <paramref name="step"/>, seeded with whatever that row
-        /// already carries. A refused gate still opens it — the panel draws 09 §2's words in place
-        /// of the fields, which is the polite refusal rather than a control that vanished.
+        /// Turns the open placeholder into a real step carrying <paramref name="key"/>, inserted at
+        /// the block it was drawn at — through <see cref="WriteBlocks"/> like every other write, so
+        /// the step's neighbours keep their own delays.
         /// </summary>
-        private void OpenDelayEditor(MacroInspectorStepViewModel? step)
+        private bool TryMaterializePlaceholder(KeyDefinition key)
         {
-            if (step is null || IndexOf(step) < 0)
+            if (_macro is null || _placeholderIndex < 0)
             {
-                return;
+                return false;
             }
 
-            SelectedStep = step;
-            DelayStep = step;
-            DelayError = string.Empty;
+            var blocks = ReadBlocks();
+            var index = Math.Clamp(_placeholderIndex, 0, blocks.Count);
 
-            // Seeded from the row, and the random flag last: assigning the millisecond field
-            // un-checks it, so setting them the other way round would lose a random delay.
-            SetProperty(ref _customDelayMilliseconds, step.DelayMilliseconds, nameof(CustomDelayMilliseconds));
+            blocks.Insert(index, new StepBlock(new Keystroke(key), null, IsDelayOnly: false));
 
-            IsRandomDelay = step.IsRandomDelay;
-        }
+            _placeholderIndex = -1;
 
-        private void CloseDelayEditor()
-        {
-            DelayStep = null;
-            DelayError = string.Empty;
+            SelectedStep = null;
 
-            SetProperty(ref _customDelayMilliseconds, 0, nameof(CustomDelayMilliseconds));
-
-            IsRandomDelay = false;
+            return Commit(blocks, index);
         }
 
         /// <summary>
-        /// §11.3's Ok. The choice is resolved <b>through the token</b> — never through the key code,
-        /// because <c>dran</c> and the generated <c>d002</c> share code 10087 and a code lookup
-        /// would silently turn a 2 ms delay into a random one (05 §7).
+        /// The selected row's block, ready to be rewritten — refused for no selection, the
+        /// placeholder, and a delay-only row, none of which carries a key to qualify.
         /// </summary>
-        private void ApplyDelay()
+        private bool TryReadSelectedBlock(out List<StepBlock> blocks, out int index)
         {
-            if (_macro is null || _delayStep is not { } step || !AreDelaysAvailable)
+            blocks = [];
+            index = -1;
+
+            if (_macro is null || _selectedStep is not { } step || step.IsDelayOnly)
             {
-                return;
+                return false;
             }
 
-            var delay = ResolveDelay();
-
-            if (delay is null)
-            {
-                DelayError = InvalidDelayMessage;
-
-                return;
-            }
-
-            DelayError = string.Empty;
-
-            var blocks = ReadBlocks();
-            var index = IndexOf(step);
+            index = BlockIndexOf(step);
 
             if (index < 0)
             {
-                return;
+                return false;
             }
 
-            blocks[index] = blocks[index] with { Delay = new Keystroke(delay) };
+            blocks = ReadBlocks();
 
+            return true;
+        }
+
+        /// <summary>Writes <paramref name="blocks"/> back, keeps the selection on the row that moved, and announces.</summary>
+        private bool Commit(IReadOnlyList<StepBlock> blocks, int index)
+        {
             WriteBlocks(blocks);
 
-            SelectByPosition(index + 1);
-
-            // The row was rebuilt, so the open editor has to be re-pointed at the new instance or
-            // its next write would target a row that no longer exists.
-            ReopenDelayEditorAt(index);
+            SelectByBlockPosition(index);
 
             Announce();
+
+            return true;
         }
 
-        private void ClearDelay()
+        private KeyDefinition? ResolveDelay(MacroInspectorDelay delay)
         {
-            if (_macro is null || _delayStep is not { } step)
-            {
-                return;
-            }
-
-            var index = IndexOf(step);
-
-            if (index < 0)
-            {
-                return;
-            }
-
-            var blocks = ReadBlocks();
-
-            // A delay-only row has nothing left once its delay goes, so clearing it drops the row.
-            if (blocks[index].IsDelayOnly)
-            {
-                blocks.RemoveAt(index);
-
-                WriteBlocks(blocks);
-                CloseDelayEditor();
-                SelectByPosition(Math.Min(index + 1, _items.Count));
-                Announce();
-
-                return;
-            }
-
-            blocks[index] = blocks[index] with { Delay = null };
-
-            WriteBlocks(blocks);
-
-            SelectByPosition(index + 1);
-            ReopenDelayEditorAt(index);
-
-            Announce();
-        }
-
-        private void StepDelay(int step)
-        {
-            CustomDelayMilliseconds = Math.Clamp(
-                _customDelayMilliseconds + step,
-                MacroDelayTokens.MinDelayMilliseconds,
-                MacroDelayTokens.MaxDelayMilliseconds);
-        }
-
-        private KeyDefinition? ResolveDelay()
-        {
-            if (_isRandomDelay)
+            if (delay.IsRandom)
             {
                 return MacroDelayTokens.ResolveRandom(_dialect);
             }
 
-            if (!MacroDelayTokens.IsValidDelay(_customDelayMilliseconds))
+            if (!MacroDelayTokens.IsValidDelay(delay.Milliseconds))
             {
                 return null;
             }
 
-            return MacroDelayTokens.ResolveCustom(_customDelayMilliseconds, _dialect);
+            return MacroDelayTokens.ResolveCustom(delay.Milliseconds, _dialect);
         }
 
         private void OpenSupportPage()
@@ -615,14 +803,38 @@ namespace KinesisEdit.ViewModels
             }
         }
 
-        private void ReopenDelayEditorAt(int index)
-        {
-            DelayStep = index >= 0 && index < _items.Count ? _items[index] : null;
-        }
-
         private void SelectByPosition(int position)
         {
             SelectedStep = position >= 1 && position <= _items.Count ? _items[position - 1] : null;
+        }
+
+        /// <summary>
+        /// Selects the placeholder row itself. It is <em>not</em> a block, so it cannot go through
+        /// <see cref="SelectByBlockPosition"/> — which maps a block onto the row that draws it and
+        /// would land one row past the placeholder every time.
+        /// </summary>
+        private void SelectPlaceholder()
+        {
+            SelectByPosition(_placeholderIndex + 1);
+        }
+
+        /// <summary>
+        /// Selects the row drawing block <paramref name="block"/>. Row indices and block indices
+        /// diverge by one from the placeholder onwards while one is open, which is the whole reason
+        /// callers hold a block index across a rebuild rather than a row position.
+        /// </summary>
+        private void SelectByBlockPosition(int block)
+        {
+            if (block < 0)
+            {
+                SelectedStep = null;
+
+                return;
+            }
+
+            var row = _placeholderIndex >= 0 && block >= _placeholderIndex ? block + 1 : block;
+
+            SelectByPosition(row + 1);
         }
 
         private void Announce()
@@ -673,7 +885,7 @@ namespace KinesisEdit.ViewModels
         /// Rewrites the macro's whole keystroke list from <paramref name="blocks"/> and rebuilds the
         /// rows. Whole-list rather than an index patch on purpose: a step and its delay move
         /// together, and reconstructing the stream is the only way that stays true for a reorder, a
-        /// delete and a delay change alike.
+        /// delete, a key change, a modifier change and a delay change alike.
         /// </summary>
         private void WriteBlocks(IReadOnlyList<StepBlock> blocks)
         {
@@ -700,22 +912,23 @@ namespace KinesisEdit.ViewModels
         private void Rebuild()
         {
             var selectedPosition = _selectedStep?.Position ?? 0;
-            var delayPosition = _delayStep?.Position ?? 0;
+            var blocks = ReadBlocks();
 
-            if (_macro is null || _macro.Keystrokes.Count == 0)
+            if (_placeholderIndex > blocks.Count)
             {
-                SelectedStep = null;
-                DelayStep = null;
-                Items = [];
-
-                return;
+                // A delete or a reload shrank the list under an open placeholder; it lands at the
+                // end rather than being drawn at an index that no longer exists.
+                _placeholderIndex = blocks.Count;
             }
 
-            var rows = new List<MacroInspectorStepViewModel>();
+            var rows = new List<MacroInspectorStepViewModel>(blocks.Count + 1);
             var keystrokeIndex = 0;
 
-            foreach (var block in ReadBlocks())
+            for (var blockIndex = 0; blockIndex < blocks.Count; blockIndex++)
             {
+                AppendPlaceholder(rows, blockIndex);
+
+                var block = blocks[blockIndex];
                 var delay = block.IsDelayOnly
                     ? ReadDelay(block.Keystroke.Key)
                     : block.Delay is { } following ? ReadDelay(following.Key) : MacroInspectorDelay.None;
@@ -731,27 +944,44 @@ namespace KinesisEdit.ViewModels
                 keystrokeIndex += block.Delay is null ? 1 : 2;
             }
 
-            // Through the properties, not the fields: the rows about to be replaced are gone, and a
+            AppendPlaceholder(rows, blocks.Count);
+
+            // Through the property, not the field: the rows about to be replaced are gone, and a
             // silent field write would leave the view bound to an instance that is no longer in the
             // list with no notification that it moved.
             SelectedStep = null;
-            DelayStep = null;
+
+            _blockCount = blocks.Count;
 
             Items = rows;
 
-            SelectByPosition(selectedPosition);
+            OnPropertyChanged(nameof(HasPlaceholder));
 
-            DelayStep = delayPosition >= 1 && delayPosition <= rows.Count ? rows[delayPosition - 1] : null;
+            SelectByPosition(selectedPosition);
         }
 
         /// <summary>
-        /// Where <paramref name="step"/> sits in <see cref="Items"/>, or -1.
+        /// Draws the placeholder when <paramref name="blockIndex"/> is the block it sits before. It
+        /// is rebuilt rather than carried, because its row number is get-only and every other row's
+        /// moves with it.
+        /// </summary>
+        private void AppendPlaceholder(List<MacroInspectorStepViewModel> rows, int blockIndex)
+        {
+            if (_placeholderIndex == blockIndex)
+            {
+                rows.Add(MacroInspectorStepViewModel.CreatePlaceholder(rows.Count + 1));
+            }
+        }
+
+        /// <summary>
+        /// Where <paramref name="step"/>'s block sits in the macro, or -1 — for a row that is not in
+        /// the list, and for the placeholder, which has no block at all.
         /// <see cref="IReadOnlyList{T}"/> carries no <c>IndexOf</c>, and every caller here needs the
         /// position rather than mere membership.
         /// </summary>
-        private int IndexOf(MacroInspectorStepViewModel? step)
+        private int BlockIndexOf(MacroInspectorStepViewModel? step)
         {
-            if (step is null)
+            if (step is null || step.IsPlaceholder)
             {
                 return -1;
             }
@@ -760,7 +990,7 @@ namespace KinesisEdit.ViewModels
             {
                 if (ReferenceEquals(_items[index], step))
                 {
-                    return index;
+                    return _placeholderIndex >= 0 && index > _placeholderIndex ? index - 1 : index;
                 }
             }
 

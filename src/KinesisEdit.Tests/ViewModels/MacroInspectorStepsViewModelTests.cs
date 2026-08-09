@@ -9,12 +9,19 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The key inspector's step editor, and <b>specs/11-feature-dialogs.md §11.3 inside it</b>: the
-    /// two captions, the exclusivity of the random radio and the custom field, the 1-999 clamp and
-    /// validation, the resulting <c>dran</c>/<c>d001</c>..<c>d999</c> keys and the firmware gate of
-    /// 09 §2 — every case migrated from <c>MacroDelayOverlayViewModelTests</c> when the modal was
-    /// absorbed, plus the reorder, insert and delete the modal never had. The round-trip cases pin
-    /// what §11.3's result does once it is written to a layout file (specs/06-macros.md §2.2).
+    /// The key inspector's step editor — the rows, the selection, the reorder, the delete, the
+    /// <c>＋</c> placeholder — and <b>every write to a macro's keystroke list</b>, including
+    /// specs/11-feature-dialogs.md §11.3's delays.
+    ///
+    /// <para><b>§11.3's coverage moved with the surface, twice, and was never dropped.</b> It came
+    /// here from <c>MacroDelayOverlayViewModelTests</c> when the modal was absorbed (issue #93); with
+    /// issue #139 the <em>controls</em> moved again, into the composer on
+    /// <c>MacroInspectorPanelViewModel</c>, and its cases went with them — the segment, the
+    /// millisecond field, the validation message and the arrows are in
+    /// <c>MacroInspectorPanelViewModelTests</c>. What stays here is what this class still owns: the
+    /// tokens themselves (<c>dran</c>, <c>d001</c>..<c>d999</c>), the write that produces them, the
+    /// firmware gate of 09 §2, and the round trips that pin what a delay does once it reaches a
+    /// layout file (specs/06-macros.md §2.2).</para>
     /// </summary>
     public sealed class MacroInspectorStepsViewModelTests
     {
@@ -335,8 +342,243 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["b"], macro.Keystrokes.Select(TokenOf));
         }
 
+        // ===== The composer's write path (issue #139) =========================================
+        // MacroInspectorStepViewModel keeps no Keystroke reference, so the composer cannot write
+        // through the row it is pointed at — every edit lands here, and every one of them rebuilds
+        // the whole keystroke list from the rows rather than patching an index.
+
         [Fact]
-        public void EditDelayCommand_OpensTheEditorSeededFromTheRow()
+        public void TrySetSelectedKey_ReplacesTheKeyAndKeepsTheStepsOwnDelay()
+        {
+            var steps = Create();
+            var macro = new Macro();
+
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("a")));
+            macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveCustom(80, TokenDialect.Gen1)!));
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("b")));
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+
+            Assert.True(steps.TrySetSelectedKey(TestLayouts.Gen1Key("z")));
+
+            // The delay is a keystroke of its own (06 §2.2) and it belongs to the step in front of
+            // it — a write that patched one index would have left it behind or duplicated it.
+            Assert.Equal(["z", "d080", "b"], macro.Keystrokes.Select(TokenOf));
+            Assert.Equal(80, steps.Items[0].DelayMilliseconds);
+        }
+
+        [Fact]
+        public void TrySetSelectedModifiers_ClearsAnExplicitDirection_AndDoesNotBringItBack()
+        {
+            // 05 §5.8: a modified keystroke's direction is discarded on the way to the file. The
+            // write CLEARS the field rather than relying on that mask, so unticking the last
+            // modifier cannot resurrect a `press` the user visibly lost.
+            var macro = MacroOf("a");
+            var steps = Create();
+
+            macro.Keystrokes[0].UpDown = KeyDirection.Down;
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.TrySetSelectedModifiers(MacroModifiers.LeftControl);
+
+            Assert.Equal(KeyDirection.None, macro.Keystrokes[0].UpDown);
+
+            steps.TrySetSelectedModifiers(MacroModifiers.None);
+
+            Assert.Equal(KeyDirection.None, macro.Keystrokes[0].UpDown);
+            Assert.Equal(MacroInspectorStepViewModel.TapAction, steps.Items[0].ActionText);
+        }
+
+        [Fact]
+        public void TrySetSelectedDirection_OnAChord_IsRefused()
+        {
+            var macro = MacroOf("a");
+            var steps = Create();
+
+            macro.Keystrokes[0].Modifiers = MacroModifiers.LeftControl;
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+
+            Assert.False(steps.TrySetSelectedDirection(KeyDirection.Down));
+            Assert.Equal(KeyDirection.None, macro.Keystrokes[0].UpDown);
+        }
+
+        [Fact]
+        public void TrySetSelectedDirection_OnAModifierKeyStep_IsAllowed()
+        {
+            // The exception 05 §5.8 makes: a key that IS a modifier keeps press/release, and
+            // Keystroke refuses to attach modifiers to it anyway.
+            var macro = MacroOf("lshft");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+
+            Assert.True(steps.TrySetSelectedDirection(KeyDirection.Down));
+            Assert.Equal(KeyDirection.Down, macro.Keystrokes[0].UpDown);
+            Assert.Equal(MacroInspectorStepViewModel.PressAction, steps.Items[0].ActionText);
+        }
+
+        [Fact]
+        public void InsertPlaceholder_DrawsARowAndWritesNothingToTheMacro()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.InsertPlaceholder();
+
+            Assert.True(steps.HasPlaceholder);
+            Assert.Equal(3, steps.Items.Count);
+            Assert.True(steps.Items[1].IsPlaceholder);
+            Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
+
+            // The row is numbered where it sits, and everything after it moved down with it.
+            Assert.Equal(["01", "02", "03"], steps.Items.Select(step => step.NumberText));
+        }
+
+        [Fact]
+        public void InsertPlaceholder_WithNothingSelected_LandsAtTheEnd()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.InsertPlaceholder();
+
+            Assert.True(steps.Items[^1].IsPlaceholder);
+            Assert.Same(steps.Items[^1], steps.SelectedStep);
+        }
+
+        [Fact]
+        public void TrySetSelectedKey_OnThePlaceholder_InsertsTheStepWhereTheRowWasDrawn()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.InsertPlaceholder();
+
+            Assert.True(steps.TrySetSelectedKey(TestLayouts.Gen1Key("z")));
+            Assert.Equal(["a", "z", "b"], macro.Keystrokes.Select(TokenOf));
+            Assert.False(steps.HasPlaceholder);
+            Assert.Same(steps.Items[1], steps.SelectedStep);
+        }
+
+        [Fact]
+        public void SelectingAnotherStep_DiscardsThePlaceholder_AndSelectsWhatWasClicked()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.InsertPlaceholder();
+
+            // Row 2 is the placeholder, so row 3 is `b`. Clicking it abandons the placeholder — and
+            // rebuilds the list, so the selection has to land on `b` at its NEW position.
+            steps.SelectStepCommand.Execute(steps.Items[2]);
+
+            Assert.False(steps.HasPlaceholder);
+            Assert.Equal(2, steps.Items.Count);
+            Assert.Same(steps.Items[1], steps.SelectedStep);
+            Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
+        }
+
+        [Fact]
+        public void DiscardPlaceholder_DropsTheRowAndTheSelectionWithIt()
+        {
+            var macro = MacroOf("a");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.InsertPlaceholder();
+
+            Assert.True(steps.DiscardPlaceholder());
+            Assert.False(steps.HasPlaceholder);
+            Assert.Null(steps.SelectedStep);
+            Assert.False(steps.DiscardPlaceholder());
+        }
+
+        [Fact]
+        public void Load_WithAnotherMacro_DropsAnOpenPlaceholder()
+        {
+            var steps = Create();
+
+            steps.Load(MacroOf("a"));
+            steps.InsertPlaceholder();
+            steps.Load(MacroOf("b"));
+
+            Assert.False(steps.HasPlaceholder);
+            Assert.Null(steps.SelectedStep);
+        }
+
+        [Fact]
+        public void Load_WithTheSameMacro_KeepsAnOpenPlaceholder()
+        {
+            // Every unrelated write ends in a counter refresh that re-loads the same macro. A
+            // placeholder that did not survive that would be gone before the key could land on it.
+            var macro = MacroOf("a");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.InsertPlaceholder();
+            steps.Load(macro);
+
+            Assert.True(steps.HasPlaceholder);
+        }
+
+        [Fact]
+        public void MoveStep_WithAnOpenPlaceholder_IsRefused()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.InsertPlaceholder();
+
+            Assert.False(steps.MoveStep(0, 1));
+            Assert.False(steps.MoveStepUpCommand.CanExecute(null));
+            Assert.False(steps.MoveStepDownCommand.CanExecute(null));
+            Assert.Equal(["a", "b"], macro.Keystrokes.Select(TokenOf));
+        }
+
+        [Fact]
+        public void ARemovedStep_LeavesTheSelectionOnTheRowThatTookItsPlace()
+        {
+            // The rows are rebuilt by every write, so a cached row reference is stale — the
+            // selection has to be re-resolved by position afterwards.
+            var macro = MacroOf("a", "b", "c");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[1]);
+            steps.RemoveStepCommand.Execute(steps.Items[1]);
+
+            Assert.Equal(["a", "c"], macro.Keystrokes.Select(TokenOf));
+            Assert.Same(steps.Items[1], steps.SelectedStep);
+        }
+
+        [Fact]
+        public void ARemovedLastStep_LeavesTheSelectionOnWhatIsLeft()
+        {
+            var macro = MacroOf("a", "b");
+            var steps = Create();
+
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[1]);
+            steps.RemoveStepCommand.Execute(steps.Items[1]);
+
+            Assert.Same(Assert.Single(steps.Items), steps.SelectedStep);
+        }
+
+        [Fact]
+        public void ARowFoldsInTheDelayBehindIt_SoTheComposerCanSeedItselfFromTheRow()
         {
             var steps = Create();
             var macro = new Macro();
@@ -345,16 +587,16 @@ namespace KinesisEdit.Tests.ViewModels
             macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveCustom(120, TokenDialect.Gen1)!));
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
 
-            Assert.True(steps.IsDelayEditorOpen);
-            Assert.Equal(120, steps.CustomDelayMilliseconds);
-            Assert.False(steps.IsRandomDelay);
+            Assert.Equal(120, Assert.Single(steps.Items).DelayMilliseconds);
+            Assert.False(steps.Items[0].IsRandomDelay);
         }
 
         [Fact]
-        public void EditDelayCommand_OnARowCarryingTheRandomDelay_ChecksTheRandomRadio()
+        public void ARowCarryingTheRandomDelay_ReportsItAsRandomAndNotAsZeroMilliseconds()
         {
+            // 11 §11.3's `dran` and a custom delay are two different answers, never one value with
+            // a sentinel — which is why the row carries both a millisecond count AND a flag.
             var steps = Create();
             var macro = new Macro();
 
@@ -362,56 +604,40 @@ namespace KinesisEdit.Tests.ViewModels
             macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
 
-            Assert.True(steps.IsRandomDelay);
+            Assert.True(steps.Items[0].IsRandomDelay);
+            Assert.Equal(0, steps.Items[0].DelayMilliseconds);
         }
 
         [Fact]
-        public void CustomDelayMilliseconds_WhenTyped_UnchecksTheRandomRadio()
+        public void TrySetSelectedDelay_WithNothingSelected_WritesNothing()
         {
-            var steps = OpenDelayEditor();
+            var macro = MacroOf("a");
+            var steps = Create();
 
-            steps.IsRandomDelay = true;
-            steps.CustomDelayMilliseconds = 250;
+            steps.Load(macro);
 
-            Assert.False(steps.IsRandomDelay);
-        }
-
-        [Fact]
-        public void ApplyDelay_WithNothingChosen_ReportsTheSpecMessageAndWritesNothing()
-        {
-            var steps = OpenDelayEditor(out var macro);
-
-            steps.ApplyDelayCommand.Execute(null);
-
-            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, steps.DelayError);
-            Assert.True(steps.IsDelayEditorOpen);
+            Assert.False(steps.TrySetSelectedDelay(MacroInspectorDelay.Random));
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
         [Theory]
         [InlineData(0)]
         [InlineData(1000)]
-        public void ApplyDelay_WithACustomDelayOutsideTheRange_ReportsTheSpecMessage(int delay)
+        public void TrySetSelectedDelay_OutsideTheRange_WritesNothing(int delay)
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.CustomDelayMilliseconds = delay;
-            steps.ApplyDelayCommand.Execute(null);
-
-            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, steps.DelayError);
+            Assert.False(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(delay)));
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
         [Fact]
-        public void ApplyDelay_WithTheRandomRadio_WritesTheRandomDelayKey()
+        public void TrySetSelectedDelay_WithTheRandomDelay_WritesTheRandomDelayKey()
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.IsRandomDelay = true;
-            steps.ApplyDelayCommand.Execute(null);
-
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.Random));
             Assert.Equal(["a", MacroDelayTokens.RandomToken], macro.Keystrokes.Select(TokenOf));
             Assert.Equal("random", steps.Items[0].DelayText);
         }
@@ -421,57 +647,50 @@ namespace KinesisEdit.Tests.ViewModels
         [InlineData(50, "d050")]
         [InlineData(250, "d250")]
         [InlineData(999, "d999")]
-        public void ApplyDelay_WithACustomDelay_WritesTheZeroPaddedDelayKey(int delay, string token)
+        public void TrySetSelectedDelay_WithACustomDelay_WritesTheZeroPaddedDelayKey(int delay, string token)
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.CustomDelayMilliseconds = delay;
-            steps.ApplyDelayCommand.Execute(null);
-
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(delay)));
             Assert.Equal(["a", token], macro.Keystrokes.Select(TokenOf));
         }
 
         [Fact]
-        public void ApplyDelay_Twice_ReplacesTheDelayRatherThanAddingASecond()
+        public void TrySetSelectedDelay_Twice_ReplacesTheDelayRatherThanAddingASecond()
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.CustomDelayMilliseconds = 50;
-            steps.ApplyDelayCommand.Execute(null);
-
-            steps.CustomDelayMilliseconds = 120;
-            steps.ApplyDelayCommand.Execute(null);
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(50));
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(120));
 
             Assert.Equal(["a", "d120"], macro.Keystrokes.Select(TokenOf));
         }
 
         [Fact]
-        public void ApplyDelay_WithTheRandomRadioOverAStaleCustomValue_StillWritesTheRandomKey()
+        public void TrySetSelectedDelay_FromCustomToRandom_ReplacesTheKeyRatherThanKeepingBoth()
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.CustomDelayMilliseconds = 250;
-            steps.IsRandomDelay = true;
-            steps.ApplyDelayCommand.Execute(null);
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(250));
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Random);
 
             Assert.Equal(["a", MacroDelayTokens.RandomToken], macro.Keystrokes.Select(TokenOf));
         }
 
         [Fact]
-        public void ClearDelay_TakesTheDelayOffTheStep()
+        public void TrySetSelectedDelay_WithNone_TakesTheDelayOffTheStep()
         {
-            var steps = OpenDelayEditor(out var macro);
+            var steps = SelectFirstStep(out var macro);
 
-            steps.CustomDelayMilliseconds = 50;
-            steps.ApplyDelayCommand.Execute(null);
-            steps.ClearDelayCommand.Execute(null);
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(50));
 
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.None));
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
             Assert.False(steps.Items[0].HasDelay);
         }
 
         [Fact]
-        public void ClearDelay_OnADelayOnlyRow_DropsTheRow()
+        public void TrySetSelectedDelay_WithNoneOnADelayOnlyRow_DropsTheRow()
         {
             var steps = Create();
             var macro = new Macro();
@@ -479,46 +698,29 @@ namespace KinesisEdit.Tests.ViewModels
             macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
-            steps.ClearDelayCommand.Execute(null);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
 
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.None));
             Assert.Empty(macro.Keystrokes);
-            Assert.False(steps.IsDelayEditorOpen);
+            Assert.Empty(steps.Items);
         }
 
         [Fact]
-        public void IncreaseDelayCommand_AtTheMaximum_StaysClamped()
+        public void TrySetSelectedDelay_OnADelayOnlyRow_ReplacesTheDelayItself()
         {
-            var steps = OpenDelayEditor();
+            // 06 §2.2 lets a macro open with a delay, and dropping such a row would edit the file
+            // behind the user's back — so it stays, and its ONE editable thing is the delay.
+            var steps = Create();
+            var macro = new Macro();
 
-            steps.CustomDelayMilliseconds = 999;
-            steps.IncreaseDelayCommand.Execute(null);
+            macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
 
-            Assert.Equal(999, steps.CustomDelayMilliseconds);
-        }
+            steps.Load(macro);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
 
-        [Fact]
-        public void DecreaseDelayCommand_FromAnEmptyField_LandsOnTheMinimum()
-        {
-            var steps = OpenDelayEditor();
-
-            steps.DecreaseDelayCommand.Execute(null);
-
-            Assert.Equal(1, steps.CustomDelayMilliseconds);
-            Assert.Equal(1, steps.MinimumDelayMilliseconds);
-            Assert.Equal(999, steps.MaximumDelayMilliseconds);
-        }
-
-        [Fact]
-        public void CloseDelayCommand_AfterPickingADelay_WritesNothing()
-        {
-            var steps = OpenDelayEditor(out var macro);
-
-            steps.IsRandomDelay = true;
-            steps.CloseDelayCommand.Execute(null);
-
-            Assert.False(steps.IsDelayEditorOpen);
-            Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(80)));
+            Assert.Equal(["d080"], macro.Keystrokes.Select(TokenOf));
+            Assert.True(steps.Items[0].IsDelayOnly);
         }
 
         /// <summary>
@@ -533,9 +735,8 @@ namespace KinesisEdit.Tests.ViewModels
             var steps = Create();
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
-            steps.CustomDelayMilliseconds = 250;
-            steps.ApplyDelayCommand.Execute(null);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(250));
 
             macro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
 
@@ -565,9 +766,8 @@ namespace KinesisEdit.Tests.ViewModels
             var steps = Create();
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
-            steps.CustomDelayMilliseconds = delay;
-            steps.ApplyDelayCommand.Execute(null);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
+            steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(delay));
 
             var picked = macro.Keystrokes[^1].Key;
             var lines = LayoutFileSerializer.Serialize(parsed.Layout, parsed.InvalidLines);
@@ -622,20 +822,16 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void ApplyDelay_BelowTheFirmwareGate_WritesNothing()
+        public void TrySetSelectedDelay_BelowTheFirmwareGate_WritesNothing()
         {
             var macro = MacroOf("a");
             var steps = Create(DeviceId.FreestyleEdge, Firmware(1, 0, 339));
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
 
-            steps.CustomDelayMilliseconds = 250;
-
-            Assert.False(steps.ApplyDelayCommand.CanExecute(null));
-
-            steps.ApplyDelayCommand.Execute(null);
-
+            Assert.False(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(250)));
+            Assert.False(steps.TrySetSelectedDelay(MacroInspectorDelay.Random));
             Assert.Equal(["a"], macro.Keystrokes.Select(TokenOf));
         }
 
@@ -670,19 +866,15 @@ namespace KinesisEdit.Tests.ViewModels
             return new MacroInspectorStepsViewModel(deviceId, firmware, _urlLauncher);
         }
 
-        private MacroInspectorStepsViewModel OpenDelayEditor()
-        {
-            return OpenDelayEditor(out _);
-        }
-
-        private MacroInspectorStepsViewModel OpenDelayEditor(out Macro macro)
+        /// <summary>One step, selected — the state every composer write starts from.</summary>
+        private MacroInspectorStepsViewModel SelectFirstStep(out Macro macro)
         {
             var steps = Create();
 
             macro = MacroOf("a");
 
             steps.Load(macro);
-            steps.EditDelayCommand.Execute(steps.Items[0]);
+            steps.SelectStepCommand.Execute(steps.Items[0]);
 
             return steps;
         }

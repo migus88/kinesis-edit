@@ -142,14 +142,13 @@ namespace KinesisEdit.ViewModels
             // stored instance: the library arrives with the profile and is replaced by a load or an
             // import, and two libraries over one layout would be two sources of truth.
             //
-            // It takes the session's recent-token store too (issue #128): its chord composer hosts a
-            // fourth picker, and the `Recent` chip is only a shortcut back to what the user has been
-            // doing if all four pickers remember the same things.
+            // It no longer takes the session's recent-token store (issue #139): #128's chord composer
+            // hosted a fourth picker over it, and the composer that replaced it sets a step's key from
+            // `Record` alone. The store keeps its other three pickers.
             _macroInspectorPanel = new MacroInspectorPanelViewModel(
                 Device,
                 _urlLauncher,
-                () => MacroLibrary,
-                _recentTokens);
+                () => MacroLibrary);
 
             _remapAssignedHandler = (_, _) => RefreshCounters();
             _tapAndHoldAssignedHandler = (_, _) => OnTapAndHoldAssigned();
