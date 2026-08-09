@@ -630,12 +630,10 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Opens the Macros tab over a macro-capable key — what the two insertion panels of §11.3
-        /// and §11.6 need, because they append to the macro the panel has <em>on screen</em>.
-        /// </summary>
-        /// <summary>
         /// Opens a macro where issue #93 put the editor: the board's position, on the key
-        /// inspector's Macro panel, with one keystroke already recorded so there IS a macro.
+        /// inspector's Macro panel, with one keystroke already recorded so there IS a macro. It is
+        /// what the two insertion panels of §11.3 and §11.6 need, because they append to the macro
+        /// the panel has <em>on screen</em>.
         /// </summary>
         private KeyboardKeyViewModel OpenMacroEditor(KeyboardEditorViewModel editor)
         {

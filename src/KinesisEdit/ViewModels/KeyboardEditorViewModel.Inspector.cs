@@ -67,7 +67,7 @@ namespace KinesisEdit.ViewModels
         /// "never stop a capture you did not start" rule made explicit: the rail raises
         /// <see cref="KeyInspectorViewModel.RecordingChanged"/> on every mode switch and every
         /// selection change too, and answering one of those with an unconditional
-        /// <c>_capture.Stop()</c> would deafen a macro that is recording on the Macros tab.
+        /// <c>_capture.Stop()</c> would deafen a panel that really is armed.
         /// </summary>
         private bool _isInspectorCapturing;
 
@@ -111,6 +111,61 @@ namespace KinesisEdit.ViewModels
         public bool IsRecordingControl(ICommand? command)
         {
             return Inspector.ActivePanel?.IsRecordingControl(command) == true;
+        }
+
+        /// <summary>
+        /// Opens one macro position <b>where macros are edited</b>: goes to the Layout tab, puts the
+        /// board's selection on <paramref name="keyIndex"/> of <paramref name="layerIndex"/>, points
+        /// the rail at its Macro panel and — when <paramref name="startRecording"/> — arms Record.
+        /// <paramref name="slot"/> is 1..5 on a slot device and 0 on a flat-list one.
+        /// <para>
+        /// The advisory strip's macro callback is its one caller
+        /// (<c>KeyboardEditorViewModel.SelectAnchoredMacro</c>): an advisory names a <em>site</em> —
+        /// layer, key, slot — and this is what turns a site back into the rail showing it.
+        /// </para>
+        /// </summary>
+        public void EditMacroAt(int layerIndex, int keyIndex, int slot, bool startRecording)
+        {
+            if (FindLayer(layerIndex) is not { } layer)
+            {
+                return;
+            }
+
+            // The board and the rail live on the Layout tab, so going there is the first half of
+            // "open this macro where it is edited".
+            SelectTab(EditorTab.Keys);
+
+            if (!ReferenceEquals(layer, SelectedLayer))
+            {
+                SelectLayer(layer);
+            }
+
+            if (layer.FindByIndex(keyIndex) is not { } key)
+            {
+                return;
+            }
+
+            // Never SelectKeyCommand: the click contract promotes a second hit on the already
+            // selected cap into a remap, and this is not a click.
+            SelectKeyDirectly(key);
+
+            // Before the rail is refreshed, because its Macro panel reads this field to decide which
+            // of the key's macros it is showing (06 §1). In-memory only; it is never serialized.
+            if (slot >= Macro.MinMacroIndex && key.Key.UsesMacroSlots)
+            {
+                key.Key.ActiveMacroIndex = slot;
+            }
+
+            Inspector.Open();
+
+            SelectInspectorMode(KeyInspectorMode.Macro);
+
+            RefreshInspector();
+
+            if (startRecording)
+            {
+                ArmMacroRecording();
+            }
         }
 
         /// <summary>
@@ -192,6 +247,49 @@ namespace KinesisEdit.ViewModels
             Inspector.Deactivate();
         }
 
+        private KeyboardLayerViewModel? FindLayer(int layerIndex)
+        {
+            foreach (var layer in Layers)
+            {
+                if (layer.Index == layerIndex)
+                {
+                    return layer;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Puts the rail on one of its modes through the rail's own command, so the mode-switch
+        /// warning and the panel hand-off happen exactly as they do for a click on the tab.
+        /// </summary>
+        private void SelectInspectorMode(KeyInspectorMode mode)
+        {
+            foreach (var tab in Inspector.Tabs)
+            {
+                if (tab.Mode == mode)
+                {
+                    Inspector.SelectModeCommand.Execute(tab);
+
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Arms the rail's Macro panel for the next physical keystroke. Its Record is a
+        /// <em>toggle</em>, so an already-armed panel is left alone rather than stood down — and the
+        /// panel answers its own availability gates, which is why nothing is checked here.
+        /// </summary>
+        private void ArmMacroRecording()
+        {
+            if (!_macroInspectorPanel.IsRecording)
+            {
+                _macroInspectorPanel.RecordCommand.Execute(null);
+            }
+        }
+
         /// <summary>
         /// A rail panel wrote a tap-and-hold. Invariant 3: the cap is re-read by hand, and then the
         /// funnel rebuilds the counters, the advisories, the legend and the dirty flag.
@@ -206,8 +304,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// The showing panel started or stopped waiting for a physical keystroke. Capture belongs to
         /// the editor and never to a panel (docs/app/keyboard-editor.md, invariant 4), so this is
-        /// where the service is turned on and off — exactly as <see cref="OnMacroRecordingChanged"/>
-        /// does it for the macro panel, and with one guard that path does not need:
+        /// where the service is turned on and off — with one guard a plain start/stop would not need:
         /// <see cref="_isInspectorCapturing"/>, because the rail announces its recording state on
         /// every mode switch and every selection change, not only when something really armed.
         /// </summary>
@@ -246,10 +343,6 @@ namespace KinesisEdit.ViewModels
         /// <see cref="OnTapAndHoldAssigned"/>, and required for the same reason: Core announces
         /// nothing, so the cap is re-read by hand (its macro dot) and then the funnel rebuilds the
         /// counters, the library, the advisories, the legend and the dirty flag.
-        /// <para>
-        /// The Macros tab's own panel is re-read too, because it is a second view of the very macros
-        /// this one just moved.
-        /// </para>
         /// </summary>
         private void OnMacroInspectorAssigned()
         {

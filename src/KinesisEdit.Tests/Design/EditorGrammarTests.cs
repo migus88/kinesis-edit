@@ -296,10 +296,15 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public async Task Arrows_AreLeftAlone_WhenFocusSitsInATextInput()
         {
-            // Gate 2. The Macros tab's search field is a real TextBox — arrows there move the
-            // caret, and the board must not steal them. (It used to be the old macro panel's
-            // NumericUpDown; issue #93 replaced that panel with the macro library, whose search box
-            // is the text input this tab now carries.)
+            // Gate 3's text-input clause (keyboard-editor.md, "the focused surface keeps what is
+            // its own"). A real TextBox is on screen beside the board — arrows there move the
+            // caret, and the board must not steal them.
+            //
+            // MIGRATED TWICE. It was the old macro panel's NumericUpDown; issue #93 pointed it at
+            // the macro library's search box; issue #140 deleted that tab, and TokenPickerView's
+            // query box — the key inspector rail's own field — is now the ONLY `searchField` in the
+            // app. The gate is unchanged and so is what it protects: the field sits BESIDE a live
+            // board, which is exactly the arrangement in which stealing an arrow is visible.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -307,26 +312,28 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
-
+            // Selecting the cap opens the rail on its Remap panel, which hosts the token picker.
             Select(editor, CapsRowKey);
+
+            Assert.True(editor.Inspector.IsOpen, "Selecting a cap did not open the key inspector.");
 
             host.Capture();
 
             var field = view.GetVisualDescendants()
                 .OfType<TextBox>()
-                .First(box => box.Classes.Contains("searchField"));
+                .Single(box => box.Classes.Contains("searchField"));
 
             field.Focus();
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(field.IsFocused, "The macro library's search field did not take focus.");
+            Assert.True(field.IsFocused, "The token picker's query field did not take focus.");
 
             Press(host, PhysicalKey.ArrowRight);
             Press(host, PhysicalKey.ArrowLeft);
 
             Assert.Equal(CapsRowKey, editor.SelectedKey!.Index);
+            Assert.False(editor.IsListening);
         }
 
         [AvaloniaFact]
@@ -384,8 +391,11 @@ namespace KinesisEdit.Tests.Design
 
             Press(host, PhysicalKey.ArrowRight);
 
-            // The strip took the arrow: the section moved and the board's selection did not.
-            Assert.Equal(EditorTab.Macros, editor.SelectedTab);
+            // The strip took the arrow: the section moved and the board's selection did not. The
+            // second tab is Lighting since issue #140 deleted the Macros tab between them, and it
+            // is looked up rather than written out for the same reason.
+            Assert.Equal(editor.Tabs[1].Tab, editor.SelectedTab);
+            Assert.Equal(EditorTab.Lighting, editor.SelectedTab);
             Assert.Equal(CapsRowKey, editor.SelectedKey!.Index);
         }
 
@@ -780,7 +790,9 @@ namespace KinesisEdit.Tests.Design
         public async Task AltAndADigit_IsStillLeftAloneInATextInput()
         {
             // The one clause the layer shortcuts keep: ⌥1 types `¡` on macOS, so a focused field
-            // wins.
+            // wins. Read on the rail's token-picker query box since issue #140 deleted the Macros
+            // tab's search field — the second time this case has moved, and the field it names is
+            // now the only `searchField` the app authors.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -788,19 +800,21 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
-            editor.SelectTabCommand.Execute(editor.Tabs[1]);
+            editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[0]);
+
+            Assert.True(editor.Inspector.IsOpen, "Selecting a cap did not open the key inspector.");
 
             host.Capture();
 
             var field = view.GetVisualDescendants()
                 .OfType<TextBox>()
-                .First(box => box.Classes.Contains("searchField"));
+                .Single(box => box.Classes.Contains("searchField"));
 
             field.Focus();
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(field.IsFocused, "The macro library's search field did not take focus.");
+            Assert.True(field.IsFocused, "The token picker's query field did not take focus.");
 
             Press(host, PhysicalKey.Digit2, RawInputModifiers.Alt);
 

@@ -13,7 +13,7 @@ namespace KinesisEdit.ViewModels
     {
         /// <summary>
         /// The legend row under the board: the five layer-scoped counts plus the row's two actions.
-        /// Hosted by the Layout/Macros board only — the Lighting tab draws no state badges
+        /// Hosted by the Layout board only — the Lighting tab draws no state badges
         /// (<c>KeyboardView.ShowsStateBadges</c>), so it counts no states either.
         /// </summary>
         public BoardLegendViewModel BoardLegend { get; }
@@ -172,9 +172,9 @@ namespace KinesisEdit.ViewModels
             // Invariant 3: Core announces nothing, so the cap that just changed is re-read by hand.
             target.RefreshFromModel();
 
-            // Invariant 16: the counters, the library snapshot the Macros tab lists — the copy's
-            // macro half puts the same macro on a second key, which is one more site of one row —
-            // the advisories, the legend and the dirty flag all follow.
+            // Invariant 16: the counters, the library snapshot — the copy's macro half puts the same
+            // macro on a second key, which is one more site of one entry — the advisories, the
+            // legend and the dirty flag all follow.
             RefreshCounters();
         }
 
@@ -218,10 +218,6 @@ namespace KinesisEdit.ViewModels
             // makes "every mutation reaches the rail" true by construction rather than by a list
             // somebody has to remember to maintain (KeyboardEditorViewModel.Inspector.cs).
             RefreshInspector();
-
-            // And the Macros tab, for exactly the same reason: it is the other view of the very
-            // macros every one of those paths can move (KeyboardEditorViewModel.MacrosTab.cs).
-            RefreshMacroLibraryPanel();
         }
     }
 }

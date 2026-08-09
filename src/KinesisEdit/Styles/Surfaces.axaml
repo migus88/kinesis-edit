@@ -276,8 +276,8 @@
 
   <!-- ===== Framed lists and hairline rows ==================================================== -->
 
-  <!-- A scrollable area that has to read as one field: the recorded macro steps, the profile's
-       macro list. -->
+  <!-- A scrollable area that has to read as one field: the recorded macro steps, the token
+       picker's results. -->
   <Style Selector="Border.listFrame">
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
     <Setter Property="BorderThickness" Value="1" />

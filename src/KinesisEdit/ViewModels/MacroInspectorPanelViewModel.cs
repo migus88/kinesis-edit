@@ -13,10 +13,10 @@ namespace KinesisEdit.ViewModels
 {
     /// <summary>
     /// The key inspector's <b>Macro</b> panel (mockup <c>2i</c>): "selecting a key edits its macro
-    /// right here — the Macros tab is a library, not the editor". It is the surface issue #93 built
-    /// in place of the rail's old bridge out to the Macros tab, and it is where
-    /// specs/11-feature-dialogs.md §11.3's <c>Macro Timing Delays</c> dialog now lives
-    /// (<see cref="MacroInspectorStepsViewModel"/>).
+    /// right here". It is the surface issue #93 built in place of the rail's old bridge out to a
+    /// macro section of its own, it is the app's <b>only</b> macro editor since issue #140 removed
+    /// that section, and it is where specs/11-feature-dialogs.md §11.3's <c>Macro Timing Delays</c>
+    /// dialog now lives (<see cref="MacroInspectorStepsViewModel"/>).
     ///
     /// <para><b>There is no Assign button, deliberately.</b> Editing in place means the first thing
     /// the user records <em>is</em> the macro: <see cref="EnsureMacro"/> creates it, stamps its
@@ -24,9 +24,7 @@ namespace KinesisEdit.ViewModels
     /// first free slot — or appends it to the Advantage 360's flat list. The old panel's
     /// draft-then-assign dance was a modal's shape, not a rail's.</para>
     ///
-    /// <para><b>The name dropdown picks; it does not rename.</b> Mockup <c>2i</c> splits the two:
-    /// the tab is the library ("rename, see which keys and layers fire each one, duplicate,
-    /// delete") and the rail is the editor. Picking an existing name here is
+    /// <para><b>The name dropdown picks; it does not rename.</b> Picking an existing name here is
     /// <c>MacroLibrary.AssignTo</c> — "assigning a named macro to a second key is a pick from the
     /// inspector's own dropdown" — and renaming is
     /// <c>KeyboardEditorViewModel.RenameMacro</c>, which this panel never calls.</para>
@@ -155,6 +153,12 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>Label of the per-layout budget meter, verbatim from mockup <c>2i</c>.</summary>
         public const string LayoutKeystrokeMeterLabel = "layout keystrokes";
+
+        /// <summary>
+        /// Label of the profile-wide macro-count meter. This app's wording; <c>2i</c> draws no such
+        /// row — see <see cref="MacroCountMeter"/> for why it is here anyway.
+        /// </summary>
+        public const string MacroCountMeterLabel = "macros";
 
         /// <summary>Label of the repeat control. This app's wording; <c>2i</c> draws only speed.</summary>
         public const string RepeatLabel = "Repeat";
@@ -305,6 +309,16 @@ namespace KinesisEdit.ViewModels
         /// <summary>The per-layout budget meter, <c>5 140 / 7 200</c> (04 §5.3).</summary>
         public MacroMeterViewModel LayoutKeystrokeMeter { get; }
 
+        /// <summary>
+        /// The profile-wide macro count, <c>24 / 100</c> (06 §6). The <b>only</b> readout of that
+        /// device limit in the app: it lived on the Macros tab's footer until issue #140 removed the
+        /// tab, and dropping a working readout of a real limit silently is what the capability law
+        /// is against. Its maximum is <see cref="MacroLimits.ResolveMaxMacroCount"/>'s —
+        /// firmware-gated (09 §2) and never a literal — and a device that states none reads as a
+        /// bare number that can never be over budget.
+        /// </summary>
+        public MacroMeterViewModel MacroCountMeter { get; }
+
         /// <summary>Playback speed of the macro under edit, clamped to the device's range (06 §4).</summary>
         public int Speed
         {
@@ -454,6 +468,7 @@ namespace KinesisEdit.ViewModels
             SpeedMeter = new MacroMeterViewModel(SpeedMeterLabel);
             MacroLengthMeter = new MacroMeterViewModel(MacroLengthMeterLabel);
             LayoutKeystrokeMeter = new MacroMeterViewModel(LayoutKeystrokeMeterLabel);
+            MacroCountMeter = new MacroMeterViewModel(MacroCountMeterLabel);
 
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
             InsertStepCommand = new RelayCommand(InsertPlaceholderStep, CanRecord);
@@ -715,8 +730,8 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Which macro the selected position is carrying, or null. The key's own
-        /// <c>ActiveMacroIndex</c> wins when it points at a populated slot — that is what the slot
-        /// selector and the Macros tab's slot cards both move — and otherwise the first populated
+        /// <c>ActiveMacroIndex</c> wins when it points at a populated slot — that is what the header's
+        /// slot selector moves — and otherwise the first populated
         /// slot is opened, so selecting a cap that carries a macro always shows it rather than an
         /// empty editor.
         /// <para>
@@ -995,6 +1010,11 @@ namespace KinesisEdit.ViewModels
                 _macro is not null && _layout is not null ? MacroLengthMetric.Measure(_macro, _layout) : 0,
                 _capability.MaxCharactersPerMacro);
             LayoutKeystrokeMeter.Set(_layout?.TotalKeystrokes ?? 0, _capability.MaxTotalKeystrokes);
+
+            // The firmware-gated figure, never a literal: ExpandedMacroCount doubles it on a board
+            // new enough to honour it (09 §2), and a device that states no count reads as a bare
+            // number rather than as "0".
+            MacroCountMeter.Set(_layout?.MacroCount ?? 0, _maxMacroCount);
         }
 
         /// <summary>

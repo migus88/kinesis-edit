@@ -13,12 +13,12 @@ namespace KinesisEdit.ViewModels
     ///
     /// <para><b>Two scopes, and the open tab picks between them.</b> The user's own words were
     /// *"only the open profile and only the page it is open on … I don't want it to discard lighting
-    /// if I'm on the Layout page and vice versa"*, so the Keys and Macros tabs revert the
-    /// <c>layout&lt;n&gt;.txt</c> half and the Lighting tab reverts the <c>led&lt;n&gt;.txt</c> half.
-    /// The Macros tab goes with Keys because a macro <em>is</em> layout content; the Settings tab
-    /// gets no discard at all, because the settings file is outside the session's dirty model
-    /// altogether (docs/app/keyboard-editor.md, "Settings are outside the dirty model") and there is
-    /// nothing here that could revert it.</para>
+    /// if I'm on the Layout page and vice versa"*, so the Keys tab reverts the
+    /// <c>layout&lt;n&gt;.txt</c> half — macros included, a macro <em>is</em> layout content — and
+    /// the Lighting tab reverts the <c>led&lt;n&gt;.txt</c> half. The Settings tab gets no discard
+    /// at all, because the settings file is outside the session's dirty model altogether
+    /// (docs/app/keyboard-editor.md, "Settings are outside the dirty model") and there is nothing
+    /// here that could revert it.</para>
     ///
     /// <para><b>It is not <c>Reset Layout</c>, and the two must never be merged.</b> A reset clears
     /// the profile to factory defaults — an <em>edit</em>, and one Save would then write. A discard
@@ -63,7 +63,7 @@ namespace KinesisEdit.ViewModels
         {
             return tab switch
             {
-                EditorTab.Keys or EditorTab.Macros => DiscardScope.Layout,
+                EditorTab.Keys => DiscardScope.Layout,
                 EditorTab.Lighting => DiscardScope.Lighting,
                 _ => DiscardScope.None
             };
@@ -202,7 +202,7 @@ namespace KinesisEdit.ViewModels
             /// <summary>The open section owns nothing the session can revert (Settings).</summary>
             None = 0,
 
-            /// <summary><c>layout&lt;n&gt;.txt</c> — keys, remaps, macros (Keys and Macros).</summary>
+            /// <summary><c>layout&lt;n&gt;.txt</c> — keys, remaps, macros (the Layout tab).</summary>
             Layout = 1,
 
             /// <summary><c>led&lt;n&gt;.txt</c> — the lighting model (Lighting).</summary>

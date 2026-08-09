@@ -31,7 +31,7 @@ namespaces and entry points. Three section headings recur and are worth knowing 
 | Loading, saving, importing or ejecting one numbered profile end to end | [profiles.md](profiles.md) |
 | Turning real keypresses into assignments; what "swallowed" means | [keystroke-capture.md](keystroke-capture.md) |
 | The window, dashboard, device detection (manual — nothing polls), notifications, Settings/Help screens, nav | [app-shell.md](app-shell.md) |
-| The board picture, key inspector rail, macro library, Lighting/Settings tabs, shortcuts | [keyboard-editor.md](keyboard-editor.md) |
+| The board picture, key inspector rail, macro editing, Lighting/Settings tabs, shortcuts | [keyboard-editor.md](keyboard-editor.md) |
 | The panels still modal over the editor (Search Keys, Export) and Import | [feature-dialogs.md](feature-dialogs.md) |
 | The Savant Elite2 — `pedals.txt` and its pedal editor | [savant-elite.md](savant-elite.md) |
 | Colour/type/geometry/motion tokens, control themes, icons, **and how to test UI work** | [design-system.md](design-system.md) |

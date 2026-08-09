@@ -11,7 +11,7 @@ The runtime, editable state of one device profile: `KinesisEdit.Core.Model`. Pla
 | `Macro` | ordered keystrokes + trigger metadata + co-triggers + `Name` | 05 §1.2; 06 §1, §4, §5 |
 | `Keystroke` | one key inside a macro + held modifiers + direction | 05 §1.1, §5.1, §5.2, §5.8 |
 | `MacroNaming` | what a macro name may be, when two names are one name, what an unnamed macro is called | — (app concept; name storage is 08 §3) |
-| `MacroLibrary` / `MacroLibraryEntry` / `MacroSite` | one logical macro per name, with many trigger sites — the Macros tab's model | 06 §1; 05 §1.3 |
+| `MacroLibrary` / `MacroLibraryEntry` / `MacroSite` | one logical macro per name, with many trigger sites. Built for the Macros tab, which [#140](https://github.com/migus88/kinesis-edit/issues/140) deleted; the key inspector's name dropdown is what still reads it, and [#141](https://github.com/migus88/kinesis-edit/issues/141) decides the rest | 06 §1; 05 §1.3 |
 | `KeyDirection` | `None`/`Down`/`Up` — the `{-token}`/`{+token}` prefixes | 05 §1.1, §5.8; 06 §2.2 |
 | `MacroKeystrokeRenderer` | macro → the 06 §3 line, its layer prefix, and the Adv360 length metric | 06 §3, §6 |
 | `MacroLengthMetric` | which of 06 §6's two per-macro metrics a layout is measured in, and the measurement | 06 §6; 04 §5.3 |

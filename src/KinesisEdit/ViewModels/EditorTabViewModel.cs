@@ -17,13 +17,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Caption of the keyboard/remap tab. The <see cref="EditorTab.Keys"/> enum member keeps
         /// its name deliberately: it is carried inside <c>EnumMatch</c> converter-parameter
-        /// <em>strings</em> in XAML (<c>ConverterParameter='Keys,Macros'</c>), so renaming it is a
+        /// <em>strings</em> in XAML (<c>ConverterParameter='Keys,Settings'</c>), so renaming it is a
         /// string-coupled change with no user-visible payoff. Only the caption is the mockups'.
         /// </summary>
         public const string LayoutCaption = "Layout";
-
-        /// <summary>Caption of the macro tab.</summary>
-        public const string MacrosCaption = "Macros";
 
         /// <summary>Caption of the lighting tab.</summary>
         public const string LightingCaption = "Lighting";
@@ -41,23 +38,24 @@ namespace KinesisEdit.ViewModels
         /// <see cref="LightingTabViewModel.IsSupported"/>. A TKO or Advantage 360 therefore renders
         /// no Lighting tab at all until its own editor lands (#40/#41), rather than a dark one;</item>
         /// <item>the Settings tab is <b>omitted</b> for a device with no app-managed settings file
-        /// (<c>SettingsCapability.None</c>: Savant Elite2, CROSSFIRE, Advantage 360 Professional);</item>
-        /// <item>the Macros tab is always present — the panel behind it reads the device's own
-        /// macro capability and says so itself on a board that has none
-        /// (<c>MacroLibraryViewModel.NotSupportedMessage</c>), which is one place fewer for the two
-        /// answers to disagree.</item>
+        /// (<c>SettingsCapability.None</c>: Savant Elite2, CROSSFIRE, Advantage 360 Professional).</item>
         /// </list>
         /// The lighting question is device-level on purpose: this runs before any profile has been
         /// read, and demo mode never reads one at all.
+        /// <para>
+        /// <b>There is no macro section</b> since issue #140. Macros are made and changed on the key
+        /// inspector's Macro panel, on the Layout tab beside the board, and that panel answers the
+        /// "this board has no macros" question itself from the device's own <c>MacroCapability</c> —
+        /// one place fewer for two answers to disagree.
+        /// </para>
         /// </summary>
         public static IReadOnlyList<EditorTabViewModel> CreateAll(DeviceDefinition device, bool isLightingSupported)
         {
             ArgumentNullException.ThrowIfNull(device);
 
-            var tabs = new List<EditorTabViewModel>(4)
+            var tabs = new List<EditorTabViewModel>(3)
             {
-                new(EditorTab.Keys, LayoutCaption),
-                new(EditorTab.Macros, MacrosCaption)
+                new(EditorTab.Keys, LayoutCaption)
             };
 
             if (device.Lighting.Kind != LightingKind.None && isLightingSupported)

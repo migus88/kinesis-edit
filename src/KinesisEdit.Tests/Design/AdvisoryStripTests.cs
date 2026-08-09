@@ -201,8 +201,8 @@ namespace KinesisEdit.Tests.Design
         {
             // The other direction, on the strip alone: projecting a section with nothing to say
             // empties the bar without shrinking it, so clearing an advisory cannot shift the board
-            // either. Macros is the empty section here — the scene's advisories are duplicate-key
-            // notes, which belong to the Layout tab.
+            // either. Settings is the empty section here — the scene's advisories are duplicate-key
+            // notes, which belong to the Layout tab. (It was Macros until issue #140 deleted it.)
             using var scenes = new ViewSceneFactory();
 
             var editor = await scenes.CreateEditorWithAdvisoriesAsync();
@@ -218,7 +218,7 @@ namespace KinesisEdit.Tests.Design
             Assert.True(strip.HasAdvisories);
             Assert.Equal(StripHeight, BorderOf(view).Bounds.Height);
 
-            strip.Project(editor.Advisories, EditorTab.Macros, editor.SelectedLayer!.Index);
+            strip.Project(editor.Advisories, EditorTab.Settings, editor.SelectedLayer!.Index);
 
             host.Capture();
 
@@ -288,8 +288,8 @@ namespace KinesisEdit.Tests.Design
             // Issue #128. The strip used to be a full-bleed row of the editor grid, so it ran on
             // under the key inspector rail and read as chrome for the whole screen rather than as a
             // note about the section it annotates. It is the section's column now — the same column
-            // the board and the action row live in — on all four tabs, which on Macros and Settings
-            // happens to be the whole window because those sections have no rail.
+            // the board and the action row live in — on every tab, which on Settings happens to be
+            // the whole window because that section has no rail.
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -410,7 +410,7 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaFact]
         public async Task TheStripsSentenceAndCount_FollowTheOpenSection()
         {
-            // One control in one row serves all four tabs, which only works if what it shows is the
+            // One control in one row serves every tab, which only works if what it shows is the
             // selected tab's.
             using var scenes = new ViewSceneFactory();
 
@@ -425,7 +425,7 @@ namespace KinesisEdit.Tests.Design
 
             Assert.True(ContentOf(view).IsVisible);
 
-            editor.SelectedTab = EditorTab.Macros;
+            editor.SelectedTab = EditorTab.Settings;
 
             host.Capture();
 
@@ -447,6 +447,10 @@ namespace KinesisEdit.Tests.Design
         [InlineData("Light")]
         public async Task TheMacroBudgetRows_AreAmberAndNeverRed(string variantName)
         {
+            // Read on the rail's Macro panel since issue #140 deleted the Macros tab that used to
+            // carry these rows. The claim is unchanged and is the reason this case exists: the
+            // three macro budget rows were once bound to `statusError`, and a budget is reported
+            // rather than refused.
             var variant = ToVariant(variantName);
 
             using var scenes = new ViewSceneFactory();
@@ -455,51 +459,64 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(view, variant);
 
-            var editor = (KeyboardEditorViewModel)view.DataContext!;
+            // The same shared editor the view is bound to, with its rail opened on the Macro panel
+            // over a position that really carries a macro.
+            await scenes.CreateMacroInspectorPanelAsync();
 
-            editor.SelectedTab = EditorTab.Macros;
-
+            Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            // Scoped to the Macros tab: the editor also hosts the settings panel, which reports
+            // Scoped to the Macro panel: the editor also hosts the settings panel, which reports
             // genuine failures (an unwritable settings file) and is legitimately red.
             var panel = view.GetVisualDescendants()
                 .OfType<Control>()
-                .First(control => control.DataContext is MacroLibraryViewModel);
+                .First(control => control.DataContext is MacroInspectorPanelViewModel);
 
             var marked = panel.GetVisualDescendants()
                 .OfType<TextBlock>()
                 .Where(block => block.Classes.Contains("statusWarning") || block.Classes.Contains("statusError"))
                 .ToArray();
 
-            Assert.NotEmpty(marked);
-            Assert.All(marked, block => Assert.DoesNotContain("statusError", block.Classes));
+            // EXACTLY ONE error-ramp block on the whole panel, and it is not an advisory: it is the
+            // composer's §11.3 message for a millisecond value the user TYPED outside 1-999, which
+            // is a rejected input rather than a budget being reported. Everything else the panel
+            // marks is amber. Pinned as `Single` so a second one — a budget flipped back to red,
+            // say — fails here rather than shipping.
+            var typedValueError = Assert.Single(marked, block => block.Classes.Contains("statusError"));
+
+            Assert.False(typedValueError.IsEffectivelyVisible, "The delay error is showing with nothing typed.");
+
+            var advisories = marked.Where(block => !ReferenceEquals(block, typedValueError)).ToArray();
+
+            Assert.NotEmpty(advisories);
+            Assert.All(advisories, block => Assert.Contains("statusWarning", block.Classes));
 
             // Not just the class name: the resolved colour, in both variants.
             var advisory = DesignTokens.Resolve("StatusAdvisoryTextBrush", variant);
             var error = DesignTokens.Resolve("StatusErrorTextBrush", variant);
 
-            Assert.All(marked, block => Assert.Equal(advisory, block.Foreground));
-            Assert.All(marked, block => Assert.NotEqual(error, block.Foreground));
+            Assert.All(advisories, block => Assert.Equal(advisory, block.Foreground));
+            Assert.All(advisories, block => Assert.NotEqual(error, block.Foreground));
         }
 
         [AvaloniaFact]
-        public void TheMacroTabsMarkup_BindsEveryBudgetMeterToAmberAndNeitherFileNamesAnErrorRamp()
+        public void TheMacroPanelsMarkup_BindsEveryBudgetMeterToAmberAndNeitherFileNamesAnErrorRamp()
         {
             // The meters only carry the class while a budget is actually over, so no rendered scene
             // of a clean profile can see this. It is the flip itself: `statusError` (red) became
-            // `statusWarning` (amber) on every one, and neither the tab nor the editor around it
+            // `statusWarning` (amber) on every one, and neither the panel nor the editor around it
             // names an error role at all — an advisory is never red, and every state this screen
             // reports is an advisory.
             //
-            // The meters live in Views/MacroLibraryView.axaml since issue #93 turned the Macros tab
-            // into a library; the editor is still swept for the error ramp, so the claim covers
-            // exactly the same screen it always did.
+            // The meters live in Views/MacroInspectorPanelView.axaml since issue #140 deleted the
+            // Macros tab and moved the last of them (MacroCountMeter) onto the rail; the editor is
+            // still swept for the error ramp, so the claim covers the same screen it always did.
             var files = AuthoredXaml.Files();
-            var panel = AuthoredXaml.WithoutComments(files["Views/MacroLibraryView.axaml"]);
+            var panel = AuthoredXaml.WithoutComments(files["Views/MacroInspectorPanelView.axaml"]);
             var editor = AuthoredXaml.WithoutComments(files["Views/KeyboardEditorView.axaml"]);
 
-            var meters = new[] { "LayoutKeystrokeMeter", "MacroLengthMeter", "MacroCountMeter" };
+            // All FOUR of the panel's footer meters, the fourth being #140's own.
+            var meters = new[] { "SpeedMeter", "MacroLengthMeter", "LayoutKeystrokeMeter", "MacroCountMeter" };
 
             foreach (var meter in meters)
             {
@@ -509,17 +526,17 @@ namespace KinesisEdit.Tests.Design
                     StringComparison.Ordinal);
             }
 
-            // ...and the per-row length, which is the same rule stated once per macro.
-            Assert.Contains(
-                "Classes.statusWarning=\"{Binding IsOverBudget}\"",
-                panel,
-                StringComparison.Ordinal);
+            // The editor around them names no error role at all.
+            Assert.DoesNotContain("statusError", editor, StringComparison.Ordinal);
+            Assert.DoesNotContain("StatusError", editor, StringComparison.Ordinal);
 
-            foreach (var xaml in new[] { panel, editor })
-            {
-                Assert.DoesNotContain("statusError", xaml, StringComparison.Ordinal);
-                Assert.DoesNotContain("StatusError", xaml, StringComparison.Ordinal);
-            }
+            // The panel names it EXACTLY ONCE, and not on an advisory: the composer's §11.3
+            // message for a millisecond value the user typed outside 1-999. A rejected input is a
+            // failure, a budget is a report, and the count is pinned so a budget cannot quietly
+            // rejoin the error ramp.
+            Assert.Equal(1, panel.Split("statusError", StringSplitOptions.None).Length - 1);
+            Assert.Contains("Text=\"{Binding StepDelayError}\"", panel, StringComparison.Ordinal);
+            Assert.DoesNotContain("StatusError", panel, StringComparison.Ordinal);
         }
 
         [AvaloniaFact]

@@ -8,10 +8,10 @@ namespace KinesisEdit.ViewModels
     /// The one device limit that is not simply a field of <see cref="MacroCapability"/>: how many
     /// macros a profile may hold, which specs/09-firmware.md §2 lets the firmware raise.
     /// <para>
-    /// It lived on the old <c>MacroPanelViewModel</c> until issue #93 turned the Macros tab into a
-    /// library and decomposed that class. Two surfaces still ask the question — the key inspector's
-    /// Macro panel, which refuses a macro that would exceed it, and the library's own count meter —
-    /// so it is a static of its own rather than a member of either.
+    /// It lived on the old <c>MacroPanelViewModel</c> until issue #93 decomposed that class, and is
+    /// a static of its own because two answers depend on it: the key inspector's Macro panel refuses
+    /// a macro that would exceed it, and its <c>MacroCountMeter</c> reads it out. Neither may
+    /// hard-code the figure — the firmware can raise it.
     /// </para>
     /// </summary>
     public static class MacroLimits

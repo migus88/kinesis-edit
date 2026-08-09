@@ -28,7 +28,7 @@ namespace KinesisEdit.Views
     /// nothing but hand over the grid and report the seam's drag.
     /// </para>
     /// <para>
-    /// <b>A section with no rail collapses the column outright.</b> Macros and Settings take the
+    /// <b>A section with no rail collapses the column outright.</b> Settings takes the
     /// whole content width, and a fixed-pixel column keeps its width however invisible its contents
     /// are — so "hide the rail" has to be spelled on the column, not only on the control. The host
     /// control's <c>IsVisible</c> is the single source of that answer: the view gates it
@@ -135,7 +135,7 @@ namespace KinesisEdit.Views
 
             // No rail in this section: the column goes to nothing, floor and all. A fixed-pixel
             // column holds its width however invisible its contents are, so the width has to be
-            // taken off it explicitly or Macros and Settings would keep a rail-shaped hole.
+            // taken off it explicitly or the Settings tab would keep a rail-shaped hole.
             // MaxWidth is left where it is — it only caps, so it cannot hold the column open.
             if (!_railHost.IsVisible)
             {

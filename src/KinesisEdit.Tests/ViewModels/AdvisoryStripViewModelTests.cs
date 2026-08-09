@@ -45,9 +45,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(advisories.SummaryFor(EditorTab.Keys, layerIndex), strip.AdvisorySummary);
             Assert.Equal(AdvisoryText.Review(strip.AdvisoryCount), strip.ReviewCaption);
 
-            // The duplicates are the Layout tab's, so the Macros tab has nothing to say and the
-            // strip collapses — one control, one row, all four tabs.
-            strip.Project(advisories, EditorTab.Macros, layerIndex);
+            // The duplicates are the Layout tab's, so the Settings tab has nothing to say and the
+            // strip collapses — one control, one row, every tab.
+            strip.Project(advisories, EditorTab.Settings, layerIndex);
 
             Assert.Equal(0, strip.AdvisoryCount);
             Assert.Equal(string.Empty, strip.AdvisorySummary);
@@ -109,39 +109,107 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void ReviewN_OnTheMacrosTab_ReachesTheMacroCallbackInstead()
+        public void ReviewN_ForAMacroPanelAnchor_ReachesTheMacroCallbackInstead()
         {
-            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
-            var layer = layout.Layers[0];
-            var key = layer.Keys[TestLayouts.RgbDigitOneKeyIndex];
-            var macro = layout.CreateMacro();
-            var limit = layout.Device.Macros.MaxCoTriggersPerMacro!.Value;
-
-            // Past the co-trigger cap: a Macros-tab advisory anchored to layer + key + slot.
-            foreach (var token in new[] { "lshft", "rshft", "lctrl", "rctrl", "lalt", "ralt" }.Take(limit + 1))
-            {
-                macro.AddCoTrigger(TestLayouts.Gen1Key(token));
-            }
-
-            key.SetMacro(1, macro);
-
+            // Issue #140: the tab is no longer the discriminator. Both kinds of advisory arrive on
+            // EditorTab.Keys now, so this asserts the surface does the dispatching — a macro budget
+            // reaches the macro callback FROM THE LAYOUT TAB.
+            var layout = CreateLayoutWithAnOverCoTriggeredMacro(out var layer, out var key);
             var advisories = EditorAdvisories.Build(layout);
             var keys = new List<AdvisoryAnchor>();
             var macros = new List<AdvisoryAnchor>();
             var strip = new AdvisoryStripViewModel(keys.Add, macros.Add);
 
-            strip.Project(advisories, EditorTab.Macros, layer.Index);
+            strip.Project(advisories, EditorTab.Keys, layer);
 
-            Assert.True(strip.HasAdvisories, "The fixture produced no Macros-tab advisory.");
+            Assert.True(strip.HasAdvisories, "The fixture produced no macro advisory.");
 
             strip.ReviewAdvisoriesCommand.Execute(null);
 
             var anchor = Assert.Single(macros);
 
             Assert.Empty(keys);
-            Assert.Equal(EditorTab.Macros, anchor.Tab);
-            Assert.Equal(key.Index, anchor.KeyIndex);
+            Assert.Equal(EditorTab.Keys, anchor.Tab);
+            Assert.Equal(AdvisorySurface.MacroPanel, anchor.Surface);
+            Assert.Equal(key, anchor.KeyIndex);
             Assert.Equal(1, anchor.MacroIndex);
+        }
+
+        [Fact]
+        public void ReviewN_OnTheLayoutTab_SplitsTheTwoKindsByTheirSurfaceAndNotByTheTab()
+        {
+            // Both kinds on one tab, in one walk: the board's duplicate-token notes reach key
+            // selection and the macro budget reaches the Macro panel. Nothing but the anchor's own
+            // Surface tells them apart now, so this is the case that pins the split.
+            var layout = CreateLayoutWithAnOverCoTriggeredMacro(out var layerIndex, out var macroKey);
+            var layer = layout.Layers[layerIndex];
+
+            layer.Keys[TestLayouts.RgbDigitTwoKeyIndex].Remap(layer.Keys[0].OriginalKey);
+
+            var advisories = EditorAdvisories.Build(layout);
+            var keys = new List<AdvisoryAnchor>();
+            var macros = new List<AdvisoryAnchor>();
+            var strip = new AdvisoryStripViewModel(keys.Add, macros.Add);
+
+            strip.Project(advisories, EditorTab.Keys, layerIndex);
+
+            var targets = advisories
+                .ForTab(EditorTab.Keys, layerIndex)
+                .Where(advisory => advisory.KeyIndex is not null)
+                .ToArray();
+
+            Assert.Contains(targets, advisory => advisory.Surface == AdvisorySurface.Board);
+            Assert.Contains(targets, advisory => advisory.Surface == AdvisorySurface.MacroPanel);
+
+            for (var press = 0; press < targets.Length; press++)
+            {
+                strip.ReviewAdvisoriesCommand.Execute(null);
+            }
+
+            Assert.Equal(
+                targets.Count(advisory => advisory.Surface == AdvisorySurface.MacroPanel),
+                macros.Count);
+            Assert.Equal(
+                targets.Count(advisory => advisory.Surface == AdvisorySurface.Board),
+                keys.Count);
+            Assert.All(macros, anchor => Assert.Equal(AdvisorySurface.MacroPanel, anchor.Surface));
+            Assert.All(keys, anchor => Assert.Equal(AdvisorySurface.Board, anchor.Surface));
+            Assert.Contains(macros, anchor => anchor.KeyIndex == macroKey);
+        }
+
+        [Fact]
+        public void Project_ForAFlatListMacroAdvisory_CountsItAndKeepsItOnTheMacroPanelSurface()
+        {
+            // THE CASE THE FIELD EXISTS FOR, at the strip. A flat-list board reports its macro
+            // findings with no slot at all (06 §1), so inferring the surface from
+            // `MacroIndex is not null` would call exactly these a board note — silently, on the one
+            // board nobody can open yet.
+            //
+            // The strip still SHOWS it (its count and its sentence are the section's), and it never
+            // reaches `Review N` — a flat-list finding names no position either, so `ReviewTargets`
+            // filters it out and there is nothing for the walk to select. Both halves are asserted:
+            // shown, and not selectable.
+            var layout = CreateFlatListLayoutWithAnOverCoTriggeredMacro();
+            var advisories = EditorAdvisories.Build(layout);
+            var keys = new List<AdvisoryAnchor>();
+            var macros = new List<AdvisoryAnchor>();
+            var strip = new AdvisoryStripViewModel(keys.Add, macros.Add);
+
+            var flat = Assert.Single(
+                advisories.All,
+                advisory => advisory.Surface == AdvisorySurface.MacroPanel && advisory.MacroIndex is null);
+
+            Assert.Equal(EditorTab.Keys, flat.Tab);
+            Assert.Null(flat.KeyIndex);
+
+            strip.Project(advisories, EditorTab.Keys, flat.LayerIndex);
+
+            Assert.True(strip.HasAdvisories, "The flat-list advisory was not shown by the strip.");
+
+            strip.ReviewAdvisoriesCommand.Execute(null);
+
+            Assert.Empty(keys);
+            Assert.Empty(macros);
         }
 
         [Fact]
@@ -278,6 +346,61 @@ namespace KinesisEdit.Tests.ViewModels
             layer.Keys[TestLayouts.RgbDigitOneKeyIndex].Remap(layer.Keys[0].OriginalKey);
 
             layerIndex = layer.Index;
+
+            return layout;
+        }
+
+        /// <summary>
+        /// A Freestyle Edge RGB layout whose first slot macro is past the device's co-trigger cap —
+        /// the cheapest fixture that anchors a <see cref="AdvisorySurface.MacroPanel"/> advisory to
+        /// a layer, a key <b>and</b> a slot.
+        /// </summary>
+        private static KeyboardLayout CreateLayoutWithAnOverCoTriggeredMacro(out int layerIndex, out int keyIndex)
+        {
+            var layout = KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb);
+            var layer = layout.Layers[0];
+            var key = layer.Keys[TestLayouts.RgbDigitOneKeyIndex];
+            var macro = layout.CreateMacro();
+            var limit = layout.Device.Macros.MaxCoTriggersPerMacro!.Value;
+
+            foreach (var token in new[] { "lshft", "rshft", "lctrl", "rctrl", "lalt", "ralt" }.Take(limit + 1))
+            {
+                macro.AddCoTrigger(TestLayouts.Gen1Key(token));
+            }
+
+            key.SetMacro(1, macro);
+
+            layerIndex = layer.Index;
+            keyIndex = key.Index;
+
+            return layout;
+        }
+
+        /// <summary>
+        /// An Advantage 360 layout — the one board that keeps its macros in a flat list (06 §1) —
+        /// with one macro past the co-trigger cap. <c>Validate()</c> anchors a flat-list finding
+        /// with neither a key nor a slot, which is exactly the shape
+        /// <see cref="AdvisorySurface"/> exists to keep off the board's selection path.
+        /// </summary>
+        private static KeyboardLayout CreateFlatListLayoutWithAnOverCoTriggeredMacro()
+        {
+            var layout = KeyboardLayout.Create(DeviceId.Advantage360);
+
+            Assert.True(layout.UsesFlatMacroList, "The Advantage 360 stopped using the flat macro list.");
+
+            var macro = layout.CreateMacro();
+            var limit = layout.Device.Macros.MaxCoTriggersPerMacro!.Value;
+
+            macro.LayerIndex = layout.Layers[0].Index;
+            macro.TriggerKey = TestLayouts.Gen1Key("f1").Code;
+            macro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("a")));
+
+            foreach (var token in new[] { "lshft", "rshft", "lctrl", "rctrl", "lalt", "ralt" }.Take(limit + 1))
+            {
+                macro.AddCoTrigger(TestLayouts.Gen1Key(token));
+            }
+
+            layout.AddMacro(macro);
 
             return layout;
         }
