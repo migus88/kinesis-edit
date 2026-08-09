@@ -164,9 +164,16 @@ namespace KinesisEdit.Tests.Design
         /// <summary>
         /// The record dot is an <c>Ellipse</c> for the same reason, and the button is the app's red
         /// one — <c>handoff.md:82</c> gives that hue to Record as well as to Discard.
+        /// <para>
+        /// There are <b>two</b> of them since issue #139 and they arm different things: the Sequence
+        /// header's runs a take until it is stopped and appends at the end, the composer's takes
+        /// exactly one keystroke and writes it onto the selected step. Both are asserted here, and
+        /// the pair being distinct commands is the assertion — a second button wired to the first's
+        /// command would render identically and quietly turn the single shot into a take.
+        /// </para>
         /// </summary>
         [AvaloniaFact]
-        public async Task TheRecordButton_CarriesTheDrawnDotAndTheRedTheme()
+        public async Task BothRecordButtons_CarryTheDrawnDotAndTheRedTheme()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -177,13 +184,21 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            var record = Assert.Single(
-                view.GetVisualDescendants().OfType<Button>(),
-                button => button.Classes.Contains("recordAction"));
+            var records = view.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.Classes.Contains("recordAction"))
+                .ToArray();
 
-            Assert.Same(panel.RecordCommand, record.Command);
-            Assert.NotNull(record.Theme);
-            Assert.Contains(record.GetVisualDescendants().OfType<Ellipse>(), dot => dot.Classes.Contains("recordDot"));
+            Assert.Equal(
+                [panel.RecordCommand, panel.RecordStepKeyCommand],
+                records.Select(record => record.Command));
+
+            Assert.All(records, record => Assert.NotNull(record.Theme));
+            Assert.All(
+                records,
+                record => Assert.Contains(
+                    record.GetVisualDescendants().OfType<Ellipse>(),
+                    dot => dot.Classes.Contains("recordDot")));
         }
 
         [AvaloniaTheory]
@@ -280,11 +295,19 @@ namespace KinesisEdit.Tests.Design
         /// The delay field <b>is</b> a real <c>TextBox</c>, and that is the opposite of the action
         /// fields' rule: focus inside one suspends the capture service, which is exactly right for a
         /// value that is typed rather than pressed (§11.3's millisecond count).
+        /// <para>
+        /// Issue #139 moved it out of the per-row delay editor — that surface is deleted — and into
+        /// the composer's <c>THEN WAIT</c> row, which is drawn at all times and <b>disabled</b>
+        /// until a step is selected. The field being present-but-dead rather than absent is what
+        /// keeps its <c>MonoValueField</c> bridge reachable on the real view, and it is the only
+        /// shape that lets a typed count take the delay off <c>random</c>: a field gated on
+        /// <c>fixed</c> already being the answer could never become live.
+        /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheDelayEditor_OpensOverARowWithATypedField(string variantName)
+        public async Task TheComposersDelayField_IsAlwaysATypedField_AndComesAliveWithTheStep(string variantName)
         {
             using var scenes = new ViewSceneFactory();
 
@@ -295,16 +318,7 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
-
-            panel.Steps.EditDelayCommand.Execute(panel.Steps.Items[0]);
-            Dispatcher.UIThread.RunJobs();
-            host.Capture();
-
-            var texts = VisibleTextsOf(view);
-
-            Assert.Contains(MacroInspectorStepsViewModel.RandomDelayCaption, texts);
-            Assert.Contains(MacroInspectorStepsViewModel.CustomDelayCaption, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.StepDelayLabel, VisibleTextsOf(view));
 
             var field = Assert.Single(
                 view.GetVisualDescendants().OfType<TextBox>(),
@@ -312,6 +326,71 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains("monoValue", field.Classes);
             Assert.NotNull(field.Theme);
+            Assert.False(field.IsEffectivelyEnabled, "The delay field is live with no step selected.");
+
+            // The three states of a step's trailing delay, and every one of them dead until the
+            // composer is pointed at a row.
+            var segments = DelaySegmentsOf(view);
+
+            Assert.Equal(
+                [MacroInspectorPanelViewModel.NoDelayCaption,
+                 MacroInspectorPanelViewModel.FixedDelayCaption,
+                 MacroInspectorStepViewModel.RandomDelayText],
+                segments.Select(segment => segment.Content as string));
+            Assert.All(segments, segment => Assert.False(segment.IsEffectivelyEnabled));
+
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(field.IsEffectivelyEnabled);
+            Assert.All(DelaySegmentsOf(view), segment => Assert.True(segment.IsEffectivelyEnabled));
+
+            // ...and it writes as it is touched, with no `Set delay` to press: the arrow clamps 0
+            // into §11.3's range, which is the route from "no delay" to a fixed one.
+            panel.IncreaseStepDelayCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(panel.Steps.Items[0].HasDelay);
+            Assert.Contains(panel.Steps.Items[0].DelayText, VisibleTextsOf(view));
+        }
+
+        /// <summary>
+        /// The firmware gate is still answered <b>in place</b> and still has its
+        /// <c>Update Firmware</c> button — the sanctioned "disabled rather than absent" that
+        /// predates the composer's own, and the one thing §11.3's deleted editor could not be
+        /// allowed to take with it. The scene's board clears the gate, so what is asserted here is
+        /// that the refusal branch is <em>rendered and hidden</em> rather than missing: a branch
+        /// that had been deleted with the editor would leave nothing to find.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task TheComposersDelay_KeepsTheFirmwareRefusalAndItsAction()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, "Dark");
+
+            host.Capture();
+
+            Assert.True(panel.Steps.AreDelaysAvailable);
+
+            var update = Assert.Single(
+                view.GetVisualDescendants().OfType<Button>(),
+                button => ReferenceEquals(button.Command, panel.Steps.UpdateFirmwareCommand));
+
+            Assert.False(update.IsEffectivelyVisible, "The gate passes, so its way out has nothing to say.");
+
+            // The refusal is the block beside it, and it rides the advisory ramp and never the
+            // error one — an old firmware is a fact about the device, not a failure
+            // (docs/app/design-system.md, the amber-never-red law).
+            var block = Assert.IsAssignableFrom<Panel>(update.GetVisualParent());
+            var refusal = Assert.Single(block.GetVisualChildren().OfType<TextBlock>());
+
+            Assert.Contains("statusWarning", refusal.Classes);
+            Assert.DoesNotContain("statusError", refusal.Classes);
         }
 
         /// <summary>
@@ -989,14 +1068,21 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// Issue #128's other half: the chord composer. It is <b>closed at rest</b> — the rail is
-        /// 300 px wide and the picker alone is most of a screenful — and discloses the eight sided
-        /// modifier marks plus the same key search the rail's Remap panel hosts.
+        /// AC A1 at the glass (issue #139): the composer is <b>always drawn</b> and every control
+        /// inside it is <b>dead until a step is selected</b> — the deliberate exception to the
+        /// design's "absent features are not shown, not disabled", recorded in
+        /// docs/app/design-system.md. A disclosure would have moved the whole rail under the
+        /// pointer on every click on a row, and an absent block would have moved it twice.
+        /// <para>
+        /// It also pins the two things #139 <em>removed</em> from this block: the eight sided
+        /// modifier toggles are four left-hand ones (AC A4), and the key search is gone — the key
+        /// is set by <c>Record</c> and by nothing else (AC A3).
+        /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheChordComposer_IsClosedAtRest_AndDisclosesItsMarksAndItsPicker(string variantName)
+        public async Task TheComposer_IsAlwaysDrawn_AndIsDeadUntilAStepIsSelected(string variantName)
         {
             using var scenes = new ViewSceneFactory();
 
@@ -1007,62 +1093,113 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, VisibleTextsOf(view));
-            Assert.Contains(MacroInspectorPanelViewModel.ComposeChordCaption, VisibleTextsOf(view));
+            var texts = VisibleTextsOf(view);
 
-            // Closed: nothing of the picker is on screen, and in particular its search field is not
-            // — the Steps panel's own "there is no visible TextBox until the delay editor opens"
-            // rule has to survive the composer being added beside it.
-            Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
-            Assert.DoesNotContain(MacroInspectorPanelViewModel.ComposerHint, VisibleTextsOf(view));
+            Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.StepKeyLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.StepModifiersLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.StepDirectionLabel, texts);
+            Assert.Contains(MacroInspectorPanelViewModel.StepDelayLabel, texts);
 
-            panel.ToggleComposerCommand.Execute(null);
+            // The sentence that explains the dead state is on screen for exactly that state.
+            Assert.False(panel.Steps.HasSelection);
+            Assert.Contains(MacroInspectorPanelViewModel.ComposerHint, texts);
 
+            // ...and with no key on the selected step there is no token to draw, so the chip is the
+            // dash rather than a purple token that names nothing.
+            Assert.False(panel.HasStepKey);
+            Assert.Contains(MacroInspectorPanelViewModel.NoStepKeyText, texts);
+
+            // THE KEY SEARCH IS GONE. #128 hosted the shared picker here — its fourth call site —
+            // and #139 took it away with the append-a-chord flow it served.
+            Assert.Empty(view.GetVisualDescendants().OfType<TokenPickerView>());
+
+            var latches = LatchesOf(view);
+            var directions = DirectionSegmentsOf(view);
+
+            // `⇧ ⌃ ⌥ ⌘` — four, left-hand, and no `R` on any of them, because left is the unmarked
+            // side and nothing right-hand is authored here any more.
+            Assert.Equal(
+                ["⇧", "⌃", "⌥", "⌘"],
+                latches.Select(latch => string.Concat(VisibleRunsOf(latch).Select(run => run.Text))));
+            Assert.Equal("Left Ctrl", latches[1].GetValue(ToolTip.TipProperty));
+
+            // The mark is set in the THIRD family: no IBM Plex face carries U+21E7 or U+2318, so a
+            // latch that lost the class would draw tofu on CI and something plausible on a Mac.
+            Assert.All(latches, latch => Assert.Contains("keySymbol", VisibleRunsOf(latch)[^1].Classes));
+
+            Assert.Equal(
+                [MacroInspectorStepViewModel.TapAction,
+                 MacroInspectorStepViewModel.PressAction,
+                 MacroInspectorStepViewModel.ReleaseAction],
+                directions.Select(segment => segment.Content as string));
+
+            // Dead, all of it — and the segments are `toggleSegment`, not the lighting tab's
+            // icon-content `directionSegment`.
+            Assert.All(latches, latch => Assert.False(latch.IsEffectivelyEnabled));
+            Assert.All(directions, segment => Assert.False(segment.IsEffectivelyEnabled));
+            Assert.All(directions, segment => Assert.Contains("toggleSegment", segment.Classes));
+            Assert.False(RecordStepKeyButtonOf(view).IsEffectivelyEnabled);
+
+            // ...except the two affordances a selection comes to exist through, which is the whole
+            // exception in AC A1.
+            Assert.True(
+                view.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => ReferenceEquals(button.Command, panel.RecordCommand))
+                    .IsEffectivelyEnabled);
+            Assert.True(
+                view.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => ReferenceEquals(button.Command, panel.InsertStepCommand))
+                    .IsEffectivelyEnabled);
+
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.Contains(MacroInspectorPanelViewModel.ComposerHint, VisibleTextsOf(view));
-            Assert.Contains(MacroInspectorPanelViewModel.HideComposerCaption, VisibleTextsOf(view));
+            // Alive, and the hint has said what it had to say.
+            Assert.DoesNotContain(MacroInspectorPanelViewModel.ComposerHint, VisibleTextsOf(view));
+            Assert.All(LatchesOf(view), latch => Assert.True(latch.IsEffectivelyEnabled));
+            Assert.All(DirectionSegmentsOf(view), segment => Assert.True(segment.IsEffectivelyEnabled));
+            Assert.True(RecordStepKeyButtonOf(view).IsEffectivelyEnabled);
 
-            var toggles = view.GetVisualDescendants()
-                .OfType<Button>()
-                .Where(button => button.DataContext is MacroChordModifier)
-                .ToArray();
+            // The chip is the selected step's own token, tinted like the row it edits. Scoped to
+            // the composer's KEY row — the step list draws the very same token in the very same
+            // face, which is the point of the tint and would make an unscoped sweep find two.
+            var keyRow = Assert.IsAssignableFrom<Panel>(RecordStepKeyButtonOf(view).GetVisualParent());
+            var chip = Assert.Single(
+                keyRow.GetVisualChildren().OfType<TextBlock>(),
+                block => block.IsEffectivelyVisible && !block.Classes.Contains("sectionLabel"));
 
-            // `⇧ R⇧ ⌃ R⌃ ⌥ R⌥ ⌘ R⌘` — the step list's own spelling, left unmarked and only the
-            // right side spelled, with the words in the tooltip because a mark alone is not
-            // accessible text.
+            Assert.Equal(panel.StepTokenText, chip.Text);
+            Assert.Contains("monoValue", chip.Classes);
             Assert.Equal(
-                ["⇧", "R⇧", "⌃", "R⌃", "⌥", "R⌥", "⌘", "R⌘"],
-                toggles.Select(toggle => string.Concat(VisibleRunsOf(toggle).Select(run => run.Text))));
-            Assert.Equal("Left Ctrl", toggles[2].GetValue(ToolTip.TipProperty));
+                DesignTokens.ResolveBrushColor("MacroStepKeyBrush", ToVariant(variantName)),
+                ((ISolidColorBrush)chip.Foreground!).Color);
 
-            // The mark is in the third family; the `R` beside it is not, because the key-symbol
-            // subset carries no Latin letters.
-            foreach (var toggle in toggles)
-            {
-                var runs = VisibleRunsOf(toggle);
-
-                Assert.Contains("keySymbol", runs[^1].Classes);
-
-                if (runs.Length > 1)
-                {
-                    Assert.DoesNotContain("keySymbol", runs[0].Classes);
-                }
-            }
-
-            // The picker is really there, and it is the app's own — one implementation, now four
-            // call sites.
-            Assert.Single(view.GetVisualDescendants().OfType<TokenPickerView>());
-            Assert.Single(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+            // MEASURED, NEVER PINNED TO A NUMBER — the Trigger strip's rule, for the same reason:
+            // eleven controls in four labelled rows is exactly the shape a font-metric shift on
+            // another machine pushes off a 300 px rail, and nothing else here would notice.
+            Assert.All(
+                LatchesOf(view)
+                    .Concat(DirectionSegmentsOf(view))
+                    .Concat(DelaySegmentsOf(view))
+                    .Cast<Control>()
+                    .Concat([chip]),
+                control => Assert.True(
+                    RightEdgeOf(control, view) <= WideRailWidth,
+                    $"'{control}' runs {RightEdgeOf(control, view) - WideRailWidth:0.#} px off the rail."));
         }
 
         /// <summary>
-        /// The whole point of the composer, at the glass: <c>Ctrl+1</c> — which macOS keeps for
-        /// itself and no capture can ever hear — authored with two clicks and written as a step.
+        /// The whole point issue #128's composer existed for, carried through its rewrite:
+        /// <c>Ctrl+1</c> — which macOS keeps for itself, so no capture can ever hear it — authored
+        /// without ever pressing it. The route changed and the answer did not: record the bare
+        /// <c>1</c>, which the window server <em>does</em> deliver, then tick <c>⌃</c> on the step.
         /// </summary>
         [AvaloniaFact]
-        public async Task TheChordComposer_AuthorsCtrl1_WithoutAKeypress()
+        public async Task TheComposer_StillAuthorsCtrl1_WithoutEverPressingIt()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -1073,48 +1210,54 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            panel.ToggleComposerCommand.Execute(null);
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
 
             Dispatcher.UIThread.RunJobs();
+            host.Capture();
 
-            var control = view.GetVisualDescendants()
-                .OfType<Button>()
-                .Single(button => button.DataContext is MacroChordModifier { Modifier: MacroModifiers.LeftControl });
+            // The composer's own Record — a SINGLE shot, armed off the panel's one sink.
+            var record = RecordStepKeyButtonOf(view);
+
+            record.Command!.Execute(record.CommandParameter);
+
+            Assert.Equal(MacroCaptureMode.SingleStep, panel.CaptureMode);
+
+            panel.ReceiveKeystroke(new CapturedKeystroke
+            {
+                Key = KeyRegistry.FindByToken("1", TokenDialect.Gen1)!,
+                PhysicalKey = PhysicalKeyCode.None
+            });
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            // One keystroke and the arm is gone: it is not a take, it is a single value.
+            Assert.Equal(MacroCaptureMode.None, panel.CaptureMode);
+            Assert.Equal("[1]", panel.Steps.Items[0].TokenText);
+
+            var control = LatchesOf(view)
+                .Single(latch => latch.DataContext is MacroChordModifier { Modifier: MacroModifiers.LeftControl });
 
             control.Command!.Execute(control.CommandParameter);
 
-            panel.ChordPicker.Query = "1";
-            panel.ChordPicker.SelectedRow = panel.ChordPicker.Rows.Single(
-                row => ReferenceEquals(row.Definition, KeyRegistry.FindByToken("1", TokenDialect.Gen1)));
-
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            var insert = Assert.Single(
-                view.GetVisualDescendants().OfType<Button>(),
-                button => button.IsEffectivelyVisible
-                          && ReferenceEquals(button.Command, panel.InsertChordCommand));
+            var step = panel.Steps.Items[0];
 
-            insert.Command!.Execute(null);
-
-            Dispatcher.UIThread.RunJobs();
-            host.Capture();
-
-            var step = Assert.Single(panel.Steps.Items, item => item.TokenText == "[1]");
-
+            Assert.Equal("[1]", step.TokenText);
             Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(step.Modifiers).Symbol);
             Assert.Contains("[1]", VisibleTextsOf(view));
         }
 
         /// <summary>
-        /// The composer's picker is the fourth call site of one control, and the rail refreshes
-        /// every panel it holds on every position — so the composer is folded away on each of them.
-        /// Issue #133: folding away a composer that is already shut used to re-run the chord
-        /// picker's whole filter, which was the third rebuild of a couple of hundred row view models
-        /// on one click on the board.
+        /// The composer edits the selected step, so moving the rail to another key has to take the
+        /// selection — and any <c>＋</c> placeholder standing on it — with it. A placeholder that
+        /// survived would point at an index in a macro that is no longer the one under edit, and
+        /// the next captured key would land in the wrong step of the wrong macro.
         /// </summary>
         [AvaloniaFact]
-        public async Task MovingToAnotherKey_FoldsTheComposerWithoutRebuildingItsPicker()
+        public async Task MovingToAnotherKey_DropsTheSelectionAndAnyPlaceholderWithIt()
         {
             using var scenes = new ViewSceneFactory();
 
@@ -1127,16 +1270,17 @@ namespace KinesisEdit.Tests.Design
 
             var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
 
-            Assert.False(panel.IsComposerOpen);
+            panel.InsertStepCommand.Execute(null);
 
-            var rows = panel.ChordPicker.Rows;
-            var items = panel.ChordPicker.Items;
+            Assert.True(panel.Steps.HasPlaceholder);
+            Assert.True(panel.Steps.HasSelection);
+            Assert.True(panel.IsComposerEnabled);
 
             editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitTwoKeyIndex));
 
-            Assert.False(panel.IsComposerOpen);
-            Assert.Same(rows, panel.ChordPicker.Rows);
-            Assert.Same(items, panel.ChordPicker.Items);
+            Assert.False(panel.Steps.HasPlaceholder);
+            Assert.False(panel.Steps.HasSelection);
+            Assert.False(panel.IsComposerEnabled);
         }
 
         /// <summary>
@@ -1252,6 +1396,58 @@ namespace KinesisEdit.Tests.Design
                     .OfType<StackPanel>()
                     .Where(mark => mark.DataContext is MacroModifierMarks.Mark)
                     .Select(mark => mark.GetValue(ToolTip.TipProperty)));
+        }
+
+        /// <summary>How far <paramref name="control"/>'s right edge reaches in the panel's own box.</summary>
+        private static double RightEdgeOf(Control control, Control view)
+        {
+            return control.TranslatePoint(new Point(control.Bounds.Width, 0), view)?.X
+                   ?? throw new InvalidOperationException("The control is not in the panel's tree.");
+        }
+
+        /// <summary>The composer's four modifier latches, in 05 §5.1's table order.</summary>
+        private static Button[] LatchesOf(Control view)
+        {
+            return ComposerControls<MacroChordModifier>(view);
+        }
+
+        /// <summary>The composer's <c>tap</c> / <c>press</c> / <c>release</c> segments.</summary>
+        private static Button[] DirectionSegmentsOf(Control view)
+        {
+            return ComposerControls<MacroStepDirection>(view);
+        }
+
+        /// <summary>The composer's <c>none</c> / <c>fixed</c> / <c>random</c> segments.</summary>
+        private static Button[] DelaySegmentsOf(Control view)
+        {
+            return ComposerControls<MacroStepDelayOption>(view);
+        }
+
+        /// <summary>
+        /// The composer's own single-shot <c>Record</c> — told from the Sequence header's take by
+        /// the command it runs, which is the only thing that distinguishes two red buttons whose
+        /// captions agree at rest.
+        /// </summary>
+        private static Button RecordStepKeyButtonOf(Control view)
+        {
+            var panel = (MacroInspectorPanelViewModel)view.DataContext!;
+
+            return Assert.Single(
+                view.GetVisualDescendants().OfType<Button>(),
+                button => ReferenceEquals(button.Command, panel.RecordStepKeyCommand));
+        }
+
+        /// <summary>
+        /// The buttons the composer generated for one of its immutable option types. Found by
+        /// <c>DataContext</c> rather than by class: all three wear <c>toggleSegment</c>, so a class
+        /// sweep would return the whole composer plus the Trigger strip's latches.
+        /// </summary>
+        private static Button[] ComposerControls<TOption>(Control view)
+        {
+            return view.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.DataContext is TOption)
+                .ToArray();
         }
 
         /// <summary>The visible text runs of a control, in tree order.</summary>

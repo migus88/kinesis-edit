@@ -57,9 +57,10 @@ namespace KinesisEdit.ViewModels
     /// baseline is taken in <see cref="Refresh"/> and <b>only when the key identity changed</b> —
     /// an unconditional snapshot would be overwritten by the very edit the user wants undone.</para>
     ///
-    /// <para><b>It has a second way in, which needs no keypress at all</b> — the chord composer of
-    /// <c>MacroInspectorPanelViewModel.Composer.cs</c> (issue #128). Split into a partial for the
-    /// same reason <c>KeyboardEditorViewModel.Inspector.cs</c> was: this file is already long and
+    /// <para><b>It edits the step that is selected</b> — the composer of
+    /// <c>MacroInspectorPanelViewModel.Composer.cs</c> and <c>.ComposerDelay.cs</c> (issue #139,
+    /// replacing #128's append-a-chord strip). Split into partials for the same reason
+    /// <c>KeyboardEditorViewModel.Inspector.cs</c> was: this file is already long and
     /// docs/guides/Coding Conventions.md forbids growing it into a god class.</para>
     /// </summary>
     public sealed partial class MacroInspectorPanelViewModel : KeyInspectorPanelViewModel, IKeystrokeSink
@@ -106,19 +107,36 @@ namespace KinesisEdit.ViewModels
         public const string RecordingBannerFormat =
             "Recording into step {0} — your typing goes here, not into the app. Click Stop, or anywhere else, to finish.";
 
+        /// <summary>
+        /// The banner while the <b>composer</b> is armed (issue #139); <c>{0}</c> is the step the
+        /// key will land on. It is a separate sentence because the two arms mean genuinely different
+        /// things: <see cref="RecordingBannerFormat"/> is a take that runs until it is stopped and
+        /// appends at the end, while this one takes <em>exactly one</em> keystroke and writes it onto
+        /// the row the composer is pointed at. A banner that said "into step 04" while the key was
+        /// about to overwrite step 02 would be the panel lying about its own state.
+        /// </summary>
+        public const string StepCaptureBannerFormat =
+            "Recording step {0} — the next key you press becomes this step. Click Stop, or anywhere else, to cancel.";
+
         /// <summary>What the capture actually does with what it hears, stated in the panel (2i).</summary>
         public const string CaptureRule =
             "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.";
 
         /// <summary>
         /// The one thing recording cannot do, said plainly beside the rule that says what it can
-        /// (issue #128). A chord the window system keeps — <c>Ctrl+1</c> on macOS, or anything a
-        /// hotkey utility has registered — is consumed <b>above</b> the application: it is never
-        /// delivered to the window, so no handler and no local event monitor can see it or swallow
-        /// it, and no amount of capture work would change that (docs/app/keystroke-capture.md,
-        /// "Permissions and platform reach"). The sentence therefore does not apologise — it points
-        /// at <see cref="ComposeChordCaption"/>, which authors exactly those chords without pressing
-        /// them.
+        /// (issue #128, reworded for #139). A chord the window system keeps — <c>Ctrl+1</c> on
+        /// macOS, or anything a hotkey utility has registered — is consumed <b>above</b> the
+        /// application: it is never delivered to the window, so no handler and no local event
+        /// monitor can see it or swallow it, and no amount of capture work would change that
+        /// (docs/app/keystroke-capture.md, "Permissions and platform reach").
+        /// <para>
+        /// <b>The way round it survived the composer's rewrite, and the sentence had to follow it.</b>
+        /// #128 answered this with an append-a-chord strip over a key search; #139 replaced that with
+        /// a composer that edits the selected step, so the route to <c>Ctrl+1</c> is now: record the
+        /// bare <c>1</c> — which the window server <em>does</em> deliver — then tick <c>⌃</c> on the
+        /// step. What was lost is only the search-by-name route to a key, which was never what #128
+        /// was for. The sentence therefore still does not apologise; it names the two steps.
+        /// </para>
         /// <para>
         /// Drawn as its own line rather than folded into <see cref="CaptureRule"/>, which is mockup
         /// <c>2i</c>'s wording verbatim and pinned as such. Both lines sit under the record banner,
@@ -127,7 +145,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string OsReservedNote =
             "Some chords never reach this app at all — Ctrl+1, and anything a hotkey utility has claimed, "
-            + "are taken by the system first. Build those with Compose chord below.";
+            + "are taken by the system first. Record the bare key, then tick the modifiers on the step below.";
 
         /// <summary>Label of the playback-speed meter, verbatim from mockup <c>2i</c>.</summary>
         public const string SpeedMeterLabel = "Playback speed";
@@ -168,6 +186,12 @@ namespace KinesisEdit.ViewModels
             return string.Format(CultureInfo.InvariantCulture, RecordingBannerFormat, stepNumber);
         }
 
+        /// <summary>Builds the one-shot banner for the step the composer's <c>Record</c> writes onto.</summary>
+        public static string BuildStepCaptureBanner(string stepNumber)
+        {
+            return string.Format(CultureInfo.InvariantCulture, StepCaptureBannerFormat, stepNumber);
+        }
+
         /// <inheritdoc />
         public override KeyInspectorMode Mode => KeyInspectorMode.Macro;
 
@@ -181,7 +205,18 @@ namespace KinesisEdit.ViewModels
         public override string UnavailableReason => _unavailableReason;
 
         /// <inheritdoc />
-        public override bool IsRecording => _isRecording;
+        public override bool IsRecording => _captureMode != MacroCaptureMode.None;
+
+        /// <summary>
+        /// Which of the panel's two arms is live (issue #139). It is <b>one</b> field rather than
+        /// two flags and <b>one</b> sink rather than two, so "one capture owner at a time" holds by
+        /// construction: the editor's router gives an armed rail panel the keystroke ahead of
+        /// everything else (docs/app/keyboard-editor.md § Keystroke routing, branch 1), and a second
+        /// <c>IKeystrokeSink</c> on this surface would be a fourth branch that rule does not have.
+        /// The same shape <see cref="TapAndHoldPanelViewModel.ArmedField"/> uses for its two record
+        /// buttons, and for the same reason.
+        /// </summary>
+        public MacroCaptureMode CaptureMode => _captureMode;
 
         /// <summary>
         /// The rail widens from 268 px to 300 px while this panel is showing
@@ -235,11 +270,31 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether this macro fires from anywhere but the selected position.</summary>
         public bool HasAlsoOnText => _alsoOnText.Length > 0;
 
-        /// <summary>The banner shown while capture is armed, naming the step being recorded into.</summary>
-        public string RecordingBanner => BuildRecordingBanner(Steps.NextStepNumberText);
+        /// <summary>
+        /// The banner shown while capture is armed, naming the step being recorded into — the step
+        /// the <em>next</em> keystroke lands in for a run, and the step the one keystroke will be
+        /// written onto for the composer's single shot.
+        /// </summary>
+        public string RecordingBanner => _captureMode == MacroCaptureMode.SingleStep
+            ? BuildStepCaptureBanner(SelectedStepNumberText)
+            : BuildRecordingBanner(Steps.NextStepNumberText);
 
-        /// <summary>The record button's caption, which moves with <see cref="IsRecording"/>.</summary>
-        public string RecordCommandCaption => _isRecording ? RecordingCaption : RecordCaption;
+        /// <summary>
+        /// The Sequence header's record button caption. It follows the <b>run</b> arm alone: the
+        /// composer's own <c>Record</c> is a different button with a caption of its own, and a
+        /// header reading <c>Stop</c> because the composer is armed would offer to stop a take that
+        /// was never started.
+        /// </summary>
+        public string RecordCommandCaption =>
+            _captureMode == MacroCaptureMode.Run ? RecordingCaption : RecordCaption;
+
+        /// <summary>
+        /// The number of the step the composer is pointed at — what the single-shot banner names.
+        /// Falls back to the step a run would land in when nothing is selected, so the sentence is
+        /// never built around a blank.
+        /// </summary>
+        public string SelectedStepNumberText =>
+            Steps.SelectedStep?.NumberText ?? Steps.NextStepNumberText;
 
         /// <summary>The playback-speed meter, <c>3 / 5</c> (mockup <c>2i</c>).</summary>
         public MacroMeterViewModel SpeedMeter { get; }
@@ -307,10 +362,15 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand RecordCommand { get; }
 
         /// <summary>
-        /// The trailing <c>＋ insert step</c> row. It is the <em>same</em> action as <c>● Record</c>:
-        /// a step's content is a keystroke, and recording one is how it is made. Two affordances for
-        /// one action, because the mock draws both — the button over the list and the row at the end
-        /// of it — and the banner names the step either of them records into.
+        /// <c>＋ insert step</c> — since issue #139 it opens a <b>placeholder row</b> after the
+        /// selected step (at the end when nothing is selected) and selects it, so the composer below
+        /// is pointed at a step that does not exist yet. Nothing is written until a key lands on it.
+        /// <para>
+        /// It used to be the <em>same</em> action as <c>● Record</c>, which was true while the only
+        /// way to make a step was to append one by recording. It stopped being true the moment the
+        /// composer could edit a step in the middle of a macro: inserting <em>there</em> is what this
+        /// affordance is for, and appending is what the header's <c>Record</c> still does.
+        /// </para>
         /// </summary>
         public IRelayCommand InsertStepCommand { get; }
 
@@ -353,7 +413,7 @@ namespace KinesisEdit.ViewModels
         private int _speed;
         private int _repeat;
         private bool _isNamed;
-        private bool _isRecording;
+        private MacroCaptureMode _captureMode;
 
         /// <summary>
         /// Builds the panel for one open device. Everything it needs at construction is a
@@ -367,17 +427,18 @@ namespace KinesisEdit.ViewModels
         /// libraries over one layout would be two sources of truth.
         /// </para>
         /// <para>
-        /// <paramref name="recentTokens"/> is the editor's <b>one</b> session history, shared with
-        /// the rail's Remap picker and the macro-insertion modal so the chord composer's
-        /// <c>Recent</c> chip offers what the user has just been assigning. Optional, because a
-        /// panel built without one keeps a history of its own — which is what a test wants.
+        /// <b>It no longer takes the editor's <c>RecentTokenStore</c></b> (issue #139). #128's chord
+        /// composer hosted a <see cref="TokenPickerViewModel"/> and was the fourth writer to that
+        /// shared history; #139's composer sets a step's key from <c>Record</c> alone, so there is
+        /// no picker here to feed it. The chip keeps its other three writers — the rail's Remap
+        /// panel, the Tap &amp; hold panel and §11.6's modal — so nothing about it shrank except one
+        /// contributor.
         /// </para>
         /// </summary>
         public MacroInspectorPanelViewModel(
             DeviceSnapshot device,
             IUrlLauncher urlLauncher,
-            Func<MacroLibrary?> resolveLibrary,
-            RecentTokenStore? recentTokens = null)
+            Func<MacroLibrary?> resolveLibrary)
         {
             ArgumentNullException.ThrowIfNull(device);
 
@@ -395,14 +456,18 @@ namespace KinesisEdit.ViewModels
             LayoutKeystrokeMeter = new MacroMeterViewModel(LayoutKeystrokeMeterLabel);
 
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
-            InsertStepCommand = new RelayCommand(StartRecording, CanRecord);
+            InsertStepCommand = new RelayCommand(InsertPlaceholderStep, CanRecord);
 
             // The step editor writes into the macro directly; the editor's funnel is what everything
             // else hangs off, so one hop is all this needs.
             Steps.Changed += (_, _) => OnMacroWritten();
 
+            // The composer is a view of the selected step, so it follows the selection rather than
+            // being pushed at — the pointer, ⌥↑↓, a delete and a rebuild all move it.
+            Steps.SelectionChanged += (_, _) => OnSelectedStepChanged();
+
             CreateTriggerStrip(_dialect);
-            CreateComposer(_dialect, recentTokens);
+            CreateComposer();
         }
 
         /// <inheritdoc />
@@ -423,6 +488,10 @@ namespace KinesisEdit.ViewModels
                 // Anything half-recorded belongs to the position it was started on.
                 StopRecording();
 
+                // ...and so does a half-made step: an abandoned ＋ placeholder is an insertion point
+                // measured against a macro the rail is no longer pointed at.
+                Steps.DiscardPlaceholder();
+
                 // ...and so does the slot the user picked: the next position opens on whichever slot
                 // it is already carrying, not on the number chosen for the last one.
                 ResetSlotChoice();
@@ -442,10 +511,6 @@ namespace KinesisEdit.ViewModels
             RecordCommand.NotifyCanExecuteChanged();
             InsertStepCommand.NotifyCanExecuteChanged();
             ToggleCoTriggerCommand.NotifyCanExecuteChanged();
-
-            // The composer is about the position the rail is pointed at, so a new one closes it and
-            // every refresh re-asks whether it may be opened at all.
-            RefreshComposer(isNewKey);
         }
 
         /// <summary>
@@ -481,6 +546,11 @@ namespace KinesisEdit.ViewModels
 
             Message = string.Empty;
 
+            // A revert replaces the position's whole keystroke list, so a placeholder held across it
+            // would be an insertion index into a macro that no longer exists — and the composer would
+            // then be pointed at a step the user never selected.
+            Steps.DiscardPlaceholder();
+
             // The baseline carries the active slot too, so the user's pick is undone with everything
             // else — leaving it standing would pin the panel to a slot the revert just emptied.
             ResetSlotChoice();
@@ -495,44 +565,72 @@ namespace KinesisEdit.ViewModels
         /// <inheritdoc />
         public override bool IsRecordingControl(ICommand? command)
         {
-            // Both, because both arm capture: `● Record` toggles it and `＋ insert step` starts it.
-            return ReferenceEquals(command, RecordCommand) || ReferenceEquals(command, InsertStepCommand);
+            // All three, because all three arm capture: `● Record` toggles the run, `＋ insert step`
+            // starts one, and the composer's own `Record` arms the single shot. The tunnelled
+            // pointer stand-down disarms on any click that is not a claimed control, so an unclaimed
+            // one here would be stood down by the very click that armed it.
+            return ReferenceEquals(command, RecordCommand)
+                   || ReferenceEquals(command, InsertStepCommand)
+                   || ReferenceEquals(command, RecordStepKeyCommand);
         }
 
         /// <inheritdoc />
         public override void Deactivate()
         {
             StopRecording();
+
+            // The panel is being stood down — a mode switch, a tab switch, a save, or the pointer
+            // landing anywhere that is not a record control. A half-made step does not survive that
+            // any more than a half-recorded take does.
+            Steps.DiscardPlaceholder();
         }
 
         /// <inheritdoc />
-        bool IKeystrokeSink.WantsKeystrokes => _isRecording;
+        bool IKeystrokeSink.WantsKeystrokes => IsRecording;
 
         /// <summary>
-        /// Appends one captured keystroke to the macro under edit, folding the modifiers held at
-        /// that moment into the step (05 §5.1). The macro is <b>created on the first keystroke</b>
-        /// if the position had none — that is what "edited in place" means here.
+        /// Takes one captured keystroke, folding the modifiers held at that moment into the step
+        /// (05 §5.1), and does one of two things with it depending on which arm is live.
+        ///
+        /// <para><b>A run</b> (<see cref="MacroCaptureMode.Run"/>) appends it to the end and stays
+        /// armed: the banner counts up as the macro grows. The macro is <b>created on the first
+        /// keystroke</b> if the position had none — that is what "edited in place" means here.</para>
+        ///
+        /// <para><b>A single shot</b> (<see cref="MacroCaptureMode.SingleStep"/>) writes the key onto
+        /// the selected step — or turns the open <c>＋</c> placeholder into a real step carrying it —
+        /// and <b>disarms immediately</b>, before the write, exactly as
+        /// <c>RemapPanelViewModel</c> stands down before it assigns. Disarming first is what makes
+        /// the panel's own state true at the moment the editor is told about it: the write ends in a
+        /// refresh, and a refresh that found the panel still claiming to record would hand capture
+        /// straight back.</para>
         /// </summary>
         public void ReceiveKeystroke(CapturedKeystroke keystroke)
         {
             ArgumentNullException.ThrowIfNull(keystroke);
 
-            if (!_isRecording)
+            switch (_captureMode)
             {
-                return;
-            }
+                case MacroCaptureMode.Run:
+                    TryAppendKeystroke(BuildKeystroke(keystroke));
 
-            TryAppendKeystroke(BuildKeystroke(keystroke));
+                    break;
+
+                case MacroCaptureMode.SingleStep:
+                    StopRecording();
+
+                    TryWriteKeyToSelectedStep(BuildKeystroke(keystroke).Key);
+
+                    break;
+            }
         }
 
         /// <summary>
-        /// Appends one already-built keystroke to the macro under edit, creating the macro if the
-        /// position had none. It is the single write path shared by the two ways a step is made —
-        /// the captured keypress of <see cref="ReceiveKeystroke"/> and the composed chord of
-        /// <c>InsertChord</c> (issue #128) — so a step authored from the composer is indistinguishable
-        /// from a recorded one the moment it lands. False when there is no macro to write into and
-        /// none could be created (the count limit of 06 §6, or a full slot strip), which
-        /// <see cref="EnsureMacro"/> has already reported.
+        /// Appends one already-built keystroke to the <b>end</b> of the macro under edit, creating
+        /// the macro if the position had none. It is the run arm's whole write path, and it stayed
+        /// an append through issue #139 deliberately: a take that jumped to the selection would make
+        /// <c>● Record</c> mean two different things depending on where the user last clicked. False
+        /// when there is no macro to write into and none could be created (the count limit of 06 §6,
+        /// or a full slot strip), which <see cref="EnsureMacro"/> has already reported.
         /// </summary>
         private bool TryAppendKeystroke(Keystroke keystroke)
         {
@@ -580,13 +678,26 @@ namespace KinesisEdit.ViewModels
         {
             _macro = ReadMacro();
 
-            Steps.Load(_macro);
+            // The composer's selection handler is suppressed for the whole read: it normalizes the
+            // step it lands on, and normalizing is a WRITE. A refresh that wrote would write on
+            // every counter refresh, and forever — see this method's remarks.
+            _isReadingSelection = true;
+
+            try
+            {
+                Steps.Load(_macro);
+            }
+            finally
+            {
+                _isReadingSelection = false;
+            }
 
             LoadSpeedAndRepeat();
             RefreshSlots();
             RefreshTrigger();
             RefreshNames();
             RefreshMeters();
+            ReadComposerFromSelection();
 
             OnPropertyChanged(nameof(RecordingBanner));
         }
@@ -709,7 +820,11 @@ namespace KinesisEdit.ViewModels
             Message = string.Empty;
             _macro = macro;
 
-            Steps.Load(macro);
+            // Adopt, not Load: this macro was created for the write that is half-done, and Load
+            // drops the ＋ placeholder whenever the macro identity changes — which is exactly what a
+            // brand-new macro is. Dropping it here would throw away the insertion point between the
+            // two halves of one action.
+            Steps.Adopt(macro);
 
             return macro;
         }
@@ -797,9 +912,25 @@ namespace KinesisEdit.ViewModels
             return IsAvailable && _layout is not null;
         }
 
+        /// <summary>
+        /// Opens the <c>＋</c> placeholder and points the composer at it. It writes nothing and it
+        /// creates no macro: a position with none stays empty until a key really lands.
+        /// </summary>
+        private void InsertPlaceholderStep()
+        {
+            if (!CanRecord())
+            {
+                return;
+            }
+
+            Message = string.Empty;
+
+            Steps.InsertPlaceholder();
+        }
+
         private void ToggleRecording()
         {
-            if (_isRecording)
+            if (_captureMode == MacroCaptureMode.Run)
             {
                 StopRecording();
 
@@ -818,27 +949,43 @@ namespace KinesisEdit.ViewModels
 
             Message = string.Empty;
 
-            SetRecording(true);
+            SetCaptureMode(MacroCaptureMode.Run);
         }
 
         private void StopRecording()
         {
-            SetRecording(false);
+            SetCaptureMode(MacroCaptureMode.None);
         }
 
-        private void SetRecording(bool isRecording)
+        /// <summary>
+        /// Moves the one arm. Every transition announces <c>RecordingChanged</c>, because the editor
+        /// — not this panel — owns the capture service and turns it on and off around the rail
+        /// (docs/app/keyboard-editor.md, invariant 4); a transition that stayed quiet would leave a
+        /// panel that believes it is recording and a service that was never started. Switching
+        /// straight from one arm to the other therefore still passes through the announcement,
+        /// which is why the caption and banner are re-raised unconditionally.
+        /// </summary>
+        private void SetCaptureMode(MacroCaptureMode mode)
         {
-            if (_isRecording == isRecording)
+            if (_captureMode == mode)
             {
                 return;
             }
 
-            _isRecording = isRecording;
+            var wasRecording = IsRecording;
 
-            OnPropertyChanged(nameof(IsRecording));
+            _captureMode = mode;
+
+            OnPropertyChanged(nameof(CaptureMode));
             OnPropertyChanged(nameof(RecordCommandCaption));
+            OnPropertyChanged(nameof(RecordStepKeyCaption));
+            OnPropertyChanged(nameof(RecordingBanner));
 
-            OnRecordingChanged();
+            if (wasRecording != IsRecording)
+            {
+                OnPropertyChanged(nameof(IsRecording));
+                OnRecordingChanged();
+            }
         }
 
         private void RefreshMeters()
@@ -1046,5 +1193,33 @@ namespace KinesisEdit.ViewModels
 
             Assigned?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// Which of the Macro panel's two record buttons is armed (issue #139).
+    ///
+    /// <para><b>It is one field, and that is the point.</b> The editor routes one captured keystroke
+    /// to exactly one consumer, and an <em>armed key-inspector panel</em> is the first branch of
+    /// three (docs/app/keyboard-editor.md § Keystroke routing). The panel is already that sink, so
+    /// the composer's one-shot capture is a second <b>mode</b> on it rather than a second
+    /// <c>IKeystrokeSink</c>: mutual exclusion then holds by construction instead of by two flags
+    /// agreeing with each other, and <c>WantsKeystrokes</c> stays a single expression.</para>
+    /// </summary>
+    public enum MacroCaptureMode
+    {
+        /// <summary>Nothing is armed; the panel is merely showing and keystrokes fall through it.</summary>
+        None = 0,
+
+        /// <summary>
+        /// The Sequence header's <c>● Record</c> — a take that runs until it is stopped, appending
+        /// every keystroke to the <b>end</b> of the macro regardless of what is selected.
+        /// </summary>
+        Run = 1,
+
+        /// <summary>
+        /// The composer's <c>Record</c> — <b>exactly one</b> keystroke, written onto the selected
+        /// step (or onto the open <c>＋</c> placeholder), disarming itself as it takes it.
+        /// </summary>
+        SingleStep = 2
     }
 }

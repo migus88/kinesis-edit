@@ -64,6 +64,18 @@ namespace KinesisEdit.Views
     /// animates — the ghost is pinned to the pointer, and a transition on its position would make it
     /// lag the very gesture it exists to show — so nothing was added to <c>Themes/Motion.axaml</c>.
     /// </para>
+    /// <para>
+    /// <b>5. The list is inside a bounded <c>ScrollViewer</c> now (issue #139), and the gesture
+    /// needed nothing for it.</b> Every coordinate here is already this panel's own —
+    /// <c>e.GetPosition(this)</c> for the threshold and the ghost, <c>InputHitTest</c> against this
+    /// panel's live tree for the drop row — so a scrolled list simply reports different positions
+    /// for the same rows. The two things that would have broken are both prevented by construction:
+    /// the ghost rides <c>DragLayer</c>, which is a sibling of the whole stack rather than a child
+    /// of the scroller, so it is never clipped or scrolled away; and a row scrolled out of the
+    /// viewport is clipped out of the hit test, which is the right answer — a drop cannot land on a
+    /// row that is not on screen. The one thing that IS new is the <c>＋</c> placeholder, which is
+    /// in no keystroke list: it neither arms a drag nor takes a drop ring.
+    /// </para>
     /// </summary>
     public partial class MacroInspectorPanelView : UserControl
     {
@@ -128,7 +140,7 @@ namespace KinesisEdit.Views
             Disarm();
 
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
-                || FindStep(e.Source as Control) is not { } step)
+                || FindStep(e.Source as Control) is not { IsPlaceholder: false } step)
             {
                 return;
             }
@@ -292,11 +304,16 @@ namespace KinesisEdit.Views
 
         /// <summary>
         /// Rings <paramref name="step"/> and un-rings whatever wore it before. The row the drag
-        /// started from is not a drop target: releasing on it moves nothing.
+        /// started from is not a drop target: releasing on it moves nothing. Neither is the
+        /// <c>＋</c> placeholder (issue #139) — it is in no keystroke list, so
+        /// <see cref="MacroInspectorStepsViewModel.MoveStep"/> refuses every reorder while one is
+        /// open, and a ring promising a landing that cannot happen is feedback that lies.
         /// </summary>
         private void ShowDropTarget(MacroInspectorStepViewModel? step)
         {
-            var target = step is null || step.Position == _dragFromPosition ? null : step;
+            var target = step is null || step.IsPlaceholder || step.Position == _dragFromPosition
+                ? null
+                : step;
 
             if (ReferenceEquals(_dropTarget, target))
             {

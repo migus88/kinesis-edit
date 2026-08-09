@@ -228,6 +228,20 @@
     <Setter Property="Size" Value="12" />
   </Style>
 
+  <!-- The step list is BOUNDED (issue #139), the same way and for the same kind of reason
+       `ScrollViewer.tokenPickerResults` above is: a macro runs to hundreds of keystrokes (06 §6),
+       and an unbounded list pushed everything under it out of the rail's own scroll. It got worse
+       when the composer became always-visible — the one control that can edit step 03 was below
+       forty rows of list, so a long macro made its own steps uneditable.
+
+       A MaxHeight rather than a Height: a three-step macro must collapse to three rows rather than
+       reserve a hole under them. 220 is roughly seven rows at the row's own 6,4 rhythm — enough
+       that a short macro never scrolls at all, and short enough that the composer and the footer
+       meters stay on screen beside it in a 300 px rail. -->
+  <Style Selector="ScrollViewer.macroStepList">
+    <Setter Property="MaxHeight" Value="220" />
+  </Style>
+
   <!-- One step row. It is a Button so the whole row is the hit target for selecting the step that
        ⌥↑↓ moves; the theme is RowButton, which already carries the selected face. -->
   <Style Selector="Button.macroStepRow">
@@ -237,16 +251,11 @@
     <Setter Property="Padding" Value="6,4" />
   </Style>
 
-  <!-- The delay editor that opens over a row — §11.3 with its window taken off. The same inset
-       block the rest of the rail states a sub-panel in, so "this is about the row above" reads
-       without a frame. -->
-  <Style Selector="Border.macroDelayEditor">
-    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
-    <Setter Property="Padding" Value="9,7" />
-  </Style>
+  <!-- `Border.macroDelayEditor` was deleted with issue #139. It framed the per-row delay editor —
+       the panel's third way to change a macro — and the composer's own `THEN WAIT` row is the only
+       delay surface now, drawn inline in the composer's `inspectorSection` rather than in a block
+       of its own. Nothing else reached for it, so the class went with its one call site rather than
+       joining `modeOption` in the orphaned column. -->
 
   <!-- ===== The Macros tab's slot cards =======================================================
        One card of mockup 1i's left half. It is the `card` surface with a selected face on top,

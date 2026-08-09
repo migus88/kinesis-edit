@@ -1,4 +1,5 @@
 using KinesisEdit.Core.Devices;
+using KinesisEdit.Core.Firmware;
 using KinesisEdit.Core.Geometry;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Input;
@@ -47,15 +48,21 @@ namespace KinesisEdit.Tests.ViewModels
                 "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.",
                 MacroInspectorPanelViewModel.CaptureRule);
 
-            // Issue #128: the honest sentence about what recording CANNOT do. It names the user's
-            // own example, it does not blame the app — the chord is taken above the application and
-            // never delivered — and it points at the composer, which is the way to author one.
+            // Issue #128's honest sentence about what recording CANNOT do, reworded for #139. It
+            // names the user's own example, it does not blame the app — the chord is taken above the
+            // application and never delivered — and it names the two steps that author one now: the
+            // bare key is recordable, and the modifiers are ticked on the step afterwards.
             Assert.Contains("Ctrl+1", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
             Assert.Contains("system", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
-            Assert.Contains(
-                MacroInspectorPanelViewModel.ComposeChordCaption,
-                MacroInspectorPanelViewModel.OsReservedNote,
-                StringComparison.Ordinal);
+            Assert.Contains("Record the bare key", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
+            Assert.Contains("tick the modifiers", MacroInspectorPanelViewModel.OsReservedNote, StringComparison.Ordinal);
+
+            // The single-shot banner is a different sentence from the run's, because it means
+            // something different: one keystroke, onto the step the composer is pointed at.
+            Assert.Equal(
+                "Recording step 02 — the next key you press becomes this step. "
+                + "Click Stop, or anywhere else, to cancel.",
+                MacroInspectorPanelViewModel.BuildStepCaptureBanner("02"));
             Assert.Equal("Playback speed", MacroInspectorPanelViewModel.SpeedMeterLabel);
             Assert.Equal("this macro", MacroInspectorPanelViewModel.MacroLengthMeterLabel);
             Assert.Equal("layout keystrokes", MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
@@ -1111,246 +1118,673 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public void IsRecordingControl_NamesTheTwoButtonsThatArmCapture_AndNothingElse()
+        public void IsRecordingControl_NamesTheThreeButtonsThatArmCapture_AndNothingElse()
         {
             // What the editor's pointer stand-down asks before it ends a recording: the press that
-            // lands on Record/Stop must not be the press that stops it.
+            // lands on Record/Stop must not be the press that stops it. Since issue #139 the
+            // composer's own Record is the third — an unclaimed one would be stood down by the very
+            // click that armed it, and the composer would never capture anything.
             var panel = Create();
 
             Assert.True(panel.IsRecordingControl(panel.RecordCommand));
             Assert.True(panel.IsRecordingControl(panel.InsertStepCommand));
+            Assert.True(panel.IsRecordingControl(panel.RecordStepKeyCommand));
             Assert.False(panel.IsRecordingControl(panel.ToggleCoTriggerCommand));
+            Assert.False(panel.IsRecordingControl(panel.ToggleChordModifierCommand));
             Assert.False(panel.IsRecordingControl(null));
         }
 
-        // ===== The chord composer (issue #128) ================================================
-        // The chords a user cannot record — `Ctrl+1` switches desktop on macOS, and a hotkey utility
-        // can claim any other — are consumed above the application and never delivered to it, so
-        // they are unreachable by capture at any price. These cover the way round that: authoring
-        // the chord instead of pressing it.
+        // ===== The composer (issue #139) ======================================================
+        // One always-present block that edits THE SELECTED STEP: its key, its held modifiers, its
+        // direction and the delay behind it. It replaced issue #128's append-a-chord strip and the
+        // standalone per-row delay editor — three ways to change a macro, none of which could change
+        // a step that already existed.
 
         [Fact]
-        public void TheComposer_IsClosedAtRest_AndOffersEverySidedModifier()
+        public void TheComposer_WithNothingSelected_IsDeadExceptTheTwoWaysToMakeASelection()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
 
-            Assert.False(scene.Panel.IsComposerOpen);
-            Assert.Equal(MacroInspectorPanelViewModel.ComposeChordCaption, scene.Panel.ComposerToggleCaption);
+            // Recording appends; it does not select. So the panel is sitting on a macro with one
+            // step and no selection — the state the whole composer is disabled in.
+            Assert.Null(scene.Panel.Steps.SelectedStep);
+            Assert.False(scene.Panel.IsComposerEnabled);
+            Assert.False(scene.Panel.IsStepKeyEnabled);
+            Assert.False(scene.Panel.AreStepModifiersEnabled);
+            Assert.False(scene.Panel.IsStepDelayEnabled);
+            Assert.False(scene.Panel.RecordStepKeyCommand.CanExecute(null));
+            Assert.All(scene.Panel.ChordModifiers, latch => Assert.False(latch.IsEnabled));
+            Assert.All(scene.Panel.StepDirections, segment => Assert.False(segment.IsEnabled));
+            Assert.All(scene.Panel.StepDelayOptions, option => Assert.False(option.IsEnabled));
 
-            // Ctrl, Shift, Alt and Cmd, each in the two spellings 05 §5.1 distinguishes. The generic
-            // codes are deliberately absent: capture always reports a side, and authoring a set that
-            // does not say which side it means would write a worse macro than recording produces.
+            // ...except these two, which are how a selection comes to exist at all.
+            Assert.True(scene.Panel.RecordCommand.CanExecute(null));
+            Assert.True(scene.Panel.InsertStepCommand.CanExecute(null));
+        }
+
+        [Fact]
+        public void TheComposer_OffersTheFourLeftHandModifiers_AndNoOthers()
+        {
+            // Authoring is left-only, exactly as the Trigger strip's three latches are (#137). A
+            // file's right-hand or generic spelling is still read and still drawn by the step row;
+            // what is refused is AUTHORING one that says less than capture already knows.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
             Assert.Equal(
                 [
                     MacroModifiers.LeftShift,
-                    MacroModifiers.RightShift,
                     MacroModifiers.LeftControl,
-                    MacroModifiers.RightControl,
                     MacroModifiers.LeftAlt,
-                    MacroModifiers.RightAlt,
-                    MacroModifiers.LeftWin,
-                    MacroModifiers.RightWin
+                    MacroModifiers.LeftWin
                 ],
-                scene.Panel.ChordModifiers.Select(modifier => modifier.Modifier));
+                scene.Panel.ChordModifiers.Select(latch => latch.Modifier));
 
-            Assert.All(scene.Panel.ChordModifiers, modifier => Assert.False(modifier.IsOn));
-
-            // Left is the unmarked side; only the right-hand four spell an `R`.
-            Assert.Equal(4, scene.Panel.ChordModifiers.Count(modifier => modifier.HasSide));
+            // Left is the unmarked side, so no latch here draws an `R`.
+            Assert.All(scene.Panel.ChordModifiers, latch => Assert.False(latch.HasSide));
         }
 
         [Fact]
-        public void TheComposer_InsertsTheTickedModifiersWithTheChosenKey()
+        public void SelectingAStep_SeedsTheComposerFromIt()
         {
-            // THE USER'S OWN EXAMPLE. `Ctrl+1` cannot be recorded on macOS at any price — the window
-            // server switches desktop and the app is never told — so this is the case the whole
-            // feature exists for, and it is authored without a keypress.
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
-            scene.PickChordKey("1");
+            scene.Record("a", "b");
+            scene.SelectStep(1);
 
-            Assert.True(scene.Panel.InsertChordCommand.CanExecute(null));
-
-            scene.Panel.InsertChordCommand.Execute(null);
-
-            var keystroke = Assert.Single(scene.CurrentMacro!.Keystrokes);
-
-            Assert.Equal("1", keystroke.Key.GetToken(TokenDialect.Gen1));
-            Assert.Equal(MacroModifiers.LeftControl, keystroke.Modifiers);
-
-            // ...and the step list shows it exactly as a recorded chord would: `[1] ⌃ held`.
-            var step = Assert.Single(scene.Panel.Steps.Items);
-
-            Assert.Equal("[1]", step.TokenText);
-            Assert.Equal(MacroInspectorStepViewModel.HeldAction, step.ActionText);
-            Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(step.Modifiers).Symbol);
+            Assert.True(scene.Panel.IsComposerEnabled);
+            Assert.True(scene.Panel.HasStepKey);
+            Assert.Equal("[b]", scene.Panel.StepTokenText);
+            Assert.Equal(MacroInspectorStepViewModel.TapAction, scene.SelectedDirection().Caption);
+            Assert.Equal(MacroStepDelayMode.None, scene.SelectedDelayMode());
         }
 
         [Fact]
-        public void TheComposer_CreatesTheMacroOnTheFirstInsert_JustAsRecordingDoes()
+        public void AModifierLatch_WritesTheStepImmediately_AndDirtiesTheSession()
         {
-            // "There is no Assign button" cuts both ways: the composer is a way of making a step, so
-            // it has to be able to make the FIRST one on a position that carries no macro at all.
+            // There is no Apply here, deliberately: every control writes through the panel's own
+            // OnMacroWritten hop, so the session goes dirty exactly as a recorded step does.
+            var scene = new Scene(this);
+            var assigned = 0;
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+
+            Assert.Equal(MacroModifiers.LeftControl, scene.CurrentMacro!.Keystrokes[0].Modifiers);
+            Assert.Equal(MacroInspectorStepViewModel.HeldAction, scene.Panel.Steps.Items[0].ActionText);
+            Assert.True(scene.FindChordModifier(MacroModifiers.LeftControl).IsOn);
+            Assert.True(assigned > 0);
+
+            scene.TickChordModifier(MacroModifiers.LeftControl);
+
+            Assert.Equal(MacroModifiers.None, scene.CurrentMacro.Keystrokes[0].Modifiers);
+        }
+
+        [Fact]
+        public void TheChordGuard_ClearsTheDirectionBothInTheModelAndInTheControl()
+        {
+            // 05 §5.8: a modified keystroke's direction is discarded on the way to the file, so a
+            // chord cannot also be a press. Ticking a modifier therefore WRITES UpDown = None and
+            // both segments go dead — and unticking the last one must NOT bring the old direction
+            // back, which is exactly what merely masking it would do.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.SetDirection(KeyDirection.Down);
+
+            Assert.Equal(KeyDirection.Down, scene.CurrentMacro!.Keystrokes[0].UpDown);
+            Assert.Equal(MacroInspectorStepViewModel.PressAction, scene.Panel.Steps.Items[0].ActionText);
+
+            scene.TickChordModifier(MacroModifiers.LeftShift);
+
+            Assert.Equal(KeyDirection.None, scene.CurrentMacro.Keystrokes[0].UpDown);
+            Assert.False(scene.FindDirection(KeyDirection.Down).IsEnabled);
+            Assert.False(scene.FindDirection(KeyDirection.Up).IsEnabled);
+
+            // `tap` stays live: the step IS a tap now, and saying so is not a lie.
+            Assert.True(scene.FindDirection(KeyDirection.None).IsEnabled);
+
+            scene.TickChordModifier(MacroModifiers.LeftShift);
+
+            Assert.Equal(KeyDirection.None, scene.CurrentMacro.Keystrokes[0].UpDown);
+            Assert.True(scene.FindDirection(KeyDirection.Down).IsEnabled);
+            Assert.Equal(MacroInspectorStepViewModel.TapAction, scene.Panel.Steps.Items[0].ActionText);
+        }
+
+        [Fact]
+        public void OnAStepWhoseKeyIsAModifier_TheDirectionStaysLiveAndTheLatchesGoDead()
+        {
+            // The exception 05 §5.8 makes, and its consequence: Keystroke drops any modifier
+            // assigned to a modifier key, so a live latch there would be a control that visibly
+            // does nothing.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("lshft");
+            scene.SelectStep(0);
+
+            Assert.All(scene.Panel.ChordModifiers, latch => Assert.False(latch.IsEnabled));
+            Assert.False(scene.Panel.AreStepModifiersEnabled);
+            Assert.True(scene.FindDirection(KeyDirection.Down).IsEnabled);
+            Assert.True(scene.FindDirection(KeyDirection.Up).IsEnabled);
+
+            scene.SetDirection(KeyDirection.Up);
+
+            Assert.Equal(KeyDirection.Up, scene.CurrentMacro!.Keystrokes[0].UpDown);
+            Assert.Equal(MacroInspectorStepViewModel.ReleaseAction, scene.Panel.Steps.Items[0].ActionText);
+        }
+
+        [Theory]
+        [InlineData(MacroModifiers.RightShift, MacroModifiers.LeftShift)]
+        [InlineData(MacroModifiers.RightControl, MacroModifiers.LeftControl)]
+        [InlineData(MacroModifiers.Shift, MacroModifiers.LeftShift)]
+        [InlineData(MacroModifiers.Control, MacroModifiers.LeftControl)]
+        public void SelectingAStep_NormalizesItsModifiersToTheLeftHandSpelling(
+            MacroModifiers stored,
+            MacroModifiers expected)
+        {
+            // A DELIBERATE write from a click, and the one difference from the Trigger strip beside
+            // it (which is preserve-on-load / normalize-on-EDIT). The composer offers four left-hand
+            // latches, so a right-hand or generic set cannot be shown honestly by them: lighting ⇧
+            // for `RS` would make the next tick silently rewrite the other side.
+            var scene = new Scene(this);
+            var assigned = 0;
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.CurrentMacro!.Keystrokes[0].Modifiers = stored;
+            scene.Panel.Steps.RefreshFromModel();
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.SelectStep(0);
+
+            Assert.Equal(expected, scene.CurrentMacro.Keystrokes[0].Modifiers);
+            Assert.True(scene.FindChordModifier(expected).IsOn);
+
+            // ...and it dirties the profile, which is the price of showing the truth.
+            Assert.True(assigned > 0);
+        }
+
+        [Fact]
+        public void SelectingAnAlreadyLeftHandedStep_WritesNothing()
+        {
+            var scene = new Scene(this);
+            var assigned = 0;
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.CurrentMacro!.Keystrokes[0].Modifiers = MacroModifiers.LeftAlt;
+            scene.Panel.Steps.RefreshFromModel();
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.SelectStep(0);
+
+            Assert.Equal(0, assigned);
+        }
+
+        [Fact]
+        public void ADelayOnlyRow_EnablesTheDelaySectionAndNothingElse()
+        {
+            // 06 §2.2 lets a macro open with a delay; the row stays because dropping it would edit
+            // the file behind the user's back. It has no key, so it has nothing else to edit.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.CurrentMacro!.ClearKeystrokes();
+            scene.CurrentMacro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
+            scene.Panel.Steps.RefreshFromModel();
+
+            scene.SelectStep(0);
+
+            Assert.True(scene.Panel.Steps.Items[0].IsDelayOnly);
+            Assert.True(scene.Panel.IsComposerEnabled);
+            Assert.True(scene.Panel.IsStepDelayEnabled);
+            Assert.Equal(MacroStepDelayMode.Random, scene.SelectedDelayMode());
+
+            Assert.False(scene.Panel.IsStepKeyEnabled);
+            Assert.False(scene.Panel.AreStepModifiersEnabled);
+            Assert.False(scene.Panel.HasStepKey);
+            Assert.All(scene.Panel.StepDirections, segment => Assert.False(segment.IsEnabled));
+        }
+
+        [Fact]
+        public void TheDelaySection_WritesImmediatelyAndHasNoApply()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.Panel.StepDelayMilliseconds = 120;
+
+            Assert.Equal(["a", "d120"], scene.MacroTokens());
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+
+            scene.SetDelayMode(MacroStepDelayMode.Random);
+
+            Assert.Equal(["a", MacroDelayTokens.RandomToken], scene.MacroTokens());
+
+            scene.SetDelayMode(MacroStepDelayMode.None);
+
+            Assert.Equal(["a"], scene.MacroTokens());
+        }
+
+        /// <summary>
+        /// The closed loop that made a fixed delay unauthorable. <c>fixed</c> used to be read back off
+        /// the step alone, so on a step carrying no delay the field was 0, pressing <c>fixed</c> failed
+        /// validation and wrote nothing, the step still reported "no delay", and the segment never
+        /// latched — so the field it arms never came alive and no number could ever be entered.
+        /// The press is an intent: it latches and arms, and the first usable number writes.
+        /// </summary>
+        [Fact]
+        public void PressingFixed_OnAStepWithNoDelay_LatchesAndArmsTheField_ThenTheFirstNumberWrites()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            Assert.Equal(MacroStepDelayMode.None, scene.SelectedDelayMode());
+
+            scene.SetDelayMode(MacroStepDelayMode.Fixed);
+
+            // Latched and armed on the press, with §11.3's message standing in for the empty field —
+            // and nothing written, because 0 is not a delay.
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+            Assert.True(scene.Panel.IsCustomStepDelay);
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.Equal(["a"], scene.MacroTokens());
+
+            scene.Panel.StepDelayMilliseconds = 80;
+
+            Assert.Equal(["a", "d080"], scene.MacroTokens());
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+        }
+
+        /// <summary>
+        /// The millisecond field is <b>empty</b> on a step with no delay, not <c>0</c>. Zero is the
+        /// "nothing chosen" sentinel and is not itself a legal delay (§11.3's range is 1-999), so
+        /// drawing it put a number in the box that the box would reject if it were typed. It only
+        /// became worth fixing with #139: the old editor opened over a row on demand, and this
+        /// section is on screen for every selected step.
+        /// </summary>
+        [Fact]
+        public void TheMillisecondField_IsEmptyWithNoDelay_AndNeverDrawsTheZeroSentinel()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            Assert.Equal(0, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayText);
+
+            scene.Panel.StepDelayText = "80";
+
+            Assert.Equal(["a", "d080"], scene.MacroTokens());
+            Assert.Equal("80", scene.Panel.StepDelayText);
+
+            // Clearing the box is "nothing chosen" again, and reports itself rather than writing.
+            scene.Panel.StepDelayText = string.Empty;
+
+            Assert.Equal(0, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+        }
+
+        /// <summary>
+        /// Typing a number is itself a choice of <c>fixed</c>, so the strip follows it — otherwise a
+        /// delay could sit on the step while the segment above still read <c>none</c>.
+        /// </summary>
+        [Fact]
+        public void TypingANumber_LatchesFixed_WithoutEverPressingTheSegment()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+            scene.SetDelayMode(MacroStepDelayMode.Random);
+
+            Assert.Equal(MacroStepDelayMode.Random, scene.SelectedDelayMode());
+
+            scene.Panel.StepDelayMilliseconds = 60;
+
+            Assert.Equal(["a", "d060"], scene.MacroTokens());
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+            Assert.True(scene.Panel.IsCustomStepDelay);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1000)]
+        public void ATypedDelayOutsideTheRange_ReportsSpecElevenPointThreesMessageAndWritesNothing(int delay)
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.Panel.StepDelayMilliseconds = delay;
+
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.True(scene.Panel.HasStepDelayError);
+            Assert.Equal(["a"], scene.MacroTokens());
+        }
+
+        [Fact]
+        public void TheDelayArrows_ClampToTheSpecsOwnRange()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.Panel.DecreaseStepDelayCommand.Execute(null);
+
+            Assert.Equal(1, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(1, scene.Panel.MinimumDelayMilliseconds);
+            Assert.Equal(999, scene.Panel.MaximumDelayMilliseconds);
+
+            scene.Panel.StepDelayMilliseconds = 999;
+            scene.Panel.IncreaseStepDelayCommand.Execute(null);
+
+            Assert.Equal(999, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(["a", "d999"], scene.MacroTokens());
+        }
+
+        [Fact]
+        public void TheDelaySection_BelowTheFirmwareGate_RefusesInPlaceWithTheSpecMessage()
+        {
+            // 09 §2, answered in place exactly as the Tap & hold panel answers its gate — the
+            // sanctioned exception to "absent features are not shown, not disabled", because the
+            // feature is not absent, the firmware is old.
+            var scene = new Scene(this, DeviceId.FreestyleEdge, Firmware(1, 0, 339));
+
+            scene.SelectFirstMacroKey();
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            Assert.False(scene.Panel.IsStepDelayEnabled);
+            Assert.False(scene.Panel.Steps.AreDelaysAvailable);
+            Assert.Equal(
+                MacroInspectorStepsViewModel.FirmwareRefusalMessage,
+                scene.Panel.Steps.DelayUnavailableReason);
+            Assert.True(scene.Panel.Steps.CanUpdateFirmware);
+            Assert.Equal(
+                FirmwareFeatureGate.UpdateFirmwareButtonCaption,
+                scene.Panel.Steps.UpdateFirmwareCaption);
+
+            scene.Panel.StepDelayMilliseconds = 120;
+
+            Assert.Equal(["a"], scene.MacroTokens());
+        }
+
+        [Fact]
+        public void ThePlaceholder_WritesNothingUntilAKeyLands()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+            scene.SelectStep(0);
+
+            scene.Panel.InsertStepCommand.Execute(null);
+
+            Assert.True(scene.Panel.Steps.HasPlaceholder);
+            Assert.True(scene.Panel.Steps.Items[1].IsPlaceholder);
+            Assert.Equal(["a", "b"], scene.MacroTokens());
+
+            // Only the record button is live on it: a modifier with no key to qualify is meaningless.
+            Assert.True(scene.Panel.RecordStepKeyCommand.CanExecute(null));
+            Assert.False(scene.Panel.AreStepModifiersEnabled);
+            Assert.False(scene.Panel.IsStepDelayEnabled);
+
+            scene.RecordStepKey("z");
+
+            Assert.Equal(["a", "z", "b"], scene.MacroTokens());
+            Assert.False(scene.Panel.Steps.HasPlaceholder);
+        }
+
+        [Fact]
+        public void ThePlaceholder_WithNothingSelected_LandsAtTheEnd()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+
+            scene.Panel.InsertStepCommand.Execute(null);
+            scene.RecordStepKey("z");
+
+            Assert.Equal(["a", "b", "z"], scene.MacroTokens());
+        }
+
+        [Fact]
+        public void ThePlaceholder_OnAKeyWithNoMacro_MakesTheMacroOnTheFirstKey()
+        {
+            // "The first keystroke IS the macro" holds for a composed step too — there is no Assign
+            // button in this panel and none is wanted.
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
 
             Assert.Null(scene.CurrentMacro);
 
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
-            scene.PickChordKey("1");
-            scene.Panel.InsertChordCommand.Execute(null);
+            scene.Panel.InsertStepCommand.Execute(null);
+
+            Assert.True(scene.Panel.Steps.HasPlaceholder);
+            Assert.Null(scene.CurrentMacro);
+
+            scene.RecordStepKey("z");
 
             Assert.NotNull(scene.CurrentMacro);
+            Assert.Equal(["z"], scene.MacroTokens());
             Assert.Equal(1, scene.Layout.MacroCount);
         }
 
         [Fact]
-        public void TheComposer_StaysOpenAndTicked_SoARunOfChordsIsOnePickEach()
+        public void ThePlaceholder_IsDiscardedOnDeselect_OnDeactivate_AndWhenTheRailMoves()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.Record("a", "b");
+            scene.SelectStep(0);
 
-            scene.PickChordKey("1");
-            scene.Panel.InsertChordCommand.Execute(null);
+            scene.Panel.InsertStepCommand.Execute(null);
+            scene.SelectStep(2);
 
-            scene.PickChordKey("2");
-            scene.Panel.InsertChordCommand.Execute(null);
+            Assert.False(scene.Panel.Steps.HasPlaceholder);
+            Assert.Equal(["a", "b"], scene.MacroTokens());
 
-            Assert.True(scene.Panel.IsComposerOpen);
-            Assert.Equal(MacroModifiers.LeftControl, scene.Panel.ComposedModifiers);
-            Assert.Equal(["[1]", "[2]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+            scene.Panel.InsertStepCommand.Execute(null);
+            scene.Panel.Deactivate();
+
+            Assert.False(scene.Panel.Steps.HasPlaceholder);
+
+            scene.Panel.InsertStepCommand.Execute(null);
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.False(scene.Panel.Steps.HasPlaceholder);
         }
 
         [Fact]
-        public void TickingAModifierTwice_TakesItOffAgain()
+        public void TheComposersRecord_TakesExactlyOneKeystrokeAndDisarmsItself()
         {
             var scene = new Scene(this);
+            var recordingChanges = 0;
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
+            scene.Record("a", "b");
+            scene.SelectStep(0);
 
-            scene.TickChordModifier(MacroModifiers.RightAlt);
+            scene.Panel.RecordingChanged += (_, _) => recordingChanges++;
+            scene.Panel.RecordStepKeyCommand.Execute(null);
 
-            Assert.Equal(MacroModifiers.RightAlt, scene.Panel.ComposedModifiers);
-            Assert.True(scene.FindChordModifier(MacroModifiers.RightAlt).IsOn);
+            Assert.Equal(MacroCaptureMode.SingleStep, scene.Panel.CaptureMode);
+            Assert.True(scene.Panel.IsRecording);
+            Assert.True(((IKeystrokeSink)scene.Panel).WantsKeystrokes);
+            Assert.Equal(MacroInspectorPanelViewModel.RecordingCaption, scene.Panel.RecordStepKeyCaption);
 
-            scene.TickChordModifier(MacroModifiers.RightAlt);
+            // The header's own button must NOT read Stop: it would be offering to stop a take that
+            // was never started.
+            Assert.Equal(MacroInspectorPanelViewModel.RecordCaption, scene.Panel.RecordCommandCaption);
 
-            Assert.Equal(MacroModifiers.None, scene.Panel.ComposedModifiers);
-            Assert.False(scene.FindChordModifier(MacroModifiers.RightAlt).IsOn);
+            scene.Panel.ReceiveKeystroke(Captured("z"));
+
+            Assert.Equal(MacroCaptureMode.None, scene.Panel.CaptureMode);
+            Assert.False(scene.Panel.IsRecording);
+            Assert.False(((IKeystrokeSink)scene.Panel).WantsKeystrokes);
+            Assert.Equal(["z", "b"], scene.MacroTokens());
+            Assert.True(recordingChanges >= 2);
+
+            // ...and a second keystroke after it goes nowhere: the arm is one-shot.
+            scene.Panel.ReceiveKeystroke(Captured("q"));
+
+            Assert.Equal(["z", "b"], scene.MacroTokens());
         }
 
         [Fact]
-        public void TheComposer_IsReachableOnlyWhereAMacroCanBeOpen()
+        public void TheComposersRecord_ReplacesTheKeyAndKeepsTheStepsDelay()
         {
-            // The composer is a second way to make a step, so it is available exactly where making
-            // one is: nothing selected, a modifier position (05 §5.3) or a device without macros and
-            // the panel draws its refusal instead.
-            var panel = Create();
-
-            Assert.False(panel.ToggleComposerCommand.CanExecute(null));
-            Assert.False(panel.InsertChordCommand.CanExecute(null));
-
             var scene = new Scene(this);
 
-            scene.Select(TestLayouts.RgbLeftShiftKeyIndex);
-
-            Assert.False(scene.Panel.IsAvailable);
-            Assert.False(scene.Panel.ToggleComposerCommand.CanExecute(null));
-
-            scene.Panel.ToggleComposerCommand.Execute(null);
-
-            Assert.False(scene.Panel.IsComposerOpen);
-
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
 
-            Assert.True(scene.Panel.ToggleComposerCommand.CanExecute(null));
+            scene.Panel.StepDelayMilliseconds = 80;
+            scene.RecordStepKey("z");
+
+            Assert.Equal(["z", "d080"], scene.MacroTokens());
+            Assert.Equal(80, scene.Panel.Steps.Items[0].DelayMilliseconds);
         }
 
         [Fact]
-        public void InsertChord_WithNoKeyPicked_CannotRunAndWritesNothing()
+        public void TheTwoArms_AreMutuallyExclusive_BecauseTheyAreOneField()
+        {
+            // Invariant 5: one keystroke, one target. The panel is ONE IKeystrokeSink with one arm
+            // field, so "both armed" is not a state that can be reached.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            scene.Panel.RecordCommand.Execute(null);
+
+            Assert.Equal(MacroCaptureMode.Run, scene.Panel.CaptureMode);
+
+            scene.Panel.RecordStepKeyCommand.Execute(null);
+
+            Assert.Equal(MacroCaptureMode.SingleStep, scene.Panel.CaptureMode);
+
+            scene.Panel.RecordCommand.Execute(null);
+
+            Assert.Equal(MacroCaptureMode.Run, scene.Panel.CaptureMode);
+
+            // ...and pressing either one again stands it down rather than leaving a second arm up.
+            scene.Panel.RecordCommand.Execute(null);
+
+            Assert.Equal(MacroCaptureMode.None, scene.Panel.CaptureMode);
+            Assert.False(scene.Panel.IsRecording);
+        }
+
+        [Fact]
+        public void TheRunArm_StillAppendsAtTheEndRegardlessOfTheSelection()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
+            scene.Record("a", "b");
+            scene.SelectStep(0);
 
-            Assert.False(scene.Panel.HasComposedKey);
-            Assert.False(scene.Panel.InsertChordCommand.CanExecute(null));
+            scene.Record("c");
 
-            scene.Panel.InsertChordCommand.Execute(null);
+            Assert.Equal(["a", "b", "c"], scene.MacroTokens());
+        }
 
+        [Fact]
+        public void TheBanner_NamesTheStepTheComposerIsPointedAt()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b", "c");
+            scene.SelectStep(1);
+
+            scene.Panel.RecordStepKeyCommand.Execute(null);
+
+            Assert.Equal(
+                MacroInspectorPanelViewModel.BuildStepCaptureBanner("02"),
+                scene.Panel.RecordingBanner);
+        }
+
+        [Fact]
+        public void Reverting_DropsTheSelectionAndAnyPlaceholder()
+        {
+            // A revert replaces the position's whole keystroke list; a placeholder held across it
+            // would be an insertion index into a macro that no longer exists.
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+            scene.SelectStep(0);
+
+            scene.Panel.InsertStepCommand.Execute(null);
+
+            Assert.True(scene.Panel.TryRevert());
+
+            Assert.False(scene.Panel.Steps.HasPlaceholder);
+            Assert.Null(scene.Panel.Steps.SelectedStep);
+            Assert.False(scene.Panel.IsComposerEnabled);
             Assert.Null(scene.CurrentMacro);
         }
 
         [Fact]
-        public void TheComposer_ClosesAndForgetsTheChord_WhenTheSelectionMoves()
+        public void AReorder_CarriesTheSelectionWithTheStep()
         {
-            // A half-composed chord belongs to the position it was started on, exactly as a
-            // half-recorded step does — and a modifier left ticked would silently attach itself to
-            // the next chord on the next key.
+            // MoveStep rebuilds every row, so a cached "selected index" goes stale — the selection
+            // has to be re-resolved after the rebuild or the composer edits the wrong step next.
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
-            scene.PickChordKey("1");
+            scene.Record("a", "b", "c");
+            scene.SelectStep(0);
 
-            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Panel.Steps.MoveStepDownCommand.Execute(null);
 
-            Assert.False(scene.Panel.IsComposerOpen);
-            Assert.Equal(MacroModifiers.None, scene.Panel.ComposedModifiers);
-            Assert.False(scene.Panel.HasComposedKey);
-        }
-
-        [Fact]
-        public void ThePreview_ReadsBackWhatWouldBeWritten_AndNeverWhatWasMerelyTicked()
-        {
-            // 05 §5.1 attaches no modifier string to a key that is itself a modifier, and Keystroke
-            // enforces it on assignment. A preview built from the ticked set rather than from the
-            // resulting keystroke would promise a chord the file cannot hold.
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.TickChordModifier(MacroModifiers.LeftControl);
-
-            scene.PickChordKey("1");
-
-            Assert.Equal("[1]", scene.Panel.ComposedTokenText);
-            Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(scene.Panel.ComposedMarks).Symbol);
-
-            scene.PickChordKey("lshft");
-
-            Assert.Equal("[lshft]", scene.Panel.ComposedTokenText);
-            Assert.Empty(scene.Panel.ComposedMarks);
-        }
-
-        [Fact]
-        public void TheComposer_RemembersWhatItInserted_ForTheRecentChip()
-        {
-            // One store per editor, shared by every picker it hosts: a chord built here is one chip
-            // away in the rail's own Remap picker afterwards.
-            var recent = new RecentTokenStore();
-            var scene = new Scene(this, recent);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.OpenComposer();
-            scene.PickChordKey("1");
-            scene.Panel.InsertChordCommand.Execute(null);
-
-            Assert.Contains(recent.Entries, entry => entry.GetToken(TokenDialect.Gen1) == "1");
+            Assert.Equal(["b", "a", "c"], scene.MacroTokens());
+            Assert.Equal("[a]", scene.Panel.StepTokenText);
+            Assert.Same(scene.Panel.Steps.Items[1], scene.Panel.Steps.SelectedStep);
         }
 
         /// <summary>One keystroke as the capture service would hand it over.</summary>
@@ -1361,6 +1795,12 @@ namespace KinesisEdit.Tests.ViewModels
                 Key = TestLayouts.Gen1Key(token),
                 PhysicalKey = PhysicalKeyCode.None
             };
+        }
+
+        /// <summary>One firmware version, for the 09 §2 gate cases.</summary>
+        private static FirmwareState Firmware(int major, int minor, int revision)
+        {
+            return new FirmwareState { KeyboardFirmware = new FirmwareVersion(major, minor, revision) };
         }
 
         private MacroInspectorPanelViewModel Create(MacroLibrary? library = null)
@@ -1412,16 +1852,22 @@ namespace KinesisEdit.Tests.ViewModels
 
             public Scene(
                 MacroInspectorPanelViewModelTests owner,
-                RecentTokenStore? recentTokens = null,
-                DeviceId deviceId = DeviceId.FreestyleEdgeRgb)
+                DeviceId deviceId = DeviceId.FreestyleEdgeRgb,
+                FirmwareState? firmware = null)
             {
                 Device = TestDevices.CreateSnapshot(deviceId);
+
+                if (firmware is { } state)
+                {
+                    Device = Device with { Firmware = state };
+                }
+
                 Layout = KeyboardLayout.Create(deviceId);
                 Library = new MacroLibrary(Layout);
 
                 _layer = KeyboardLayerViewModel.BuildAll(Layout, ResolveVisual(deviceId, Layout), null)[0];
 
-                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library, recentTokens);
+                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library);
             }
 
             public void Select(int keyIndex)
@@ -1492,37 +1938,75 @@ namespace KinesisEdit.Tests.ViewModels
                 Panel.Deactivate();
             }
 
-            /// <summary>Discloses the chord composer through its own command, as the button does.</summary>
-            public void OpenComposer()
+            /// <summary>Points the composer at one row, through the command the pointer runs.</summary>
+            public void SelectStep(int index)
             {
-                Panel.ToggleComposerCommand.Execute(null);
+                Panel.Steps.SelectStepCommand.Execute(Panel.Steps.Items[index]);
             }
 
-            /// <summary>Ticks one modifier through the command the toggle runs.</summary>
+            /// <summary>
+            /// Arms the composer's one-shot capture and delivers one keystroke to it, exactly as the
+            /// editor's router would — the panel is the sink, so nothing is reached past.
+            /// </summary>
+            public void RecordStepKey(string token)
+            {
+                Panel.RecordStepKeyCommand.Execute(null);
+                Panel.ReceiveKeystroke(Captured(token));
+            }
+
+            /// <summary>Ticks one modifier through the command the latch runs.</summary>
             public void TickChordModifier(MacroModifiers modifier)
             {
                 Panel.ToggleChordModifierCommand.Execute(FindChordModifier(modifier));
             }
 
-            /// <summary>The toggle carrying <paramref name="modifier"/>, rebuilt on every tick.</summary>
+            /// <summary>The latch carrying <paramref name="modifier"/>, rebuilt on every change.</summary>
             public MacroChordModifier FindChordModifier(MacroModifiers modifier)
             {
-                return Panel.ChordModifiers.First(toggle => toggle.Modifier == modifier);
+                return Panel.ChordModifiers.First(latch => latch.Modifier == modifier);
+            }
+
+            /// <summary>Presses one direction segment through the command it runs.</summary>
+            public void SetDirection(KeyDirection direction)
+            {
+                Panel.SetStepDirectionCommand.Execute(FindDirection(direction));
+            }
+
+            /// <summary>The segment for <paramref name="direction"/>, rebuilt on every change.</summary>
+            public MacroStepDirection FindDirection(KeyDirection direction)
+            {
+                return Panel.StepDirections.First(segment => segment.Direction == direction);
+            }
+
+            /// <summary>Whichever direction segment is lit.</summary>
+            public MacroStepDirection SelectedDirection()
+            {
+                return Panel.StepDirections.First(segment => segment.IsOn);
+            }
+
+            /// <summary>Presses one delay segment through the command it runs.</summary>
+            public void SetDelayMode(MacroStepDelayMode mode)
+            {
+                Panel.SetStepDelayModeCommand.Execute(
+                    Panel.StepDelayOptions.First(option => option.Mode == mode));
+            }
+
+            /// <summary>Whichever delay segment is lit.</summary>
+            public MacroStepDelayMode SelectedDelayMode()
+            {
+                return Panel.StepDelayOptions.First(option => option.IsOn).Mode;
             }
 
             /// <summary>
-            /// Highlights the catalog row for <paramref name="token"/> through the picker's own
-            /// query and selection, rather than reaching past it — the picker is what the user
-            /// drives, and a test that set the definition directly would not notice a catalog that
-            /// no longer offers the key.
+            /// The macro's keystrokes as the file spells them — read off the model rather than off
+            /// the rows, because a composer that only moved the view models would pass a test
+            /// written against them.
             /// </summary>
-            public void PickChordKey(string token)
+            public IReadOnlyList<string> MacroTokens()
             {
-                var definition = TestLayouts.Gen1Key(token);
-
-                Panel.ChordPicker.Query = token;
-                Panel.ChordPicker.SelectedRow = Panel.ChordPicker.Rows.First(
-                    row => ReferenceEquals(row.Definition, definition));
+                return CurrentMacro is { } macro
+                    ? macro.Keystrokes.Select(keystroke => keystroke.Key.GetToken(TokenDialect.Gen1)).ToList()
+                    : [];
             }
 
             /// <summary>

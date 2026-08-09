@@ -13,6 +13,7 @@ using KinesisEdit.Core.Keys;
 using KinesisEdit.Input;
 using KinesisEdit.Tests.Headless;
 using KinesisEdit.Tests.Services;
+using KinesisEdit.Tests.ViewModels;
 using KinesisEdit.ViewModels;
 using KinesisEdit.Views;
 
@@ -807,6 +808,67 @@ namespace KinesisEdit.Tests.Design
         }
 
         [AvaloniaFact]
+        public async Task AltAndAnArrow_StillReordersAMacroStepFromInsideTheBoundedStepList()
+        {
+            // Issue #139 put the step list inside a fixed-height ScrollViewer, and ⌥↑↓ is the one
+            // shortcut that shortcut could have killed. Gate 3 leaves the arrows to any
+            // SelectingItemsControl in the FOCUSED ancestry, which is precisely why the list is an
+            // ItemsControl of plain buttons and not a ListBox — the header advertises ⌥↑↓ and a
+            // selecting list would swallow it. A ScrollViewer is neither a SelectingItemsControl nor
+            // a text input, so the shortcut is untouched; this drives it through the real pipeline
+            // with the focus really inside the scroller, which is the only place the claim holds or
+            // fails.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
+            var editor = (KeyboardEditorViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ThemeVariant.Dark);
+
+            host.Capture();
+
+            var panel = RecordThreeStepMacro(scenes, editor);
+
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal(["[e]", "[s]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+
+            var scroller = Assert.Single(
+                view.GetVisualDescendants().OfType<ScrollViewer>(),
+                candidate => candidate.Classes.Contains("macroStepList"));
+
+            var row = FocusAStepRow(view, scroller);
+
+            // The two halves of the claim: the focused row really is inside the new container, and
+            // nothing on the way up to the editor is a selecting control that would out-rank the
+            // shortcut at gate 3.
+            Assert.Contains(row.GetVisualAncestors().OfType<ScrollViewer>(), ancestor => ReferenceEquals(ancestor, scroller));
+            Assert.Empty(row.GetVisualAncestors()
+                .TakeWhile(ancestor => !ReferenceEquals(ancestor, view))
+                .OfType<SelectingItemsControl>());
+
+            Press(host, PhysicalKey.ArrowDown, RawInputModifiers.Alt);
+
+            Assert.Equal(["[s]", "[e]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+
+            // ...and back, from a row that is once again inside the scroller. THE RE-FOCUS IS
+            // LOAD-BEARING AND IS NOT ABOUT THE SCROLLER: MoveStep rebuilds every row, so the
+            // Button that had focus is gone from the tree and focus goes with it — after which a
+            // tunnelled key event travels only between the window and whatever holds focus, and
+            // never reaches this view's handler. That is the step list's own long-standing
+            // behaviour rather than anything the fixed height introduced; it shows up when a step
+            // is selected with the pointer and then moved twice.
+            FocusAStepRow(view, scroller);
+
+            Press(host, PhysicalKey.ArrowUp, RawInputModifiers.Alt);
+
+            Assert.Equal(["[e]", "[s]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+        }
+
+        [AvaloniaFact]
         public async Task Escape_WithAKeyListeningAndNoPanel_IsNeverAShortcutAndOnlyCancelsAsASafetyNet()
         {
             // Escape is a remappable key (invariant 6). In the app the capture service on the
@@ -835,6 +897,67 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(CapsRowKey, editor.SelectedKey!.Index);
             Assert.Equal(0, chrome.HomeCallCount);
             Assert.Null(editor.ActiveOverlay);
+        }
+
+        /// <summary>
+        /// Puts the keyboard focus on a step row <b>inside</b> the bounded list, which is the state
+        /// the gate-3 claim is about: a shortcut that survives on an empty focus proves nothing.
+        /// </summary>
+        private static Button FocusAStepRow(Control view, ScrollViewer scroller)
+        {
+            var row = scroller.GetVisualDescendants()
+                .OfType<Button>()
+                .First(button => button.Classes.Contains("macroStepRow"));
+
+            row.Focus();
+
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(row.IsFocused, "The step row did not take focus.");
+            Assert.Same(row, FocusedElement(view));
+
+            return row;
+        }
+
+        /// <summary>
+        /// Opens the rail's Macro panel over a position that can carry one and records
+        /// <c>[e] [s] [t]</c> into it through the panel's own capture path, so the list ⌥↑↓ reorders
+        /// is one the app really produced.
+        /// </summary>
+        private static MacroInspectorPanelViewModel RecordThreeStepMacro(
+            ViewSceneFactory scenes,
+            KeyboardEditorViewModel editor)
+        {
+            var layer = editor.SelectedLayer
+                ?? throw new InvalidOperationException("The editor scene rendered no layer.");
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+
+            foreach (var tab in editor.Inspector.Tabs)
+            {
+                if (tab.Mode == KeyInspectorMode.Macro)
+                {
+                    editor.Inspector.SelectModeCommand.Execute(tab);
+                }
+            }
+
+            var panel = editor.Inspector.ActivePanel as MacroInspectorPanelViewModel
+                ?? throw new InvalidOperationException("The key inspector hosts no Macro panel.");
+
+            panel.RecordCommand.Execute(null);
+
+            foreach (var token in new[] { "e", "s", "t" })
+            {
+                scenes.Capture.RaiseKeystroke(KeyRegistry.FindByToken(token, TokenDialect.Gen1)!);
+            }
+
+            // Gate 1 turns the whole grammar off while anything is capturing, so the take has to be
+            // over before a shortcut can be pressed at all.
+            panel.Deactivate();
+
+            Assert.False(editor.IsCaptureActive);
+
+            return panel;
         }
 
         /// <summary>Which raw modifier ⌘ is on the machine this suite is running on.</summary>
