@@ -1113,7 +1113,10 @@ namespace KinesisEdit.Tests.Design
             // more into the key inspector rail: `Reset Key` is its footer's `Revert key`, and
             // `Tap and Hold` is a rail panel rather than a modal. Issue #93 took `Insert Delay`:
             // §11.3 is edited in place on the rail's Macro panel, so no command is left for a
-            // button here to run. What is left is the rest of #93's — the editor-level action bar.
+            // button here to run. What is left is the rest of #93's — the editor-level action bar —
+            // plus the one thing that ARRIVED rather than left: issue #133's `Discard changes`,
+            // next to `Reset Layout` because they are neighbours in meaning and opposites in
+            // direction (a reset clears to factory defaults; a discard puts back what was loaded).
             using var scenes = new ViewSceneFactory();
 
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
@@ -1127,8 +1130,24 @@ namespace KinesisEdit.Tests.Design
             var captions = provisional.Children.OfType<Button>().Select(button => button.Content as string).ToArray();
 
             Assert.Equal(
-                new[] { "Reset Layout", "Special Action", "Export", "Import" },
+                new[]
+                {
+                    "Reset Layout",
+                    KeyboardEditorViewModel.DiscardChangesCaption,
+                    "Special Action",
+                    "Export",
+                    "Import"
+                },
                 captions);
+
+            // The new one is bound to the editor's own command, and to nothing else: the button is
+            // the only surface `Discard changes` has, so a caption with no command behind it would
+            // be a dead control nothing else could catch.
+            var discard = Assert.Single(
+                provisional.Children.OfType<Button>(),
+                button => Equals(button.Content, KeyboardEditorViewModel.DiscardChangesCaption));
+
+            Assert.Same(editor.DiscardChangesCommand, discard.Command);
 
             // And no command moved owners with it: each new home runs the editor's own instance.
             var row = Assert.Single(view.GetVisualDescendants().OfType<BoardLegendView>());

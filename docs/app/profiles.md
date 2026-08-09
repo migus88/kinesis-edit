@@ -12,6 +12,7 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Load(VDriveLocation, DeviceId, int, IVDriveFileService?)` | Reads/parses `layout<n>.txt` + `led<n>.txt` (where present) + keyboard settings into a fresh session; the trailing file service is optional and defaults to the shared real one | 03 §4.1/§4.3; 04 §4.2 |
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Save()` / `.SaveAs(int, bool)` | Validate → write layout → write led → (SaveAs+startup) update settings → message. **No eject** | 03 §5.3 |
 | `KinesisEdit.Core.Profiles` | `ProfileSession.Import(ImportedFileKind, lines)` | Replaces the session's layout **or** lighting from an imported file; writes nothing | 10 "Import"; 07 §1.4 |
+| `KinesisEdit.Core.Profiles` | `ProfileSession.RevertLayout()` / `.RevertLighting()` | Rebuilds **one** of the two files from the lines captured at `Load`, leaving the other untouched; writes nothing and reads no drive | 03 §4.1/§4.3 |
 | `KinesisEdit.Core.Profiles` | `ProfileSaveResult`, `ProfileImportResult` | Outcome records: `Success`/`Violations`/`PostSaveMessage`; `Kind`/`InvalidLines` | 03 §5.3; 04 §5 |
 | `KinesisEdit.Core.Profiles` | `ProfileReadOnlyException` | The Advantage 360 profile-0 guard | 02 "Profiles 0-9" |
 | `KinesisEdit.Core.Profiles` | `ProfileSaveMessageCatalog` | Per-device-family post-save wording (data only, like `FirmwareGateCatalog`) | 03 §5.3; 07 §1.3; 10 |
@@ -37,9 +38,19 @@ module, issue #37. Depends only on `Layouts`, `Lighting`, `Settings`, `VDrive`, 
   The first three have a **private setter**: an `Import` replaces them wholesale, so callers must
   hold the *session* and re-read them, never cache the `KeyboardLayout` reference.
 - `IsDirty` re-serializes `Layout` (+ `Lighting`) with the *same* serializers a save would use and
-  compares the lines against the lines captured right after `Load` — no bespoke model equality.
-  Because the baseline is captured by serializing the just-parsed model (not the raw file text),
-  `IsDirty` is false immediately after `Load` even for a non-canonical legacy input.
+  compares the lines against **the baseline** — no bespoke model equality. Because the baseline is
+  captured by serializing the just-parsed model (not the raw file text), `IsDirty` is false
+  immediately after `Load` even for a non-canonical legacy input.
+- **The baseline is always what is on the drive for this profile.** It is captured at `Load` and
+  **moved by a save that wrote this profile's own files** — see "Save sequence" step 5. That is what
+  makes "a profile with no changes is never rewritten" answerable: a caller that saves and asks
+  again gets false, and a second `Save()` over an untouched model writes the same bytes for nothing.
+  It does **not** move for a `SaveAs` to another slot (this profile's file was not written) and it
+  does **not** move for an `Import` (whose whole point is that the imported content is unsaved).
+  The two fields behind it are the only non-`readonly` state on the session, written from
+  `ExecuteSave` and nowhere else; `IsDirty` stays a pull.
+- **`RevertLayout()` / `RevertLighting()` throw one file's edits away** and rebuild that model from
+  the captured lines — see "Reverting one file" below.
 - `CanSave` is false only for profile 0 on a device whose `LayoutFileScheme.HasReadOnlyFactoryProfile`
   is true (the Advantage 360's factory profile, which has no on-disk file at all).
 - `Save()` saves back to `ProfileNumber`. `SaveAs(targetProfileNumber, setAsStartup)` saves to a
@@ -115,14 +126,17 @@ a synthetic device, because no shipped one produces it.
    allowCreate: true)`.
 4. If `Lighting` is not null, the matching `LedFileSerializer.SerializeXxx` → `WriteAllLines(...,
    allowCreate: true)`.
-5. If this is a `SaveAs` with `setAsStartup == true`: `_settings with { StartupProfileNumber =
+5. **The lines just written become the baseline** `IsDirty` compares against — but only when
+   `targetProfileNumber == ProfileNumber`. See the `IsDirty` bullet above for why both halves of
+   that sentence are load-bearing.
+6. If this is a `SaveAs` with `setAsStartup == true`: `_settings with { StartupProfileNumber =
    target }` (+ `LedMode = "led<target>.txt"` when the device's `SettingsCapability.LedMode` is
    `LedFileName`) saved via `SettingsService.SaveKeyboardSettings` — read-modify-write, so every
    other setting survives untouched.
-6. **Nothing.** This step used to eject the v-Drive and no longer exists (issue #131): the writes
+7. **Nothing.** This step used to eject the v-Drive and no longer exists (issue #131): the writes
    are the whole save, and the volume stays mounted until the user presses `Eject` on the device
    card. See "The service seam".
-7. `PostSaveMessage` from `ProfileSaveMessageCatalog.GetMessage(Device, targetProfileNumber,
+8. `PostSaveMessage` from `ProfileSaveMessageCatalog.GetMessage(Device, targetProfileNumber,
    isStartupProfile)`, where `isStartupProfile` is `setAsStartup || settings.StartupProfileNumber ==
    targetProfileNumber` (the settings snapshot captured at `Load`).
 
@@ -141,8 +155,8 @@ than dropped (04 §5), nothing written anywhere.
   profile-orchestrated led file throws `NotSupportedException` — defensive, since the classifier
   answers `Lighting` only for the three devices that have one.
 - The **profile-0 guard runs first**, exactly as for `Save`: the Adv360 factory profile cannot be
-  imported into either. The `IsDirty` baseline stays the one captured at `Load`, so imported content
-  is unsaved edit state and a save writes it like any other edit.
+  imported into either. An import **never moves the `IsDirty` baseline** — only a save does — so
+  imported content is unsaved edit state and a save writes it like any other edit.
 
 `Transfer.ProfileExportPlanner.Plan(session, selection)` is the read-only twin: it serializes the
 session with the *same* serializers a save uses (kept invalid lines included) and names the files
@@ -150,6 +164,51 @@ through `ProfileFileNames`, layout first. It takes the concrete `ProfileSession`
 only place the layout, the lighting model and the profile number live together — and because Core's
 three lighting models share no base type, so a caller holding `object? Lighting` could not pick a
 serializer for it.
+
+## Reverting one file — `RevertLayout` / `RevertLighting`
+
+Added for the editor's `Discard changes` ([#133](https://github.com/migus88/kinesis-edit/issues/133)),
+which is scoped to **one page of one profile**: on the Keys/Macros tabs it throws the layout edits
+away and on the Lighting tab the led ones ([keyboard-editor.md](keyboard-editor.md)).
+
+**It is `Import`'s shape from a different source.** `RevertLayout` re-parses `_originalLayoutLines`
+into a brand-new `KeyboardLayout` and puts it in place of `Layout`; `RevertLighting` re-parses
+`_originalLightingLines` through `ProfileLightingCodec` into a new `Lighting`. Same contract as an
+import, therefore, and the same warning: both replace the model **wholesale**, so a caller must hold
+the *session* and re-read `Layout`/`Lighting`/`InvalidLines` afterwards — every view model over the
+old instance is stale. "Every `Load` returns a brand-new instance" is untouched: this is not a load.
+
+Three properties are why the app-layer alternative — re-reading the drive — was rejected:
+
+- **It is scoped to one file.** A re-read is all-or-nothing and would take the other page's edits with it.
+- **It cannot diverge from the dirty baseline, because it *is* that baseline.** After
+  `RevertLayout()` the layout half of `IsDirty` is false by construction, not by luck; the same
+  serializer that captured `_originalLayoutLines` is the one `IsDirty` compares with.
+- **It needs no drive.** The lines are in memory, so a discard works over a volume that has since
+  been unmounted, where a re-read would throw.
+
+Two smaller decisions:
+
+- `InvalidLines` goes back to the **list captured at load**, not to whatever re-parsing the baseline
+  produces. The baseline was serialized *with* those lines, so the kept ones are in it and the unkept
+  ones are not (04 §5.2) — restoring the captured list is what makes the round trip exact and keeps
+  the caller's "some lines could not be applied" report saying what it said when the profile opened.
+- `RevertLighting` on a device with **no** profile-orchestrated led file is a **no-op**, where
+  `Import` throws. A revert's postcondition — "the lighting is what was loaded" — already holds
+  there, so there is nothing to refuse.
+
+**A revert restores what is on the drive**, which is the load for a profile nobody has saved and
+the last `Save` for one that has — the baseline moves with the write, so a discard can never take
+back work the user already committed, and a profile reverted straight after a save is clean.
+
+`ProfileSessionRevertTests` pins all of it over a real fixture drive: each half reverting alone and
+leaving the other edited, both together returning `IsDirty` to false, a fresh `Layout` instance, the
+invalid-line list restored, a device with no led file no-oping, a revert **after the drive folder is
+deleted**, neither file's timestamp moving, and a revert **after a save** landing on the saved state
+rather than on the loaded one. `ProfileSessionDirtyTrackingTests` carries the baseline's own four
+cases: false after a successful `Save()`, a second `Save()` writing the same bytes over a session
+that is no longer dirty, **unchanged** after a `SaveAs()` to another slot, and unchanged after a save
+validation stopped.
 
 ## Lighting dispatch — `ProfileLightingCodec`
 
@@ -182,7 +241,8 @@ one wording covers both cases.
 `ProfileSession` is sealed and opened through a static `Load`, so it cannot be substituted in a test.
 The app project therefore codes against `KinesisEdit.Services.IProfileSession` /
 `IProfileSessionFactory` — `Layout`, `Lighting`, `InvalidLines`, `ProfileNumber`, `CanSave`,
-`IsDirty`, `Save()`, `Import(kind, lines)`, `PlanExport(selection)` — implemented for real by
+`IsDirty`, `Save()`, `Import(kind, lines)`, `RevertLayout()`, `RevertLighting()`,
+`PlanExport(selection)` — implemented for real by
 `ProfileSessionAdapter` (a pure pass-through; its `PlanExport` is the one line that calls
 `ProfileExportPlanner.Plan` on the wrapped session) and `ProfileSessionFactory` (calls
 `ProfileSession.Load`, wraps the result; its one optional constructor dependency is the
@@ -196,19 +256,31 @@ even reaches Core's guard — while an export only needs a session to exist, whi
 
 **`Load` has a second consumer since issue #128**: the editor's profile drop-down calls it again, on
 the same factory, for another number, and hands the result to the same `Apply` the first load uses
-([keyboard-editor.md](keyboard-editor.md) § "The profile picker"). Two things follow that this module
-is the right place to state. The switch **writes nothing** — it is a read, so nothing here changes
-and no `Save`/`SaveAs` path is involved. And the outgoing session is simply dropped once the incoming
-one exists: `IProfileSession` is not `IDisposable`, because `ProfileSession` holds parsed lines and
-no handle, reading and writing one `IVDriveFileService` call at a time. The editor guards for the day
-that stops being true (`if (session is IDisposable)`), and the profile switch is the only path in the
-app that abandons a live session at all.
+([keyboard-editor.md](keyboard-editor.md) § "The profile picker"). The switch **writes nothing** — it
+is a read, so nothing here changes and no `Save`/`SaveAs` path is involved.
+
+**Since issue #133 the editor holds several sessions at once**, one per profile the user has visited,
+and that is worth stating here because it changes who this module's caller is. `Load` is called
+**once per profile number**, lazily, on first visit — never eagerly for all nine, because
+`IVDriveFileService.ReadAllLines` throws `FileNotFoundException` for a missing file and spec 03 §5.3
+lets a drive ship with gaps, so an eager load would need an "empty slot" concept this module does not
+have. A switch back to a visited profile calls nothing at all. `Save()` is then called once per
+**changed** session, in file order — a clean one is never called at all, so its files are never
+rewritten with the bytes they already hold — and the editor pre-validates the whole set with
+`KeyboardLayout.Validate()` — the same call `ExecuteSave` step 2 makes — before letting any of them
+write, so one over-budget profile cannot leave the earlier ones on the drive. **Nothing about that is
+this module's policy**: each session still knows only its own profile, validates it and refuses it on
+its own; the batching lives entirely in the app layer, which is where "which profiles has this user
+opened" is known. A session is now released only when the editor is disposed, and the guard for the
+day `IProfileSession` becomes `IDisposable` moved with it (`ProfileSession` still holds parsed lines
+and no handle).
 
 `IsDirty` is the toolbar `Save`'s amber and the unsaved-changes guard's question
-(`KeyboardEditorViewModel.RefreshDirtyState`), so the seam's one remaining unconsumed member is
-Core's **`SaveAs`** — the app has no Save-As, no New and no free-named backup file (see "Deliberately
-not here"), and the *settings* half of `SaveAs`'s startup pairing is reached instead through the
-Settings tab's active-profile slider ([settings.md](settings.md)).
+(`KeyboardEditorViewModel.RefreshDirtyState`, now an aggregate over every held session), so the
+seam's one remaining unconsumed member is Core's **`SaveAs`** — the app has no Save-As, no New and no
+free-named backup file (see "Deliberately not here"), and the *settings* half of `SaveAs`'s startup
+pairing is reached instead through the Settings tab's active-profile slider
+([settings.md](settings.md)).
 
 ## Deliberately not here
 

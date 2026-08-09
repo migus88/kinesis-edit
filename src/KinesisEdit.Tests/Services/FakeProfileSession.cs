@@ -56,6 +56,26 @@ namespace KinesisEdit.Tests.Services
         /// <summary>Every <see cref="Import"/>, in call order.</summary>
         public List<ImportCall> ImportCalls { get; } = [];
 
+        /// <summary>How often <see cref="RevertLayout"/> was called.</summary>
+        public int RevertLayoutCallCount { get; private set; }
+
+        /// <summary>How often <see cref="RevertLighting"/> was called.</summary>
+        public int RevertLightingCallCount { get; private set; }
+
+        /// <summary>
+        /// What <see cref="RevertLayout"/> puts into <see cref="Layout"/>. Unset, it builds a fresh
+        /// factory-default layout — a <b>different instance</b> either way, because that is the part
+        /// of the real contract the editor has to survive: reverting replaces the model, so every
+        /// layer view model over the old one is stale.
+        /// </summary>
+        public KeyboardLayout? LayoutToRevertTo { get; set; }
+
+        /// <summary>
+        /// What <see cref="RevertLighting"/> puts into <see cref="Lighting"/>. Unset, the lighting
+        /// model is left as it is — the real session's own no-op for a device with no led file.
+        /// </summary>
+        public object? LightingToRevertTo { get; set; }
+
         /// <summary>What a lighting <see cref="Import"/> puts into <see cref="Lighting"/>.</summary>
         public object? LightingToImport { get; set; }
 
@@ -67,6 +87,12 @@ namespace KinesisEdit.Tests.Services
             Layout = layout ?? throw new ArgumentNullException(nameof(layout));
         }
 
+        /// <summary>
+        /// Records the call, then models the one part of Core's save contract the editor now reads
+        /// back: <b>a successful save moves the baseline</b>, so the session reports itself clean
+        /// afterwards (issue #133). A throw and a rejected result both leave
+        /// <see cref="IsDirty"/> alone, because neither wrote anything.
+        /// </summary>
         public ProfileSaveResult Save()
         {
             SaveCallCount++;
@@ -78,7 +104,35 @@ namespace KinesisEdit.Tests.Services
                 throw SaveExceptionToThrow;
             }
 
+            if (ResultToReturn.Success)
+            {
+                IsDirty = false;
+            }
+
             return ResultToReturn;
+        }
+
+        /// <summary>
+        /// The layout half of the discard. It never touches <see cref="Lighting"/> and never
+        /// touches <see cref="IsDirty"/>: the flag is staged by the test, because a fake that
+        /// cleared it would be asserting the very thing the Core suite proves.
+        /// </summary>
+        public void RevertLayout()
+        {
+            RevertLayoutCallCount++;
+
+            Layout = LayoutToRevertTo ?? KeyboardLayout.Create(Layout.Device.Id);
+        }
+
+        /// <summary>The lighting half; it never touches <see cref="Layout"/>.</summary>
+        public void RevertLighting()
+        {
+            RevertLightingCallCount++;
+
+            if (LightingToRevertTo is not null)
+            {
+                Lighting = LightingToRevertTo;
+            }
         }
 
         public IReadOnlyList<ExportFile> PlanExport(ProfileExportSelection selection)

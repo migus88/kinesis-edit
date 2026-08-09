@@ -34,6 +34,12 @@ namespace KinesisEdit.Tests.Controls
 
         private const double HostHeight = 400;
 
+        /// <summary>
+        /// Room for <b>two</b> pictures of the same layer, one above the other. At 900 wide each is
+        /// drawn about 253 px tall, so the ordinary height fits one of them.
+        /// </summary>
+        private const double TwoBoardHostHeight = 800;
+
         /// <summary>The "s" cap of the left half — a cap that is certainly in section 0.</summary>
         private const int LeftHalfKey = 55;
 
@@ -358,6 +364,83 @@ namespace KinesisEdit.Tests.Controls
         }
 
         [AvaloniaFact]
+        public void TwoPicturesOfTheSameLayer_DisagreeAboutTheInspectorsSelection()
+        {
+            // ISSUE #133, and it is the third thing the two pictures must not agree about. The
+            // Layout tab's selected key is a fact about the KEY, so `KeyCapView` writes `.selected`
+            // on both boards — but only the board the inspector rail belongs to may DRAW it. Left
+            // ungated it painted the selected face, an accent border and the full two-tone ring on
+            // the Lighting board, over a picture whose whole subject is the key's own colour and on
+            // a tab where the selection cannot be seen, explained or moved.
+            //
+            // Same fixture as the two flags above and for the same reason: one layer view model,
+            // one set of cap view models, two pictures. A command on each, because a `Button` with
+            // none is `:disabled` and `:disabled` takes the ring anyway — a board of dead caps
+            // would pass this by accident.
+            var layer = CreateLayer();
+            var keys = new KeyboardView
+            {
+                DataContext = layer,
+                KeySelectedCommand = new RelayCommand<KeyboardKeyViewModel>(_ => { })
+            };
+            var lighting = new KeyboardView
+            {
+                DataContext = layer,
+                ShowsLighting = true,
+                KeySelectedCommand = new RelayCommand<KeyboardKeyViewModel>(_ => { })
+            };
+
+            // A fixture, not a screen; see the two cases above. Taller than the other two, because
+            // this one reads template PARTS off both boards rather than a property off each cap,
+            // and a window with room for one picture is a needless way to depend on when the second
+            // one's caps are measured.
+            var panel = new StackPanel { Children = { keys, lighting } };
+
+            using var host = ThemedHost.Show(panel, ThemeVariant.Dark, HostWidth, TwoBoardHostHeight);
+
+            // An editable position, and the SAME view model on both pictures: a locked cap answers
+            // for `.locked` as well as for the selection, and one variable per case is the point.
+            // Its own version of this claim is `KeycapThemeTests`, at the glass.
+            var keysCap = CapsOf(keys).First(cap => ((KeyboardKeyViewModel)cap.DataContext!).CanEdit);
+            var lightingCap = CapsOf(lighting).Single(cap => ReferenceEquals(cap.DataContext, keysCap.DataContext));
+
+            Assert.Same(keysCap.DataContext, lightingCap.DataContext);
+
+            ((KeyboardKeyViewModel)keysCap.DataContext!).IsSelected = true;
+
+            host.Capture();
+
+            var onKeys = ButtonOf(keysCap);
+            var onLighting = ButtonOf(lightingCap);
+            var accent = DesignTokens.Resolve("AccentBrush", ThemeVariant.Dark);
+
+            // The class is on both — it says what the key is, and the selection has to survive a
+            // trip to the Lighting tab and back.
+            Assert.Contains("selected", onKeys.Classes);
+            Assert.Contains("selected", onLighting.Classes);
+
+            // Only the Layout picture draws it: the ring, the accent border and the selected face.
+            Assert.Equal(2, RingOf(onKeys).BoxShadow.Count);
+            Assert.Equal(accent, onKeys.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("SurfaceKeySelectedBrush", ThemeVariant.Dark), onKeys.Background);
+
+            Assert.Equal(0, RingOf(onLighting).BoxShadow.Count);
+            Assert.Equal(
+                DesignTokens.Resolve("SurfaceBorderRaisedBrush", ThemeVariant.Dark),
+                onLighting.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", ThemeVariant.Dark), onLighting.Background);
+
+            // ...and clearing it clears both, because there was only ever one flag.
+            ((KeyboardKeyViewModel)keysCap.DataContext!).IsSelected = false;
+
+            host.Capture();
+
+            Assert.DoesNotContain("selected", onKeys.Classes);
+            Assert.DoesNotContain("selected", onLighting.Classes);
+            Assert.Equal(0, RingOf(onKeys).BoxShadow.Count);
+        }
+
+        [AvaloniaFact]
         public void TryFocusKey_StillReachesACapThroughTheSectionPanels()
         {
             // The extra nesting the sections introduced is exactly what a visual-descendant walk
@@ -414,6 +497,23 @@ namespace KinesisEdit.Tests.Controls
         private static IReadOnlyList<KeyCapView> CapsOf(KeyboardView board)
         {
             return board.GetVisualDescendants().OfType<KeyCapView>().ToArray();
+        }
+
+        /// <summary>The one <see cref="Button"/> a cap is built from — where its classes live.</summary>
+        private static Button ButtonOf(KeyCapView cap)
+        {
+            return cap.GetVisualDescendants().OfType<Button>().Single();
+        }
+
+        /// <summary>
+        /// The cap's inspector-selection ring, <c>Border#Ring</c> of the <c>KeyCapButton</c> theme.
+        /// Named here rather than reached through a class because the claim is about what the
+        /// SURFACE draws, and the part is where the drawing actually is; the theme's own tests own
+        /// its geometry.
+        /// </summary>
+        private static Border RingOf(Button cap)
+        {
+            return cap.GetVisualDescendants().OfType<Border>().Single(part => part.Name == "Ring");
         }
 
         private static IReadOnlyList<KeyboardPanel> PanelsOf(KeyboardView board)

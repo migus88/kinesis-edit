@@ -24,8 +24,13 @@ namespace KinesisEdit.ViewModels
     /// <para><b>It holds no command.</b> Selecting and assigning are the picker's
     /// (<see cref="TokenPickerViewModel"/>); a row that could assign itself would be a second write
     /// path into the model.</para>
+    ///
+    /// <para><b>It is one line of a flat, virtualized list</b> (issue #133) — see
+    /// <see cref="ITokenPickerItem"/>. Only the rows the viewport can show are realized, so a row
+    /// view model is now cheaper than the container that draws it, and both are built for ten rows
+    /// rather than for two hundred.</para>
     /// </summary>
-    public sealed class TokenPickerRowViewModel : ViewModelBase
+    public sealed class TokenPickerRowViewModel : ViewModelBase, ITokenPickerItem
     {
         /// <summary>What the selected row offers, beside the <c>↵</c> mark (mockup <c>1e</c>).</summary>
         public const string AssignHint = "assign";
@@ -77,6 +82,9 @@ namespace KinesisEdit.ViewModels
                 _ => string.Empty
             };
         }
+
+        /// <inheritdoc />
+        public bool IsHeader => false;
 
         /// <summary>The catalog row this one draws.</summary>
         public KeySearchEntry Entry { get; }

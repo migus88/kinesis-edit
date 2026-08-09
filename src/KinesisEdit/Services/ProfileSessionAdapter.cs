@@ -51,6 +51,18 @@ namespace KinesisEdit.Services
         }
 
         /// <inheritdoc />
+        public void RevertLayout()
+        {
+            _session.RevertLayout();
+        }
+
+        /// <inheritdoc />
+        public void RevertLighting()
+        {
+            _session.RevertLighting();
+        }
+
+        /// <inheritdoc />
         public IReadOnlyList<ExportFile> PlanExport(ProfileExportSelection selection)
         {
             return ProfileExportPlanner.Plan(_session, selection);

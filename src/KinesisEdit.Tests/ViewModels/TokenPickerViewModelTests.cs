@@ -462,6 +462,136 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void TheFlatItemList_IsEachHeaderFollowedByItsOwnRows()
+        {
+            // What the view draws. `Groups` and `Rows` are the same objects seen two other ways, so
+            // a header the list forgot, or a row drawn under the wrong caption, is a divergence
+            // between three views of one answer rather than a rendering accident.
+            var picker = Create();
+
+            var expected = new List<ITokenPickerItem>();
+
+            foreach (var group in picker.Groups)
+            {
+                expected.Add(group);
+                expected.AddRange(group.Rows);
+            }
+
+            Assert.Equal(picker.Groups.Count + picker.Rows.Count, picker.Items.Count);
+            Assert.True(
+                picker.Items.SequenceEqual(expected),
+                "The flat list is not each group's header followed by that group's own rows.");
+
+            // The two kinds say which they are; the flat list is the only place they meet.
+            Assert.All(picker.Items.OfType<TokenPickerGroupViewModel>(), header => Assert.True(header.IsHeader));
+            Assert.All(picker.Items.OfType<TokenPickerRowViewModel>(), row => Assert.False(row.IsHeader));
+        }
+
+        [Fact]
+        public void TheRowList_HoldsNoHeaders_SoArrowsWalkOnlyRealRows()
+        {
+            // ↑/↓ walk `Rows`, and the whole reason `Items` is a separate list is that `Rows` must
+            // stay free of the captions the view draws between the blocks.
+            var picker = Create();
+
+            Assert.True(picker.Groups.Count > 1, "The unfiltered catalog came back as one group.");
+            Assert.True(picker.Items.Count > picker.Rows.Count, "The flat list carries no headers at all.");
+
+            var walked = new List<TokenPickerRowViewModel>();
+
+            for (var step = 0; step < picker.Rows.Count; step++)
+            {
+                picker.SelectNextCommand.Execute(null);
+
+                var landed = picker.SelectedRow;
+
+                Assert.NotNull(landed);
+                Assert.False(landed.IsHeader);
+                Assert.Contains(landed, picker.Rows);
+
+                walked.Add(landed);
+            }
+
+            // Every row, in order, and nothing else: a walk that crossed every group boundary in
+            // the catalog without once stopping on one of them.
+            Assert.Equal(picker.Rows.Count, walked.Count);
+            Assert.True(walked.SequenceEqual(picker.Rows), "The arrow walk did not visit the rows in order.");
+        }
+
+        [Fact]
+        public void Clear_WithNothingToClear_RebuildsNothingAndNotifiesNothing()
+        {
+            // Issue #133: RemapPanelViewModel.Refresh clears the picker on every position the rail
+            // is pointed at, and Clear used to run the whole filter — one new row view model per
+            // catalog entry, a new group list, a new flat list, and the result tree the view builds
+            // from them. Selecting a key took about a second because of it.
+            var picker = Create();
+
+            var rows = picker.Rows;
+            var groups = picker.Groups;
+            var items = picker.Items;
+            var first = picker.Rows[0];
+            var changes = 0;
+
+            picker.PropertyChanged += (_, _) => changes++;
+
+            picker.Clear();
+
+            Assert.Same(rows, picker.Rows);
+            Assert.Same(groups, picker.Groups);
+            Assert.Same(items, picker.Items);
+            Assert.Same(first, picker.Rows[0]);
+
+            // Not one notification either: a binding that re-evaluates is a tree that re-realizes.
+            Assert.Equal(0, changes);
+        }
+
+        [Fact]
+        public void Clear_WithAHighlightAndNoQuery_DropsTheHighlightWithoutRebuildingTheRows()
+        {
+            // The stale-highlight case Clear exists for. It still has to go — ↵ must not assign an
+            // action the user chose for a different key — but the rows it was chosen from are the
+            // rows a rebuild would have arrived at, so they stay.
+            var picker = Create();
+
+            var rows = picker.Rows;
+            var chosen = picker.Rows[3];
+
+            picker.SelectRowCommand.Execute(chosen);
+
+            Assert.True(chosen.IsSelected);
+
+            picker.Clear();
+
+            Assert.Same(rows, picker.Rows);
+            Assert.Same(chosen, picker.Rows[3]);
+            Assert.Null(picker.SelectedRow);
+            Assert.Null(picker.SelectedKey);
+            Assert.False(picker.HasSelection);
+            Assert.False(chosen.IsSelected);
+        }
+
+        [Fact]
+        public void Clear_UnderALiveChipWithNoQuery_FallsBackToTheFirstRowWithoutRebuildingIt()
+        {
+            // A chip is itself a narrowing, so the rule "a narrowed list opens on its first row"
+            // still applies — and it applies over the rows that are already there.
+            var picker = Create();
+            var chip = picker.Categories.Single(candidate => !candidate.IsRecent && candidate.Category == KeySearchCategory.Media);
+
+            picker.SelectCategoryCommand.Execute(chip);
+
+            var rows = picker.Rows;
+
+            picker.SelectRowCommand.Execute(picker.Rows[^1]);
+            picker.Clear();
+
+            Assert.Same(rows, picker.Rows);
+            Assert.True(chip.IsSelected);
+            Assert.Same(picker.Rows[0], picker.SelectedRow);
+        }
+
+        [Fact]
         public void Clear_EmptiesTheQueryAndTheHighlight_ButNotTheChip()
         {
             var picker = Create();

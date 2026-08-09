@@ -1007,6 +1007,39 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
+        /// The composer's picker is the fourth call site of one control, and the rail refreshes
+        /// every panel it holds on every position — so the composer is folded away on each of them.
+        /// Issue #133: folding away a composer that is already shut used to re-run the chord
+        /// picker's whole filter, which was the third rebuild of a couple of hundred row view models
+        /// on one click on the board.
+        /// </summary>
+        [AvaloniaFact]
+        public async Task MovingToAnotherKey_FoldsTheComposerWithoutRebuildingItsPicker()
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var editor = await scenes.CreateEditorWithInspectorAsync();
+            var layer = Assert.IsType<KeyboardLayerViewModel>(editor.SelectedLayer);
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+
+            SelectMacroMode(editor);
+
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+
+            Assert.False(panel.IsComposerOpen);
+
+            var rows = panel.ChordPicker.Rows;
+            var items = panel.ChordPicker.Items;
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitTwoKeyIndex));
+
+            Assert.False(panel.IsComposerOpen);
+            Assert.Same(rows, panel.ChordPicker.Rows);
+            Assert.Same(items, panel.ChordPicker.Items);
+        }
+
+        /// <summary>
         /// The sentence that says why the composer exists, on the panel and beside the rule it
         /// qualifies. Read off the glass, because a string constant nobody draws helps nobody.
         /// </summary>

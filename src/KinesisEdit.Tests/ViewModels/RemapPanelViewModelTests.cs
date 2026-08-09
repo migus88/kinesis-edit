@@ -262,6 +262,48 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
+        public void MovingToAnotherKey_ClearsThePickerWithoutRebuildingIt()
+        {
+            // The ~1 s key selection of issue #133, at its source. Refresh clears the picker on
+            // every new position, and Clear used to reallocate one row view model per catalog entry
+            // — 200 of them on this board — plus the group list and the flat list the view realizes
+            // from. A picker that was never typed into has nothing to clear, and now costs nothing.
+            var scene = new Scene();
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            var rows = scene.Panel.Picker.Rows;
+            var items = scene.Panel.Picker.Items;
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.Same(rows, scene.Panel.Picker.Rows);
+            Assert.Same(items, scene.Panel.Picker.Items);
+            Assert.Equal(string.Empty, scene.Panel.Picker.Query);
+        }
+
+        [Fact]
+        public void MovingToAnotherKeyAfterASearch_StillEmptiesTheQueryAndRebuilds()
+        {
+            // The other half of the same rule: a query really did narrow the list, so the list it
+            // narrowed has to come back. The early-out must not swallow that.
+            var scene = new Scene();
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            scene.Panel.Picker.Query = "esc";
+
+            var narrowed = scene.Panel.Picker.Rows;
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.Equal(string.Empty, scene.Panel.Picker.Query);
+            Assert.NotSame(narrowed, scene.Panel.Picker.Rows);
+            Assert.Equal(scene.Panel.Picker.TotalCount, scene.Panel.Picker.MatchCount);
+            Assert.Null(scene.Panel.Picker.SelectedRow);
+        }
+
+        [Fact]
         public void Deactivate_StandsTheArmDown_AndWritesNothing()
         {
             var scene = new Scene();

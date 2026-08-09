@@ -60,10 +60,11 @@ namespace KinesisEdit.ViewModels
         public int ProfileNumber => _session?.ProfileNumber ?? 0;
 
         /// <summary>
-        /// Whether a macro has been renamed since the last save. Folded into <c>IsDirty</c>, because
-        /// a name is session state that Save writes and Discard drops — see the type's remarks.
+        /// Whether a macro has been renamed since the last save, <b>in any profile the editor has
+        /// opened</b>. Folded into <c>IsDirty</c>, because a name is session state that Save writes
+        /// and Discard drops — see the type's remarks.
         /// </summary>
-        public bool HasUnsavedMacroNames => _hasUnsavedMacroNames;
+        public bool HasUnsavedMacroNames => _renamedProfiles.Count > 0;
 
         /// <summary>
         /// Raised after <see cref="MacroLibrary"/>'s snapshot was rebuilt or replaced — a load, an
@@ -74,8 +75,14 @@ namespace KinesisEdit.ViewModels
 
         private MacroLibrary? _macroLibrary;
 
-        /// <summary>Set by <see cref="RenameMacro"/>, cleared by a save. See the type's remarks.</summary>
-        private bool _hasUnsavedMacroNames;
+        /// <summary>
+        /// The profile numbers carrying a rename that is not on the drive yet — added by
+        /// <see cref="MarkMacroNamesDirty"/>, removed by the save that wrote them. A <b>set</b>
+        /// rather than the single flag it was until issue #133: with every visited profile kept
+        /// alive in <c>_sessions</c>, a switch no longer discards the profile it leaves, so a rename
+        /// made in profile 3 has to still be there — and still be saved — after a trip to profile 7.
+        /// </summary>
+        private readonly HashSet<int> _renamedProfiles = [];
 
         /// <summary>
         /// Renames every site of <paramref name="entry"/> and marks the session dirty. This is the
@@ -126,18 +133,16 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Records that a name moved. Public so the Macros tab's own edits — a rename that goes
-        /// through <see cref="RenameMacro"/> already does this, a delete or a duplicate does not —
-        /// can say so without reaching into the flag.
+        /// Records that a name moved <b>in the open profile</b>. Public so the Macros tab's own
+        /// edits — a rename that goes through <see cref="RenameMacro"/> already does this, a delete
+        /// or a duplicate does not — can say so without reaching into the set.
         /// </summary>
         public void MarkMacroNamesDirty()
         {
-            if (_hasUnsavedMacroNames)
+            if (!_renamedProfiles.Add(ProfileNumber))
             {
                 return;
             }
-
-            _hasUnsavedMacroNames = true;
 
             OnPropertyChanged(nameof(HasUnsavedMacroNames));
 
@@ -145,16 +150,44 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Drops one profile's "a macro was renamed" mark without writing anything. Two callers, and
+        /// only two: the save that persisted that profile's names, and the layout half of
+        /// <c>Discard changes</c>, which throws the renames away with the rest of the profile's
+        /// unsaved work. A profile <b>switch</b> deliberately does not call it — since issue #133 a
+        /// switch abandons nothing, so clearing the mark there would lose a rename silently.
+        /// </summary>
+        private void ClearUnsavedMacroNames(int profileNumber)
+        {
+            if (!_renamedProfiles.Remove(profileNumber))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(HasUnsavedMacroNames));
+        }
+
+        /// <summary>
         /// Stamps the stored names onto a freshly parsed layout and builds the library over it.
-        /// Called from <c>Apply</c>, i.e. after a load <b>and</b> after an import — an imported file
-        /// replaces the layout wholesale, so its macros arrive unnamed exactly as a loaded one's do.
+        /// Called from <c>Apply</c>, i.e. after a load, after an import and after a layout discard —
+        /// each of those replaces the layout wholesale, so its macros arrive unnamed exactly as a
+        /// loaded one's do.
         /// <para>
         /// The order is fixed: names first, library second.
         /// <see cref="Core.Model.MacroLibrary"/> groups by name, so a name applied after the
         /// snapshot was built would not be in it.
         /// </para>
+        /// <para>
+        /// <b><paramref name="applyStoredNames"/> is false on the one path where the layout is not
+        /// fresh</b>: returning to a profile the editor already has open (issue #133). Its macros
+        /// are the very objects the user renamed, and
+        /// <see cref="Core.Model.MacroLibrary.ApplyNames"/> writes <c>Macro.Name</c>
+        /// <em>unconditionally</em> — a site with no stored name is set back to null — so re-running
+        /// it there would quietly undo every rename that has not reached
+        /// <c>app_settings.txt</c> yet. The library itself is still rebuilt, because it is per
+        /// profile and it groups by the names the model carries now.
+        /// </para>
         /// </summary>
-        private void AttachMacroLibrary(KeyboardLayout? layout)
+        private void AttachMacroLibrary(KeyboardLayout? layout, bool applyStoredNames)
         {
             if (layout is null)
             {
@@ -165,7 +198,10 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            ApplyStoredMacroNames(layout);
+            if (applyStoredNames)
+            {
+                ApplyStoredMacroNames(layout);
+            }
 
             MacroLibrary = new MacroLibrary(layout);
 
@@ -220,10 +256,16 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Writes this profile's macro names to <c>app_settings.txt</c>, through the session's one
-        /// store — never through a second <c>LoadAppSettings</c>/<c>SaveAppSettings</c> pair, which
-        /// is what would let the colour picker and the settings screen serve each other stale state
-        /// (docs/app/settings.md).
+        /// Writes the macro names of <b>every profile carrying a rename</b> to
+        /// <c>app_settings.txt</c>, through the session's one store — never through a second
+        /// <c>LoadAppSettings</c>/<c>SaveAppSettings</c> pair, which is what would let the colour
+        /// picker and the settings screen serve each other stale state (docs/app/settings.md).
+        /// <para>
+        /// One call to <see cref="IAppPreferencesStore.UpdateMacroNames"/> per profile, and that is
+        /// safe by construction: <c>AppSettings.WithMacroNamesForProfile</c> is already scoped to one
+        /// profile number and tombstones only that profile's keys, so nine calls leave nine
+        /// independent sets rather than the last one winning.
+        /// </para>
         /// <para>
         /// The whole current picture is handed over, not a diff:
         /// <c>WithMacroNamesForProfile</c> tombstones every key of this profile the new set does not
@@ -234,13 +276,56 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void PersistMacroNames()
         {
-            var profileNumber = ProfileNumber;
-
-            if (_macroLibrary is not { } library || profileNumber < 1)
+            if (_renamedProfiles.Count == 0)
             {
                 return;
             }
 
+            // A copy, because the clear below mutates the set this walks.
+            foreach (var profileNumber in _renamedProfiles.ToArray())
+            {
+                if (profileNumber < 1 || FindMacroLibraryFor(profileNumber) is not { } library)
+                {
+                    // No session to scope the names to (a load that failed, a board with no drive).
+                    // The names stay on Macro.Name for the rest of the session; there is nowhere to
+                    // put them.
+                    ClearUnsavedMacroNames(profileNumber);
+
+                    continue;
+                }
+
+                PersistMacroNamesOf(profileNumber, library);
+
+                ClearUnsavedMacroNames(profileNumber);
+            }
+        }
+
+        /// <summary>
+        /// The library whose names belong to <paramref name="profileNumber"/>: the editor's one
+        /// live library for the open profile, and a <b>transient</b> one over any other visited
+        /// profile's layout.
+        /// <para>
+        /// Building a second library is legal here and only here. Invariant 27 — one library per
+        /// profile — is about the <em>open</em> profile, whose library the rail and the Macros tab
+        /// both read; this one is read once, inside this method, and dropped. It can be built at
+        /// all because a name lives on <c>Macro.Name</c>, i.e. on the model the other session is
+        /// holding, not on the library.
+        /// </para>
+        /// </summary>
+        private MacroLibrary? FindMacroLibraryFor(int profileNumber)
+        {
+            if (profileNumber == ProfileNumber)
+            {
+                return _macroLibrary;
+            }
+
+            return _sessions.TryGetValue(profileNumber, out var session)
+                ? new MacroLibrary(session.Layout)
+                : null;
+        }
+
+        private void PersistMacroNamesOf(int profileNumber, MacroLibrary library)
+        {
             var names = new List<KeyValuePair<MacroNameKey, string>>();
 
             foreach (var stored in library.EnumerateStoredNames())
@@ -257,10 +342,6 @@ namespace KinesisEdit.ViewModels
             }
 
             _preferences.UpdateMacroNames(profileNumber, settings => settings.WithMacroNamesForProfile(profileNumber, names));
-
-            _hasUnsavedMacroNames = false;
-
-            OnPropertyChanged(nameof(HasUnsavedMacroNames));
         }
     }
 }

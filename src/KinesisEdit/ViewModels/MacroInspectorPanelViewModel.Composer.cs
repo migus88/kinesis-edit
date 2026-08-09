@@ -259,9 +259,22 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Folds the composer away and forgets the chord. Clearing is not housekeeping: a modifier
         /// left ticked from a previous chord would silently attach itself to the next one.
+        ///
+        /// <para><b>A composer that is already shut is left alone (issue #133).</b>
+        /// <see cref="RefreshComposer"/> runs this on every position the rail is pointed at, and the
+        /// composer is closed almost always — closing it again re-ran the whole chord picker's
+        /// filter for nothing, which was the third rebuild on one click. The guard is
+        /// <c>TapAndHoldPanelViewModel.ClosePicker</c>'s, for the same reason. Nothing is skipped by
+        /// it: a shut composer has already been through here, so its modifiers are
+        /// <see cref="MacroModifiers.None"/> and its picker is already empty.</para>
         /// </summary>
         private void CloseComposer()
         {
+            if (!_isComposerOpen)
+            {
+                return;
+            }
+
             IsComposerOpen = false;
             ComposedModifiers = MacroModifiers.None;
 

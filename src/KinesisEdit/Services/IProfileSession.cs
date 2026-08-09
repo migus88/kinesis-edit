@@ -48,6 +48,22 @@ namespace KinesisEdit.Services
         ProfileImportResult Import(ImportedFileKind kind, IReadOnlyList<string> lines);
 
         /// <summary>
+        /// Throws the <b>layout</b> edits away and rebuilds <see cref="Layout"/> from the baseline —
+        /// what is on the drive for this profile (<see cref="ProfileSession.RevertLayout"/>), leaving
+        /// <see cref="Lighting"/> untouched. Nothing is written and no drive is read.
+        /// <see cref="Layout"/> and <see cref="InvalidLines"/> are replaced wholesale, so both must
+        /// be re-read afterwards — the same contract <see cref="Import"/> carries.
+        /// </summary>
+        void RevertLayout();
+
+        /// <summary>
+        /// The lighting twin of <see cref="RevertLayout"/>: rebuilds <see cref="Lighting"/> from the
+        /// baseline's led lines and leaves <see cref="Layout"/> alone. A no-op on a device
+        /// with no profile-orchestrated led file.
+        /// </summary>
+        void RevertLighting();
+
+        /// <summary>
         /// The files an export of <paramref name="selection"/> writes
         /// (specs/11-feature-dialogs.md §11.5), layout first. It is a member of the seam rather
         /// than a call the caller makes on <see cref="Lighting"/> because

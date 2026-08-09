@@ -75,6 +75,95 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public async Task AKeySelectedOnTheLayoutTab_DrawsNothingHere_AndIsStillSelectedAfterwards(string variantName)
+        {
+            // ISSUE #133, ON THE SCREEN IT WAS REPORTED ON. The Layout tab's selection and this
+            // board's paint selection are computed on the SAME cap view models, so the key the
+            // inspector rail is talking about arrives here already carrying `IsSelected` — and it
+            // used to arrive wearing the selected face, an accent border and the full two-tone ring
+            // as well, on a tab that shows no inspector to explain them and offers no way to
+            // deselect. It is the mirror of the leak #131 fixed in the other direction.
+            //
+            // Driven through the real tab, because the claim is about what a user sees after
+            // switching tabs, and asserted at the glass for the reason `KeycapThemeTests` records:
+            // every object-graph fact about that ring was already correct while the user was
+            // looking at it.
+            using var scenes = new ViewSceneFactory();
+
+            var view = await scenes.CreateAsync(typeof(LightingTabView).FullName!);
+            var lighting = (LightingTabViewModel)view.DataContext!;
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName));
+
+            // Freestyle is static, so two frames of one board are comparable pixel for pixel.
+            SelectMode(lighting, LightingMode.Freestyle);
+
+            // An editable position, so the cap under test wears one state and not two. The locked
+            // cap's own version of this claim — it is drawn identically here whether or not the
+            // Layout tab picked it — is `KeycapThemeTests`, on a bare theme cap where the face is
+            // at the glass as well as the edge.
+            var key = lighting.Board!.Keys.First(entry => entry.CanEdit);
+            var unselected = CapRow(host.Capture(), view, key);
+
+            key.IsSelected = true;
+
+            Dispatcher.UIThread.RunJobs();
+
+            var frame = host.Capture();
+            var cap = CapButtonFor(view, key);
+
+            // The class is written here too — it says what the KEY is, and the Layout tab's
+            // selection has to still be there when the user goes back — and nothing is drawn from
+            // it: not the ring part, not the border, not one pixel of the cap.
+            Assert.Contains("selected", cap.Classes);
+            Assert.Equal(0, RingOf(cap).BoxShadow.Count);
+            Assert.Equal(
+                DesignTokens.Resolve("SurfaceBorderRaisedBrush", ToVariant(variantName)),
+                cap.BorderBrush);
+
+            var selected = CapRow(frame, view, key);
+
+            for (var column = 0; column < unselected.Count; column++)
+            {
+                Assert.True(
+                    Distance(unselected[column], selected[column]) <= 3,
+                    $"Column {column} of position {key.Index} moved from {unselected[column]} to "
+                    + $"{selected[column]} when the Layout tab's selection reached this board.");
+            }
+
+            // ANTI-VACUITY, and it is the whole reason this reads a row rather than a probe: the
+            // pixels sampled above ARE the ones a ring lands on. The selection this board owns
+            // proves it on the same cap, in the same frame geometry — and it is the only thing
+            // moved, so nothing but the ring can account for the difference.
+            key.IsLightingSelected = true;
+
+            Dispatcher.UIThread.RunJobs();
+
+            var painted = CapRow(host.Capture(), view, key);
+            var moved = Enumerable.Range(0, painted.Count)
+                .Count(column => Distance(painted[column], selected[column]) > 40);
+
+            Assert.True(
+                moved > 0,
+                $"Position {key.Index} looks the same paint-selected as not, so this row never "
+                + "crossed the band and the comparison above proved nothing.");
+
+            // ...and the trip destroys nothing. Leaving for the Keys tab and coming back hides and
+            // re-shows this view rather than unloading it (see the case above), and the Layout
+            // tab's selection is exactly where it was left.
+            key.IsLightingSelected = false;
+            view.IsVisible = false;
+            host.Capture();
+            view.IsVisible = true;
+            host.Capture();
+
+            Assert.True(key.IsSelected, "Showing the Lighting tab cleared the Layout tab's selection.");
+            Assert.Contains("selected", CapButtonFor(view, key).Classes);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public async Task TheBoardHeader_NamesTheModeAndSaysThePreviewIsLive(string variantName)
         {
             using var scenes = new ViewSceneFactory();
@@ -1114,11 +1203,10 @@ namespace KinesisEdit.Tests.Design
             KeyboardKeyViewModel key)
         {
             var actual = MeanFace(frame, view, key);
-            var distance = Math.Abs(expected.R - actual.R)
-                + Math.Abs(expected.G - actual.G)
-                + Math.Abs(expected.B - actual.B);
 
-            Assert.True(distance <= 6, $"Position {key.Index} expected about {expected}, painted {actual}.");
+            Assert.True(
+                Distance(expected, actual) <= 6,
+                $"Position {key.Index} expected about {expected}, painted {actual}.");
         }
 
         /// <summary>
@@ -1150,6 +1238,59 @@ namespace KinesisEdit.Tests.Design
                 (byte)Math.Round(samples.Average(sample => (double)sample.R)),
                 (byte)Math.Round(samples.Average(sample => (double)sample.G)),
                 (byte)Math.Round(samples.Average(sample => (double)sample.B)));
+        }
+
+        /// <summary>
+        /// One cap's whole pixel row at mid-height, <b>edge columns included</b>. Unlike
+        /// <see cref="MeanFace"/> this keeps the outer columns and does not average, because what
+        /// it is read for is the 3 px selection band at the cap's own edge — a mean over the face
+        /// would drown it, and a single probe could miss it. Mid-height is clear of the cap's
+        /// rounded corners, and the caption's glyphs it does cross are identical in every frame
+        /// being compared.
+        /// </summary>
+        private static IReadOnlyList<Color> CapRow(WriteableBitmap frame, Control view, KeyboardKeyViewModel key)
+        {
+            var cap = Descendants<KeyCapView>(view).FirstOrDefault(entry => ReferenceEquals(entry.DataContext, key))
+                ?? throw new InvalidOperationException($"The board drew no cap for position {key.Index}.");
+            var window = (Visual)cap.GetVisualRoot()!;
+            var origin = cap.TranslatePoint(default, window)!.Value;
+            var far = cap.TranslatePoint(new Point(cap.Bounds.Width, cap.Bounds.Height), window)!.Value;
+            var row = (int)(origin.Y + ((far.Y - origin.Y) / 2));
+            var samples = new List<Color>();
+
+            for (var x = (int)origin.X; x < (int)far.X; x++)
+            {
+                samples.Add(FramePixels.At(frame, x, row));
+            }
+
+            Assert.NotEmpty(samples);
+
+            return samples;
+        }
+
+        /// <summary>The one <see cref="Button"/> the cap for <paramref name="key"/> is built from.</summary>
+        private static Button CapButtonFor(Control view, KeyboardKeyViewModel key)
+        {
+            var cap = Descendants<KeyCapView>(view).FirstOrDefault(entry => ReferenceEquals(entry.DataContext, key))
+                ?? throw new InvalidOperationException($"The board drew no cap for position {key.Index}.");
+
+            return Descendants<Button>(cap).Single();
+        }
+
+        /// <summary>
+        /// The cap's <b>inspector</b> selection ring — <c>Border#Ring</c> of the
+        /// <c>KeyCapButton</c> theme, the part this board must leave empty. The paint selection's
+        /// own is <c>Border#PaintRing</c>; the two are separate elements on purpose.
+        /// </summary>
+        private static Border RingOf(Button cap)
+        {
+            return Descendants<Border>(cap).Single(part => part.Name == "Ring");
+        }
+
+        /// <summary>Channel-sum distance, so a rounding difference is not a failure.</summary>
+        private static int Distance(Color left, Color right)
+        {
+            return Math.Abs(left.R - right.R) + Math.Abs(left.G - right.G) + Math.Abs(left.B - right.B);
         }
 
         /// <summary>

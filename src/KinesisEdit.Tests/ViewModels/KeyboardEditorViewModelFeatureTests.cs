@@ -35,7 +35,10 @@ namespace KinesisEdit.Tests.ViewModels
 
             SelectTapAndHoldTarget(editor);
 
-            _profiles.SessionToReturn!.DuringSave = () =>
+            // Staged dirty, or there would be no save to be in flight (issue #133: Save writes only
+            // the profiles that changed).
+            _profiles.SessionToReturn!.IsDirty = true;
+            _profiles.SessionToReturn.DuringSave = () =>
             {
                 observed.Add(editor.InsertSpecialActionCommand.CanExecute(null));
                 observed.Add(editor.ExportCommand.CanExecute(null));

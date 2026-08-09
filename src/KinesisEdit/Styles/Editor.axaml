@@ -154,17 +154,19 @@
     <Setter Property="Size" Value="12" />
   </Style>
 
-  <!-- One block of the picker's result list: a counted header and its rows. The rows are inset from
-       the header so the grouping reads without a rule between the blocks — the rail is 268 px wide
-       and a stack of framed groups inside it would spend most of that on frames. -->
-  <Style Selector="Border.tokenPickerGroup">
-    <Setter Property="Margin" Value="0,0,0,8" />
-  </Style>
-
   <!-- The result list is bounded rather than free: a dialect's catalog runs to a couple of hundred
        rows, and an unbounded list would push the picker's own chips and counter out of the rail's
        scroll long before the user reached the end of it. The pre-redesign picker capped its list the
-       same way, at the same order of height. -->
+       same way, at the same order of height.
+
+       SINCE #133 THIS HEIGHT IS ALSO THE VIRTUALIZING VIEWPORT. The list inside is one flat
+       VirtualizingStackPanel over TokenPickerViewModel.Items, and a virtualizing panel realizes what
+       its effective viewport can show — which is this ScrollViewer's arranged height, because the
+       presenter clips to it. Everything above it in Views/TokenPickerView.axaml measures with
+       infinite height (a vertical StackPanel does), so THIS SETTER IS THE ONLY THING BOUNDING THE
+       LIST: remove the cap, or let something between the two grow unbounded, and all ~200 rows
+       realize again. It stays a MaxHeight rather than a Height so a short result set still collapses
+       to its own size. -->
   <Style Selector="ScrollViewer.tokenPickerResults">
     <Setter Property="MaxHeight" Value="300" />
   </Style>

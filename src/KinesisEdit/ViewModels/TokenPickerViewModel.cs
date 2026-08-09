@@ -33,6 +33,21 @@ namespace KinesisEdit.ViewModels
     /// definition comes out of <see cref="KeyRegistry.Entries"/>, so reference identity survives the
     /// rebuild exactly.</para>
     ///
+    /// <para><b>…but a rebuild that changes nothing is never paid for (issue #133).</b>
+    /// <see cref="Clear"/> is called on every key the rail is pointed at, and it used to run the
+    /// whole filter unconditionally: a fresh row view model per catalog entry, a fresh group list,
+    /// and — through <see cref="Items"/> — a fresh result tree in the view. Selecting a key took
+    /// about a second because of it. It now returns without touching anything when the query is
+    /// already empty and nothing is highlighted, and drops a highlight <em>over the existing rows</em>
+    /// when only that has to go.</para>
+    ///
+    /// <para><b>The results are published twice, and the second one is the drawable shape.</b>
+    /// <see cref="Groups"/> and <see cref="Rows"/> are the domain answers — counted blocks, and the
+    /// flat list <c>↑</c>/<c>↓</c> walk. <see cref="Items"/> is those same objects interleaved into
+    /// one flat sequence, header then rows, so the view can hang a single virtualizing panel over
+    /// them; a header nested inside its own group's items control makes virtualization impossible,
+    /// and this catalog is two hundred rows into a viewport that shows ten.</para>
+    ///
     /// <para><b>It never focuses anything itself.</b> ⌘F reaches the caret through
     /// <see cref="RequestFocus"/> and <see cref="FocusRequested"/>: a view model that touched focus
     /// would need Avalonia types, and the field it wants only exists once
@@ -151,6 +166,23 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// The results a third time — one flat sequence in draw order, each group's header followed
+        /// by that group's rows. It is what the view binds, and the only reason it exists is that a
+        /// flat list can be virtualized while a list of lists cannot.
+        /// <para>
+        /// It holds the very same instances <see cref="Groups"/> and <see cref="Rows"/> hold, so
+        /// nothing here is a second copy that could disagree — and <see cref="Rows"/> deliberately
+        /// stays free of headers, because it is what the keyboard walks and an arrow must never
+        /// land on a caption.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<ITokenPickerItem> Items
+        {
+            get => _items;
+            private set => SetProperty(ref _items, value);
+        }
+
+        /// <summary>
         /// The row <c>↵</c> would take, or null when nothing is highlighted. Settable, because the
         /// view's rows are hit targets; setting it moves the <c>↵ assign</c> hint with it.
         /// </summary>
@@ -219,6 +251,7 @@ namespace KinesisEdit.ViewModels
         private readonly EventHandler _recentChangedHandler;
         private IReadOnlyList<TokenPickerGroupViewModel> _groups = [];
         private IReadOnlyList<TokenPickerRowViewModel> _rows = [];
+        private IReadOnlyList<ITokenPickerItem> _items = [];
         private TokenPickerCategoryViewModel _selectedCategory;
         private TokenPickerRowViewModel? _selectedRow;
         private KeyDefinition? _selectedDefinition;
@@ -307,14 +340,44 @@ namespace KinesisEdit.ViewModels
         /// Empties the query and the highlight, leaving the chip alone. Called when the host reopens
         /// the picker on something else: a stale highlight would let <c>↵</c> assign an action the
         /// user chose for a different key.
+        ///
+        /// <para><b>It costs nothing when there is nothing to clear (issue #133).</b> The Remap panel
+        /// calls this on every position the rail is pointed at, and the common case by far is a
+        /// picker that was never typed into and never clicked in. Rebuilding a couple of hundred row
+        /// view models and the result tree behind them for that was what made selecting a key take
+        /// about a second. Three cases, in order of how often they happen:</para>
+        /// <list type="number">
+        /// <item>nothing to do — return, and raise no notification at all, so no binding moves;</item>
+        /// <item>only a highlight to drop — move the selection <em>over the existing rows</em>, which
+        /// is exactly what a rebuild would have arrived at, since a rebuilt list holds the same
+        /// entries in the same order;</item>
+        /// <item>a query to empty — re-run the filter, because the result set really does change.</item>
+        /// </list>
         /// </summary>
         public void Clear()
         {
+            var hadQuery = _query.Length > 0;
+
+            if (!hadQuery && _selectedDefinition is null)
+            {
+                return;
+            }
+
+            _selectedDefinition = null;
+
+            if (!hadQuery)
+            {
+                // The chip is untouched and the query never moved, so the rows are still the right
+                // rows. RestoreSelection re-applies the "an unfiltered list opens with nothing
+                // highlighted, a narrowed one opens on its first row" rule over them.
+                RestoreSelection(_rows);
+
+                return;
+            }
+
             _query = string.Empty;
 
             OnPropertyChanged(nameof(Query));
-
-            _selectedDefinition = null;
 
             ApplyFilter();
         }
@@ -434,6 +497,7 @@ namespace KinesisEdit.ViewModels
 
             var groups = new List<TokenPickerGroupViewModel>();
             var rows = new List<TokenPickerRowViewModel>(entries.Count);
+            var items = new List<ITokenPickerItem>(entries.Count);
 
             foreach (var group in KeySearchCatalog.Group(entries))
             {
@@ -447,11 +511,20 @@ namespace KinesisEdit.ViewModels
                     rows.Add(row);
                 }
 
-                groups.Add(new TokenPickerGroupViewModel(group, groupRows));
+                var header = new TokenPickerGroupViewModel(group, groupRows);
+
+                groups.Add(header);
+
+                // The one place the drawable order is decided: a header, then its own rows. The
+                // view draws this list and nothing else, so the grouping the user sees cannot
+                // drift from the grouping the counts are taken over.
+                items.Add(header);
+                items.AddRange(groupRows);
             }
 
             Groups = groups;
             Rows = rows;
+            Items = items;
             MatchCount = rows.Count;
 
             RestoreSelection(rows);
@@ -537,5 +610,28 @@ namespace KinesisEdit.ViewModels
                 SelectCategory(Categories[0]);
             }
         }
+    }
+
+    /// <summary>
+    /// One line of <see cref="TokenPickerViewModel.Items"/> — either a counted group header
+    /// (<see cref="TokenPickerGroupViewModel"/>) or a result row
+    /// (<see cref="TokenPickerRowViewModel"/>).
+    ///
+    /// <para><b>It exists so the result list can be one list.</b> The picker used to draw an items
+    /// control of groups, each holding an items control of rows; nothing about a list of lists can
+    /// be virtualized, so every one of the dialect's ~200 rows was realized into a viewport that
+    /// shows ten (issue #133). Flattening them behind one interface lets a single
+    /// <c>VirtualizingStackPanel</c> hold both kinds, told apart by <c>DataTemplate</c> type match
+    /// rather than by a flag in one template — a header drawn inside a row container would take the
+    /// row's selection fill with it.</para>
+    ///
+    /// <para><b><see cref="IsHeader"/> is not what the view switches on</b>, and is not there for
+    /// it: the templates match on type. It is here so the flat list can be asserted, and read, as
+    /// one sequence.</para>
+    /// </summary>
+    public interface ITokenPickerItem
+    {
+        /// <summary>Whether this line is a group's caption rather than an action the user can take.</summary>
+        bool IsHeader { get; }
     }
 }
