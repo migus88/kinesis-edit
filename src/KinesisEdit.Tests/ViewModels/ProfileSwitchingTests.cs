@@ -18,8 +18,15 @@ namespace KinesisEdit.Tests.ViewModels
     /// This is <c>ProfileSession.ProfileNumber</c> and not <c>KeyboardSettings.StartupProfileNumber</c>:
     /// nothing here writes anything, and the power-on profile stays a slider on the Settings tab.
     /// The assertions below are mostly about what a switch must <b>not</b> do — half-swap the
-    /// editor, drop unsaved work without asking, or leave a listening key eating keystrokes for a
-    /// board that no longer exists.
+    /// editor, lose unsaved work, or leave a listening key eating keystrokes for a board that no
+    /// longer exists.
+    /// </para>
+    /// <para>
+    /// <b>Issue #133 inverted the whole "unsaved work" section below.</b> A switch used to abandon
+    /// the open session and therefore had to raise the unsaved-changes modal first; every profile
+    /// the user opens is now kept alive in the editor, so the switch loses nothing, asks nothing,
+    /// and finds the edits again on the way back. The cases that used to assert each answer of that
+    /// modal now assert its absence and the survival it was protecting.
     /// </para>
     /// </summary>
     public sealed class ProfileSwitchingTests : IDisposable
@@ -216,78 +223,96 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public async Task SelectProfileCommand_AfterASwitch_CanSwitchAgain()
+        public async Task SelectProfileCommand_ReturningToAVisitedProfile_ReusesItsSessionWithoutReadingTheDrive()
         {
-            var editor = await CreateLoadedEditorAsync();
+            // Issue #133's mechanism, stated on its own: every profile the user opened stays alive
+            // in the editor, keyed by number. Coming back is a lookup, not a load — which is what
+            // makes a return trip both instant and lossless.
+            var first = _profiles.Stage(1, DeviceId.FreestyleEdgeRgb);
+            var fourth = _profiles.Stage(4, DeviceId.FreestyleEdgeRgb);
 
-            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
-            {
-                ProfileNumber = 4
-            };
+            var editor = await CreateLoadedEditorAsync();
 
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[3]);
 
-            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
-            {
-                ProfileNumber = 1
-            };
+            Assert.Same(fourth.Layout, editor.Layout);
 
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[0]);
 
-            Assert.Equal(3, _profiles.LoadCallCount);
+            // Two reads, not three.
+            Assert.Equal(2, _profiles.LoadCallCount);
             Assert.Equal(1, editor.SelectedProfile!.Number);
+            Assert.Same(first.Layout, editor.Layout);
         }
 
         // ===== Unsaved work ==================================================================
+        //
+        // These eight cases INVERTED with issue #133. Every one of them used to be about the modal
+        // a switch raised over unsaved work and what each of its three answers did. There is no
+        // modal any more, because there is nothing to lose: the outgoing session is kept, its edits
+        // come back when the user does, and the toolbar's one Save writes every profile that
+        // changed. What is asserted now is that absence, and that the edits really do survive.
 
         [AvaloniaFact]
-        public async Task SelectProfileCommand_WithUnsavedWork_AsksTheEditorsOwnQuestion()
-        {
-            // The same words as leaving via Home, because a switch abandons the open profile in
-            // exactly the same way — UnsavedChangesPrompt exists so neither editor owns the
-            // strings, and now neither does either exit.
-            var editor = await CreateDirtyEditorAsync();
-
-            Answer(MessageBoxResult.Cancel);
-
-            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[2]);
-
-            var request = Assert.Single(_notifications.MessageBoxes);
-
-            Assert.Equal(UnsavedChangesPrompt.Title, request.Title);
-            Assert.Equal(UnsavedChangesPrompt.KeyboardMessage, request.Message);
-            Assert.Equal(MessageBoxButtons.YesNoCancel, request.Buttons);
-        }
-
-        [AvaloniaFact]
-        public async Task SelectProfileCommand_WhenTheQuestionIsCancelled_ChangesNothing()
+        public async Task SelectProfileCommand_WithUnsavedWork_AsksNothingAndWritesNothing()
         {
             var editor = await CreateDirtyEditorAsync();
             var open = _profiles.SessionToReturn!;
 
-            Answer(MessageBoxResult.Cancel);
+            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+            {
+                ProfileNumber = 3
+            };
 
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[2]);
 
-            Assert.Equal(1, _profiles.LoadCallCount);
-            Assert.Equal(1, editor.SelectedProfile!.Number);
-            Assert.Same(open.Layout, editor.Layout);
+            // No question, no save, no file — and the switch went through.
+            Assert.Empty(_notifications.MessageBoxes);
             Assert.Equal(0, open.SaveCallCount);
-            Assert.True(editor.IsDirty);
+            Assert.Empty(_settings.KeyboardSaves);
+            Assert.Empty(_files.WrittenPaths);
+            Assert.Equal(3, editor.SelectedProfile!.Number);
         }
 
         [AvaloniaFact]
-        public async Task SelectProfileCommand_WhenTheSwitchIsRefused_ReassertsTheSelectionForTheBinding()
+        public async Task SelectProfileCommand_AwayAndBack_StillHasTheEditsThatWereMade()
+        {
+            // The acceptance criterion in one case: an edit made in profile 1 is still there after a
+            // trip to profile 2. It is a real remap through the model the editor is holding, and the
+            // assertion is made on the editor's OWN caps after the return, not on the fake — a cache
+            // that handed back the session but rebuilt the board off something else would pass a
+            // weaker test.
+            _profiles.Stage(1, DeviceId.FreestyleEdgeRgb);
+            _profiles.Stage(2, DeviceId.FreestyleEdgeRgb);
+
+            var editor = await CreateLoadedEditorAsync();
+
+            editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].ApplyRemap(TestLayouts.Gen1Key("z"));
+
+            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
+
+            Assert.False(editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+
+            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[0]);
+
+            Assert.Equal(1, editor.SelectedProfile!.Number);
+            Assert.True(editor.Layout!.Layers[0].Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+            Assert.True(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex].IsModified);
+        }
+
+        [AvaloniaFact]
+        public async Task SelectProfileCommand_WhenTheLoadFails_ReassertsTheSelectionForTheBinding()
         {
             // The picker binds one way, so the control is already showing the row that was clicked
             // while the editor never left profile 1. Nothing moved, so SetProperty would announce
             // nothing and the ComboBox would sit there claiming a profile that is not open.
-            var editor = await CreateDirtyEditorAsync();
+            // A failed load is what refuses a switch now that the unsaved-work modal is gone.
+            var editor = await CreateLoadedEditorAsync();
             var announced = new List<string?>();
 
             editor.PropertyChanged += (_, e) => announced.Add(e.PropertyName);
 
-            Answer(MessageBoxResult.Cancel);
+            _profiles.ExceptionToThrow = new IOException("the v-Drive went away");
 
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[2]);
 
@@ -296,66 +321,11 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaFact]
-        public async Task SelectProfileCommand_WhenTheUserDiscards_SwitchesWithoutWriting()
+        public async Task IsDirty_AfterSwitchingAwayFromADirtyProfile_StaysTrue()
         {
-            var editor = await CreateDirtyEditorAsync();
-            var open = _profiles.SessionToReturn!;
-
-            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
-            {
-                ProfileNumber = 2
-            };
-
-            Answer(MessageBoxResult.No);
-
-            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
-
-            Assert.Equal(0, open.SaveCallCount);
-            Assert.Equal(2, editor.SelectedProfile!.Number);
-        }
-
-        [AvaloniaFact]
-        public async Task SelectProfileCommand_WhenTheUserSaves_WritesTheOpenProfileFirst()
-        {
-            var editor = await CreateDirtyEditorAsync();
-            var open = _profiles.SessionToReturn!;
-
-            _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
-            {
-                ProfileNumber = 2
-            };
-
-            Answer(MessageBoxResult.Yes);
-
-            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
-
-            Assert.Equal(1, open.SaveCallCount);
-            Assert.Equal(2, editor.SelectedProfile!.Number);
-            Assert.False(editor.IsDirty);
-        }
-
-        [AvaloniaFact]
-        public async Task SelectProfileCommand_WhenTheSaveFails_StaysOnTheOpenProfile()
-        {
-            // The same rule the close guard follows: only a save that actually landed may let the
-            // open profile go, or the switch discards the very work the question was about.
-            var editor = await CreateDirtyEditorAsync();
-            var open = _profiles.SessionToReturn!;
-
-            open.SaveExceptionToThrow = new IOException("the v-Drive went away");
-
-            Answer(MessageBoxResult.Yes);
-
-            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
-
-            Assert.Equal(1, _profiles.LoadCallCount);
-            Assert.Equal(1, editor.SelectedProfile!.Number);
-            Assert.True(editor.IsDirty);
-        }
-
-        [AvaloniaFact]
-        public async Task IsDirty_AfterASuccessfulSwitch_IsFalse()
-        {
+            // IsDirty is now an aggregate over every profile the editor holds, because Save is. A
+            // switch that cleared it would leave the user's edits in memory with a grey Save over
+            // them — unsaved work the chrome denies exists.
             var editor = await CreateDirtyEditorAsync();
 
             _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
@@ -363,19 +333,65 @@ namespace KinesisEdit.Tests.ViewModels
                 ProfileNumber = 7
             };
 
-            Answer(MessageBoxResult.No);
-
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[6]);
 
+            Assert.Equal(7, editor.SelectedProfile!.Number);
+            Assert.True(editor.IsDirty);
+        }
+
+        [AvaloniaFact]
+        public async Task IsDirty_AfterSwitchingAwayFromACleanProfile_IsFalse()
+        {
+            // The other half of the aggregate, so the case above cannot pass by the flag simply
+            // never being cleared.
+            _profiles.Stage(1, DeviceId.FreestyleEdgeRgb);
+            _profiles.Stage(5, DeviceId.FreestyleEdgeRgb);
+
+            var editor = await CreateLoadedEditorAsync();
+
+            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[4]);
+
+            Assert.Equal(5, editor.SelectedProfile!.Number);
             Assert.False(editor.IsDirty);
         }
 
         [AvaloniaFact]
-        public async Task IsDirty_AfterASwitchThatDiscardedARenamedMacro_IsFalse()
+        public async Task MacroNames_AfterASwitchAwayAndBack_AreStillTheOnesTheUserTyped()
         {
-            // The second term of IsDirty. A macro name is not in the layout file, so the arriving
-            // session cannot possibly know about one — leaving the flag set would open the new
-            // profile amber with nothing to save.
+            // THE TRAP the cache is most likely to be broken by. `Apply` stamps the stored names
+            // from app_settings.txt onto a freshly parsed layout, and MacroLibrary.ApplyNames writes
+            // every site UNCONDITIONALLY — a site with no stored name is set back to null. Re-running
+            // it over a cached session would therefore wipe exactly the renames this switch exists
+            // to preserve, and nothing else on screen would say so.
+            _profiles.Stage(1, DeviceId.FreestyleEdgeRgb);
+            _profiles.Stage(2, DeviceId.FreestyleEdgeRgb);
+
+            var editor = await CreateLoadedEditorAsync();
+
+            RecordAMacro(editor);
+
+            var renamed = editor.RenameMacro(editor.MacroLibrary!.Entries[0], "Sign-off block");
+
+            Assert.NotNull(renamed);
+            Assert.True(editor.HasUnsavedMacroNames);
+
+            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
+            await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[0]);
+
+            Assert.Equal("Sign-off block", Assert.Single(editor.MacroLibrary!.Entries).Name);
+
+            // ...and it is still unsaved work, in the profile it belongs to.
+            Assert.True(editor.HasUnsavedMacroNames);
+            Assert.True(editor.IsDirty);
+        }
+
+        [AvaloniaFact]
+        public async Task IsDirty_AfterASwitchThatLeftARenamedMacroBehind_StaysTrue()
+        {
+            // The second term of IsDirty, and the inversion of the old claim. A rename used to be
+            // dropped by the switch, because the profile it belonged to was dropped with it; now the
+            // profile survives, so the rename does — and the flag has to keep reporting it or Save
+            // would go grey over work that is still only in memory.
             var editor = await CreateLoadedEditorAsync();
 
             editor.MarkMacroNamesDirty();
@@ -388,13 +404,11 @@ namespace KinesisEdit.Tests.ViewModels
                 ProfileNumber = 2
             };
 
-            Answer(MessageBoxResult.No);
-
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
 
             Assert.Equal(2, editor.SelectedProfile!.Number);
-            Assert.False(editor.HasUnsavedMacroNames);
-            Assert.False(editor.IsDirty);
+            Assert.True(editor.HasUnsavedMacroNames);
+            Assert.True(editor.IsDirty);
         }
 
         // ===== When the switch is refused ====================================================
@@ -422,7 +436,10 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync();
             var gate = new TaskCompletionSource();
 
-            _profiles.SessionToReturn!.DuringSave = () => gate.Task.Wait();
+            // Staged dirty, or there would be no save to be in flight: since issue #133 Save writes
+            // only the profiles that changed.
+            _profiles.SessionToReturn!.IsDirty = true;
+            _profiles.SessionToReturn.DuringSave = () => gate.Task.Wait();
 
             var save = editor.SaveCommand.ExecuteAsync(null);
 
@@ -539,6 +556,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // ...and the session it kept is still the live one: it can still be saved.
             _profiles.ExceptionToThrow = null;
+            open.IsDirty = true;
 
             Assert.True(editor.SaveCommand.CanExecute(null));
 
@@ -634,6 +652,20 @@ namespace KinesisEdit.Tests.ViewModels
 
         // ===== Fixtures ======================================================================
 
+        /// <summary>
+        /// Records a one-keystroke macro on the digit-1 position, through the app's own capture
+        /// path — the only way a macro is ever created, so a test about macro <em>names</em> starts
+        /// from a macro the editor really made.
+        /// </summary>
+        private void RecordAMacro(KeyboardEditorViewModel editor)
+        {
+            ArmMacroRecording(editor);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("a"));
+
+            editor.Inspector.Deactivate();
+        }
+
         /// <summary>Arms the key inspector's Macro panel — the app's one macro recorder.</summary>
         private static void ArmMacroRecording(KeyboardEditorViewModel editor)
         {
@@ -707,12 +739,6 @@ namespace KinesisEdit.Tests.ViewModels
             _editors.Add(editor);
 
             return editor;
-        }
-
-        /// <summary>Answers whatever box goes up next with <paramref name="result"/>.</summary>
-        private void Answer(MessageBoxResult result)
-        {
-            _notifications.OutcomeToReturn = new MessageBoxOutcome { Result = result };
         }
 
         public void Dispose()

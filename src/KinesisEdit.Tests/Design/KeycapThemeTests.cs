@@ -253,9 +253,7 @@ namespace KinesisEdit.Tests.Design
 
             using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
 
-            var border = Assert.IsAssignableFrom<ISolidColorBrush>(cap.BorderBrush);
-
-            Assert.Equal(Colors.Transparent, border.Color);
+            Assert.Equal(Colors.Transparent, SolidOf(cap.BorderBrush).Color);
 
             var hatch = HatchOf(cap);
 
@@ -1732,29 +1730,58 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public void ACapThatIsBothSelectedAndPaintSelected_ShowsBothAndStaysLegible(string variantName)
+        public void ACapThatIsBothSelectedAndPaintSelected_ShowsEachBoardItsOwnRing(string variantName)
         {
-            // Both classes can be true at once: the two tabs render the SAME cap view models, so
-            // the key the inspector is on can also be one of the painted ones. Two states writing
-            // one BoxShadow would work only while their values agreed, and `.listening` already
-            // moves Ring's margin — hence two parts.
+            // TWO STATES, TWO PARTS, AND THEY CANNOT COLLIDE — which is what this case has always
+            // been about. Both classes can be true at once: the two tabs render the SAME cap view
+            // models, so the key the inspector is on can also be one of the painted ones. Two
+            // states writing one BoxShadow would work only while their values agreed, and
+            // `.listening` already moves Ring's margin — hence two parts.
+            //
+            // WHAT CHANGED IS WHERE EACH IS DRAWN. It used to build one `.lighting` cap and demand
+            // BOTH rings on it, which is the pair of leaks #131 and #133 fixed rather than a claim:
+            // a cap cannot be on two boards at once, so "both at the same time" was only ever
+            // reachable through a ring drawn on a surface it does not belong to. The parts are
+            // still two and still concentric; each picture now lights exactly one of them.
+            //
+            // One host at a time, in blocks: each half takes keyboard focus, and focus is answered
+            // by the focus manager of the control's own top level.
             var variant = ToVariant(variantName);
-            var cap = Cap(variant, "selected", "paintSelected", "lighting");
+            var accent = DesignTokens.Resolve("AccentBrush", variant);
 
-            using var host = ThemedHost.Show(cap, variant, HostWidth, HostHeight);
+            // The Layout board: the inspector's ring, and nothing of the paint selection.
+            var layout = Cap(variant, "selected", "paintSelected");
 
-            Assert.Equal(2, RingOf(cap).BoxShadow.Count);
-            Assert.Equal(2, PaintRingOf(cap).BoxShadow.Count);
-            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), cap.BorderBrush);
+            using (ThemedHost.Show(layout, variant, HostWidth, HostHeight))
+            {
+                Assert.Equal(2, RingOf(layout).BoxShadow.Count);
+                Assert.Equal(0, PaintRingOf(layout).BoxShadow.Count);
+                Assert.Equal(accent, layout.BorderBrush);
 
-            // The two rings are concentric with each other rather than stacked outward, so the band
-            // is the cap's own outer 3px and no wider than one selection's would be.
-            Assert.Equal(RingOf(cap).Bounds, PaintRingOf(cap).Bounds);
+                // The two parts stay concentric with each other rather than stacked outward, so
+                // whichever one is lit paints the cap's own outer 3px and no more.
+                Assert.Equal(RingOf(layout).Bounds, PaintRingOf(layout).Bounds);
 
-            // Focus still owns the border and adds its halo outside both.
-            Assert.True(cap.Focus(NavigationMethod.Tab), "The cap refused keyboard focus.");
-            Assert.Equal(1, RootOf(cap).BoxShadow.Count);
-            Assert.Equal(3, RootOf(cap).BoxShadow[0].Spread);
+                // Focus still owns the border and adds its halo outside both.
+                Assert.True(layout.Focus(NavigationMethod.Tab), "The cap refused keyboard focus.");
+                Assert.Equal(1, RootOf(layout).BoxShadow.Count);
+                Assert.Equal(3, RootOf(layout).BoxShadow[0].Spread);
+            }
+
+            // ...and the Lighting board: the same two classes on the same cap, the other ring.
+            var lighting = Cap(variant, "selected", "paintSelected", "lighting");
+
+            using (ThemedHost.Show(lighting, variant, HostWidth, HostHeight))
+            {
+                Assert.Equal(0, RingOf(lighting).BoxShadow.Count);
+                Assert.Equal(2, PaintRingOf(lighting).BoxShadow.Count);
+                Assert.Equal(accent, lighting.BorderBrush);
+                Assert.Equal(RingOf(lighting).Bounds, PaintRingOf(lighting).Bounds);
+
+                Assert.True(lighting.Focus(NavigationMethod.Tab), "The cap refused keyboard focus.");
+                Assert.Equal(1, RootOf(lighting).BoxShadow.Count);
+                Assert.Equal(3, RootOf(lighting).BoxShadow[0].Spread);
+            }
         }
 
         [AvaloniaTheory]
@@ -1810,6 +1837,123 @@ namespace KinesisEdit.Tests.Design
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
+        public void TheInspectorsRing_IsDrawnOnTheLayoutBoardAndNowhereElse(string variantName)
+        {
+            // ISSUE #133, AND IT IS THE TEST ABOVE READ BACKWARDS. #131 stopped the Lighting board's
+            // paint ring appearing on the Layout board; the reverse leak outlived it by an issue.
+            // The two tabs render the SAME cap view models, so the key the inspector rail is
+            // talking about carries `IsSelected` on the LIGHTING board too — where, ungated, it drew
+            // the selected face, an accent border and the full two-tone ring over a picture whose
+            // whole subject is the key's own colour, on a tab that shows no inspector at all.
+            //
+            // Same shape of fix, same shape of claim: the class is still written on both boards
+            // because it says what the KEY is, the drawing is the SURFACE's call, and NOTHING IS
+            // CLEARED — the selection survives the trip to the Lighting tab and back.
+            var variant = ToVariant(variantName);
+            var lighting = Cap(variant, "selected", "lighting");
+
+            using var lightingHost = ThemedHost.Show(lighting, variant, HostWidth, HostHeight);
+
+            Assert.Contains("selected", lighting.Classes);
+            Assert.Equal(0, RingOf(lighting).BoxShadow.Count);
+            Assert.Equal(DesignTokens.Resolve("SurfaceBorderRaisedBrush", variant), lighting.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", variant), lighting.Background);
+
+            // ...and at the glass, because the whole complaint was a ring the user could SEE. The
+            // control carries `.lighting` too, so the only difference between the two caps is the
+            // selection — and the band a ring would paint is pixel-for-pixel the plain cap's.
+            var bare = Cap(variant, "lighting");
+
+            using var bareHost = ThemedHost.Show(bare, variant, HostWidth, HostHeight);
+
+            AssertClose(
+                FramePixels.At(
+                    bareHost.Capture(),
+                    (int)OriginOf(bareHost, bare).X + InsideProbe,
+                    MidRow(bareHost, bare)),
+                FramePixels.At(
+                    lightingHost.Capture(),
+                    (int)OriginOf(lightingHost, lighting).X + InsideProbe,
+                    MidRow(lightingHost, lighting)));
+
+            // ...including the hairline column, which is the half of the band an accent-only leak
+            // would have left looking innocent at the probe above.
+            AssertClose(
+                FramePixels.At(
+                    bareHost.Capture(),
+                    (int)OriginOf(bareHost, bare).X + HairlineProbe,
+                    MidRow(bareHost, bare)),
+                FramePixels.At(
+                    lightingHost.Capture(),
+                    (int)OriginOf(lightingHost, lighting).X + HairlineProbe,
+                    MidRow(lightingHost, lighting)));
+
+            // The layout board is untouched: same class, same cap, the ring the design asks for.
+            var layout = Cap(variant, "selected");
+
+            using var layoutHost = ThemedHost.Show(layout, variant, HostWidth, HostHeight);
+
+            Assert.Equal(2, RingOf(layout).BoxShadow.Count);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), layout.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("SurfaceKeySelectedBrush", variant), layout.Background);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void ALockedCapOnTheLightingBoard_IsDrawnTheSameWhetherTheLayoutTabPickedItOrNot(string variantName)
+        {
+            // THE LAST CORNER OF ISSUE #133, and the one that is a leak without drawing a mark.
+            // Gating the three `.selected` setters stopped the selection being drawn on this board;
+            // it could not stop it being drawn by its ABSENCE. `.locked`'s face and border yield to
+            // selection — correctly, on the board that shows one — so a locked cap the Layout tab
+            // had picked arrived here having lost its inset face and its transparent edge, and grew
+            // a solid neutral border under its own dashed outline. Root's BORDER is the visible
+            // half: on this board the cap's content covers everything inside it and not it.
+            //
+            // Read on a bare theme cap rather than a `KeyCapView`, and that is the point of the
+            // fixture: with no content to cover Root, BOTH halves of the statement are at the
+            // glass, so the case fails on the face as well as on the edge.
+            var variant = ToVariant(variantName);
+            var selected = Cap(variant, "locked", "lighting", "selected");
+
+            using var selectedHost = ThemedHost.Show(selected, variant, HostWidth, HostHeight);
+
+            var bare = Cap(variant, "locked", "lighting");
+
+            using var bareHost = ThemedHost.Show(bare, variant, HostWidth, HostHeight);
+
+            // The class is written here as everywhere — it says what the KEY is — and the selection
+            // it stands for is still not drawn.
+            Assert.Contains("selected", selected.Classes);
+            Assert.Equal(0, RingOf(selected).BoxShadow.Count);
+
+            // Locked, and locked in the same way as the cap beside it: the inset face, an edge that
+            // is only the dash, and the dash lifted over where the colour would be.
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), selected.Background);
+            Assert.Equal(bare.Background, selected.Background);
+            Assert.Equal(Colors.Transparent, SolidOf(selected.BorderBrush).Color);
+            Assert.Equal(SolidOf(bare.BorderBrush).Color, SolidOf(selected.BorderBrush).Color);
+            Assert.True(HatchOf(selected).IsVisible, "The locked cap stopped reading as locked.");
+            Assert.Equal(1, HatchOf(selected).ZIndex);
+
+            // ...and pixel for pixel, right across the cap: the two are one picture. A comparison
+            // of the band alone would miss the face, which is the half a `:not(.selected)` on the
+            // BACKGROUND setter takes away.
+            var withSelection = RowSamples(selectedHost, selected);
+            var without = RowSamples(bareHost, bare);
+
+            Assert.Equal(without.Count, withSelection.Count);
+
+            for (var column = 0; column < without.Count; column++)
+            {
+                AssertClose(without[column], withSelection[column]);
+            }
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
         public void ADisabledPaintSelectedCap_LosesItsRingWithEverythingElse(string variantName)
         {
             // Contract 5 again: BaseButton's `:disabled` face is applied first, so the state carries
@@ -1849,21 +1993,29 @@ namespace KinesisEdit.Tests.Design
             // rendered pixel can tell the two apart, so this reads the band itself.
             foreach (var variant in DesignTokens.Variants)
             {
-                AssertTheRingReadsOverTheFace(fill, variant, paintSelection: true);
+                AssertTheRingReadsOverTheFace(fill, variant);
             }
         }
 
         [AvaloniaTheory]
         [MemberData(nameof(LedFills))]
-        public void ASelectedCap_OverASaturatedLedColour_IsUnmistakable(string fill)
+        public void ASelectedCap_OverASaturatedLedColour_DrawsNothingAtAll(string fill)
         {
-            // The same claim for the inspector's selection, and it is not a duplicate: the two
-            // boards render the SAME cap view models, so `.selected` lands on a lit face whenever
-            // the key the rail is talking about is one the Lighting tab is drawing. It owns its own
-            // ring part, so nothing but a test holds the two in step.
+            // THIS CASE USED TO ASSERT THE BUG, and inverting it is issue #133. It read "the
+            // inspector's ring must be unmistakable over a lit face" — a claim whose only fixture
+            // was the leak itself, because the Layout board draws NO lit face (the fill panel is
+            // gated on ShowsLighting) and the Lighting board is not the inspector's. The one way a
+            // `.selected` cap could ever be lit was the ring being drawn on a board it does not
+            // belong to, so the test was pinning the defect in place with the same theory data that
+            // proves the paint ring right.
+            //
+            // What is left is the honest half, over the same saturated fills: on a lit cap the
+            // inspector's selection paints NOTHING — not the band, not the hairline, not the
+            // border. The legibility claim it used to make lives where the ring actually is, on the
+            // neutral cap of ASelectedCap_RingsItselfWithoutReachingItsNeighbour.
             foreach (var variant in DesignTokens.Variants)
             {
-                AssertTheRingReadsOverTheFace(fill, variant, paintSelection: false);
+                AssertTheSelectionLeavesTheLitFaceAlone(fill, variant);
             }
         }
 
@@ -1953,11 +2105,17 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// Fails unless a cap lit <paramref name="fill"/> and wearing one of the two selections is
-        /// visibly different from an identical cap that is not — everywhere in the band, and by a
-        /// long way somewhere in it — while the face itself is left alone.
+        /// Fails unless a cap lit <paramref name="fill"/> and carrying the <b>lighting board's</b>
+        /// paint selection is visibly different from an identical cap that is not — everywhere in
+        /// the band, and by a long way somewhere in it — while the face itself is left alone.
+        /// <para>
+        /// It is the paint selection's alone, and deliberately no longer takes which selection to
+        /// raise: the inspector's is never drawn over a lit face at all (issue #133), so the same
+        /// fixture run with <c>IsSelected</c> asserted the leak rather than the ring. Its inverse
+        /// is <see cref="AssertTheSelectionLeavesTheLitFaceAlone"/>.
+        /// </para>
         /// </summary>
-        private static void AssertTheRingReadsOverTheFace(string fill, ThemeVariant variant, bool paintSelection)
+        private static void AssertTheRingReadsOverTheFace(string fill, ThemeVariant variant)
         {
             var selected = KeyCap(showsLighting: true, paint: fill);
             var bare = KeyCap(showsLighting: true, paint: fill);
@@ -1973,14 +2131,7 @@ namespace KinesisEdit.Tests.Design
 
             var model = (KeyboardKeyViewModel)selected.DataContext!;
 
-            if (paintSelection)
-            {
-                model.IsLightingSelected = true;
-            }
-            else
-            {
-                model.IsSelected = true;
-            }
+            model.IsLightingSelected = true;
 
             var band = BandSamples(selectedHost, selected);
             var unselected = BandSamples(bareHost, bare);
@@ -1993,9 +2144,8 @@ namespace KinesisEdit.Tests.Design
             {
                 Assert.True(
                     Distance(band[column], unselected[column]) > 40,
-                    $"Column {column} of a {(paintSelection ? "paint-" : string.Empty)}selected cap lit "
-                    + $"{fill} ({variant}) painted {band[column]}, near enough the unselected cap's "
-                    + $"{unselected[column]}.");
+                    $"Column {column} of a paint-selected cap lit {fill} ({variant}) painted "
+                    + $"{band[column]}, near enough the unselected cap's {unselected[column]}.");
             }
 
             // ...and somewhere in it the ring is a long way from the colour the key is lit, which
@@ -2015,6 +2165,79 @@ namespace KinesisEdit.Tests.Design
                     selectedHost.Capture(),
                     (int)OriginOf(selectedHost, selected).X + 5,
                     FaceRow(selectedHost, selected)));
+        }
+
+        /// <summary>
+        /// The inverse, and issue #133's claim at the glass: a cap lit <paramref name="fill"/> and
+        /// carrying the <b>Layout board's</b> selection is pixel-for-pixel a cap that is not.
+        /// <para>
+        /// Read over the same saturated fills the paint ring is read over, because the leak was
+        /// loudest exactly where the ring is loudest, and read across the whole 3 px band rather
+        /// than at one probe — the accent and the near-black hairline occupy different columns of
+        /// it, and half a ring left behind is still a ring.
+        /// </para>
+        /// </summary>
+        private static void AssertTheSelectionLeavesTheLitFaceAlone(string fill, ThemeVariant variant)
+        {
+            var selected = KeyCap(showsLighting: true, paint: fill);
+            var bare = KeyCap(showsLighting: true, paint: fill);
+
+            using var selectedHost = ThemedHost.Show(selected, variant, HostWidth, HostHeight);
+            using var bareHost = ThemedHost.Show(bare, variant, HostWidth, HostHeight);
+
+            // Live for the reason the helper above records, and it matters more here: `:disabled`
+            // takes the ring anyway, so a dead cap would pass this by accident.
+            var cap = Live(selected);
+
+            Live(bare);
+
+            var model = (KeyboardKeyViewModel)selected.DataContext!;
+
+            model.IsSelected = true;
+
+            // The class IS written on this board — it says what the key is, and the selection has
+            // to survive the trip to the Lighting tab and back. Only the drawing is withheld.
+            Assert.Contains("selected", cap.Classes);
+
+            var band = BandSamples(selectedHost, selected);
+            var unselected = BandSamples(bareHost, bare);
+
+            for (var column = 0; column < band.Count; column++)
+            {
+                AssertClose(unselected[column], band[column]);
+            }
+
+            // ...and the border with it: an accent edge on a cap the Lighting tab cannot deselect
+            // is the same complaint one pixel thinner.
+            Assert.Equal(
+                DesignTokens.Resolve("SurfaceBorderRaisedBrush", variant),
+                cap.BorderBrush);
+        }
+
+        /// <summary>
+        /// The cap's <b>whole</b> pixel row at mid-height, edge columns included — the band and the
+        /// face in one read. <see cref="BandSamples"/> keeps to the outer three because it is about
+        /// a ring; a claim that two caps are one picture cannot stop at the edge.
+        /// </summary>
+        private static IReadOnlyList<Color> RowSamples(ThemedHost host, Button cap)
+        {
+            var frame = host.Capture();
+            var origin = OriginOf(host, cap);
+            var row = MidRow(host, cap);
+
+            return Enumerable.Range(0, (int)cap.Bounds.Width)
+                .Select(column => FramePixels.At(frame, (int)origin.X + column, row))
+                .ToArray();
+        }
+
+        /// <summary>
+        /// A brush that has to be a solid colour to be compared by value. Two setters spelling the
+        /// same colour produce two brush instances, and <c>SolidColorBrush</c> does not compare
+        /// structurally — so a test about "the same edge" reads the colour, never the object.
+        /// </summary>
+        private static ISolidColorBrush SolidOf(IBrush? brush)
+        {
+            return Assert.IsAssignableFrom<ISolidColorBrush>(brush);
         }
 
         /// <summary>The cap's outer three pixel columns, at <see cref="FaceRow"/>.</summary>

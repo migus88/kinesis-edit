@@ -35,6 +35,20 @@ namespace KinesisEdit.Tests.Design
         /// <summary>The rail's own content width: 268 px less the inspector section's 12 either side.</summary>
         private const double RailContentWidth = 244;
 
+        /// <summary>
+        /// What <c>ScrollViewer.tokenPickerResults</c> caps the result list at, and therefore the
+        /// virtualizing viewport the realized rows are bounded by.
+        /// </summary>
+        private const double ResultsViewportHeight = 300;
+
+        /// <summary>
+        /// How many rows that viewport may realize before the list is not virtualizing any more. A
+        /// row is a border, 4 px of padding either side and one or two lines of 11 px type, so ten
+        /// or eleven fit and a virtualizing panel realizes a couple beyond them. The ceiling is
+        /// deliberately loose — the regression it guards is 200, not 13.
+        /// </summary>
+        private const int MaxRealizedRows = 40;
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
@@ -172,6 +186,70 @@ namespace KinesisEdit.Tests.Design
 
             // U+21B5 is in neither embedded family; nothing may print it as text.
             Assert.DoesNotContain(VisibleTexts(host), text => text.Contains('↵', StringComparison.Ordinal));
+        }
+
+        [AvaloniaFact]
+        public void TheResultList_Virtualizes_SoTheViewportBoundsWhatIsRealized()
+        {
+            // Issue #133. The list used to be an ItemsControl of groups each holding an ItemsControl
+            // of rows, and a list of lists cannot virtualize: every one of the dialect's ~200 rows —
+            // some 2 300 controls — was realized into a 300 px viewport that shows about ten of
+            // them, on the first open and on every keystroke. This is the assertion that says the
+            // realized set follows the viewport instead of the catalog.
+            var scene = new Scene();
+
+            using var host = Show(scene.CreatePickerView(), ThemeVariant.Dark);
+
+            // A virtualizing panel learns its viewport from EffectiveViewportChanged, which is
+            // raised at the end of a layout pass and invalidates the measure it arrived too late
+            // for. A second pass is what makes "how many did it realize" a settled question.
+            host.Capture();
+
+            var total = scene.Picker.MatchCount;
+
+            Assert.True(total >= 100, $"The unfiltered Gen1 catalog came back as {total} rows; the case proves nothing.");
+            Assert.Equal(scene.Picker.Groups.Count + scene.Picker.Rows.Count, scene.Picker.Items.Count);
+
+            // The panel itself, so a revert to the default StackPanel fails here rather than only
+            // in the count below (which a small enough catalog could pass by accident).
+            Assert.Single(Descendants<VirtualizingStackPanel>(host));
+
+            var realized = Descendants<ListBoxItem>(host).Count(row => row.IsEffectivelyVisible);
+
+            Assert.True(
+                realized >= 4,
+                $"Only {realized} rows were realized into a {ResultsViewportHeight} px viewport — "
+                + "the list drew almost nothing, so the bound below would pass vacuously.");
+            Assert.True(
+                realized <= MaxRealizedRows,
+                $"{realized} of {total} rows were realized. The viewport is {ResultsViewportHeight} px "
+                + "and shows about ten; a count near the catalog size means the list stopped virtualizing.");
+        }
+
+        [AvaloniaFact]
+        public void AGroupHeader_IsItsOwnLineOfTheFlatList_NeverARowContainer()
+        {
+            // The reason the header was outside the row containers before the list was flattened,
+            // and the reason it still is: a header drawn inside a row container would take the
+            // row's selection fill along with it — and an arrow could land on it.
+            var scene = new Scene();
+
+            scene.Picker.Query = "vol";
+
+            using var host = Show(scene.CreatePickerView(), ThemeVariant.Dark);
+
+            var header = Assert.Single(
+                Descendants<TextBlock>(host),
+                block => block.IsEffectivelyVisible && block.Text == scene.Picker.Groups[0].Header);
+
+            Assert.Empty(header.GetVisualAncestors().OfType<ListBoxItem>());
+
+            // Every selectable container in the list is a row. This is what makes "↑/↓ never land on
+            // a header" true at the glass as well as in TokenPickerViewModel.Rows.
+            var rows = Descendants<ListBoxItem>(host).ToArray();
+
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row => Assert.IsType<TokenPickerRowViewModel>(row.DataContext));
         }
 
         [AvaloniaTheory]

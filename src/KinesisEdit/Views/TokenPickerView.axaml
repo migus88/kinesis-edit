@@ -88,77 +88,95 @@
                IsVisible="{Binding !HasMatches}" />
 
     <!-- ===== The results =====================================================================
-         Counted headers with their rows beneath them. The header is outside the row containers on
-         purpose: a header drawn inside one would take the selection fill along with the row.
+         ONE FLAT LIST, VIRTUALIZED — a counted header is a kind of line here, not a container
+         around its rows (issue #133).
+
+         WHY IT IS FLAT. It used to be an ItemsControl of groups, each holding an ItemsControl of
+         rows. A list of lists cannot be virtualized: Avalonia realizes every child of a plain
+         panel, so all ~200 rows of the dialect's catalog — some 2 300 controls — were built into a
+         300 px viewport that shows ten of them, on the first open, on every keystroke, and on every
+         key the rail was pointed at. TokenPickerViewModel.Items interleaves the same group objects
+         and the same row objects into one sequence, and a VirtualizingStackPanel realizes only what
+         the viewport can hold. The ScrollViewer's own MaxHeight (Styles/Editor.axaml) is what bounds
+         that viewport; nothing between the two may be allowed to grow unbounded.
+
+         THE HEADER IS STILL OUTSIDE THE ROW CONTAINER, which was the original reason for the
+         nesting and survives it: the two kinds are told apart by DataTemplate TYPE MATCH, so a
+         header is a TextBlock and a row is a ListBoxItem. A header drawn inside a row container
+         would take the row's selection fill along with it.
+
+         ARROWS NEVER LAND ON A HEADER, and that is a property of the view model rather than of this
+         markup: ↑/↓ walk `Rows`, which is the flat list of REAL rows and holds no headers at all.
 
          The rows are ListBoxItems on the SelectableListRow container theme, laid out by an
-         ItemsControl rather than selected by a ListBox — the list is grouped, and one ListBox per
-         group would be one independent selection per group. `IsSelected` is bound instead, which is
-         what raises the theme's own `:selected` face, and the picker keeps exactly one row carrying
-         it. -->
+         ItemsControl rather than selected by a ListBox — a ListBox would take the arrow keys the
+         picker's own grammar handles, and its selection would be a second one to keep in step.
+         `IsSelected` is bound instead, which is what raises the theme's own `:selected` face, and
+         the picker keeps exactly one row carrying it. -->
     <ScrollViewer Classes="tokenPickerResults" HorizontalScrollBarVisibility="Disabled">
-      <ItemsControl ItemsSource="{Binding Groups}">
-        <ItemsControl.ItemTemplate>
+      <ItemsControl ItemsSource="{Binding Items}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel Orientation="Vertical" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+
+        <ItemsControl.DataTemplates>
+
+          <!-- `Navigation · 3`. Sans, deliberately: `sectionLabel` is the app's usual caption role
+               and it is mono, which the mono law reserves for file values. The 8 px above it is the
+               gap between blocks that the group container used to carry as a bottom margin. -->
           <DataTemplate DataType="vm:TokenPickerGroupViewModel">
-            <Border Classes="tokenPickerGroup">
-              <StackPanel Spacing="2">
-                <!-- `Navigation · 3`. Sans, deliberately: `sectionLabel` is the app's usual caption
-                     role and it is mono, which the mono law reserves for file values. -->
-                <TextBlock Text="{Binding Header}"
-                           Classes="pill muted"
-                           TextTrimming="CharacterEllipsis"
-                           Margin="0,0,0,2" />
-
-                <ItemsControl ItemsSource="{Binding Rows}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:TokenPickerRowViewModel">
-                      <ListBoxItem Theme="{StaticResource SelectableListRow}"
-                                   IsSelected="{Binding IsSelected}"
-                                   Tapped="OnRowTapped"
-                                   DoubleTapped="OnRowDoubleTapped">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                          <!-- The token as the file spells it. -->
-                          <TextBlock Grid.Column="0"
-                                     Text="{Binding Token}"
-                                     Classes="monoValue"
-                                     VerticalAlignment="Center" />
-
-                          <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Name}"
-                                       Classes="meta"
-                                       TextTrimming="CharacterEllipsis" />
-                            <!-- Where the row lives on the board, or — for a duplicate registration
-                                 — the row it duplicates, named by that row rather than by its
-                                 token: a real alias spells the SAME token as its canonical, so
-                                 "alias of [numlk]" would appear on the [numlk] row itself. -->
-                            <TextBlock Text="{Binding Detail}"
-                                       Classes="meta muted"
-                                       IsVisible="{Binding HasDetail}"
-                                       TextTrimming="CharacterEllipsis" />
-                          </StackPanel>
-
-                          <!-- `↵ assign`, on the row ↵ would take. -->
-                          <StackPanel Grid.Column="2"
-                                      Orientation="Horizontal"
-                                      Spacing="4"
-                                      VerticalAlignment="Center"
-                                      IsVisible="{Binding IsSelected}">
-                            <controls:Icon Classes="assignHint"
-                                           Data="M 13,3 L 13,9 L 4,9 M 7,6 L 4,9 L 7,12"
-                                           VerticalAlignment="Center" />
-                            <TextBlock Text="{x:Static vm:TokenPickerRowViewModel.AssignHint}"
-                                       Classes="meta muted"
-                                       VerticalAlignment="Center" />
-                          </StackPanel>
-                        </Grid>
-                      </ListBoxItem>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Border>
+            <TextBlock Text="{Binding Header}"
+                       Classes="pill muted"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="0,8,0,2" />
           </DataTemplate>
-        </ItemsControl.ItemTemplate>
+
+          <DataTemplate DataType="vm:TokenPickerRowViewModel">
+            <ListBoxItem Theme="{StaticResource SelectableListRow}"
+                         IsSelected="{Binding IsSelected}"
+                         Margin="0,0,0,2"
+                         Tapped="OnRowTapped"
+                         DoubleTapped="OnRowDoubleTapped">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <!-- The token as the file spells it. -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding Token}"
+                           Classes="monoValue"
+                           VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}"
+                             Classes="meta"
+                             TextTrimming="CharacterEllipsis" />
+                  <!-- Where the row lives on the board, or — for a duplicate registration — the row
+                       it duplicates, named by that row rather than by its token: a real alias
+                       spells the SAME token as its canonical, so "alias of [numlk]" would appear on
+                       the [numlk] row itself. -->
+                  <TextBlock Text="{Binding Detail}"
+                             Classes="meta muted"
+                             IsVisible="{Binding HasDetail}"
+                             TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- `↵ assign`, on the row ↵ would take. -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="4"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsSelected}">
+                  <controls:Icon Classes="assignHint"
+                                 Data="M 13,3 L 13,9 L 4,9 M 7,6 L 4,9 L 7,12"
+                                 VerticalAlignment="Center" />
+                  <TextBlock Text="{x:Static vm:TokenPickerRowViewModel.AssignHint}"
+                             Classes="meta muted"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </ListBoxItem>
+          </DataTemplate>
+        </ItemsControl.DataTemplates>
       </ItemsControl>
     </ScrollViewer>
   </StackPanel>

@@ -22,6 +22,15 @@ namespace KinesisEdit.Controls
         /// <see cref="KeyboardView"/> pushes its own <see cref="KeyboardView.ShowsLighting"/> down
         /// here; a cap hosted on its own — a test, a design-time scene — draws no colour at all.
         /// </para>
+        /// <para>
+        /// It also decides <b>which selection is drawn</b>, through the <c>lighting</c> class it
+        /// writes onto the cap. The two boards own different selections and each is drawn only on
+        /// its own: the paint multi-selection where this is true (<c>.lighting.paintSelected</c>),
+        /// the inspector's single selection where it is false
+        /// (<c>.selected:not(.lighting)</c>) — issues #131 and #133. Both classes are still written
+        /// on both boards, because they say what the <i>key</i> is; neither selection is ever
+        /// cleared by a tab switch.
+        /// </para>
         /// </summary>
         public static readonly StyledProperty<bool> ShowsLightingProperty =
             AvaloniaProperty.Register<KeyCapView, bool>(nameof(ShowsLighting));

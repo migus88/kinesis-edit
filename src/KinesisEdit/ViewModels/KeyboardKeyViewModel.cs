@@ -213,7 +213,17 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the position may carry a macro (§5.3); consumed by issue #15.</summary>
         public bool CanAssignMacro => Key.CanAssignMacro;
 
-        /// <summary>Whether this is the key the editor's actions apply to.</summary>
+        /// <summary>
+        /// Whether this is the key the editor's actions apply to — the <b>Layout board's</b> single
+        /// selection, the one the key inspector rail follows.
+        /// <para>
+        /// It is the counterpart of <see cref="IsLightingSelected"/> and stays separate from it for
+        /// the reason recorded there. Both boards render the very same cap view models, so this is
+        /// true on the Lighting board too; since issue #133 the cap simply does not <i>draw</i> it
+        /// there (<c>.selected:not(.lighting)</c> in the <c>KeyCapButton</c> theme). Nothing clears
+        /// it on a tab switch — the selection is still here when the user comes back.
+        /// </para>
+        /// </summary>
         public bool IsSelected
         {
             get => _isSelected;
@@ -394,6 +404,11 @@ namespace KinesisEdit.ViewModels
         /// selection, the one the key inspector rail follows, and the two boards render the very
         /// same cap view models. One flag for both would make a lighting multi-selection open the
         /// inspector on whichever key happened to be last.
+        /// </para>
+        /// <para>
+        /// Two flags is not by itself enough, because both are true on both boards: each is drawn
+        /// only on the board that owns it (<c>.lighting.paintSelected</c> since #131,
+        /// <c>.selected:not(.lighting)</c> since #133). Neither is cleared by a tab switch.
         /// </para>
         /// </summary>
         public bool IsLightingSelected

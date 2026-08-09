@@ -22,8 +22,15 @@ namespace KinesisEdit.ViewModels
     /// tables onto six chips plus <c>Other</c>; the headers keep all thirteen, because a result list
     /// that merged punctuation, modifiers and layer keys under one "Other" heading would tell the
     /// user less than the rows already tell them.</para>
+    ///
+    /// <para><b>It is drawn as a line of the flat result list, not as a container round its rows</b>
+    /// (issue #133). It still <em>holds</em> <see cref="Rows"/> — that is what the count is taken
+    /// over — but <see cref="TokenPickerViewModel.Items"/> interleaves the header and those rows
+    /// into one sequence so the view can virtualize it. The header stays outside the row container
+    /// either way, which is the point: one drawn inside a row would take the row's selection fill
+    /// along with it.</para>
     /// </summary>
-    public sealed class TokenPickerGroupViewModel : ViewModelBase
+    public sealed class TokenPickerGroupViewModel : ViewModelBase, ITokenPickerItem
     {
         /// <summary>The middle dot between a group's name and its count, as the mockups draw it.</summary>
         public const string HeaderSeparator = " · ";
@@ -49,6 +56,9 @@ namespace KinesisEdit.ViewModels
                 _ => "Other"
             };
         }
+
+        /// <inheritdoc />
+        public bool IsHeader => true;
 
         /// <summary>The §3 sub-table every row here belongs to.</summary>
         public KeyTable Table { get; }

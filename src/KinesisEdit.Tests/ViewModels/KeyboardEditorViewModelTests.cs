@@ -397,8 +397,12 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task SaveCommand_WhenTheSaveSucceeds_ToastsThePostSaveMessage()
         {
+            // Staged dirty: since issue #133 Save writes only the profiles that changed, so a
+            // session that never claimed to need saving is never written and there is no toast to
+            // assert. It is also what this test always meant — the user edited the profile.
             _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
             {
+                IsDirty = true,
                 ResultToReturn = new ProfileSaveResult
                 {
                     Success = true,
@@ -429,7 +433,8 @@ namespace KinesisEdit.Tests.ViewModels
 
             editor.SelectKeyCommand.Execute(editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex]);
 
-            _profiles.SessionToReturn!.DuringSave = () =>
+            _profiles.SessionToReturn!.IsDirty = true;
+            _profiles.SessionToReturn.DuringSave = () =>
             {
                 observed.Add(editor.IsBusy);
                 observed.Add(editor.ResetKeyCommand.CanExecute(null));
@@ -454,6 +459,8 @@ namespace KinesisEdit.Tests.ViewModels
         {
             var editor = await CreateLoadedEditorAsync();
 
+            _profiles.SessionToReturn!.IsDirty = true;
+
             await editor.SaveCommand.ExecuteAsync(null);
 
             Assert.Equal(1, _profiles.SessionToReturn!.SaveCallCount);
@@ -465,6 +472,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
             {
+                IsDirty = true,
                 ResultToReturn = new ProfileSaveResult
                 {
                     Success = false,
@@ -496,6 +504,7 @@ namespace KinesisEdit.Tests.ViewModels
         {
             _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
             {
+                IsDirty = true,
                 SaveExceptionToThrow = new IOException("the v-Drive went away")
             };
 
@@ -778,9 +787,10 @@ namespace KinesisEdit.Tests.ViewModels
         [Fact]
         public async Task IsDirty_AfterASuccessfulSave_IsCleared()
         {
-            // Cleared outright rather than re-read: Core captures the dirty baseline at load and
-            // Save does not move it (docs/app/profiles.md), so the session goes on reporting itself
-            // dirty once it has been written.
+            // Re-read rather than asserted, since issue #133: a successful save moves the session's
+            // OWN baseline to the lines it just wrote (docs/app/profiles.md), so the session reports
+            // itself clean and the editor simply asks. That is also what stops a second press of
+            // Save rewriting a profile nothing has changed.
             _profiles.SessionToReturn = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
             {
                 IsDirty = true
@@ -1312,6 +1322,16 @@ namespace KinesisEdit.Tests.ViewModels
 
         private void RunMutation(KeyboardEditorViewModel editor, string path)
         {
+            // The session's own answer is STAGED, and staged here so every caller gets it: the fake
+            // does not derive IsDirty from the model, and since issue #133 a successful Save clears
+            // it (Core moves the baseline to the lines it wrote), so an edit made after a save has
+            // to re-stage it. Set before the path runs, which is what leaves the assertion
+            // afterwards meaning "the path re-asked the session" and nothing weaker.
+            if (_profiles.SessionToReturn is { } session)
+            {
+                session.IsDirty = true;
+            }
+
             var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex];
 
             switch (path)

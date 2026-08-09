@@ -79,8 +79,29 @@ namespace KinesisEdit.ViewModels
         /// <summary>Heading of the violation list shown when validation stopped the save (04 §5.3).</summary>
         public const string SaveRejectedMessage = "The profile was not saved because it exceeds the device's limits:";
 
+        /// <summary>
+        /// The same heading when the press was writing <b>several</b> profiles: it says "nothing",
+        /// because the pre-pass means nothing was written, and each violation line below it is
+        /// prefixed with the profile it came from.
+        /// </summary>
+        public const string SaveRejectedProfilesMessage =
+            "Nothing was saved because these profiles exceed the device's limits:";
+
+        /// <summary>Opening of the aggregated post-save sentence; the profile numbers follow it.</summary>
+        public const string SavedProfilesPrefix = "Saved profiles ";
+
+        /// <summary>What joins the last two numbers of that sentence.</summary>
+        public const string SavedProfilesConjunction = " and ";
+
         /// <summary>Message prefix when the save threw; the exception's message follows it.</summary>
         public const string SaveErrorMessagePrefix = "The profile could not be saved: ";
+
+        /// <summary>
+        /// What a press of <c>Save</c> with nothing unsaved anywhere says. It writes no file — a
+        /// v-Drive is flash, and rewriting bytes that are already there is the one thing the user's
+        /// own request singled out — so it reports that rather than doing nothing visible.
+        /// </summary>
+        public const string NothingToSaveMessage = "No unsaved changes. Nothing was written to the keyboard.";
 
         /// <summary>Title of the confirmation raised before a layer is erased. Not a spec string.</summary>
         public const string ResetLayerTitle = "Reset Layer";
@@ -111,6 +132,36 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>The way out of either reset prompt. It still answers <c>No</c>.</summary>
         public const string ResetDeclineCaption = "Cancel";
+
+        /// <summary>
+        /// The action row's <c>Discard changes</c> (issue #133). Sentence case, like every caption
+        /// this app owns; <c>Reset Layout</c> beside it keeps its Title Case because that one is
+        /// spec 10's verbatim.
+        /// </summary>
+        public const string DiscardChangesCaption = "Discard changes";
+
+        /// <summary>Title of the confirmation raised before unsaved work is thrown away.</summary>
+        public const string DiscardChangesTitle = "Discard Changes";
+
+        /// <summary>
+        /// The prompt on the Keys and Macros tabs. It names <b>both</b> halves of the scope — what
+        /// goes and what stays — because the whole point of the action is that it is not the whole
+        /// profile.
+        /// </summary>
+        public const string DiscardLayoutConfirmation =
+            "Do you want to throw away every unsaved change to this profile's keys and macros? They go back to what was "
+            + "loaded when the profile was opened. Its lighting is untouched, and nothing is written to the keyboard.";
+
+        /// <summary>The prompt on the Lighting tab — the same sentence with the two halves swapped.</summary>
+        public const string DiscardLightingConfirmation =
+            "Do you want to throw away every unsaved change to this profile's lighting? It goes back to what was loaded "
+            + "when the profile was opened. Its keys and macros are untouched, and nothing is written to the keyboard.";
+
+        /// <summary>The affirmative, named after what it does (mockup 1k). It still answers <c>Yes</c>.</summary>
+        public const string DiscardConfirmCaption = "Discard changes";
+
+        /// <summary>The way out of the discard prompt, named after its outcome. It still answers <c>No</c>.</summary>
+        public const string DiscardDeclineCaption = "Keep editing";
 
         /// <summary>Builds the caption of the profile indicator ("Profile 1").</summary>
         public static string BuildProfileCaption(int profileNumber)
@@ -695,6 +746,9 @@ namespace KinesisEdit.ViewModels
             // position's remap and the spec's own reset confirmation covers macros, not remaps.
             ResetLayerCommand = new AsyncRelayCommand(ResetLayerAsync, () => SelectedLayer is not null && !IsLoading && !IsBusy);
             ResetLayoutCommand = new AsyncRelayCommand(ResetLayoutAsync, () => Layout is not null && !IsLoading && !IsBusy);
+            // Its neighbour in the action row and its opposite in meaning: a reset clears to factory
+            // defaults, a discard restores what was loaded (KeyboardEditorViewModel.Discard.cs).
+            DiscardChangesCommand = new AsyncRelayCommand(DiscardChangesAsync, () => CanDiscardChanges());
             CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
@@ -991,6 +1045,12 @@ namespace KinesisEdit.ViewModels
         private void Apply(LoadOutcome outcome)
         {
             _session = outcome.Session;
+
+            // The one place a session enters the editor's per-profile cache, so the first load, a
+            // switch, an import and a discard all keep it correct without any of them saying so
+            // (KeyboardEditorViewModel.Profiles.cs). Re-filing a cached session is a no-op.
+            CacheSession(outcome.Session);
+
             Layout = outcome.Layout;
             ProfileCaption = outcome.Session is null ? string.Empty : BuildProfileCaption(outcome.Session.ProfileNumber);
             InvalidLineMessages = BuildInvalidLineMessages(outcome.Session);
@@ -1007,8 +1067,10 @@ namespace KinesisEdit.ViewModels
             // Before the panels: a freshly parsed layout carries no macro names at all (they ride
             // app_settings.txt, not layoutN.txt), and the library groups by name — so the stored
             // names have to be stamped on before anything reads the library
-            // (KeyboardEditorViewModel.MacroLibrary.cs).
-            AttachMacroLibrary(outcome.Layout);
+            // (KeyboardEditorViewModel.MacroLibrary.cs). NOT on a cache hit: that layout is the one
+            // the user has been renaming macros on, and ApplyNames writes every site
+            // unconditionally, so re-stamping it would silently undo every unsaved rename.
+            AttachMacroLibrary(outcome.Layout, applyStoredNames: !outcome.IsCacheHit);
 
             SelectLayer(Layers.Count > 0 ? Layers[0] : null);
             RefreshCounters();
@@ -1767,19 +1829,25 @@ namespace KinesisEdit.ViewModels
         /// <see cref="RefreshCounters"/> because the lighting tab moves the session without moving
         /// a counter, and calling the counter refresh from there would be a lie about what changed.
         /// <para>
-        /// Not called after a successful save: Core's baseline is captured at load and
-        /// <c>ProfileSession.Save</c> does not move it (docs/app/profiles.md), so the session goes
-        /// on reporting itself dirty once it has been written. <see cref="SaveAsync"/> therefore
-        /// clears the flag outright, and the next real edit re-asks and gets true again.
+        /// <b>A successful save calls it too</b>, rather than asserting <c>IsDirty = false</c>.
+        /// Core moves each saved session's baseline to the lines it just wrote (issue #133,
+        /// docs/app/profiles.md), so the sessions themselves already know they are clean — and with
+        /// several profiles in play, only one of them may have been written. One source of truth
+        /// answers; the flag is never set behind the sessions' backs.
         /// </para>
         /// </summary>
         private void RefreshDirtyState()
         {
-            // A macro NAME is not in the layout file, so the session's own line comparison cannot
-            // see one move. It is still unsaved work the user would lose — hence the second term,
-            // the one deliberate exception to "app_settings.txt sits outside the dirty model"
+            // Across EVERY profile the editor has open, not just the one on screen (issue #133): a
+            // switch keeps the profile it leaves, so an edit made in profile 3 is still unsaved work
+            // while the user is looking at profile 7 — and the amber Save, whose one press now
+            // writes all of them, has to say so.
+            //
+            // A macro NAME is not in the layout file, so no session's line comparison can see one
+            // move. It is still unsaved work the user would lose — hence the second term, the one
+            // deliberate exception to "app_settings.txt sits outside the dirty model"
             // (KeyboardEditorViewModel.MacroLibrary.cs).
-            IsDirty = _session?.IsDirty == true || _hasUnsavedMacroNames;
+            IsDirty = AnyProfileIsDirty() || HasUnsavedMacroNames;
         }
 
         /// <summary>
@@ -1913,13 +1981,15 @@ namespace KinesisEdit.ViewModels
         /// false: letting the caller through after one would discard the very work the question was
         /// asked about.
         /// <para>
-        /// It is a method rather than two copies because it now has <b>two</b> callers.
-        /// <see cref="ConfirmCloseAsync"/> asks it before Home or another device replaces this
-        /// editor, and the profile picker asks it before a switch
-        /// (<c>KeyboardEditorViewModel.Profiles.cs</c>): opening a different profile abandons the
-        /// open one exactly as leaving does, so it asks the same question in the same words rather
-        /// than growing a second, differently-shaped one — which is the same reasoning that put the
-        /// strings in <see cref="UnsavedChangesPrompt"/> in the first place.
+        /// <b>It asks about every profile the editor has open, not only the one on screen</b>
+        /// (issue #133). <see cref="IsDirty"/> aggregates across the session cache and
+        /// <see cref="TrySaveAsync"/> writes every dirty profile, so one question and one `Save`
+        /// still cover the whole editor — which is what let the <em>profile switch</em> stop asking
+        /// it. Its callers are now the three exits where the editor really does go away: Home,
+        /// another device, and the window's close, all of them through
+        /// <see cref="ConfirmCloseAsync"/>. The wording is unchanged and stays
+        /// <see cref="UnsavedChangesPrompt"/>'s, so this board and the pedal ask in the same words;
+        /// naming the count would fork a string the pedal shares.
         /// </para>
         /// <para>
         /// Demo mode answers true silently, and the test is explicit rather than falling out of
@@ -1975,19 +2045,44 @@ namespace KinesisEdit.ViewModels
         /// then reports its outcome: the violations that stopped it (04 §5.3), or the device's
         /// post-save refresh wording as a toast.
         /// <para>
-        /// <b>True means the profile is on the drive</b>, and nothing else does. There are three
-        /// ways not to get there — a session that cannot be written right now, a throw, and
-        /// validation stopping the write — and the unsaved-changes guard has to tell all three
+        /// <b>It writes every profile the user changed, not only the one on screen</b> (issue #133).
+        /// The write set is <c>CollectSessionsToSave()</c> — every opened profile that is dirty, in
+        /// file order, and <b>nothing else</b>: with nothing changed anywhere, no file is written at
+        /// all and the press says so in a toast. With <b>more than one</b> in the set,
+        /// validation runs as a pre-pass over all of them, so a rejected profile 5 cannot leave
+        /// profiles 1 and 3 already on the drive; with one, the sequence is exactly what it always
+        /// was and Core's own gate is the only one (see <c>BuildPreflightViolationMessage</c>). A
+        /// profile nobody opened is never read and never written, because it has no session at all.
+        /// </para>
+        /// <para>
+        /// <b>True means every profile in the set is on the drive</b>, and nothing else does. There
+        /// are three ways not to get there — a session that cannot be written right now, a throw,
+        /// and validation stopping the write — and the unsaved-changes guard has to tell all three
         /// apart from success, because letting a navigation through after any of them would
         /// discard the work the user asked to keep.
         /// </para>
         /// </summary>
         private async Task<bool> TrySaveAsync()
         {
-            var session = _session;
-
-            if (session is null || !CanSave())
+            if (_session is null || !CanSave())
             {
+                return false;
+            }
+
+            var sessions = CollectSessionsToSave();
+
+            if (sessions.Count == 0)
+            {
+                // Nothing changed, so nothing is written — not even the profile on screen. Said out
+                // loud rather than left as a dead press: the button is deliberately still live (the
+                // amber is the dirty signal, and a Save greyed out beside work that looks unsaved is
+                // worse than one that tells you there was nothing to do).
+                _notifications.ShowToast(new ToastRequest
+                {
+                    Title = SaveTitle,
+                    Message = NothingToSaveMessage
+                });
+
                 return false;
             }
 
@@ -1995,7 +2090,21 @@ namespace KinesisEdit.ViewModels
             CancelCopyKey();
             DeactivateInspector();
 
-            ProfileSaveResult? result = null;
+            // Before a single byte is written, and over the whole set — see
+            // BuildPreflightViolationMessage.
+            if (BuildPreflightViolationMessage(sessions) is { } rejection)
+            {
+                await TryShowMessageBoxAsync(new MessageBoxRequest
+                {
+                    Title = SaveTitle,
+                    Message = rejection,
+                    Icon = MessageBoxIcon.Error
+                }).ConfigureAwait(true);
+
+                return false;
+            }
+
+            List<ProfileSaveOutcome>? results = null;
             Exception? error = null;
 
             IsBusy = true;
@@ -2007,7 +2116,7 @@ namespace KinesisEdit.ViewModels
                 // disables Save and every editing command for as long as the editor is open.
                 _notifications.ShowLoading(SavingCaption);
 
-                result = await Task.Run(session.Save).ConfigureAwait(true);
+                results = await Task.Run(() => SaveAll(sessions)).ConfigureAwait(true);
             }
             catch (Exception exception)
             {
@@ -2032,30 +2141,33 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
-            if (!result!.Success)
+            if (BuildRejectedSaveMessage(results!) is { } refused)
             {
                 await TryShowMessageBoxAsync(new MessageBoxRequest
                 {
                     Title = SaveTitle,
-                    Message = BuildViolationMessage(result.Violations),
+                    Message = refused,
                     Icon = MessageBoxIcon.Error
                 }).ConfigureAwait(true);
 
                 return false;
             }
 
-            // The macro names go to app_settings.txt now, and only now: a rename is part of this
+            // The macro names go to app_settings.txt now, and only now: a rename is part of a
             // session's dirty model and reaches the drive when the profile does. It is written
-            // AFTER the layout landed, so a save that Core rejected cannot leave the file naming
+            // AFTER the layouts landed, so a save that Core rejected cannot leave the file naming
             // macros the drive does not have (KeyboardEditorViewModel.MacroLibrary.cs).
             PersistMacroNames();
 
-            // The profile is on the drive: Save goes back to accent. Set rather than re-read,
-            // because the session's dirty baseline is the one captured at load and a save does not
-            // move it (see RefreshDirtyState).
-            IsDirty = false;
+            // Every profile in the set is on the drive, and each of them moved its own baseline to
+            // the lines it wrote — so this is a re-read rather than an assertion, and it is the
+            // only honest one now that a press of Save may have written some of the held profiles
+            // and not others. It runs AFTER PersistMacroNames, whose cleared marks it also reads.
+            RefreshDirtyState();
 
-            var message = AdvisoryStripViewModel.BuildPostSaveMessage(result.PostSaveMessage, Advisories.Total);
+            var message = AdvisoryStripViewModel.BuildPostSaveMessage(
+                BuildSavedProfilesMessage(results!),
+                Advisories.Total);
 
             if (message is not null)
             {
@@ -2073,18 +2185,6 @@ namespace KinesisEdit.ViewModels
             }
 
             return true;
-        }
-
-        private static string BuildViolationMessage(IReadOnlyList<ModelViolation> violations)
-        {
-            var lines = new List<string>(violations.Count + 1) { SaveRejectedMessage };
-
-            foreach (var violation in violations)
-            {
-                lines.Add(violation.Message);
-            }
-
-            return string.Join(Environment.NewLine, lines);
         }
 
         /// <summary>
@@ -2151,6 +2251,9 @@ namespace KinesisEdit.ViewModels
             ResetKeyCommand.NotifyCanExecuteChanged();
             ResetLayerCommand.NotifyCanExecuteChanged();
             ResetLayoutCommand.NotifyCanExecuteChanged();
+            // Unlike the resets, its predicate reads the open TAB — so a section switch has to
+            // re-ask it, which SelectTab's own call to this method already does.
+            DiscardChangesCommand.NotifyCanExecuteChanged();
             CopyKeyCommand.NotifyCanExecuteChanged();
             CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
@@ -2206,6 +2309,12 @@ namespace KinesisEdit.ViewModels
 
             StopListening();
             CancelCopyKey();
+
+            // Last, and the only path that lets a session go: since issue #133 every profile the
+            // user opened is still held (KeyboardEditorViewModel.Profiles.cs), so closing the
+            // editor is what releases all of them — with whatever they still carry unsaved, which
+            // is exactly what ConfirmCloseAsync asked about on the way here.
+            DisposeSessions();
         }
 
         /// <summary>What one load attempt produced: a session (or none, in demo mode), a model, and a failure.</summary>
@@ -2216,6 +2325,14 @@ namespace KinesisEdit.ViewModels
             public KeyboardLayout? Layout { get; init; }
 
             public Exception? Error { get; init; }
+
+            /// <summary>
+            /// Whether this profile came out of the editor's session cache rather than off the
+            /// drive. It changes exactly one thing in <see cref="Apply"/> — the stored macro names
+            /// are not re-stamped — and that one thing is the difference between a switch that keeps
+            /// the user's renames and one that wipes them.
+            /// </summary>
+            public bool IsCacheHit { get; init; }
         }
     }
 }

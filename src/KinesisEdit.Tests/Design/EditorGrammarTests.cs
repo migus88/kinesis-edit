@@ -422,6 +422,11 @@ namespace KinesisEdit.Tests.Design
             var view = await scenes.CreateAsync(typeof(KeyboardEditorView).FullName!);
             var editor = (KeyboardEditorViewModel)view.DataContext!;
 
+            // Since #133 Save writes the profiles that CHANGED and nothing else, so a clean session
+            // is written zero times by design. The claim here is that ⌘S reaches the command — which
+            // needs something for it to write.
+            scenes.Session!.IsDirty = true;
+
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
             Press(host, PhysicalKey.S, CommandModifier);

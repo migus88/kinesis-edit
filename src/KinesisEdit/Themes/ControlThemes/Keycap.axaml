@@ -19,6 +19,22 @@
          face, which is why every state's BorderBrush setter carries `:not(:focus-visible)` and no
          state's Background setter does.
 
+         THE LADDER IS THE LAYOUT BOARD'S, because it is the board the ladder's top two states are
+         DRAWN on. `.selected` paints no face on a `.lighting` cap (#133, below), so every state
+         that names `:not(.selected)` is answering a question that surface never asks. Two of them
+         are restated for it and one is not:
+
+           `.locked`'s face and border ARE restated (`^.locked.lighting…`, see LOCKED below).
+           Losing them made a selected locked cap render differently from an unselected one, and
+           the border half of that is visible: the cap's CONTENT covers everything inside the 1px
+           border on that board, so Root's Background is hidden there and Root's BORDER is not.
+
+           HOVER IS NOT. `^:pointerover:not(.selected)` leaves a selected cap at the resting
+           surface rather than lifting it — a Background, on the board where no Background this
+           theme sets is ever drawn. It is also somebody else's setter rather than part of
+           locked's own statement, so buying an invisible case would cost an edit to a state that
+           has nothing to do with this one.
+
          `.modified` LEFT that ladder with issue #91: a remap is a bar, not a face — see THE BADGE
          VOCABULARY below.
 
@@ -30,6 +46,15 @@
          different elements and a cap may wear both), it does not fight the face states (the
          Lighting board's face is the key's own colour, drawn by the cap's content, not by this
          theme), and it does not fight focus, which owns the border as it always does.
+
+         `.selected` IS SURFACE-SCOPED TOO, from the other side (#133). Everything the paragraph
+         above says about the paint selection leaking onto the Layout board was equally true in
+         reverse and stayed true one issue longer: the inspector's key kept its face, its accent
+         border and its ring on the LIGHTING board, where the inspector is not even on screen. Its
+         three setters therefore carry `:not(.lighting)`, exactly as the paint selection's carry
+         `.lighting`. The two gates are one rule read in both directions — A SELECTION IS DRAWN ONLY
+         ON THE BOARD THAT OWNS IT — and neither one clears anything: both classes stay written on
+         every cap, so a trip to the other tab and back finds the selection where it was left.
 
          `:disabled` sits outside it from the other side and beats the whole ladder: the board is
          dimmed as a unit while a profile loads, so `.selected` and `.listening` carry
@@ -78,6 +103,12 @@
          setting one BoxShadow is a matrix that works only while the two values agree; the moment
          either ring's geometry changes (as `.listening` already changes Ring's) the other would
          silently move with it.
+
+         AND EACH IS DRAWN ONLY ON ITS OWN BOARD. Owning different elements keeps the two rings from
+         merging; it does not stop either one appearing where it means nothing, which is what both
+         of them did. `.selected` names `:not(.lighting)` and `.paintSelected` names `.lighting`, so
+         the pair is complete: the inspector's ring on the Layout board, the paint ring on the
+         Lighting board, and a cap wearing both classes wears exactly one ring on each picture.
 
       3. LOCKED IS A FACT, NOT A MOOD. "Hatching = not yours to edit" (docs/design/handoff.md,
          "Focus, selection, key badges"), so it is drawn as an overlay whose visibility depends on
@@ -343,6 +374,12 @@
       The hatch itself is unconditional — see (3) at the top. A locked cap is still a live button:
       clicking it selects it and the inspector explains the refusal, so it is never `:disabled` and
       never needs a qualifier against that state.
+
+      `:not(.selected)` ON BOTH IS THE LADDER, AND IT IS THE LAYOUT BOARD'S LADDER. Locked loses its
+      face and its edge to selection because a selected cap must read as selected — true where the
+      selection is DRAWN, and false everywhere else, which is the whole of #133. The `.lighting`
+      twins below restate both setters without that term, so on the board that draws no selection
+      ring a locked cap is locked whether or not the Layout tab has picked it.
     -->
     <Style Selector="^.locked:not(:pointerover):not(.selected):not(.listening)">
       <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
@@ -376,6 +413,43 @@
     </Style>
 
     <!--
+      ...and the face and the edge are restated here WITHOUT `:not(.selected)`, which is the last
+      corner of issue #133. Gating the three `.selected` setters stopped the selection being drawn
+      on this board; it could not stop the selection being drawn by its ABSENCE. `.locked`'s two
+      setters above yield to selection — correctly, on the board that shows one — so a locked cap
+      the Layout tab had picked arrived here having quietly LOST its inset face and its transparent
+      edge, and rendered differently from the identical cap beside it for a reason this picture
+      cannot explain. A leak does not have to add a mark to be a leak.
+
+      THE BORDER IS THE HALF THAT WAS VISIBLE. On this board the cap's CONTENT paints four fill
+      layers over everything inside the 1px border — the same fact that lets the rule above drop the
+      hatch's Fill — so Root's Background is covered and its BORDER is not. A selected locked cap
+      therefore grew a solid neutral edge under its own dashed outline. The FACE is restated beside
+      it because the two are one statement: "locked sinks into the board", and a pair that only half
+      holds is exactly the drift the shared qualification exists to stop. It is also what makes the
+      claim readable at the theme level, on a cap with no content to cover it.
+
+      Nothing about the ladder changes: these two agree with the pair above wherever both match
+      (same tokens, same values), so they can never fight and their order is not load-bearing. The
+      only cap they answer differently for is the one the pair above abstains on — locked, lit and
+      selected — and the answer they give it is "locked", which is what the Layout board's ladder
+      would give it too if the selection were not being drawn there.
+
+      WHAT IS NOT RESTATED IS HOVER, and the line is drawn there on purpose: `:pointerover` is a
+      different STATE with a setter of its own, not part of locked's statement, so surface-scoping
+      it would mean editing `^:pointerover:not(.selected)` rather than restating this pair. What it
+      would buy is a hovered locked cap keeping the hover lift after the Layout tab selected it —
+      a Background, on the board where no Background this theme sets is ever drawn. See the ladder
+      note at the top of the file.
+    -->
+    <Style Selector="^.locked.lighting:not(:pointerover):not(.listening)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    </Style>
+    <Style Selector="^.locked.lighting:not(.listening):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <!--
       HOVER — the face lightens by one surface step and nothing else moves. It sets no border, so a
       locked cap keeps the dashed edge that identifies it while the pointer is over it, and it
       loses the face to selection and to listening.
@@ -397,14 +471,28 @@
       it look like the selection had moved. The face and the border do yield to listening. It IS
       qualified against `:disabled`, like the face and the border: the ring is drawn in the accent,
       and a dead cap wears no accent.
+
+      `:not(.lighting)` IS PART OF ALL THREE, and that is issue #133 — the exact mirror of what #131
+      did to `.paintSelected`, left standing one issue longer because the leak points the other way.
+      The Layout tab's selected key carries `IsSelected` on the LIGHTING board too, both tabs being
+      the same cap view models, and there it drew a full accent ring, an accent border and a
+      selected face over a picture whose whole subject is the key's own colour — on a board where
+      the inspector rail is not even on screen (since #128 that column holds two IsVisible-gated
+      children) and the selection therefore cannot be seen, explained or moved. The surface answers
+      it, exactly as it answers the four badges and the lit face: the class still says what the KEY
+      is and is written on both boards, and NOTHING IS CLEARED — leaving for the Lighting tab and
+      coming back finds the same cap selected, the ring simply not drawn in between.
+
+      The `.listening` margin setters below are deliberately NOT gated the same way; see the note
+      beside them for why geometry and paint part company there.
     -->
-    <Style Selector="^.selected:not(:disabled):not(.listening)">
+    <Style Selector="^.selected:not(.lighting):not(:disabled):not(.listening)">
       <Setter Property="Background" Value="{DynamicResource SurfaceKeySelectedBrush}" />
     </Style>
-    <Style Selector="^.selected:not(:disabled):not(.listening):not(:focus-visible)">
+    <Style Selector="^.selected:not(.lighting):not(:disabled):not(.listening):not(:focus-visible)">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
-    <Style Selector="^.selected:not(:disabled) /template/ Border#Ring">
+    <Style Selector="^.selected:not(.lighting):not(:disabled) /template/ Border#Ring">
       <Setter Property="BoxShadow" Value="{DynamicResource ShadowKeyHaloStrong}" />
     </Style>
 
@@ -473,9 +561,11 @@
       a pixel in on exactly the cap being pressed.
 
       Qualified exactly as the thickness above is, so the three can never drift apart — and
-      deliberately NOT qualified by `.lighting`, unlike the paint ring's own shadow: this is where
-      the element sits, not whether it is painted, and geometry that only held on one board is the
-      drift the shared qualification exists to prevent.
+      deliberately NOT qualified by the SURFACE, unlike either ring's own shadow (`.lighting` on the
+      paint ring's, `:not(.lighting)` on the inspector ring's): this is where the element sits, not
+      whether it is painted, and geometry that only held on one board is the drift the shared
+      qualification exists to prevent. Both elements are in the template on both boards whatever is
+      drawn into them, so both keep the same bounds on both.
     -->
     <Style Selector="^.listening:not(:disabled) /template/ Border#Ring">
       <Setter Property="Margin" Value="-1" />

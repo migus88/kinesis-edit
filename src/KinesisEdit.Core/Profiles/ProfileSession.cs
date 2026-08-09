@@ -63,10 +63,20 @@ namespace KinesisEdit.Core.Profiles
 
         /// <summary>
         /// Whether <see cref="Layout"/> (and <see cref="Lighting"/>, if present) currently
-        /// re-serialize to lines different from the ones captured right after <see cref="Load"/>.
-        /// Reuses <see cref="LayoutFileSerializer"/>/<see cref="ProfileLightingCodec"/> rather than
-        /// a bespoke model comparison, so dirty tracking can never drift from what a save would
+        /// re-serialize to lines different from <b>the baseline</b> — the lines captured right after
+        /// <see cref="Load"/>, replaced by the lines a successful <see cref="Save"/> wrote. Reuses
+        /// <see cref="LayoutFileSerializer"/>/<see cref="ProfileLightingCodec"/> rather than a
+        /// bespoke model comparison, so dirty tracking can never drift from what a save would
         /// actually write.
+        /// <para>
+        /// <b>The baseline is always what is on the drive for this profile</b>, which is what makes
+        /// "a profile with no changes is never rewritten" answerable at all: a caller that saves and
+        /// then asks again gets false, and a second press of Save writes nothing. It moves only for
+        /// a save that targeted <see cref="ProfileNumber"/> itself — a <see cref="SaveAs"/> to
+        /// another slot leaves this profile's file untouched, so its baseline must not move — and
+        /// never for an <see cref="Import"/>, whose whole point is that the imported content is
+        /// unsaved edit state.
+        /// </para>
         /// </summary>
         public bool IsDirty
         {
@@ -92,10 +102,15 @@ namespace KinesisEdit.Core.Profiles
 
         private readonly VDriveLocation _location;
         private readonly KeyboardSettings _settings;
-        private readonly IReadOnlyList<string> _originalLayoutLines;
-        private readonly IReadOnlyList<string>? _originalLightingLines;
+        private readonly IReadOnlyList<LayoutInvalidLine> _originalInvalidLines;
         private readonly IVDriveFileService _fileService;
         private readonly SettingsService _settingsService;
+
+        // The baseline: what is on the drive for this profile. Set at Load and moved by a save that
+        // wrote this profile's own files (see IsDirty and ExecuteSave). Not readonly for that one
+        // reason, and written from nowhere else — IsDirty stays a pull, and no caller can reach in.
+        private IReadOnlyList<string> _originalLayoutLines;
+        private IReadOnlyList<string>? _originalLightingLines;
 
         private ProfileSession(
             VDriveLocation location,
@@ -119,6 +134,7 @@ namespace KinesisEdit.Core.Profiles
             _settings = settings;
             _originalLayoutLines = originalLayoutLines;
             _originalLightingLines = originalLightingLines;
+            _originalInvalidLines = invalidLines;
             _fileService = fileService;
             _settingsService = settingsService;
         }
@@ -213,8 +229,8 @@ namespace KinesisEdit.Core.Profiles
         /// the very same <see cref="LayoutFileParser"/>/<see cref="ProfileLightingCodec"/> path
         /// runs, so an imported file behaves exactly as it would have off the drive — a brand-new
         /// model built from scratch (04 §4.2's full-model-wipe-on-load), invalid lines tracked
-        /// rather than dropped (04 §5), and nothing written anywhere. The baseline
-        /// <see cref="IsDirty"/> compares against is the one captured at load, so imported
+        /// rather than dropped (04 §5), and nothing written anywhere. An import <b>never moves the
+        /// baseline</b> <see cref="IsDirty"/> compares against — only a save does — so imported
         /// content is <b>unsaved edit state</b> until the user saves.
         /// </para>
         /// Throws <see cref="ProfileReadOnlyException"/> for the Advantage 360's profile 0, whose
@@ -232,6 +248,66 @@ namespace KinesisEdit.Core.Profiles
             EnsureNotReadOnlyProfile(_location.Device.LayoutScheme, ProfileNumber);
 
             return kind == ImportedFileKind.Lighting ? ImportLighting(lines) : ImportLayout(lines);
+        }
+
+        /// <summary>
+        /// Throws this session's <b>layout</b> edits away and rebuilds <see cref="Layout"/> from the
+        /// baseline — the lines read at <see cref="Load"/>, or the ones the last successful
+        /// <see cref="Save"/> wrote. <see cref="Lighting"/> is not touched —
+        /// that is the whole point of the pair: the editor's <c>Discard changes</c> is scoped to the
+        /// page the user is on, and re-reading the drive would be all-or-nothing and take the other
+        /// page's edits with it (docs/app/keyboard-editor.md).
+        /// <para>
+        /// It is the same shape as <see cref="Import"/> — a re-parse that replaces
+        /// <see cref="Layout"/> and <see cref="InvalidLines"/> in place, so a caller must hold the
+        /// <i>session</i> and re-read both afterwards — from a different source: the baseline
+        /// <see cref="IsDirty"/> already compares against. Two things follow. It <b>cannot diverge</b>
+        /// from that baseline, because it *is* it: after this call the layout half of
+        /// <see cref="IsDirty"/> is false by construction. And it needs <b>no drive</b>: the lines
+        /// are in memory, so a revert works over a volume that has since been unmounted.
+        /// </para>
+        /// <para>
+        /// <b>It reverts to what is on the drive</b>, which is the load for a profile that has not
+        /// been saved and the last <see cref="Save"/> for one that has — the baseline moves with the
+        /// write (see <see cref="IsDirty"/>), so a discard can never take back work the user already
+        /// committed.
+        /// </para>
+        /// <para>
+        /// <see cref="InvalidLines"/> goes back to the list captured at load rather than to whatever
+        /// re-parsing the baseline produces. Every baseline — the load's and every save's — is
+        /// serialized with that same list, so the kept lines are in it and the dropped ones are not;
+        /// restoring the captured list is what makes the round trip exact and keeps the "some lines
+        /// could not be applied" report saying what it said when the profile was opened. It is the
+        /// one part of the load that a save does not move, and it does not need to.
+        /// </para>
+        /// </summary>
+        public void RevertLayout()
+        {
+            var parseResult = new LayoutFileParser(Device).Parse(_originalLayoutLines);
+
+            Layout = parseResult.Layout;
+            InvalidLines = _originalInvalidLines;
+        }
+
+        /// <summary>
+        /// The lighting twin of <see cref="RevertLayout"/>: rebuilds <see cref="Lighting"/> from the
+        /// baseline's led lines — what is on the drive for this profile — and leaves
+        /// <see cref="Layout"/> exactly as it is.
+        /// <para>
+        /// A device with no profile-orchestrated led file (FS Edge/Pro — see
+        /// <see cref="ProfileLightingCodec"/>) has nothing to revert and nothing that could be
+        /// dirty, so this is a no-op there rather than a throw: unlike an import, a revert's
+        /// postcondition — "the lighting is what is on the drive" — already holds.
+        /// </para>
+        /// </summary>
+        public void RevertLighting()
+        {
+            if (_originalLightingLines is null)
+            {
+                return;
+            }
+
+            Lighting = ProfileLightingCodec.Parse(Device, _originalLightingLines);
         }
 
         /// <summary>Saves back to <see cref="ProfileNumber"/> (the save sequence of specs/03-vdrive-and-files.md §5.3).</summary>
@@ -310,10 +386,32 @@ namespace KinesisEdit.Core.Profiles
             var layoutLines = LayoutFileSerializer.Serialize(Layout, InvalidLines);
             _fileService.WriteAllLines(GetLayoutFilePath(_location, targetProfileNumber), layoutLines, allowCreate: true);
 
+            IReadOnlyList<string>? lightingLines = null;
+
             if (Lighting is not null)
             {
-                var lightingLines = ProfileLightingCodec.Serialize(Device, Lighting);
+                lightingLines = ProfileLightingCodec.Serialize(Device, Lighting);
                 _fileService.WriteAllLines(GetLightingFilePath(_location, targetProfileNumber), lightingLines, allowCreate: true);
+            }
+
+            // The lines just written ARE what is on the drive for this profile, so they become the
+            // baseline IsDirty compares against. This module still writes whatever it is asked to;
+            // what moves is the ANSWER a caller gets afterwards, and it is the answer a caller that
+            // decides which profiles to write needs — with the baseline frozen at Load, every
+            // session ever saved reports itself dirty for ever and the editor rewrites the lot on
+            // the next press of Save (docs/app/keyboard-editor.md, "Save").
+            //
+            // Only when the write went to this session's own slot. SaveAs(other, ...) copies the
+            // model somewhere else and leaves layout<ProfileNumber>.txt exactly as it was, so this
+            // session's unsaved work is still unsaved and its baseline must not move.
+            if (targetProfileNumber == ProfileNumber)
+            {
+                _originalLayoutLines = layoutLines;
+
+                if (lightingLines is not null)
+                {
+                    _originalLightingLines = lightingLines;
+                }
             }
 
             if (setAsStartup)

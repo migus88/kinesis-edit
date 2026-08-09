@@ -657,7 +657,15 @@ namespace KinesisEdit.Tests.ViewModels
 
             public EditorFixture()
             {
-                Session = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb));
+                // Staged dirty from the start. The fake does not derive IsDirty from the model, and
+                // since issue #133 Save writes only the profiles that changed — so a session that
+                // never claimed to need saving is never written, and every save case in this file
+                // would be asserting a toast that was never raised. Staging it is also the honest
+                // arrangement: these tests are about a profile the user has edited.
+                Session = new FakeProfileSession(KeyboardLayout.Create(DeviceId.FreestyleEdgeRgb))
+                {
+                    IsDirty = true
+                };
 
                 _profiles.SessionToReturn = Session;
 
