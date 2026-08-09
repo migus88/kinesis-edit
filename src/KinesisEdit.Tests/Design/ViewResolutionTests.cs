@@ -41,7 +41,6 @@ namespace KinesisEdit.Tests.Design
             [typeof(TokenPickerRowViewModel)] = "Type-matched DataTemplate in Views/TokenPickerView.axaml (a result row, a sibling of its header rather than a child).",
             [typeof(MacroCoTriggerViewModel)] = "DataTemplate in Views/MacroInspectorPanelView.axaml (the co-trigger toggles).",
             [typeof(MacroInspectorStepViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the key inspector's step rows).",
-            [typeof(MacroNameOptionViewModel)] = "ItemTemplate in Views/MacroInspectorPanelView.axaml (the macro-name dropdown's rows).",
             [typeof(LightingLayerViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the layer segments).",
             [typeof(LightingZoneViewModel)] = "ItemTemplate in Views/LightingTabView.axaml (the zone buttons).",
             [typeof(LightingModeViewModel)] = "DataTemplate in Views/LightingModeRailView.axaml (the mode rail's rows).",

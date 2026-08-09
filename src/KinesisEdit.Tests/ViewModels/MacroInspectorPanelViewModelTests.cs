@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Firmware;
 using KinesisEdit.Core.Geometry;
@@ -13,10 +14,10 @@ using KinesisEdit.ViewModels.Advisories;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The key inspector's Macro panel (mockup <c>2i</c>): the name dropdown and the "Also on" line,
-    /// recording, the footer meters, the co-triggers, and the three <see cref="Refresh"/> shapes
-    /// every rail panel has to survive — a null key, the key it already had, and somebody else's
-    /// mutation.
+    /// The key inspector's Macro panel (mockup <c>2i</c>): the inline name field and the footer's
+    /// two macro actions, recording, the footer meters, the co-triggers, and the three
+    /// <see cref="Refresh"/> shapes every rail panel has to survive — a null key, the key it already
+    /// had, and somebody else's mutation.
     /// </summary>
     public sealed class MacroInspectorPanelViewModelTests
     {
@@ -26,10 +27,14 @@ namespace KinesisEdit.Tests.ViewModels
         public void Strings_MatchTheMockVerbatim()
         {
             Assert.Equal("Macro", MacroInspectorPanelViewModel.PanelTitle);
-            Assert.Equal(
-                "Named, so it can be picked for another key from this same dropdown.",
-                MacroInspectorPanelViewModel.ReuseNote);
-            Assert.Equal("Also on ", MacroInspectorPanelViewModel.AlsoOnPrefix);
+
+            // The two footer actions of issue #141. `Copy macro to…` says its noun on purpose: the
+            // rail's own footer, six rows below, carries a `Copy to…` that copies the WHOLE
+            // position, and two buttons reading the same on one rail would be two actions with one
+            // name. The cancel is the rail footer's own wording, because it ends that same pick.
+            Assert.Equal("Copy macro to…", MacroInspectorPanelViewModel.CopyMacroCaption);
+            Assert.Equal(KeyInspectorViewModel.CancelCopyCaption, MacroInspectorPanelViewModel.CancelCopyCaption);
+            Assert.Equal("Delete", MacroInspectorPanelViewModel.DeleteMacroCaption);
 
             // A DELIBERATE deviation from mockup 2i, which ends the banner "Esc stops." (issue
             // #122, AC 2): Escape is a remappable position, so a macro has to be able to record one
@@ -492,47 +497,30 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// The name dropdown's placeholder is <b>slot-scoped where slots exist</b>. Selecting an
-        /// empty slot on a key that carries a macro in another one is a state this issue's slot
-        /// selector created — before it, the panel only ever opened a populated slot, so
-        /// <c>No macro on this key</c> could not be false. It would be false here, with the header's
-        /// own dots showing slot 1 occupied two rows above the sentence denying it.
+        /// The slot the panel is editing, as the <b>editor</b> reads it when it arms a macro copy —
+        /// a bare number, because a caller outside this panel has no business unwrapping a dropdown
+        /// row, and would otherwise have to spell the flat-list fallback a second time.
         /// </summary>
         [Fact]
-        public void TheNamePlaceholder_SaysSlotNotKey_WhenAnEmptySlotOfAnOccupiedKeyIsSelected()
+        public void SelectedSlotNumber_IsTheSlotUnderEdit_AndZeroWhereThereAreNoSlots()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a");
 
-            // The key really does carry a macro — the placeholder must not deny it.
-            Assert.NotNull(scene.Key.Key.GetMacro(1));
+            Assert.Equal(1, scene.Panel.SelectedSlotNumber);
 
             scene.Panel.SelectedSlot = scene.Panel.SlotOptions[2];
 
-            var placeholder = Assert.Single(scene.Panel.NameOptions, option => option.IsNone);
+            Assert.Equal(3, scene.Panel.SelectedSlotNumber);
 
-            Assert.Equal(MacroNameOptionViewModel.NoMacroInSlotCaption, placeholder.Caption);
-            Assert.Same(placeholder, scene.Panel.SelectedName);
-        }
+            var flat = new Scene(this, deviceId: DeviceId.Advantage360);
 
-        /// <summary>
-        /// A flat-list board has no slots, so there the key-scoped wording is the true one and must
-        /// survive — the fix above is scoped to the selector, not applied everywhere.
-        /// </summary>
-        [Fact]
-        public void TheNamePlaceholder_StaysKeyScoped_OnABoardWithNoSlots()
-        {
-            var scene = new Scene(this, deviceId: DeviceId.Advantage360);
+            flat.SelectFirstMacroKey();
 
-            scene.SelectFirstMacroKey();
-
-            Assert.False(scene.Panel.HasSlotSelector);
-
-            var placeholder = Assert.Single(scene.Panel.NameOptions, option => option.IsNone);
-
-            Assert.Equal(MacroNameOptionViewModel.NoMacroCaption, placeholder.Caption);
+            Assert.False(flat.Panel.HasSlotSelector);
+            Assert.Equal(MacroSites.FlatListSlot, flat.Panel.SelectedSlotNumber);
         }
 
         /// <summary>
@@ -880,123 +868,258 @@ namespace KinesisEdit.Tests.ViewModels
                 violation => violation.Kind == ModelViolationKind.MacroTriggerCollision);
         }
 
+        // ===== The name, the copy and the delete (issue #141) =================================
+        // The dropdown over the profile's macro library is gone with the library: there is no
+        // shared macro on the drive, so a list of "the macros this profile has" was an identity the
+        // hardware does not carry. What is here instead names ONE site.
+
+        /// <summary>
+        /// The field writes the model — and marks the <b>names</b> dirty rather than the layout,
+        /// because a name is not in <c>layoutN.txt</c> at all.
+        /// </summary>
         [Fact]
-        public void NameOptions_ListEveryMacroOfTheProfileOnce()
+        public void MacroName_TypedInTheField_WritesTheMacrosOwnName()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a");
 
-            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
-            scene.Record("b");
+            var names = 0;
+            var writes = 0;
 
-            scene.RefreshLibrary();
+            scene.Panel.NameChanged += (_, _) => names++;
+            scene.Panel.Assigned += (_, _) => writes++;
 
-            // Both macros, and no "no macro" placeholder while this key carries one.
-            Assert.Equal(2, scene.Panel.NameOptions.Count);
-            Assert.DoesNotContain(scene.Panel.NameOptions, option => option.IsNone);
-            Assert.NotNull(scene.Panel.SelectedName);
-            Assert.False(scene.Panel.SelectedName!.IsNone);
-        }
+            scene.Panel.MacroName = "Sign-off block";
 
-        [Fact]
-        public void NameOptions_OnAKeyWithNoMacro_OfferThePlaceholderFirst()
-        {
-            var scene = new Scene(this);
+            Assert.Equal("Sign-off block", scene.CurrentMacro!.Name);
+            Assert.Equal("Sign-off block", scene.Panel.MacroName);
+            Assert.Equal(1, names);
 
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a");
-
-            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
-            scene.RefreshLibrary();
-
-            Assert.True(scene.Panel.NameOptions[0].IsNone);
-            Assert.Same(scene.Panel.NameOptions[0], scene.Panel.SelectedName);
-        }
-
-        [Fact]
-        public void SelectedName_PickingAnotherMacro_AssignsItToThisKey()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a", "b");
-
-            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
-            scene.RefreshLibrary();
-
-            var pick = scene.Panel.NameOptions.First(option => !option.IsNone);
-
-            scene.Panel.SelectedName = pick;
-            scene.RefreshLibrary();
-
-            var macro = Assert.Single(scene.Key.Key.Macros.OfType<Macro>());
-
-            Assert.Equal(["[a]", "[b]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
-            Assert.Equal(scene.Key.Key.TriggerKey.Code, macro.TriggerKey);
-        }
-
-        [Fact]
-        public void SelectedName_PickingThePlaceholder_DeletesNothing()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a");
-            scene.RefreshLibrary();
-
-            scene.Panel.SelectedName = new MacroNameOptionViewModel();
-
-            Assert.True(scene.Key.Key.IsMacro);
+            // A name moves no counter, no advisory and no budget, so the layout's own funnel is
+            // deliberately NOT run for one.
+            Assert.Equal(0, writes);
         }
 
         /// <summary>
-        /// "Also on [f7] · Fn" — 2i's where-else line, built from the library entry's other sites.
+        /// The field commits on every focus loss, so committing what is already there must be a
+        /// no-op — otherwise a glance at the field dirties the profile's names.
         /// </summary>
         [Fact]
-        public void AlsoOnText_NamesEveryOtherPlaceTheMacroFiresFrom()
-        {
-            var scene = new Scene(this);
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.Record("a", "b");
-            scene.RefreshLibrary();
-
-            Assert.Equal(string.Empty, scene.Panel.AlsoOnText);
-            Assert.False(scene.Panel.HasAlsoOnText);
-
-            // Give the same macro a second home, then look at it from the first.
-            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
-            scene.RefreshLibrary();
-            scene.Panel.SelectedName = scene.Panel.NameOptions.First(option => !option.IsNone);
-            scene.RefreshLibrary();
-
-            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
-            scene.RefreshLibrary();
-
-            Assert.True(scene.Panel.HasAlsoOnText);
-            Assert.StartsWith(MacroInspectorPanelViewModel.AlsoOnPrefix, scene.Panel.AlsoOnText, StringComparison.Ordinal);
-            Assert.Contains("[2]", scene.Panel.AlsoOnText, StringComparison.Ordinal);
-            Assert.Contains("Top", scene.Panel.AlsoOnText, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void IsNamed_IsTrueOnlyOnceTheMacroReallyCarriesAName()
+        public void MacroName_CommittedUnchanged_AnnouncesNoRename()
         {
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
             scene.Record("a");
-            scene.RefreshLibrary();
 
-            Assert.False(scene.Panel.IsNamed);
+            scene.Panel.MacroName = "Sign-off block";
 
-            scene.Library.Rename(scene.Library.Entries[0], "Sign-off block");
-            scene.RefreshLibrary();
+            var names = 0;
 
-            Assert.True(scene.Panel.IsNamed);
-            Assert.Equal("Sign-off block", scene.Panel.SelectedName!.Caption);
+            scene.Panel.NameChanged += (_, _) => names++;
+
+            scene.Panel.MacroName = "Sign-off block";
+
+            // ...and the same value after Core's own sanitizing, which is what the box hands back
+            // when the user tabs out of a field they only tidied whitespace in.
+            scene.Panel.MacroName = "  Sign-off   block  ";
+
+            Assert.Equal(0, names);
+            Assert.Equal("Sign-off block", scene.CurrentMacro!.Name);
+        }
+
+        /// <summary>A blank commit clears the name; the macro falls back to its derived one.</summary>
+        [Fact]
+        public void MacroName_ClearedToBlank_UnnamesTheMacro()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.MacroName = "Sign-off block";
+            scene.Panel.MacroName = "   ";
+
+            Assert.Equal(string.Empty, scene.CurrentMacro!.Name);
+            Assert.Equal(string.Empty, scene.Panel.MacroName);
+
+            // The tombstone the next save writes is the settings layer's; what matters here is that
+            // the model really is unnamed again, which is what makes the key removable.
+            Assert.Empty(MacroSites.EnumerateStoredNames(scene.Layout));
+        }
+
+        /// <summary>
+        /// The derived display name is the <b>watermark</b> and is never the text: it is recomputed
+        /// from the macro's content on every load, and the save harvests every non-empty
+        /// <see cref="Macro.Name"/> — so writing it into the field would persist a name for a macro
+        /// nobody named, and freeze it.
+        /// </summary>
+        [Fact]
+        public void MacroNameWatermark_IsTheDerivedName_AndIsNeverWrittenToTheModel()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+
+            Assert.Equal(
+                MacroNaming.DeriveDisplayName(scene.CurrentMacro!, scene.Layout),
+                scene.Panel.MacroNameWatermark);
+            Assert.Equal("ab", scene.Panel.MacroNameWatermark);
+
+            Assert.Equal(string.Empty, scene.Panel.MacroName);
+            Assert.Equal(string.Empty, scene.CurrentMacro!.Name);
+            Assert.Empty(MacroSites.EnumerateStoredNames(scene.Layout));
+
+            // It follows the content, which is the whole reason it is not stored.
+            scene.Record("c");
+
+            Assert.Equal("abc", scene.Panel.MacroNameWatermark);
+        }
+
+        /// <summary>There is nothing to name on an empty slot, and the field says so by being dead.</summary>
+        [Fact]
+        public void WithNoMacro_TheNameFieldIsDeadAndWritesNothing()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.False(scene.Panel.HasMacro);
+            Assert.Equal(string.Empty, scene.Panel.MacroNameWatermark);
+
+            var names = 0;
+
+            scene.Panel.NameChanged += (_, _) => names++;
+
+            scene.Panel.MacroName = "Sign-off block";
+
+            Assert.Equal(0, names);
+            Assert.Equal(0, scene.Layout.MacroCount);
+        }
+
+        /// <summary>
+        /// <c>Delete</c> empties <b>this slot</b>. The other slots of the key are untouched, and so
+        /// is another key carrying a macro that merely looks the same — there is no shared macro to
+        /// reach (06 §1).
+        /// </summary>
+        [Fact]
+        public void DeleteMacro_EmptiesThisSlotAlone()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+            scene.Record("b");
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+            scene.Record("a");
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Panel.SelectedSlot = scene.Panel.SlotOptions[1];
+
+            var writes = 0;
+
+            scene.Panel.Assigned += (_, _) => writes++;
+
+            Assert.True(scene.Panel.DeleteMacroCommand.CanExecute(null));
+
+            scene.Panel.DeleteMacroCommand.Execute(null);
+
+            Assert.Null(scene.Key.Key.GetMacro(2));
+            Assert.NotNull(scene.Key.Key.GetMacro(1));
+            Assert.Equal(2, scene.Layout.MacroCount);
+
+            // ...and the panel is still on the slot it emptied rather than having jumped to the
+            // key's other macro, which is what "open the first populated slot" would otherwise do
+            // to a delete.
+            Assert.Equal(2, scene.Panel.SelectedSlotNumber);
+            Assert.Empty(scene.Panel.Steps.Items);
+            Assert.False(scene.Panel.HasMacro);
+
+            // A delete IS a layout write, unlike a rename: the counters, the cap and the dirty flag
+            // all follow it.
+            Assert.Equal(1, writes);
+
+            scene.Select(TestLayouts.RgbDigitTwoKeyIndex);
+
+            Assert.NotNull(scene.CurrentMacro);
+        }
+
+        /// <summary>
+        /// On a flat-list board (06 §1) the same command takes the macro out of the per-layout list,
+        /// which is the only store that board has.
+        /// </summary>
+        [Fact]
+        public void DeleteMacro_OnAFlatListBoard_TakesItOutOfTheLayoutsList()
+        {
+            var scene = new Scene(this, deviceId: DeviceId.Advantage360);
+
+            scene.SelectFirstMacroKey();
+            scene.Record("a");
+
+            Assert.Equal(1, scene.Layout.MacroCount);
+
+            scene.Panel.DeleteMacroCommand.Execute(null);
+
+            Assert.Equal(0, scene.Layout.MacroCount);
+            Assert.False(scene.Panel.HasMacro);
+        }
+
+        /// <summary>Nothing to delete on an empty slot, so the command is dead rather than silent.</summary>
+        [Fact]
+        public void DeleteMacro_WithNoMacro_IsDisabled()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.False(scene.Panel.DeleteMacroCommand.CanExecute(null));
+
+            scene.Record("a");
+
+            Assert.True(scene.Panel.DeleteMacroCommand.CanExecute(null));
+        }
+
+        /// <summary>
+        /// The two copy commands are the <b>editor's</b>, handed over rather than re-implemented —
+        /// one armed state, one Escape route, one disarm set — and the armed flag is read back off
+        /// the cancel command's own <c>CanExecute</c> so the panel cannot drift from it.
+        /// </summary>
+        [Fact]
+        public void TheCopyPair_IsTheEditorsOwn_AndIsCopyArmedFollowsIt()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+
+            Assert.Same(scene.CopyMacro, scene.Panel.CopyMacroCommand);
+            Assert.Same(scene.CancelCopy, scene.Panel.CancelCopyCommand);
+            Assert.False(scene.Panel.IsCopyArmed);
+
+            var announced = 0;
+
+            scene.Panel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MacroInspectorPanelViewModel.IsCopyArmed))
+                {
+                    announced++;
+                }
+            };
+
+            scene.ArmCopy(true);
+
+            Assert.True(scene.Panel.IsCopyArmed);
+            Assert.Equal(1, announced);
+
+            scene.ArmCopy(false);
+
+            Assert.False(scene.Panel.IsCopyArmed);
+            Assert.Equal(2, announced);
         }
 
         // ===== Revert (issue #122, AC 1) =====================================================
@@ -1871,17 +1994,18 @@ namespace KinesisEdit.Tests.ViewModels
             return new FirmwareState { KeyboardFirmware = new FirmwareVersion(major, minor, revision) };
         }
 
-        private MacroInspectorPanelViewModel Create(MacroLibrary? library = null)
+        private MacroInspectorPanelViewModel Create()
         {
             return new MacroInspectorPanelViewModel(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb),
                 _urlLauncher,
-                () => library);
+                new RelayCommand(() => { }),
+                new RelayCommand(() => { }));
         }
 
         /// <summary>
-        /// One panel over one real Freestyle Edge RGB layout and its library, refreshed exactly as
-        /// the rail refreshes it — pushed, never subscribed.
+        /// One panel over one real Freestyle Edge RGB layout, refreshed exactly as the rail
+        /// refreshes it — pushed, never subscribed — and over a stand-in for the editor's copy pair.
         /// </summary>
         private sealed class Scene
         {
@@ -1889,7 +2013,15 @@ namespace KinesisEdit.Tests.ViewModels
 
             public KeyboardLayout Layout { get; }
 
-            public MacroLibrary Library { get; }
+            /// <summary>
+            /// The editor's <c>Copy macro to…</c>, as the panel sees it: a command it is handed and
+            /// hands on. The arm itself is the editor's own state machine and is covered there;
+            /// what this fixture has to be able to say is "it is armed now".
+            /// </summary>
+            public IRelayCommand CopyMacro { get; }
+
+            /// <summary>Its cancel — the command the panel reads <c>IsCopyArmed</c> off.</summary>
+            public IRelayCommand CancelCopy { get; }
 
             public MacroInspectorPanelViewModel Panel { get; }
 
@@ -1918,6 +2050,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             private readonly KeyboardLayerViewModel _layer;
 
+            /// <summary>Whether the editor's copy pick is armed — what both commands are gated on.</summary>
+            private bool _isCopyArmed;
+
             public Scene(
                 MacroInspectorPanelViewModelTests owner,
                 DeviceId deviceId = DeviceId.FreestyleEdgeRgb,
@@ -1931,11 +2066,24 @@ namespace KinesisEdit.Tests.ViewModels
                 }
 
                 Layout = KeyboardLayout.Create(deviceId);
-                Library = new MacroLibrary(Layout);
 
                 _layer = KeyboardLayerViewModel.BuildAll(Layout, ResolveVisual(deviceId, Layout), null)[0];
 
-                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, () => Library);
+                // The editor's own shape: arming is what makes the cancel executable, which is the
+                // one fact the panel reads back out of the pair.
+                CopyMacro = new RelayCommand(() => ArmCopy(true), () => !_isCopyArmed);
+                CancelCopy = new RelayCommand(() => ArmCopy(false), () => _isCopyArmed);
+
+                Panel = new MacroInspectorPanelViewModel(Device, owner._urlLauncher, CopyMacro, CancelCopy);
+            }
+
+            /// <summary>Arms or disarms that pick, announcing it exactly as a real command does.</summary>
+            public void ArmCopy(bool isArmed)
+            {
+                _isCopyArmed = isArmed;
+
+                CopyMacro.NotifyCanExecuteChanged();
+                CancelCopy.NotifyCanExecuteChanged();
             }
 
             public void Select(int keyIndex)
@@ -1985,13 +2133,6 @@ namespace KinesisEdit.Tests.ViewModels
             public void Refresh()
             {
                 Panel.Refresh(Key, _layer, Layout, EditorAdvisories.Empty);
-            }
-
-            public void RefreshLibrary()
-            {
-                Library.Refresh();
-
-                Refresh();
             }
 
             public void Record(params string[] tokens)

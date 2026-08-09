@@ -71,6 +71,28 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string CopyTargetLockedPrompt = "That position cannot be edited — pick another, or press Esc.";
 
+        /// <summary>
+        /// What the row reads while the Macro panel's <c>Copy macro to…</c> is armed. Deliberately
+        /// worded apart from <see cref="CopyTargetPrompt"/>: the two picks look identical on the
+        /// board — arm, then click a cap — and only this line says which one is in flight.
+        /// </summary>
+        public const string CopyMacroTargetPrompt = "Pick a key for this macro · Esc to cancel";
+
+        /// <summary>
+        /// What it reads when the picked target cannot carry a macro at all (05 §5.3, 06 §2.2) —
+        /// which is a different refusal from <see cref="CopyTargetLockedPrompt"/>: a position may
+        /// be perfectly remappable and still refuse macros. Stays armed, like every macro-copy
+        /// refusal: the user is still picking.
+        /// </summary>
+        public const string CopyMacroTargetLockedPrompt = "That position cannot carry a macro — pick another, or press Esc.";
+
+        /// <summary>
+        /// What it reads when every one of the target's macro slots already holds one (06 §1). It
+        /// names the cap, not the profile, so the copy stays armed and the next cap is still a
+        /// candidate.
+        /// </summary>
+        public const string CopyMacroTargetFullPrompt = "Every macro slot of that key is taken — pick another, or press Esc.";
+
         /// <summary>Remapped positions on the shown layer.</summary>
         public int RemappedCount
         {

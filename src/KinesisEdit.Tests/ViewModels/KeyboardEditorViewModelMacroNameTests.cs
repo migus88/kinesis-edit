@@ -10,11 +10,17 @@ using KinesisEdit.ViewModels;
 namespace KinesisEdit.Tests.ViewModels
 {
     /// <summary>
-    /// The editor's <b>one</b> <see cref="MacroLibrary"/> and the macro names that ride
-    /// <c>app_settings.txt</c> with it (issue #93): applied on load, harvested on save, folded into
-    /// the dirty flag in between — and never written by a second reader/writer pair.
+    /// The macro names that ride <c>app_settings.txt</c> beside a profile (issue #93, rewritten for
+    /// issue #141): stamped onto a freshly parsed layout on load, harvested off its macro
+    /// <see cref="MacroSites">sites</see> on save, folded into the dirty flag in between — and never
+    /// written by a second reader/writer pair.
+    /// <para>
+    /// The <c>MacroLibrary</c> this suite used to be about is gone. There is no shared macro on disk
+    /// (06 §1), so a name belongs to a <em>place</em>: two keys carrying the same name are two
+    /// independent names, and the last case here is what pins that.
+    /// </para>
     /// </summary>
-    public sealed class KeyboardEditorViewModelMacroLibraryTests : IDisposable
+    public sealed class KeyboardEditorViewModelMacroNameTests : IDisposable
     {
         private readonly FakeProfileSessionFactory _profiles = new();
         private readonly FakeSettingsService _settings = new();
@@ -28,30 +34,18 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
         [Fact]
-        public async Task Load_BuildsOneLibraryOverTheOpenProfile()
-        {
-            var editor = await CreateLoadedEditorAsync();
-
-            Assert.NotNull(editor.MacroLibrary);
-            Assert.Same(editor.Layout, editor.MacroLibrary!.Layout);
-            Assert.Equal(_profiles.SessionToReturn!.ProfileNumber, editor.ProfileNumber);
-        }
-
-        [Fact]
         public async Task Load_StampsTheStoredNamesOntoTheFreshlyParsedLayout()
         {
             // A macro name is NOT in layoutN.txt: a parsed layout always arrives unnamed, and this
             // is the step that puts the stored name back.
-            var siteKey = StageOneMacro(out var triggerCode);
+            var siteKey = StageOneMacro(out _);
 
             _preferences.SetInitial(AppSettings.Empty.WithMacroName(siteKey, "Sign-off block"));
 
             var editor = await CreateLoadedEditorAsync();
-            var entry = Assert.Single(editor.MacroLibrary!.Entries);
 
-            Assert.Equal("Sign-off block", entry.Name);
-            Assert.True(entry.IsExplicitlyNamed);
-            Assert.Equal(triggerCode, entry.Sites[0].TriggerKeyCode);
+            Assert.Equal("Sign-off block", FindStagedMacro(editor).Name);
+            Assert.Equal(_profiles.SessionToReturn!.ProfileNumber, editor.ProfileNumber);
         }
 
         [Fact]
@@ -60,14 +54,16 @@ namespace KinesisEdit.Tests.ViewModels
             StageOneMacro(out _);
 
             var editor = await CreateLoadedEditorAsync();
-            var entry = Assert.Single(editor.MacroLibrary!.Entries);
+            var macro = FindStagedMacro(editor);
 
-            Assert.False(entry.IsExplicitlyNamed);
-            Assert.NotEqual(string.Empty, entry.Name);
+            // Empty is the model's "unnamed", and it is what keeps a derived name out of
+            // app_settings.txt: only a non-empty Macro.Name is ever harvested.
+            Assert.Equal(string.Empty, macro.Name);
+            Assert.NotEqual(string.Empty, MacroNaming.DeriveDisplayName(macro, editor.Layout!));
         }
 
         [Fact]
-        public async Task RenameMacro_MarksTheSessionDirtyAndWritesNothingYet()
+        public async Task Rename_MarksTheProfileDirtyAndWritesNothingYet()
         {
             StageOneMacro(out _);
 
@@ -75,10 +71,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.False(editor.IsDirty);
 
-            var renamed = editor.RenameMacro(editor.MacroLibrary!.Entries[0], "Sign-off block");
-
-            Assert.NotNull(renamed);
-            Assert.Equal("Sign-off block", renamed!.Name);
+            RenameTheStagedMacro(editor, "Sign-off block");
 
             // The exception the whole feature turns on: a name is session state, so Save writes it
             // and Discard drops it. Nothing has reached app_settings.txt yet.
@@ -89,27 +82,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task RenameMacro_WithAStaleEntry_RefusesRatherThanRenamingWhateverIsThere()
-        {
-            StageOneMacro(out _);
-
-            var editor = await CreateLoadedEditorAsync();
-            var stale = editor.MacroLibrary!.Entries[0];
-
-            editor.RenameMacro(stale, "First");
-
-            Assert.Null(editor.RenameMacro(stale, "Second"));
-            Assert.Equal("First", editor.MacroLibrary.Entries[0].Name);
-        }
-
-        [Fact]
         public async Task Save_HarvestsTheNamesThroughThePreferencesStoreScopedToTheProfile()
         {
-            StageOneMacro(out _);
+            StageOneMacro(out var triggerCode);
 
             var editor = await CreateLoadedEditorAsync();
 
-            editor.RenameMacro(editor.MacroLibrary!.Entries[0], "Sign-off block");
+            RenameTheStagedMacro(editor, "Sign-off block");
 
             await editor.SaveCommand.ExecuteAsync(null);
 
@@ -123,12 +102,18 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(editor.ProfileNumber, stored.Key.ProfileNumber);
             Assert.Equal("Sign-off block", stored.Value);
 
+            // THE TRAP (issue #141): the key's trigger component is KeyboardKey.TriggerKey.Code and
+            // never the position's own code. A site keyed by the position writes a settings key the
+            // next load never looks up — the name would round-trip to nothing, silently.
+            Assert.Equal(triggerCode, stored.Key.TriggerKeyCode);
+            Assert.Equal(1, stored.Key.SlotNumber);
+
             Assert.False(editor.HasUnsavedMacroNames);
             Assert.False(editor.IsDirty);
         }
 
         [Fact]
-        public async Task Save_WithNoExplicitName_WritesAnEmptySetSoTheOldKeyIsRemoved()
+        public async Task Save_WithTheNameCleared_WritesAnEmptySetSoTheOldKeyIsRemoved()
         {
             var siteKey = StageOneMacro(out _);
 
@@ -137,7 +122,7 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync();
 
             // Clearing the name is what makes the macro derive one again — and tombstones the key.
-            editor.RenameMacro(editor.MacroLibrary!.Entries[0], string.Empty);
+            RenameTheStagedMacro(editor, string.Empty);
 
             await editor.SaveCommand.ExecuteAsync(null);
 
@@ -152,7 +137,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var editor = await CreateLoadedEditorAsync();
 
-            editor.RenameMacro(editor.MacroLibrary!.Entries[0], "Sign-off block");
+            RenameTheStagedMacro(editor, "Sign-off block");
 
             _profiles.SessionToReturn!.ResultToReturn = new ProfileSaveResult
             {
@@ -180,62 +165,74 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync(
                 TestDevices.CreateSnapshot(DeviceId.FreestyleEdgeRgb, VDriveConnectionStatus.CannotAccess));
 
-            // Demo mode opens a real demo profile (issue #96), so a name genuinely scopes to one and
-            // the library is built over the fixture's layout — what demo mode refuses is the
-            // *write*, not the read: spec 08 §3 bans saving app settings, never loading them.
-            Assert.NotNull(editor.MacroLibrary);
+            // Demo mode opens a real profile (issue #96), so a name genuinely scopes to one and the
+            // macros are named normally — what demo mode refuses is the *write*, not the read:
+            // spec 08 §3 bans saving app settings, never loading them.
+            Assert.NotNull(editor.Layout);
             Assert.True(editor.ProfileNumber >= 1);
 
             editor.MarkMacroNamesDirty();
 
             await editor.SaveCommand.ExecuteAsync(null);
 
-            // The names stay on Macro.Name for the session — the dropdown and the library work
-            // exactly as on a writable drive — but nothing reaches the fixture drive.
+            // The names stay on Macro.Name for the session — the rail's field works exactly as on a
+            // writable drive — but nothing reaches the fixture drive.
             Assert.Empty(_preferences.MacroNameWrites);
         }
 
         [Fact]
-        public async Task TheLibrary_FollowsEveryMacroEditThroughTheEditorsFunnel()
+        public async Task ARename_ReachesTheEditorThroughTheRailsOwnEvent()
         {
-            var editor = await CreateLoadedEditorAsync();
-            var rebuilds = 0;
-
-            editor.MacroLibraryChanged += (_, _) => rebuilds++;
-
-            Assert.Empty(editor.MacroLibrary!.Entries);
-
-            RecordAMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "a");
-
-            Assert.Single(editor.MacroLibrary.Entries);
-            Assert.True(rebuilds > 0);
-        }
-
-        [Fact]
-        public async Task TheLibrary_IsTheSameInstanceTheRailsMacroPanelReads()
-        {
+            // The panel raises NameChanged rather than Assigned — a name moves no counter — and the
+            // editor's handler is the only thing that turns it into unsaved work.
             var editor = await CreateLoadedEditorAsync();
 
             RecordAMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "a");
 
-            var panel = OpenMacroPanel(editor);
+            var before = editor.MacroCount;
+            var panel = OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex);
 
-            // Two libraries over one layout would be two snapshots that disagree the moment either
-            // is edited; the panel's dropdown is built from THIS one.
-            Assert.Single(panel.NameOptions);
-            Assert.Equal(editor.MacroLibrary!.Entries[0].Name, panel.NameOptions[0].Caption);
+            panel.MacroName = "Sign-off block";
+
+            Assert.True(editor.HasUnsavedMacroNames);
+            Assert.True(editor.IsDirty);
+
+            // ...and nothing about it moved the macro count, which is what the second event exists
+            // to keep separate.
+            Assert.Equal(before, editor.MacroCount);
         }
 
         [Fact]
-        public async Task TheMacroTab_NoLongerStealsTheSectionWhenTheRailsMacroModeIsChosen()
+        public async Task ARename_OnOneKey_LeavesAnIdenticallyNamedMacroOnAnotherKeyAlone()
+        {
+            // The whole point of issue #141. The deleted MacroLibrary grouped sites by name and
+            // propagated a rename across the group, which is an identity the hardware does not
+            // have: every slot holds its own copy (06 §1).
+            var editor = await CreateLoadedEditorAsync();
+
+            RecordAMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "a");
+            RecordAMacro(editor, TestLayouts.RgbDigitTwoKeyIndex, "a");
+
+            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = "Sign-off block";
+            OpenMacroPanelFor(editor, TestLayouts.RgbDigitTwoKeyIndex).MacroName = "Sign-off block";
+
+            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = "Something else";
+
+            Assert.Equal("Something else", FindMacro(editor, TestLayouts.RgbDigitOneKeyIndex).Name);
+            Assert.Equal("Sign-off block", FindMacro(editor, TestLayouts.RgbDigitTwoKeyIndex).Name);
+
+            // Two places, two settings keys — the harvest never merges them either.
+            Assert.Equal(2, MacroSites.EnumerateStoredNames(editor.Layout!).Count);
+        }
+
+        [Fact]
+        public async Task TheMacroMode_DoesNotStealTheSectionWhenItIsChosen()
         {
             var editor = await CreateLoadedEditorAsync();
 
-            SelectKey(editor, TestLayouts.RgbDigitOneKeyIndex);
+            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex);
 
-            OpenMacroPanel(editor);
-
-            // The bridge is gone: the tab has a real panel and must not navigate away from the board.
+            // The bridge is gone: the rail has the panel and must not navigate away from the board.
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
         }
 
@@ -275,6 +272,27 @@ namespace KinesisEdit.Tests.ViewModels
             return new MacroNameKey(_profiles.SessionToReturn.ProfileNumber, 0, triggerCode, 1);
         }
 
+        private static Macro FindStagedMacro(KeyboardEditorViewModel editor)
+        {
+            return FindMacro(editor, TestLayouts.RgbDigitOneKeyIndex);
+        }
+
+        private static Macro FindMacro(KeyboardEditorViewModel editor, int keyIndex)
+        {
+            return editor.Layout!.Layers[0].Keys[keyIndex].GetMacro(1)
+                   ?? throw new InvalidOperationException($"Position {keyIndex} carries no macro in slot 1.");
+        }
+
+        /// <summary>
+        /// Renames the staged macro <b>the way the user does</b> — the rail's inline name field —
+        /// which is also the only path that exercises the panel's <c>NameChanged</c> hop into the
+        /// editor.
+        /// </summary>
+        private static void RenameTheStagedMacro(KeyboardEditorViewModel editor, string name)
+        {
+            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = name;
+        }
+
         private KeyboardKeyViewModel RecordAMacro(KeyboardEditorViewModel editor, int keyIndex, string token)
         {
             var key = SelectKey(editor, keyIndex);
@@ -299,9 +317,16 @@ namespace KinesisEdit.Tests.ViewModels
             return key;
         }
 
+        private static MacroInspectorPanelViewModel OpenMacroPanelFor(KeyboardEditorViewModel editor, int keyIndex)
+        {
+            SelectKey(editor, keyIndex);
+
+            return OpenMacroPanel(editor);
+        }
+
         /// <summary>
         /// Puts the key inspector on its Macro mode and hands the panel back. The rail exposes only
-        /// the showing panel, so this is also what proves the tab reaches it.
+        /// the showing panel, so this is also what proves the mode reaches it.
         /// </summary>
         private static MacroInspectorPanelViewModel OpenMacroPanel(KeyboardEditorViewModel editor)
         {

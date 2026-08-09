@@ -757,9 +757,9 @@ namespace KinesisEdit.Tests.Design
 
         /// <summary>
         /// The rail's Macro panel over a position that really carries a macro, recorded through the
-        /// panel's own capture path rather than written into the model behind its back — the library
-        /// and the dropdown are built off the editor's refresh funnel, and a scene that skipped it
-        /// would render a panel the app never produces.
+        /// panel's own capture path rather than written into the model behind its back — the steps,
+        /// the meters and the slot strip are all read off the editor's refresh funnel, and a scene
+        /// that skipped it would render a panel the app never produces.
         /// </summary>
         public async Task<MacroInspectorPanelViewModel> CreateMacroInspectorPanelAsync()
         {

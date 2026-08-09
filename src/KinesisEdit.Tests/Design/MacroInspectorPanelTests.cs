@@ -257,6 +257,151 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
+        /// The <c>MACRO</c> section is an inline field now (issue #141), not a dropdown over a
+        /// library that no longer exists. Two things about it can only be seen on the real view: it
+        /// is a genuine <c>TextBox</c> — which is what stands the recording down when focus lands in
+        /// it — and the derived name is its <b>watermark</b>, so the box itself is empty and the
+        /// save has no name to harvest.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheNameField_IsATypedFieldWhoseDerivedNameIsOnlyAWatermark(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            Assert.Contains(MacroInspectorPanelViewModel.NameLabel, VisibleTextsOf(view));
+
+            var field = NameFieldOf(view);
+
+            // Sans, not mono: the mono law is for values that exist verbatim in a config file, and
+            // a macro name rides this app's own app_settings.txt in the user's words.
+            Assert.DoesNotContain("monoValue", field.Classes);
+            Assert.Equal(MacroNaming.MaxNameLength, field.MaxLength);
+            Assert.True(field.IsEffectivelyEnabled, "The name field is dead on a key that carries a macro.");
+
+            Assert.Equal(panel.MacroNameWatermark, field.Watermark);
+            Assert.Equal("est", field.Watermark);
+            Assert.True(string.IsNullOrEmpty(field.Text), "The derived name was written into the field.");
+
+            // Typed and committed the way the user commits it — Enter, which is the view's own
+            // handler, because a binding can say "on focus loss" and cannot say "and on Enter".
+            field.Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(field.IsFocused, "The name field did not take focus.");
+
+            field.Text = "Sign-off block";
+
+            host.Window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.Equal("Sign-off block", panel.MacroName);
+            Assert.Equal("Sign-off block", field.Text);
+        }
+
+        /// <summary>
+        /// The footer's two macro actions (issue #141), and the swap that keeps the rail from
+        /// growing a control it only sometimes needs: <c>Copy macro to…</c> is replaced by
+        /// <c>Cancel copy</c> for as long as the pick is armed, exactly as the rail's own footer
+        /// does it one section below.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheFooter_OffersTheMacrosOwnCopyAndDelete_AndSwapsTheCopyWhileItIsArmed(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            var captions = VisibleButtonCaptionsOf(view);
+
+            Assert.Contains(MacroInspectorPanelViewModel.CopyMacroCaption, captions);
+            Assert.Contains(MacroInspectorPanelViewModel.DeleteMacroCaption, captions);
+            Assert.DoesNotContain(MacroInspectorPanelViewModel.CancelCopyCaption, captions);
+
+            // The noun is the whole point: the rail's own footer carries a `Copy to…` that copies
+            // the WHOLE position, and the two must not read alike.
+            Assert.DoesNotContain(KeyInspectorViewModel.CopyToCaption, captions);
+
+            panel.CopyMacroCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.True(panel.IsCopyArmed, "Running the editor's own copy command did not arm the pick.");
+
+            captions = VisibleButtonCaptionsOf(view);
+
+            Assert.Contains(MacroInspectorPanelViewModel.CancelCopyCaption, captions);
+            Assert.DoesNotContain(MacroInspectorPanelViewModel.CopyMacroCaption, captions);
+
+            panel.CancelCopyCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            captions = VisibleButtonCaptionsOf(view);
+
+            Assert.Contains(MacroInspectorPanelViewModel.CopyMacroCaption, captions);
+            Assert.DoesNotContain(MacroInspectorPanelViewModel.CancelCopyCaption, captions);
+        }
+
+        /// <summary>
+        /// A slot with no macro has nothing to name, copy or delete, and says so by drawing the
+        /// three dead rather than by dropping them — the composer's own rule, for the composer's own
+        /// reason: the feature is not missing from the device, the user has simply not put a macro
+        /// there yet, and a block that came and went as slots were picked would move everything
+        /// under it on every click.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task OnAnEmptySlot_TheNameFieldAndTheDeleteAreDrawnDead(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            // The last persisted slot of the same key: empty, and reachable only because the header
+            // has a slot selector at all (#137).
+            panel.SelectedSlot = panel.SlotOptions[^1];
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(panel.HasMacro);
+
+            var field = NameFieldOf(view);
+
+            Assert.False(field.IsEffectivelyEnabled, "The name field is live on a slot with no macro.");
+            Assert.True(string.IsNullOrEmpty(field.Watermark), "An empty slot derived a name from nothing.");
+
+            var delete = Assert.Single(
+                view.GetVisualDescendants().OfType<Button>(),
+                button => button.IsEffectivelyVisible
+                          && (button.Content as string) == MacroInspectorPanelViewModel.DeleteMacroCaption);
+
+            Assert.False(delete.IsEffectivelyEnabled, "Delete is live with nothing to delete.");
+        }
+
+        /// <summary>
         /// Issue #140's own row, at the glass: <c>macros n / m</c> sits in line with the three
         /// meters it joined and inside the 300 px rail. A view-model test cannot see either — a
         /// fourth row that wrapped, overflowed or landed out of column would satisfy every
@@ -383,9 +528,12 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains(MacroInspectorPanelViewModel.StepDelayLabel, VisibleTextsOf(view));
 
+            // BY ITS CLASS, not by being the only one: since issue #141 the panel carries a second
+            // real TextBox — the macro's name — and `monoValue` is exactly what tells them apart. A
+            // millisecond count exists verbatim in a config file and a name does not.
             var field = Assert.Single(
                 view.GetVisualDescendants().OfType<TextBox>(),
-                box => box.IsEffectivelyVisible);
+                box => box.IsEffectivelyVisible && box.Classes.Contains("monoValue"));
 
             Assert.Contains("monoValue", field.Classes);
             Assert.NotNull(field.Theme);
@@ -1622,6 +1770,31 @@ namespace KinesisEdit.Tests.Design
                 .Where(block => block.IsEffectivelyVisible)
                 .Select(block => block.Text ?? string.Empty)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// The caption of every button the panel is really showing. A `Content` that is not a string
+        /// is somebody else's control (the record dot's `Ellipse`, the composer's two-run latches),
+        /// so it contributes nothing rather than a type name.
+        /// </summary>
+        private static IReadOnlyList<string> VisibleButtonCaptionsOf(Control view)
+        {
+            return view.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsEffectivelyVisible)
+                .Select(button => button.Content as string ?? string.Empty)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// The macro's name field — the one typed field on this panel that is <b>not</b> a value out
+        /// of a config file, which is exactly what the absent <c>monoValue</c> class says.
+        /// </summary>
+        private static TextBox NameFieldOf(Control view)
+        {
+            return Assert.Single(
+                view.GetVisualDescendants().OfType<TextBox>(),
+                box => box.IsEffectivelyVisible && !box.Classes.Contains("monoValue"));
         }
 
         private static ThemedHost Show(Control view, string variantName)

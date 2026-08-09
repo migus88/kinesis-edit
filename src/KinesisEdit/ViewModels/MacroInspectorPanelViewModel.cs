@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
@@ -24,10 +23,14 @@ namespace KinesisEdit.ViewModels
     /// first free slot — or appends it to the Advantage 360's flat list. The old panel's
     /// draft-then-assign dance was a modal's shape, not a rail's.</para>
     ///
-    /// <para><b>The name dropdown picks; it does not rename.</b> Picking an existing name here is
-    /// <c>MacroLibrary.AssignTo</c> — "assigning a named macro to a second key is a pick from the
-    /// inspector's own dropdown" — and renaming is
-    /// <c>KeyboardEditorViewModel.RenameMacro</c>, which this panel never calls.</para>
+    /// <para><b>The name is a field on this macro, and nothing else</b> (issue #141). It was a
+    /// dropdown over the profile's macro <em>library</em> until that layer was deleted: there is no
+    /// shared macro anywhere on disk — every key's slot holds its own copy (06 §1) — so a list of
+    /// "the macros this profile has" was an identity the hardware does not carry, and picking from
+    /// it was an assignment dressed as a rename. What replaces it is smaller and honest:
+    /// <see cref="MacroName"/> names <em>this</em> site, <see cref="CopyMacroCommand"/> is how a
+    /// second key gets a copy, and <see cref="DeleteMacroCommand"/> empties this slot alone. The
+    /// reuse note and the "Also on …" line went with the grouping that computed them.</para>
     ///
     /// <para><b>It records through the editor, never around it.</b> The editor owns the single
     /// subscription to <c>IKeystrokeCaptureService</c> and routes one keystroke to one consumer;
@@ -66,23 +69,25 @@ namespace KinesisEdit.ViewModels
         /// <summary>The panel's own name, and its mode tab's caption.</summary>
         public const string PanelTitle = KeyInspectorTabViewModel.MacroCaption;
 
-        /// <summary>The section label over the name dropdown. This app's wording.</summary>
+        /// <summary>The section label over the name field. This app's wording.</summary>
         public const string NameLabel = "MACRO";
 
         /// <summary>
-        /// What a named macro promises, verbatim from mockup <c>2i</c>. Shown only once the macro
-        /// really carries a name, because that is what makes it pickable for a second key.
+        /// The footer's copy action. Deliberately <b>not</b> the rail footer's <c>Copy to…</c>: that
+        /// one copies the whole position (its assignment, its tap-and-hold, all of its macros), this
+        /// one copies the single macro the panel is showing, and the two sit six rows apart on the
+        /// same rail. The noun is what tells them apart.
         /// </summary>
-        public const string ReuseNote = "Named, so it can be picked for another key from this same dropdown.";
+        public const string CopyMacroCaption = "Copy macro to…";
 
-        /// <summary>Opens the "where else does this fire" line (mockup <c>2i</c>: "Also on [f7] · Fn").</summary>
-        public const string AlsoOnPrefix = "Also on ";
+        /// <summary>
+        /// What the same button says while that pick is armed and waiting for its target click —
+        /// the rail footer's own wording, because it is the same editor state being cancelled.
+        /// </summary>
+        public const string CancelCopyCaption = "Cancel copy";
 
-        /// <summary>Between a site's token and its layer in that line.</summary>
-        public const string SiteSeparator = " · ";
-
-        /// <summary>Between two sites in that line.</summary>
-        public const string SiteJoin = ", ";
+        /// <summary>The footer's delete action: this slot's macro, and nothing else.</summary>
+        public const string DeleteMacroCaption = "Delete";
 
         /// <summary>The record button at rest (mockup <c>2i</c>: <c>● Record</c>; the dot is geometry).</summary>
         public const string RecordCaption = "Record";
@@ -178,6 +183,15 @@ namespace KinesisEdit.ViewModels
         /// <summary>Refusal when the profile already holds its macro count (06 §6).</summary>
         public const string MacroCountLimitMessageFormat = "This profile already holds its maximum of {0} macros.";
 
+        /// <summary>
+        /// The longest name the field accepts, which is Core's own bound
+        /// (<see cref="MacroNaming.MaxNameLength"/>) rather than a number spelled again in XAML.
+        /// It exists as a static so the view can reach it with <c>x:Static</c>: the name rides a
+        /// line-oriented settings file (08 §1), so the bound is a file fact and a literal <c>24</c>
+        /// in a view would be a second copy of it waiting to disagree.
+        /// </summary>
+        public static int MaxNameLength => MacroNaming.MaxNameLength;
+
         /// <summary>Builds the macro-count refusal for <paramref name="limit"/> macros (06 §6).</summary>
         public static string BuildMacroCountLimitMessage(int limit)
         {
@@ -233,46 +247,60 @@ namespace KinesisEdit.ViewModels
         /// <summary>The step editor, and §11.3's delays inside it.</summary>
         public MacroInspectorStepsViewModel Steps { get; }
 
-        /// <summary>Every logical macro of the profile, offered for this key (mockup <c>2i</c>).</summary>
-        public IReadOnlyList<MacroNameOptionViewModel> NameOptions
+        /// <summary>
+        /// What the user has called the macro under edit, and the inline field's two-way source.
+        /// The empty string is "unnamed", which is what <see cref="Macro.Name"/> itself means by it.
+        ///
+        /// <para><b>Setting it writes the model and marks the <em>names</em> dirty, not the
+        /// layout.</b> A name does not live in <c>layoutN.txt</c> at all — it rides this app's own
+        /// <c>app_settings.txt</c> (08 §1) — so it raises <see cref="NameChanged"/> rather than
+        /// <c>Assigned</c>: nothing about a name moves a counter, an advisory or a keystroke
+        /// budget, and running the editor's whole refresh funnel for one would be work for nothing
+        /// and a dirty bit on the wrong file.</para>
+        ///
+        /// <para><b>An unchanged commit writes nothing.</b> The field commits on focus loss, which
+        /// happens every time the user clicks past it, so a setter that announced a rename for the
+        /// text it already held would dirty the profile for a glance.</para>
+        ///
+        /// <para><b>It never creates a macro.</b> There is nothing to name until one exists;
+        /// <see cref="HasMacro"/> is what the field is enabled on.</para>
+        /// </summary>
+        public string MacroName
         {
-            get => _nameOptions;
-            private set => SetProperty(ref _nameOptions, value);
+            get => _macro?.Name ?? string.Empty;
+            set => ApplyMacroName(value);
         }
 
         /// <summary>
-        /// The dropdown's current row. Setting it to another macro's row <b>assigns that macro to
-        /// this key</b> (<c>MacroLibrary.AssignTo</c>); the placeholder row is refused, because a
-        /// dropdown must never be the thing that deletes a macro.
+        /// What the field shows while the macro carries no name of its own — the derived display
+        /// name (<see cref="MacroNaming.DeriveDisplayName"/>), which is what every other surface
+        /// calls an unnamed macro.
+        ///
+        /// <para><b>A watermark, and never the text.</b> Writing the derived name into the field
+        /// would make it the macro's <em>stored</em> name the moment the field committed, and the
+        /// save harvests every non-empty <see cref="Macro.Name"/> — so one visit to a key would
+        /// write a <c>macro_name_*</c> line for a name the user never typed, and freeze it against
+        /// the macro's own content, which the derived name otherwise follows.</para>
         /// </summary>
-        public MacroNameOptionViewModel? SelectedName
-        {
-            get => _selectedName;
-            set => PickName(value);
-        }
+        public string MacroNameWatermark => _macro is { } macro && _layout is { } layout
+            ? MacroNaming.DeriveDisplayName(macro, layout)
+            : string.Empty;
 
-        /// <summary>Whether the macro under edit carries a name a second key could pick.</summary>
-        public bool IsNamed
-        {
-            get => _isNamed;
-            private set => SetProperty(ref _isNamed, value);
-        }
+        /// <summary>
+        /// Whether the panel is showing a macro at all — false on an empty slot, on a position that
+        /// refuses macros and with nothing selected. It gates the three things that need one to act
+        /// on: the name field, <see cref="DeleteMacroCommand"/> and the editor's own predicate
+        /// behind <see cref="CopyMacroCommand"/>.
+        /// </summary>
+        public bool HasMacro => _macro is not null;
 
-        /// <summary>"Also on [f7] · Fn" — every other place this macro fires from, or empty.</summary>
-        public string AlsoOnText
-        {
-            get => _alsoOnText;
-            private set
-            {
-                if (SetProperty(ref _alsoOnText, value))
-                {
-                    OnPropertyChanged(nameof(HasAlsoOnText));
-                }
-            }
-        }
-
-        /// <summary>Whether this macro fires from anywhere but the selected position.</summary>
-        public bool HasAlsoOnText => _alsoOnText.Length > 0;
+        /// <summary>
+        /// Whether a copy is armed and waiting for its target click. Read off the editor's own
+        /// cancel command — a command that can execute <em>is</em> the armed state — so the panel
+        /// mirrors nothing and cannot drift from it. The same shape, for the same reason, as
+        /// <see cref="KeyInspectorViewModel.IsCopyArmed"/>.
+        /// </summary>
+        public bool IsCopyArmed => CancelCopyCommand.CanExecute(null);
 
         /// <summary>
         /// The banner shown while capture is armed, naming the step being recorded into — the step
@@ -389,14 +417,43 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand InsertStepCommand { get; }
 
         /// <summary>
+        /// <c>Copy macro to…</c> — the editor's own command, injected. It arms the same pick the
+        /// legend row's <c>Copy key…</c> arms and finishes on the same click; only what is written
+        /// when the target lands differs (one macro, into the target's first empty slot). Owning a
+        /// second armed state here would be a second set of refusals to keep in step with the
+        /// first, which is the argument <c>KeyboardEditorViewModel.Legend.cs</c> already makes.
+        /// </summary>
+        public IRelayCommand CopyMacroCommand { get; }
+
+        /// <summary>Disarms that pick: the editor's own <c>CancelCopyKeyCommand</c>.</summary>
+        public IRelayCommand CancelCopyCommand { get; }
+
+        /// <summary>
+        /// Empties <b>this slot</b> — the macro the panel is showing, at the position it is showing
+        /// it on — through <see cref="MacroPlacement.Remove"/>, which clears a slot only when that
+        /// slot really holds this instance. Every other slot of the key, and every other key
+        /// carrying a macro that merely looks the same, is untouched: there is no shared macro to
+        /// delete (06 §1).
+        /// </summary>
+        public IRelayCommand DeleteMacroCommand { get; }
+
+        /// <summary>
         /// Raised after the panel wrote to the profile's macros, so the editor can run its one
         /// refresh funnel — Core announces nothing, so nothing downstream notices otherwise.
         /// </summary>
         public event EventHandler? Assigned;
 
+        /// <summary>
+        /// Raised after the panel changed a macro's <b>name</b>. A second event beside
+        /// <see cref="Assigned"/> because it marks a different bit: a name is unsaved state of
+        /// <c>app_settings.txt</c>, not of the layout, and the two are saved by different code on
+        /// different files.
+        /// </summary>
+        public event EventHandler? NameChanged;
+
         private readonly MacroCapability _capability;
         private readonly TokenDialect _dialect;
-        private readonly Func<MacroLibrary?> _resolveLibrary;
+        private readonly EventHandler _copyArmedChangedHandler;
         private readonly int? _maxMacroCount;
 
         /// <summary>
@@ -408,8 +465,6 @@ namespace KinesisEdit.ViewModels
         private readonly int _persistedSlots;
 
         private readonly bool _usesMacroSlots;
-        private IReadOnlyList<MacroNameOptionViewModel> _nameOptions = [];
-        private MacroNameOptionViewModel? _selectedName;
         private KeyboardKeyViewModel? _key;
         private KeyboardLayerViewModel? _layer;
         private KeyboardLayout? _layout;
@@ -422,11 +477,9 @@ namespace KinesisEdit.ViewModels
         private MacroKeySnapshot? _snapshot;
 
         private string _unavailableReason = NoSelectionMessage;
-        private string _alsoOnText = string.Empty;
         private string _message = string.Empty;
         private int _speed;
         private int _repeat;
-        private bool _isNamed;
         private MacroCaptureMode _captureMode;
 
         /// <summary>
@@ -435,10 +488,12 @@ namespace KinesisEdit.ViewModels
         /// the token dialect (<c>KeyboardLayout.DialectFor</c>) — which is what lets the rail be
         /// built once, eagerly, before any profile has been read.
         /// <para>
-        /// <paramref name="resolveLibrary"/> is how the panel reaches the editor's <b>one</b>
-        /// <see cref="MacroLibrary"/>. It is a function rather than a stored instance because the
-        /// library arrives with the profile and is replaced by a load or an import, and two
-        /// libraries over one layout would be two sources of truth.
+        /// <paramref name="copyMacroCommand"/> and <paramref name="cancelCopyCommand"/> are the
+        /// <b>editor's own</b> commands, taken the way <see cref="KeyInspectorViewModel"/> takes
+        /// its copy pair: one armed state, one Escape route, one disarm set. The panel neither owns
+        /// nor mirrors that state — it reads it back off the cancel command's own
+        /// <c>CanExecute</c>. It replaces #93's <c>Func&lt;MacroLibrary?&gt;</c>, which is gone with
+        /// the library layer (issue #141).
         /// </para>
         /// <para>
         /// <b>It no longer takes the editor's <c>RecentTokenStore</c></b> (issue #139). #128's chord
@@ -452,11 +507,14 @@ namespace KinesisEdit.ViewModels
         public MacroInspectorPanelViewModel(
             DeviceSnapshot device,
             IUrlLauncher urlLauncher,
-            Func<MacroLibrary?> resolveLibrary)
+            IRelayCommand copyMacroCommand,
+            IRelayCommand cancelCopyCommand)
         {
             ArgumentNullException.ThrowIfNull(device);
 
-            _resolveLibrary = resolveLibrary ?? throw new ArgumentNullException(nameof(resolveLibrary));
+            CopyMacroCommand = copyMacroCommand ?? throw new ArgumentNullException(nameof(copyMacroCommand));
+            CancelCopyCommand = cancelCopyCommand ?? throw new ArgumentNullException(nameof(cancelCopyCommand));
+
             _capability = device.Device.Macros;
             _dialect = KeyboardLayout.DialectFor(device.DeviceId);
             _maxMacroCount = MacroLimits.ResolveMaxMacroCount(device);
@@ -472,6 +530,13 @@ namespace KinesisEdit.ViewModels
 
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
             InsertStepCommand = new RelayCommand(InsertPlaceholderStep, CanRecord);
+            DeleteMacroCommand = new RelayCommand(DeleteMacro, () => HasMacro);
+
+            _copyArmedChangedHandler = (_, _) => OnPropertyChanged(nameof(IsCopyArmed));
+
+            // The command belongs to the editor, which owns this panel, so the two live and die
+            // together and there is nothing here to unsubscribe from later.
+            CancelCopyCommand.CanExecuteChanged += _copyArmedChangedHandler;
 
             // The step editor writes into the macro directly; the editor's funnel is what everything
             // else hangs off, so one hop is all this needs.
@@ -710,7 +775,7 @@ namespace KinesisEdit.ViewModels
             LoadSpeedAndRepeat();
             RefreshSlots();
             RefreshTrigger();
-            RefreshNames();
+            RefreshName();
             RefreshMeters();
             ReadComposerFromSelection();
 
@@ -1018,175 +1083,93 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Rebuilds the dropdown from the editor's <b>current</b> library snapshot, and re-reads what
-        /// this key's macro is called and where else it fires. Every mutation rebuilds
-        /// <c>Entries</c>, so an option held across one is stale — which is why the rows are rebuilt
-        /// rather than re-marked.
+        /// Re-reads the name field off the model: what the macro is called, what it would be called
+        /// if it were unnamed, and whether there is a macro to name, delete or copy at all. It
+        /// writes nothing — the name of a macro is a fact about the macro, and this runs after
+        /// everybody else's mutation (see <see cref="ReadFromModel"/>).
         /// </summary>
-        private void RefreshNames()
+        private void RefreshName()
         {
-            var library = _resolveLibrary();
+            OnPropertyChanged(nameof(MacroName));
+            OnPropertyChanged(nameof(MacroNameWatermark));
+            OnPropertyChanged(nameof(HasMacro));
 
-            if (library is null)
-            {
-                NameOptions = [];
-                SetSelectedName(null);
-                IsNamed = false;
-                AlsoOnText = string.Empty;
-
-                return;
-            }
-
-            var current = _macro is not null ? library.FindByMacro(_macro) : null;
-            var options = new List<MacroNameOptionViewModel>(library.Entries.Count + 1);
-            MacroNameOptionViewModel? selected = null;
-
-            if (current is null)
-            {
-                var none = new MacroNameOptionViewModel(HasSlotSelector);
-
-                options.Add(none);
-
-                selected = none;
-            }
-
-            foreach (var entry in library.Entries)
-            {
-                var option = new MacroNameOptionViewModel(entry);
-
-                options.Add(option);
-
-                if (ReferenceEquals(entry, current))
-                {
-                    selected = option;
-                }
-            }
-
-            NameOptions = options;
-
-            SetSelectedName(selected);
-
-            IsNamed = current?.IsExplicitlyNamed == true;
-            AlsoOnText = BuildAlsoOnText(current);
+            DeleteMacroCommand.NotifyCanExecuteChanged();
         }
 
         /// <summary>
-        /// "Also on [f7] · Fn" — every site of this macro but the one the rail is showing. Built
-        /// from the library entry rather than from a scan, because the entry <em>is</em> the answer
-        /// to "which keys and layers fire this one".
+        /// The name field's write path. Sanitizing here as well as in <see cref="Macro.Name"/>'s own
+        /// setter is not duplication: it is what makes the "did this actually change?" comparison
+        /// honest, since the model stores the sanitized form and the field hands over raw text.
         /// </summary>
-        private string BuildAlsoOnText(MacroLibraryEntry? entry)
+        private void ApplyMacroName(string? value)
         {
-            if (entry is null || _layout is null || entry.SiteCount <= 1)
+            if (_macro is not { } macro || !IsAvailable)
             {
-                return string.Empty;
-            }
+                // Nothing to name. The field is disabled in that state, so this is a guard rather
+                // than a path — but a binding can push a value at a control that has just gone
+                // dead, and answering it would be inventing a macro to hang the name on.
+                OnPropertyChanged(nameof(MacroName));
 
-            var builder = new StringBuilder();
-
-            foreach (var site in entry.Sites)
-            {
-                if (ReferenceEquals(site.Macro, _macro))
-                {
-                    continue;
-                }
-
-                if (builder.Length > 0)
-                {
-                    builder.Append(SiteJoin);
-                }
-
-                builder.Append(DescribeSite(site));
-            }
-
-            return builder.Length > 0 ? AlsoOnPrefix + builder : string.Empty;
-        }
-
-        private string DescribeSite(MacroSite site)
-        {
-            var trigger = KeyRegistry.FindByCode(site.TriggerKeyCode);
-            var token = trigger is not null
-                ? KeyboardKeyViewModel.FormatToken(trigger, _dialect)
-                : string.Empty;
-
-            var layer = _layout is not null && site.LayerIndex >= 0 && site.LayerIndex < _layout.Layers.Count
-                ? LayerCaptions.ForLayer(_layout.Layers[site.LayerIndex], _dialect)
-                : string.Empty;
-
-            if (token.Length == 0)
-            {
-                return layer;
-            }
-
-            return layer.Length == 0 ? token : token + SiteSeparator + layer;
-        }
-
-        private void SetSelectedName(MacroNameOptionViewModel? option)
-        {
-            if (ReferenceEquals(_selectedName, option))
-            {
                 return;
             }
 
-            _selectedName = option;
+            var sanitized = MacroNaming.Sanitize(value);
 
-            OnPropertyChanged(nameof(SelectedName));
+            if (string.Equals(macro.Name, sanitized, StringComparison.Ordinal))
+            {
+                // The commit fires on every focus loss, including the ones where the user only
+                // looked. Announcing a rename for text that did not move would dirty the profile's
+                // names for a glance — and the field is already showing exactly this string.
+                OnPropertyChanged(nameof(MacroName));
+
+                return;
+            }
+
+            macro.Name = sanitized;
+
+            OnPropertyChanged(nameof(MacroName));
+
+            // NOT OnMacroWritten: nothing about a name moves a counter, an advisory or a budget,
+            // and the file it is saved to is not the layout.
+            NameChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
-        /// The dropdown's write path: putting an existing named macro on this key
-        /// (<c>MacroLibrary.AssignTo</c>, mockup <c>2i</c>). The current slot is emptied first, so
-        /// the pick <em>replaces</em> what the position was carrying rather than quietly filling a
-        /// second slot with it — the rail edits one macro and the exclusivity the whole inspector is
-        /// built on says so.
+        /// Takes this one macro off this one place (issue #141). It is the only delete the app has
+        /// left — the Macros tab's "delete every site of this name at once" went with the library
+        /// identity that made a group out of two independent copies (06 §1).
         /// </summary>
-        private void PickName(MacroNameOptionViewModel? option)
+        private void DeleteMacro()
         {
-            if (option is null || ReferenceEquals(option, _selectedName))
+            if (_macro is not { } macro || !IsAvailable || _layout is not { } layout)
             {
                 return;
             }
 
-            // The placeholder is a state, not an action: a dropdown must never be the thing that
-            // deletes a macro. The selection simply snaps back.
-            if (option.Entry is not { } entry)
-            {
-                OnPropertyChanged(nameof(SelectedName));
+            // A take that survived the delete would append into a macro that is no longer on the
+            // key — and EnsureMacro would silently make a new one to hold it. The pointer already
+            // stands recording down for any click that is not a claimed record control; this is the
+            // same answer, said by the path that needs it rather than left to the surface above.
+            StopRecording();
 
+            // The insertion point was measured against the keystroke list that is about to stop
+            // existing, exactly as it is on a revert.
+            Steps.DiscardPlaceholder();
+
+            if (!MacroPlacement.Remove(layout, _key?.Key, macro, _key?.Key.ActiveMacroIndex ?? MacroSites.FlatListSlot))
+            {
                 return;
             }
 
-            if (!IsAvailable || _key is not { } key || _resolveLibrary() is not { } library)
-            {
-                OnPropertyChanged(nameof(SelectedName));
-
-                return;
-            }
-
-            var slot = _usesMacroSlots ? key.Key.ActiveMacroIndex : MacroLibrary.FlatListSlot;
-
-            if (_usesMacroSlots && (slot < Macro.MinMacroIndex || slot > Macro.MaxMacroIndex))
-            {
-                slot = MacroLibrary.FirstEmptySlot;
-            }
-
-            if (_usesMacroSlots && slot >= Macro.MinMacroIndex && key.Key.GetMacro(slot) is not null)
-            {
-                key.Key.SetMacro(slot, null);
-            }
-
-            var assigned = library.AssignTo(entry, key.Key, slot);
-
-            if (assigned is null)
-            {
-                Message = NoFreeSlotMessage;
-
-                OnPropertyChanged(nameof(SelectedName));
-
-                return;
-            }
+            // The panel stays on the slot it just emptied. Without this the "open the first
+            // populated slot" fallback would answer the delete by showing another slot's macro, and
+            // the user would see the panel jump instead of the slot they cleared.
+            ClaimSlotChoice();
 
             Message = string.Empty;
+
+            ReadFromModel();
 
             OnMacroWritten();
         }
@@ -1198,9 +1181,8 @@ namespace KinesisEdit.ViewModels
         /// write, which is the opposite of <see cref="Refresh"/>'s "re-read and never write" and does
         /// not re-enter it.
         /// <para>
-        /// Everything else — the counters, the advisories, the legend, the library snapshot the name
-        /// dropdown is built from, and the dirty flag — is the editor's funnel's, because Core
-        /// announces nothing and half a refresh is worse than none.
+        /// Everything else — the counters, the advisories, the legend and the dirty flag — is the
+        /// editor's funnel's, because Core announces nothing and half a refresh is worse than none.
         /// </para>
         /// </summary>
         private void OnMacroWritten()

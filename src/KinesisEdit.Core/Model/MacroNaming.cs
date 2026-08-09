@@ -1,13 +1,11 @@
-using System.Globalization;
 using System.Text;
 using KinesisEdit.Core.Keys;
 
 namespace KinesisEdit.Core.Model
 {
     /// <summary>
-    /// The naming rules for macros: what a name may look like, when two names are the same name,
-    /// and what to call a macro that has none. Pure functions over the model — no I/O, no UI, no
-    /// device switch.
+    /// The naming rules for macros: what a name may look like, and what to call one that has none.
+    /// Pure functions over the model — no I/O, no UI, no device switch.
     /// <para>
     /// A macro name is <b>not in the layout file</b> (see <see cref="Macro.Name"/>): it rides
     /// <c>settings/app_settings.txt</c>, which is line-oriented <c>key=value</c> text (spec 08 §1).
@@ -20,7 +18,7 @@ namespace KinesisEdit.Core.Model
         /// <summary>
         /// Longest name this app stores or derives, in characters. Chosen so a derived fallback
         /// (<c>"Macro on [" + token + "]"</c>, 11 characters plus a file token of at most 8) always
-        /// fits, and so a name stays readable in the inspector's one-line dropdown.
+        /// fits, and so a name stays readable in the inspector's one-line name field.
         /// </summary>
         public const int MaxNameLength = 24;
 
@@ -94,52 +92,6 @@ namespace KinesisEdit.Core.Model
             }
 
             return Bound(builder.ToString());
-        }
-
-        /// <summary>
-        /// Whether <paramref name="a"/> and <paramref name="b"/> are the same name: trimmed and
-        /// compared case-insensitively. This is the identity <see cref="MacroLibrary"/> groups by,
-        /// so "Sign-off" and "sign-off " are one macro with two trigger sites, not two macros.
-        /// </summary>
-        public static bool AreSameName(string? a, string? b)
-        {
-            return string.Equals(Sanitize(a), Sanitize(b), StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// The <paramref name="ordinal"/>-th spelling of <paramref name="name"/>:
-        /// <c>"Sign-off"</c> + 2 → <c>"Sign-off (2)"</c>. Ordinal 1 is the name itself. The base is
-        /// shortened as far as needed to keep the result within <see cref="MaxNameLength"/>, so a
-        /// disambiguated name is still a legal name. This is how <see cref="MacroLibrary"/> keeps
-        /// two same-named macros apart instead of merging or dropping one.
-        /// </summary>
-        public static string Disambiguate(string? name, int ordinal)
-        {
-            ArgumentOutOfRangeException.ThrowIfLessThan(ordinal, 1);
-
-            var sanitized = Sanitize(name);
-
-            if (sanitized.Length == 0)
-            {
-                sanitized = UnnamedMacroName;
-            }
-
-            if (ordinal == 1)
-            {
-                return sanitized;
-            }
-
-            var suffix = " (" + ordinal.ToString(CultureInfo.InvariantCulture) + ")";
-            var room = MaxNameLength - suffix.Length;
-
-            if (room <= 0)
-            {
-                return Bound(suffix.TrimStart());
-            }
-
-            var stem = sanitized.Length <= room ? sanitized : sanitized[..room].TrimEnd();
-
-            return stem + suffix;
         }
 
         /// <summary>

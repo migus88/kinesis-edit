@@ -2,8 +2,9 @@ namespace KinesisEdit.Core.Model
 {
     /// <summary>
     /// One place a macro sits in a layout: the layer, the trigger key it fires from, and the macro
-    /// slot it occupies. A site is a <em>location</em>, not a macro — the same logical macro
-    /// (<see cref="MacroLibraryEntry"/>) may have several, which is the whole point of the library.
+    /// slot it occupies. A site is a <em>location</em>, not an identity — two sites holding macros
+    /// that look alike hold two independent copies (06 §1), and nothing groups them
+    /// (<see cref="MacroSites"/>).
     /// <para>
     /// <see cref="TriggerKeyCode"/> is the code of <see cref="KeyboardKey.TriggerKey"/>, never of
     /// the position key: 05 §1.3 makes <c>fn1s</c> and <c>keyt</c> trigger as their original action,

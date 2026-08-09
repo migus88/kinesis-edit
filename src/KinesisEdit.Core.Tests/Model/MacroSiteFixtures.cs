@@ -5,14 +5,14 @@ using KinesisEdit.Core.Model;
 namespace KinesisEdit.Core.Tests.Model
 {
     /// <summary>
-    /// Layouts and macros for the <see cref="MacroLibrary"/> tests: the two macro stores of
-    /// specs/06-macros.md §1 (per-key slots and the Advantage360 flat list) and a hybrid used to
-    /// exercise the <c>fn1s</c>/<c>keyt</c> trigger-identity exception on a slot store — no shipped
-    /// slot device has such a key, so the only way to cover the rule is to combine the Advantage360
-    /// geometry with a slot-based macro capability, which is exactly what the
-    /// <see cref="KeyboardLayout"/> two-argument constructor exists for.
+    /// Layouts and macros for the <see cref="MacroSites"/> and <see cref="MacroPlacement"/> tests:
+    /// the two macro stores of specs/06-macros.md §1 (per-key slots and the Advantage360 flat list)
+    /// and a hybrid used to exercise the <c>fn1s</c>/<c>keyt</c> trigger-identity exception on a
+    /// slot store — no shipped slot device has such a key, so the only way to cover the rule is to
+    /// combine the Advantage360 geometry with a slot-based macro capability, which is exactly what
+    /// the <see cref="KeyboardLayout"/> two-argument constructor exists for.
     /// </summary>
-    internal static class MacroLibraryFixtures
+    internal static class MacroSiteFixtures
     {
         public static KeyboardLayout SlotLayout()
         {

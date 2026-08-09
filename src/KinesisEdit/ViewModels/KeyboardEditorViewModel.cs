@@ -752,6 +752,10 @@ namespace KinesisEdit.ViewModels
             // defaults, a discard restores what was loaded (KeyboardEditorViewModel.Discard.cs).
             DiscardChangesCommand = new AsyncRelayCommand(DiscardChangesAsync, () => CanDiscardChanges());
             CopyKeyCommand = new RelayCommand(ArmCopyKey, () => CanCopyKey());
+            // The same armed state, scoped to one macro (KeyboardEditorViewModel.Legend.cs). It is
+            // built here, before CreateInspector below, because the rail's Macro panel is handed
+            // both of these in its constructor.
+            CopyMacroCommand = new RelayCommand(ArmMacroCopy, () => CanCopyMacro());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
             InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
@@ -1062,12 +1066,12 @@ namespace KinesisEdit.ViewModels
                 : [];
 
             // Before the panels: a freshly parsed layout carries no macro names at all (they ride
-            // app_settings.txt, not layoutN.txt), and the library groups by name — so the stored
-            // names have to be stamped on before anything reads the library
-            // (KeyboardEditorViewModel.MacroLibrary.cs). NOT on a cache hit: that layout is the one
-            // the user has been renaming macros on, and ApplyNames writes every site
-            // unconditionally, so re-stamping it would silently undo every unsaved rename.
-            AttachMacroLibrary(outcome.Layout, applyStoredNames: !outcome.IsCacheHit);
+            // app_settings.txt, not layoutN.txt), so the stored names have to be stamped onto its
+            // macros before anything reads one (KeyboardEditorViewModel.MacroNames.cs). NOT on a
+            // cache hit: that layout is the one the user has been renaming macros on, and
+            // MacroSites.ApplyNames writes every site unconditionally, so re-stamping it would
+            // silently undo every unsaved rename.
+            AttachMacroNames(outcome.Layout, applyStoredNames: !outcome.IsCacheHit);
 
             SelectLayer(Layers.Count > 0 ? Layers[0] : null);
             RefreshCounters();
@@ -1724,10 +1728,8 @@ namespace KinesisEdit.ViewModels
             ModifiedKeyCount = Layout?.ModifiedKeyCount ?? 0;
             MacroCount = Layout?.MacroCount ?? 0;
 
-            // Order matters twice over: RebuildAdvisories pushes each layer's advisory count in and
-            // the legend row reads it back off the layer, and the library's snapshot has to be
-            // rebuilt before the legend pushes state into the rail, whose Macro panel reads it.
-            RefreshMacroLibrary();
+            // Order matters: RebuildAdvisories pushes each layer's advisory count in and the legend
+            // row reads it back off the layer.
             RebuildAdvisories();
             RefreshLegend();
             RefreshDirtyState();
@@ -1813,7 +1815,7 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            EditMacroAt(layerIndex, keyIndex, anchor.MacroIndex ?? MacroLibrary.FlatListSlot, startRecording: false);
+            EditMacroAt(layerIndex, keyIndex, anchor.MacroIndex ?? MacroSites.FlatListSlot, startRecording: false);
         }
 
         /// <summary>
@@ -1838,7 +1840,7 @@ namespace KinesisEdit.ViewModels
             // A macro NAME is not in the layout file, so no session's line comparison can see one
             // move. It is still unsaved work the user would lose — hence the second term, the one
             // deliberate exception to "app_settings.txt sits outside the dirty model"
-            // (KeyboardEditorViewModel.MacroLibrary.cs).
+            // (KeyboardEditorViewModel.MacroNames.cs).
             IsDirty = AnyProfileIsDirty() || HasUnsavedMacroNames;
         }
 
@@ -2151,7 +2153,7 @@ namespace KinesisEdit.ViewModels
             // The macro names go to app_settings.txt now, and only now: a rename is part of a
             // session's dirty model and reaches the drive when the profile does. It is written
             // AFTER the layouts landed, so a save that Core rejected cannot leave the file naming
-            // macros the drive does not have (KeyboardEditorViewModel.MacroLibrary.cs).
+            // macros the drive does not have (KeyboardEditorViewModel.MacroNames.cs).
             PersistMacroNames();
 
             // Every profile in the set is on the drive, and each of them moved its own baseline to
@@ -2250,6 +2252,9 @@ namespace KinesisEdit.ViewModels
             // re-ask it, which SelectTab's own call to this method already does.
             DiscardChangesCommand.NotifyCanExecuteChanged();
             CopyKeyCommand.NotifyCanExecuteChanged();
+            // Its predicate reads the rail's open macro as well as the selection, so it is re-asked
+            // wherever a macro is written too — OnMacroInspectorAssigned ends here for that reason.
+            CopyMacroCommand.NotifyCanExecuteChanged();
             CancelCopyKeyCommand.NotifyCanExecuteChanged();
             SaveCommand.NotifyCanExecuteChanged();
             InsertSpecialActionCommand.NotifyCanExecuteChanged();

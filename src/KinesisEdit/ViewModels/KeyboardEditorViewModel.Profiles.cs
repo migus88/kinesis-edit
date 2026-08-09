@@ -10,7 +10,7 @@ namespace KinesisEdit.ViewModels
     /// <summary>
     /// The profile picker: <b>which numbered profile the editor is editing</b>, and the switch that
     /// points it at another one. Split out of <see cref="KeyboardEditorViewModel"/>'s main file for
-    /// the reason <c>…Legend.cs</c>, <c>…Inspector.cs</c> and <c>…MacroLibrary.cs</c> were — that
+    /// the reason <c>…Legend.cs</c>, <c>…Inspector.cs</c> and <c>…MacroNames.cs</c> were — that
     /// file is the largest in the app and docs/guides/Coding Conventions.md forbids growing it into
     /// a god class. Everything here is the same class and runs on the same rules.
     ///
@@ -620,7 +620,7 @@ namespace KinesisEdit.ViewModels
         {
             SelectedProfile = FindProfileOption(_session?.ProfileNumber);
 
-            // ProfileNumber (KeyboardEditorViewModel.MacroLibrary.cs) is read off the session too,
+            // ProfileNumber (KeyboardEditorViewModel.MacroNames.cs) is read off the session too,
             // and it is what scopes a macro name to a profile. A switch moves it and nothing else
             // announces it.
             OnPropertyChanged(nameof(ProfileNumber));

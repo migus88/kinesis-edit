@@ -316,37 +316,48 @@
       </Border>
 
       <!-- ===== The name ======================================================================
-           "The macro is picked by name from a dropdown — Sign-off block ▾ — with the reuse note
-           'Named, so it can be picked for another key from this same dropdown. Also on [f7] · Fn.'"
+           WHAT THE USER CALLS THIS MACRO — a field, not a dropdown (issue #141). 2i drew a list of
+           the profile's macros to pick from, and the app kept one: a MacroLibrary that grouped
+           sites by name so a pick could assign "the same macro" to a second key. There is no such
+           thing on the drive — every key's slot holds its own independent copy (06 §1) — so the
+           list was an identity the hardware does not have, and picking from it was an assignment
+           wearing a rename's clothes. The name belongs to THIS site; `Copy macro to…` in the footer
+           is how a second key gets one.
 
-           PICKING IS ASSIGNING; IT IS NEVER RENAMING. 2i splits the two deliberately, so there is
-           no name field here — only the list of what the profile already holds. -->
+           A REAL TextBox, and it is the panel's second (the composer's millisecond box is the
+           first). Focus landing in one ENDS the recording — the editor's `GotFocus` leg of
+           `StopRecordingOnInteraction` stands the panel down and the banner goes with it — so the
+           letters reach the field and the panel is never left claiming to record while the keyboard
+           belongs to the box (docs/app/keystroke-capture.md, invariant 7). The capture service's own
+           auto-suspend on text focus still applies underneath, but it is SILENT, and a silent
+           suspension is exactly what a surface that says it is recording must not rely on.
+
+           IT IS NOT AN ACTION FIELD. Those record a KEYPRESS and must never be focusable
+           (`Border.actionField`); a name is typed, like the delay beside it.
+
+           THE DERIVED NAME IS THE WATERMARK, NEVER THE TEXT. `Macro.Name` stays empty for an
+           unnamed macro and the save harvests every non-empty one, so text here would write a
+           `macro_name_*` line for a name nobody typed — and freeze it against the macro's own
+           content, which a derived name otherwise follows.
+
+           COMMITTED ON FOCUS LOSS AND ON ENTER, never per keystroke: every commit runs the editor's
+           refresh funnel, and a funnel per character is a funnel per character. `MaxLength` is
+           Core's own bound (`MacroNaming.MaxNameLength`), reached through the panel so no number is
+           spelled twice.
+
+           SANS, NOT MONO. The mono law is for values that exist verbatim in a config file; this one
+           does not — it rides this app's own app_settings.txt and it is the user's words. -->
       <Border Classes="inspectorSection">
         <StackPanel Spacing="6">
           <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.NameLabel}" Classes="sectionLabel" />
 
-          <ComboBox ItemsSource="{Binding NameOptions}"
-                    SelectedItem="{Binding SelectedName, Mode=TwoWay}"
-                    HorizontalAlignment="Stretch">
-            <ComboBox.ItemTemplate>
-              <DataTemplate DataType="vm:MacroNameOptionViewModel">
-                <TextBlock Text="{Binding Caption}" TextTrimming="CharacterEllipsis" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-
-          <!-- Said only once the macro really carries a name, because that is exactly what makes
-               it pickable for a second key. -->
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ReuseNote}"
-                     Classes="body muted"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding IsNamed}" />
-
-          <!-- Where else this same macro fires from, built from the library entry's other sites. -->
-          <TextBlock Text="{Binding AlsoOnText}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding HasAlsoOnText}" />
+          <TextBox x:Name="NameField"
+                   Text="{Binding MacroName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                   Watermark="{Binding MacroNameWatermark}"
+                   MaxLength="{x:Static vm:MacroInspectorPanelViewModel.MaxNameLength}"
+                   IsEnabled="{Binding HasMacro}"
+                   KeyDown="OnNameFieldKeyDown"
+                   HorizontalAlignment="Stretch" />
         </StackPanel>
       </Border>
 
@@ -891,6 +902,39 @@
                     Value="{Binding Repeat, Mode=TwoWay}"
                     TickFrequency="1"
                     IsSnapToTickEnabled="True" />
+          </StackPanel>
+
+          <!-- ===== The two macro actions ======================================================
+               WHAT THE DELETED MACROS TAB DID TO A WHOLE NAMED GROUP, done to ONE macro on ONE key
+               (issue #141). `Copy macro to…` arms the editor's own pick — the same arm/cancel pair
+               the legend row's `Copy key…` and the rail footer's `Copy to…` use, so there is one
+               armed state, one Escape route and one disarm set — and the next cap clicked receives
+               a CLONE in its first empty slot. `Delete` empties this slot alone; nothing else on
+               the key and no other key moves, because there is no shared macro to reach (06 §1).
+
+               THE NOUN IS LOAD-BEARING: the rail's own footer, six rows below this one, carries a
+               `Copy to…` that copies the WHOLE position. Two buttons reading `Copy to…` on one rail
+               would be two different actions with one name.
+
+               THE CANCEL TAKES THE SAME SLOT, exactly as the rail footer's does: the button that
+               armed the pick is what ends it, so the panel never grows a dead control it only
+               sometimes needs.
+
+               `secondary`, NOT `discard`. The red face is the app's one destructive ANSWER — a
+               message-box button a request names DestructiveResult — and a rail action is not one
+               (docs/app/design-system.md, "The blocking surfaces"). -->
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="secondary"
+                    Content="{x:Static vm:MacroInspectorPanelViewModel.CopyMacroCaption}"
+                    Command="{Binding CopyMacroCommand}"
+                    IsVisible="{Binding !IsCopyArmed}" />
+            <Button Classes="secondary"
+                    Content="{x:Static vm:MacroInspectorPanelViewModel.CancelCopyCaption}"
+                    Command="{Binding CancelCopyCommand}"
+                    IsVisible="{Binding IsCopyArmed}" />
+            <Button Classes="secondary"
+                    Content="{x:Static vm:MacroInspectorPanelViewModel.DeleteMacroCaption}"
+                    Command="{Binding DeleteMacroCommand}" />
           </StackPanel>
 
         </StackPanel>

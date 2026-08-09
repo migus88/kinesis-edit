@@ -359,8 +359,8 @@ namespace KinesisEdit.Tests.ViewModels
         public async Task MacroNames_AfterASwitchAwayAndBack_AreStillTheOnesTheUserTyped()
         {
             // THE TRAP the cache is most likely to be broken by. `Apply` stamps the stored names
-            // from app_settings.txt onto a freshly parsed layout, and MacroLibrary.ApplyNames writes
-            // every site UNCONDITIONALLY — a site with no stored name is set back to null. Re-running
+            // from app_settings.txt onto a freshly parsed layout, and MacroSites.ApplyNames writes
+            // every site UNCONDITIONALLY — a site with no stored name is reset to empty. Re-running
             // it over a cached session would therefore wipe exactly the renames this switch exists
             // to preserve, and nothing else on screen would say so.
             _profiles.Stage(1, DeviceId.FreestyleEdgeRgb);
@@ -369,16 +369,18 @@ namespace KinesisEdit.Tests.ViewModels
             var editor = await CreateLoadedEditorAsync();
 
             RecordAMacro(editor);
+            RenameTheOpenMacro(editor, "Sign-off block");
 
-            var renamed = editor.RenameMacro(editor.MacroLibrary!.Entries[0], "Sign-off block");
-
-            Assert.NotNull(renamed);
             Assert.True(editor.HasUnsavedMacroNames);
 
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[1]);
             await editor.SelectProfileCommand.ExecuteAsync(editor.Profiles[0]);
 
-            Assert.Equal("Sign-off block", Assert.Single(editor.MacroLibrary!.Entries).Name);
+            // Read off the model, which is where a name lives now (issue #141): the harvest is the
+            // same walk, so this is also what the save would write.
+            Assert.Equal(
+                "Sign-off block",
+                Assert.Single(MacroSites.EnumerateStoredNames(editor.Layout!)).Value);
 
             // ...and it is still unsaved work, in the profile it belongs to.
             Assert.True(editor.HasUnsavedMacroNames);
@@ -664,6 +666,17 @@ namespace KinesisEdit.Tests.ViewModels
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("a"));
 
             editor.Inspector.Deactivate();
+        }
+
+        /// <summary>
+        /// Renames the macro the rail has open through its inline name field — the app's one rename
+        /// path since issue #141 deleted the library that used to own renaming.
+        /// </summary>
+        private static void RenameTheOpenMacro(KeyboardEditorViewModel editor, string name)
+        {
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+
+            panel.MacroName = name;
         }
 
         /// <summary>Arms the key inspector's Macro panel — the app's one macro recorder.</summary>

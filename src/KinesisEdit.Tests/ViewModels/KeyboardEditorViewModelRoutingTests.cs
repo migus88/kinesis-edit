@@ -1,5 +1,6 @@
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Input;
+using KinesisEdit.Core.Model;
 using KinesisEdit.Services;
 using KinesisEdit.Tests.Services;
 using KinesisEdit.ViewModels;
@@ -547,15 +548,15 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [Fact]
-        public async Task ResetLayoutCommand_ClearsTheMacrosAndRefreshesTheLibrary()
+        public async Task ResetLayoutCommand_ClearsTheMacrosOffEveryPlaceTheySatOn()
         {
             var editor = await CreateLoadedEditorAsync();
 
             RecordAMacro(editor, "a");
 
-            // The profile's own library, which is what the refresh funnel rebuilds. The Macros tab
-            // that used to render it is gone (issue #140); the library behind it is not.
-            Assert.Single(editor.MacroLibrary!.Entries);
+            // The places a macro sits on, which is what a name is keyed by and what the save
+            // harvests (issue #141): a reset has to empty them, not merely zero a count.
+            Assert.Single(MacroSites.Enumerate(editor.Layout!));
 
             // The reset scopes confirm first (NotificationKeys.ResetLayer), and the fake answers
             // Ok by default rather than the Yes the guard waits for.
@@ -564,7 +565,7 @@ namespace KinesisEdit.Tests.ViewModels
             editor.ResetLayoutCommand.Execute(null);
 
             Assert.Equal(0, editor.MacroCount);
-            Assert.Empty(editor.MacroLibrary!.Entries);
+            Assert.Empty(MacroSites.Enumerate(editor.Layout!));
         }
 
         [Fact]

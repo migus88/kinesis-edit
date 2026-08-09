@@ -9,8 +9,10 @@ namespace KinesisEdit.Views
 {
     /// <summary>
     /// The key inspector's Macro panel, resolved from <see cref="MacroInspectorPanelViewModel"/> by
-    /// <see cref="ViewLocator"/>. Everything it shows is bound; the only code here is the <b>drag</b>
-    /// half of mockup <c>2i</c>'s "drag ⠿ · ⌥↑↓". The keyboard half is the editor's own grammar
+    /// <see cref="ViewLocator"/>. Everything it shows is bound; the code here is the <b>drag</b>
+    /// half of mockup <c>2i</c>'s "drag ⠿ · ⌥↑↓", plus the name field's Enter commit
+    /// (<see cref="OnNameFieldKeyDown"/> — a binding can commit on focus loss and has no way to
+    /// spell "and on Enter"). The drag's keyboard half is the editor's own grammar
     /// (<c>Input/EditorShortcuts</c> → <c>MoveMacroStepUp/DownCommand</c>) and needs nothing from
     /// this file.
     /// <para>
@@ -128,6 +130,32 @@ namespace KinesisEdit.Views
             // (a flyout, a window deactivation) would leave an armed position to fire on the next
             // unrelated release.
             AddHandler(PointerCaptureLostEvent, OnPointerCaptureLost, RoutingStrategies.Direct, handledEventsToo: true);
+        }
+
+        /// <summary>
+        /// Commits the macro name on <c>Enter</c> (issue #141). The field is bound
+        /// <c>UpdateSourceTrigger=LostFocus</c> — a commit per keystroke would run the editor's
+        /// whole refresh funnel once per character — and Enter is the other thing a user means by
+        /// "done", so it is spelled here rather than left to the user finding somewhere else to
+        /// click. Handing the raw text to the view model is the same write the binding performs;
+        /// the property sanitizes it, ignores a value that did not move, and the binding carries
+        /// the sanitized result straight back into the box.
+        /// </summary>
+        private void OnNameFieldKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter
+                || sender is not TextBox field
+                || DataContext is not MacroInspectorPanelViewModel panel)
+            {
+                return;
+            }
+
+            panel.MacroName = field.Text ?? string.Empty;
+
+            // The keystroke has been answered. Nothing above may also read it as a shortcut — the
+            // editor's grammar already stands aside for a focused text field, and saying so here
+            // keeps that true whichever surface hosts this panel next.
+            e.Handled = true;
         }
 
         /// <summary>
