@@ -7,17 +7,19 @@ namespace KinesisEdit.ViewModels
     /// action's friendly name in sans, whatever scope or duplication the row carries, and the
     /// <c>↵ assign</c> hint the selected row shows.
     ///
-    /// <para><b>The token is mono and the rest is not.</b> <c>[esc]</c> is literally what
+    /// <para><b>The token is mono and the rest is not.</b> <c>esc</c> is literally what
     /// <c>layoutN.txt</c> contains (docs/design/README.md's mono law); "Escape", "Keypad layer" and
-    /// every other word here is the app talking about it.</para>
+    /// every other word here is the app talking about it. Since issue #150 the file's square
+    /// brackets are no longer drawn, so mono is now the <em>only</em> thing carrying that claim —
+    /// see <see cref="KeyboardKeyViewModel.FormatToken"/>.</para>
     ///
     /// <para><b>Aliases are labelled by their canonical, never by their token.</b> Mockup <c>1e</c>
-    /// draws the label as <c>alias of [esc]</c>, which cannot be rendered: a real alias is a
+    /// draws the label as <c>alias of esc</c>, which cannot be rendered: a real alias is a
     /// duplicate <em>registration</em> that differs from its canonical only in numeric code (05 §7),
-    /// so both rows spell the same token and the label would read "alias of [numlk]" on a row that
-    /// is itself <c>[numlk]</c>. The canonical's <see cref="KeySearchEntry.SearchName"/> and this
+    /// so both rows spell the same token and the label would read "alias of numlk" on a row that
+    /// is itself <c>numlk</c>. The canonical's <see cref="KeySearchEntry.SearchName"/> and this
     /// row's <see cref="KeySearchEntry.Scope"/> say the useful thing instead — "Num Lock — keypad
-    /// layer duplicate". The mock's other example, <c>[escape]</c> as an alias of <c>[esc]</c>, is
+    /// layer duplicate". The mock's other example, <c>escape</c> as an alias of <c>esc</c>, is
     /// not an alias at all: those are the Legacy and Gen1 tokens of one key-table entry, and no
     /// catalog ever lists both.</para>
     ///
@@ -60,15 +62,17 @@ namespace KinesisEdit.ViewModels
         public const string ProfileScopeLabel = "Profile selector";
 
         /// <summary>
-        /// How the picker spells a token — bracketed, as the mockups and the layout file both do.
-        /// Shared with <see cref="KeyboardKeyViewModel.FormatToken"/>'s spelling deliberately: the
-        /// inspector's assignment line and the row the user picks from must read as the same thing.
+        /// How the picker spells a token — bare since issue #150, as
+        /// <see cref="KeyboardKeyViewModel.FormatToken"/> now does. The two mirror each other
+        /// deliberately: the inspector's assignment line and the row the user picks from must read
+        /// as the same thing, so the brackets had to come off both at once. That method's remarks
+        /// carry the reason and the cost.
         /// </summary>
         public static string FormatToken(string fileToken)
         {
             ArgumentNullException.ThrowIfNull(fileToken);
 
-            return "[" + fileToken + "]";
+            return fileToken;
         }
 
         /// <summary>What the picker calls a row that lives somewhere in particular on the board.</summary>
@@ -92,7 +96,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>The action a pick assigns.</summary>
         public KeyDefinition Definition => Entry.Definition;
 
-        /// <summary>The file token, bracketed: <c>[esc]</c>. Mono, because the file contains it.</summary>
+        /// <summary>The file token: <c>esc</c>. Mono, because the file contains it.</summary>
         public string Token { get; }
 
         /// <summary>The action's single-line name: <c>Escape</c>.</summary>

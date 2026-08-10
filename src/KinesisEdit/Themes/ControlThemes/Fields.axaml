@@ -204,7 +204,7 @@
 
   <!--
     ================================================================================================
-    TOKEN FIELD — the box that shows what a key is assigned to: "factory [d] · now [esc]" in the
+    TOKEN FIELD — the box that shows what a key is assigned to: "factory d · now esc" in the
     inspector, and the Tap / Hold action fields of §11.1.
     ================================================================================================
 
@@ -646,7 +646,7 @@
   <!--
     ================================================================================================
     SELECTABLE LIST ROW — one row of a list the user picks from: the token picker's results
-    ("[esc] Escape · ↵ assign", 1e), the macro-name drop-down's rows (2i), a drop-down's items.
+    ("esc Escape · ↵ assign", 1e), the macro-name drop-down's rows (2i), a drop-down's items.
     ================================================================================================
 
     Own template — a ListBoxItem is a ContentControl and needs no named part — so this is the one

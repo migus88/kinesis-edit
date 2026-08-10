@@ -186,13 +186,15 @@ namespace KinesisEdit.ViewModels
                     _selectedStep.IsSelected = true;
                 }
 
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(HasSelection));
+                // The rows themselves are always re-marked above, because that is what draws the
+                // ring; only the ANNOUNCEMENT is held back, and only for the span of a rebuild —
+                // see the field's own remarks.
+                if (_isSelectionSilenced)
+                {
+                    return;
+                }
 
-                MoveStepUpCommand.NotifyCanExecuteChanged();
-                MoveStepDownCommand.NotifyCanExecuteChanged();
-
-                SelectionChanged?.Invoke(this, EventArgs.Empty);
+                AnnounceSelection();
             }
         }
 
@@ -277,6 +279,27 @@ namespace KinesisEdit.ViewModels
         /// deliberately counts the <em>rows</em> instead, because that is what is on screen.
         /// </summary>
         private int _blockCount;
+
+        /// <summary>
+        /// Whether <see cref="Rebuild"/> is mid-flight, and the selection's announcement is therefore
+        /// being held back.
+        ///
+        /// <para><b>This is the fix for a real, reported defect, and it is load-bearing.</b> A rebuild
+        /// drops the selection and puts it straight back on the same position — the rows are new
+        /// objects, so the old one cannot be kept — and it used to announce <em>both</em> writes. The
+        /// transient null reached the composer above, whose <c>IsComposerEnabled</c> is false with
+        /// nothing selected, which took <c>IsStepDelayEnabled</c> false for one turn — and Avalonia
+        /// clears keyboard focus off a control that becomes effectively disabled. Since every control
+        /// in the composer writes the moment it is touched, typing <b>one digit</b> into the
+        /// millisecond field ran the whole write-rebuild-reselect loop and the caret was gone before
+        /// the second digit: <c>80 ms</c> was unauthorable.</para>
+        ///
+        /// <para>A transient state no observer ever sees cannot disable anything, so the window is
+        /// silenced and the announcement is made <b>once, at the end, and only if the selection
+        /// really moved</b>. The disabled-with-nothing-selected state is untouched: a rebuild that
+        /// genuinely ends with nothing selected still announces exactly that.</para>
+        /// </summary>
+        private bool _isSelectionSilenced;
 
         /// <summary>
         /// Builds the step editor for one open device. The firmware gate is resolved <b>once</b>,
@@ -917,7 +940,40 @@ namespace KinesisEdit.ViewModels
             Rebuild();
         }
 
+        /// <summary>
+        /// Re-reads every row off the macro and puts the selection back where it was.
+        ///
+        /// <para><b>It announces the selection at most once, at the end.</b> The rows are rebuilt
+        /// from scratch, so the selected row cannot survive as an object and has to be dropped and
+        /// re-taken by position — and the drop is an artefact of the rebuild rather than anything the
+        /// user did. Announcing it disabled the composer for one turn and cost the millisecond field
+        /// its focus mid-digit; see <see cref="_isSelectionSilenced"/> for the whole trail.</para>
+        /// </summary>
         private void Rebuild()
+        {
+            var announced = _selectedStep;
+
+            _isSelectionSilenced = true;
+
+            try
+            {
+                RebuildRows();
+            }
+            finally
+            {
+                _isSelectionSilenced = false;
+            }
+
+            // Reference equality, not position: the rows really are new objects on every rebuild, so
+            // this is false whenever anything is selected at all — the point is the pair of
+            // announcements collapsing into one, not the one at the end going away.
+            if (!ReferenceEquals(announced, _selectedStep))
+            {
+                AnnounceSelection();
+            }
+        }
+
+        private void RebuildRows()
         {
             var selectedPosition = _selectedStep?.Position ?? 0;
             var blocks = ReadBlocks();
@@ -954,9 +1010,10 @@ namespace KinesisEdit.ViewModels
 
             AppendPlaceholder(rows, blocks.Count);
 
-            // Through the property, not the field: the rows about to be replaced are gone, and a
-            // silent field write would leave the view bound to an instance that is no longer in the
-            // list with no notification that it moved.
+            // Through the property, not the field: the row about to be discarded has to be un-marked
+            // (`IsSelected`), or a stale instance would go on drawing itself as the chosen one if
+            // anything still held it. The property's ANNOUNCEMENT is what the silencer above
+            // suppresses; everything else it does still happens here.
             SelectedStep = null;
 
             _blockCount = blocks.Count;
@@ -966,6 +1023,23 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(HasPlaceholder));
 
             SelectByPosition(selectedPosition);
+        }
+
+        /// <summary>
+        /// Publishes the selection: the two properties that describe it, the two commands gated on
+        /// it, and <see cref="SelectionChanged"/>. Extracted from the setter so
+        /// <see cref="Rebuild"/> can make the whole announcement once at the end instead of twice
+        /// around a transient null.
+        /// </summary>
+        private void AnnounceSelection()
+        {
+            OnPropertyChanged(nameof(SelectedStep));
+            OnPropertyChanged(nameof(HasSelection));
+
+            MoveStepUpCommand.NotifyCanExecuteChanged();
+            MoveStepDownCommand.NotifyCanExecuteChanged();
+
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>

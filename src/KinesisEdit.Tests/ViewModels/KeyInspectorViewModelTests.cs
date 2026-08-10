@@ -36,9 +36,9 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Inspector.IsOpen);
             Assert.Equal(KeyboardKeyViewModel.LeftHalfDescription, scene.Inspector.PositionDescription);
             Assert.True(scene.Inspector.HasPositionDescription);
-            Assert.Equal("[1]", scene.Inspector.PositionToken);
-            Assert.Equal("[1]", scene.Inspector.FactoryAssignmentText);
-            Assert.Equal("[1]", scene.Inspector.CurrentAssignmentText);
+            Assert.Equal("1", scene.Inspector.PositionToken);
+            Assert.Equal("1", scene.Inspector.FactoryAssignmentText);
+            Assert.Equal("1", scene.Inspector.CurrentAssignmentText);
         }
 
         [Fact]
@@ -55,9 +55,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
 
-            Assert.Equal("[1]", scene.Inspector.PositionToken);
-            Assert.Equal("[1]", scene.Inspector.FactoryAssignmentText);
-            Assert.Equal("[esc]", scene.Inspector.CurrentAssignmentText);
+            Assert.Equal("1", scene.Inspector.PositionToken);
+            Assert.Equal("1", scene.Inspector.FactoryAssignmentText);
+            Assert.Equal("esc", scene.Inspector.CurrentAssignmentText);
         }
 
         [Fact]

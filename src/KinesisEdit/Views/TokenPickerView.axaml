@@ -21,7 +21,7 @@
     was typed into it. The pairing is the same one the Tap and Hold panel uses — the field, and the
     button that fills it.
 
-    THE MONO LAW, ROW BY ROW. `[esc]` is mono because layoutN.txt contains exactly that; the action's
+    THE MONO LAW, ROW BY ROW. `esc` is mono because layoutN.txt contains exactly that; the action's
     name, the scope, the group headers and the counter are the app talking about the file and are
     sans. That is also why the query box is `searchField` and not `monoValue`: it holds what the user
     is looking for, never a value the file carries.

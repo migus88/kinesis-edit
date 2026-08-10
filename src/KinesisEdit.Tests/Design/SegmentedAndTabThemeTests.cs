@@ -172,15 +172,23 @@ namespace KinesisEdit.Tests.Design
                 { "ToggleSegment", "selected", "AccentBrush" },
                 { "ToggleSegment", "disabled", "SurfaceInsetBrush" },
 
-                // The macro composer's own segments (issue #148). It derives from ToggleSegment and
-                // overrides METRICS ONLY, so the whole ramp above has to arrive unchanged — that is
-                // the claim these five rows exist to make, and a `Padding` setter that turned into a
-                // `Background` one would break them rather than pass quietly.
-                { "ComposerSegment", "rest", "SurfaceBarBrush" },
-                { "ComposerSegment", "hover", "SurfaceRaisedBrush" },
+                // The macro composer's own segments. It takes ToggleSegment's GEOMETRY (#148) and
+                // since issue #150 draws the designer's own face on it, which is a different ramp
+                // end to end: bare text at rest, a quiet neutral under the pointer, and a raised
+                // NEUTRAL pill when chosen — no accent anywhere on the strip. Sampled off the mock
+                // at 1:1, that pill is `#22262D` on the composer's `#13161A`, which is SurfaceRaised
+                // on SurfaceInset.
+                //
+                // Every one of these five differs from the ToggleSegment row above it, and that is
+                // the point: the rows exist so the two themes cannot be quietly re-merged.
+                { "ComposerSegment", "rest", null },
+                { "ComposerSegment", "hover", "SurfaceBarBrush" },
                 { "ComposerSegment", "pressed", "SurfaceLineBrush" },
-                { "ComposerSegment", "selected", "AccentBrush" },
-                { "ComposerSegment", "disabled", "SurfaceInsetBrush" },
+                { "ComposerSegment", "selected", "SurfaceRaisedBrush" },
+
+                // Transparent, not BaseButton's inset face: with nothing selected the whole compose
+                // bar is dead, and five filled boxes would carry more presence than the live strip.
+                { "ComposerSegment", "disabled", null },
 
                 // One arrow of the lighting tab's direction row: the toggle's ramp, because "this
                 // is the direction the effect runs" is the same kind of statement "this co-trigger
@@ -496,16 +504,21 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// <c>ComposerSegment</c> is <c>ToggleSegment</c> with the <b>metrics</b> of the family's own
-        /// container put back, and nothing else (issue #148). Two halves, and both matter: the
+        /// <c>ComposerSegment</c> is <c>ToggleSegment</c>'s <b>geometry</b> wearing <b>its own
+        /// face</b>. #148 derived it for the metrics alone; issue #150 gave it the designer's face,
+        /// so "metrics only" is no longer true and the claim splits in two.
+        /// <para>
+        /// Both halves still matter, and the second is what the theory is really guarding: the
         /// composer's segments really are tighter than a standalone latch — which is what put row 2
-        /// of the compose bar on one line — and <c>ToggleSegment</c> itself did <b>not</b> move, so
-        /// the Savant Elite2 pedal latch and the Lighting tab's zone chips are where they were.
+        /// of the compose bar on one line — and <c>ToggleSegment</c> itself did <b>not</b> move, in
+        /// metrics or in face, so the Savant Elite2 pedal latch and the Lighting tab's zone chips
+        /// are exactly where they were.
+        /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public void TheComposerSegment_IsTheToggleAtTheSegmentedFamilysOwnRhythm(string variantName)
+        public void TheComposerSegment_IsTheTogglesGeometryWithAFaceOfItsOwn(string variantName)
         {
             // Left-aligned, so each one measures to its own content: a stretched button is the
             // panel's width and every theme would look identical.
@@ -534,6 +547,65 @@ namespace KinesisEdit.Tests.Design
                 composer.Bounds.Width < toggle.Bounds.Width,
                 $"The composer's segment ({composer.Bounds.Width}) is no narrower than the "
                 + $"standalone toggle ({toggle.Bounds.Width}).");
+
+            // THE FACES PART COMPANY, at rest and when chosen alike. Bare text against a neutral
+            // bordered chip; a neutral raised pill against the accent fill. Asserted side by side,
+            // because either theme drifting toward the other is the regression.
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)composer.Background!).Color);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)composer.BorderBrush!).Color);
+            Assert.Equal(DesignTokens.Resolve("SurfaceBarBrush", variant), toggle.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceBorderRaisedBrush", variant), toggle.BorderBrush);
+
+            composer.Classes.Add("selected");
+            toggle.Classes.Add("selected");
+
+            // The mock's own pill, sampled off it at 1:1 — and no accent anywhere on the composer's
+            // strip, where the toggle keeps the fill and the deeper selected ring.
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", variant), composer.Background);
+            Assert.Equal(DesignTokens.Resolve("TextPrimaryBrush", variant), composer.Foreground);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)composer.BorderBrush!).Color);
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), toggle.Background);
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), toggle.Foreground);
+            Assert.Equal(DesignTokens.Resolve("AccentSelectedRingBrush", variant), toggle.BorderBrush);
+
+            // The weight step is shared: it is the one thing the two still say the same way.
+            Assert.Equal(FontWeight.SemiBold, composer.FontWeight);
+            Assert.Equal(FontWeight.SemiBold, toggle.FontWeight);
+        }
+
+        /// <summary>
+        /// A bare-text segment still shows the focus ring, and still tells focus from selection
+        /// (contract 3 and 4). It is the state most at risk on this theme: the face it lost was also
+        /// the only border it had, so a `BorderBrush` setter written without
+        /// <c>:not(:focus-visible)</c> would erase the ring outright and nothing else would notice.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void AComposerSegment_KeepsItsFocusRingWithNoFaceToHangItOn(string variantName)
+        {
+            var variant = ToVariant(variantName);
+            var segment = SizedButton("ComposerSegment", variant);
+
+            using var host = ThemedHost.Show(segment, variant, HostWidth, HostHeight);
+
+            Assert.Equal(0, RootOf(segment).BoxShadow.Count);
+
+            Assert.True(segment.Focus(NavigationMethod.Tab), "The composer's segment refused keyboard focus.");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), segment.BorderBrush);
+            Assert.Equal(1, RootOf(segment).BoxShadow.Count);
+
+            // ...and the face is still bare: focus takes the border and the halo, never the fill.
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)segment.Background!).Color);
+
+            // Selected AND focused: the pill and the ring, both legible, neither erasing the other.
+            segment.Classes.Add("selected");
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceRaisedBrush", variant), segment.Background);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), segment.BorderBrush);
+            Assert.Equal(1, RootOf(segment).BoxShadow.Count);
         }
 
         [AvaloniaTheory]
@@ -866,9 +938,11 @@ namespace KinesisEdit.Tests.Design
                 guarded++;
             }
 
-            // A guard that matched nothing would pass for the wrong reason. Four: the segment inside
-            // the trough, the standalone toggle, one direction arrow and one speed bar.
-            Assert.Equal(4, guarded);
+            // A guard that matched nothing would pass for the wrong reason. Five: the segment inside
+            // the trough, the standalone toggle, the composer's own segment (issue #150 gave it a
+            // face, and therefore a hover of its own to order), one direction arrow and one speed
+            // bar.
+            Assert.Equal(5, guarded);
         }
 
         [AvaloniaTheory]

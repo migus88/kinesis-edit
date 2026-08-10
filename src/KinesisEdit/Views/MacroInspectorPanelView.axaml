@@ -111,7 +111,7 @@
              neither.
 
              The marks are INSIDE the chip with the token (`⌃2`), because a chord is one keystroke
-             and drawing `⌃` loose beside `[2]` read as two. The colour is set once, on the chip
+             and drawing `⌃` loose beside `2` read as two. The colour is set once, on the chip
              (`Border.macroStepToken`), and inherited by both runs; see `MacroModifierMarkRun`.
 
              Hidden entirely on a delay-only row (06 §2.2), where `HasToken` is false: there is no
@@ -242,7 +242,7 @@
            firmware is documented to honour.
 
            THE TRIGGER TOKEN IS GONE FROM THE STRIP (issue #146). The rail's own header already
-           names the position, and drawing `[hk7]` twice on one rail said nothing the second time.
+           names the position, and drawing `hk7` twice on one rail said nothing the second time.
 
            ABSENT, NEVER DISABLED: a flat-list board (the Advantage 360) and a position that refuses
            macros (05 §5.3) draw no slot half at all, and a device whose dialect has no co-trigger
@@ -306,12 +306,20 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:MacroCoTriggerViewModel">
-                  <!-- The same chip face as the slots — the mock draws them identically and they
-                       mean the same kind of thing. EACH LATCH IS ONE OR TWO RUNS IN TWO FACES,
-                       exactly as the step rows draw them, and NEITHER RUN CARRIES A COLOUR:
-                       `MacroChip`'s `.selected` face sets Foreground, a TextBlock inherits it and
-                       an `Icon` (painting from Stroke) cannot, which is why this site is type. -->
-                  <Button Classes="macroChip"
+                  <!-- `coTriggerChip` AND NOT `macroChip` SINCE ISSUE #150, and the difference is
+                       one face. The mock draws the selected TRIGGER latch as a solid accent FILL
+                       where the selected slot chip and the selected composer modifier are accent
+                       OUTLINES over the wash: a slot chip says "this is the one I am editing", and
+                       a co-trigger says "this modifier is held", which is the app's filled-latch
+                       statement everywhere else. `CoTriggerChip` is `MacroChip` with that one
+                       override; everything else about the chip, including the `.colliding` amber
+                       ring, is unchanged.
+
+                       EACH LATCH IS ONE OR TWO RUNS IN TWO FACES, exactly as the step rows draw
+                       them, and NEITHER RUN CARRIES A COLOUR: the theme's `.selected` face sets
+                       Foreground, a TextBlock inherits it and an `Icon` (painting from Stroke)
+                       cannot, which is why this site is type. -->
+                  <Button Classes="coTriggerChip"
                           Classes.selected="{Binding IsOn}"
                           ToolTip.Tip="{Binding Caption}"
                           Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"

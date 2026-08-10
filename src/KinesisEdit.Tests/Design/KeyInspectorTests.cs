@@ -45,7 +45,7 @@ namespace KinesisEdit.Tests.Design
             var texts = VisibleTextsOf(view);
 
             Assert.Contains(KeyboardKeyViewModel.LeftHalfDescription, texts);
-            Assert.Contains("[1]", texts);
+            Assert.Contains("1", texts);
             Assert.Contains(KeyInspectorViewModel.PositionSuffix, texts);
             Assert.Contains(KeyInspectorViewModel.FactoryLabel, texts);
             Assert.Contains(KeyInspectorViewModel.CurrentLabel, texts);
@@ -156,7 +156,7 @@ namespace KinesisEdit.Tests.Design
                 .ToArray();
 
             Assert.All(
-                blocks.Where(block => block.Text == "[1]"),
+                blocks.Where(block => block.Text == "1"),
                 block => Assert.Contains("Mono", block.FontFamily.Name, StringComparison.Ordinal));
 
             var suffix = Assert.Single(blocks, block => block.Text == KeyInspectorViewModel.PositionSuffix);

@@ -36,7 +36,7 @@
     <StackPanel Spacing="8">
 
       <!-- ===== What the position sends now ===================================================
-           The rail's header already says `factory [d] · now [esc]`; this is the same "now" as an
+           The rail's header already says `factory d · now esc`; this is the same "now" as an
            editable surface rather than as a readout — it is what the Record button fills and what
            the picker replaces. -->
       <StackPanel Spacing="4">

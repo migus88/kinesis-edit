@@ -85,7 +85,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             overlay.Picker.Query = "vol";
 
-            var row = overlay.Picker.Rows.First(candidate => candidate.Token == "[vol+]");
+            var row = overlay.Picker.Rows.First(candidate => candidate.Token == "vol+");
 
             overlay.Picker.ChooseCommand.Execute(row);
 

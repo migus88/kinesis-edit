@@ -223,7 +223,7 @@ namespace KinesisEdit.Tests.Design
                 .Select(field => Assert.Single(field.GetVisualDescendants().OfType<TextBlock>()))
                 .ToArray();
 
-            Assert.Equal(["[a]", "[lctrl]"], tokens.Select(token => token.Text));
+            Assert.Equal(["a", "lctrl"], tokens.Select(token => token.Text));
             Assert.All(tokens, token => Assert.Contains("Mono", token.FontFamily.Name, StringComparison.Ordinal));
 
             // One line each: the two fields are the same height as an unfilled one.

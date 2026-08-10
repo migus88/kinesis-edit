@@ -347,4 +347,37 @@
       <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
     </Style>
   </ControlTheme>
+
+  <!--
+    THE CO-TRIGGER LATCH (issue #150) — the `TRIGGER + ⇧ ⌃ ⌥` strip, and the one chip of the Macro
+    panel's three that the designer's mock draws as a SOLID accent fill.
+
+    IT IS MacroChip WITH ONE FACE CHANGED, and that is the whole theme. The mock draws the slot
+    chip (`1`) and the composer's modifier latches (`^`) as accent OUTLINES over the 14% wash —
+    "this is the one I am editing" — and the co-trigger as a filled block: a co-trigger is not a
+    selection among peers, it is a modifier that is HELD, and the fill is the app's own way of
+    saying a latch is on (`ToggleSegment` fills the same way). All three wore `macroChip` until
+    #150, so the fill could not be given to one of them without giving it to all three.
+
+    ONLY `Background` AND `Foreground` ARE OVERRIDDEN, deliberately — the BORDER is left to
+    MacroChip. That is not tidiness, it is what keeps `.colliding` working: Avalonia walks BasedOn
+    first, so every style here lands AFTER MacroChip's, and a `.selected` BorderBrush declared here
+    would out-rank the amber ring MacroChip declares last for exactly the opposite reason. Leaving
+    the border alone means the selected chip takes MacroChip's own `AccentBrush` ring — which on a
+    solid accent fill is the same colour and reads as no ring at all — and a colliding one still
+    turns amber over it. `FontWeight` SemiBold is inherited for the same reason.
+
+    `AccentText` and not `AccentBrush` for the label: this face IS a solid accent fill, which is
+    precisely the case `AccentText` exists for, and it is the one place in this file where that is
+    true. MacroChip's own selected label stays `AccentBrush`, because a 14% wash is not a fill.
+  -->
+  <ControlTheme x:Key="CoTriggerChip" TargetType="Button" BasedOn="{StaticResource MacroChip}">
+    <!-- `:not(:disabled)` for the reason this file's header calls easy to miss, and it is doubly
+         needed here: BaseButton's disabled face is applied before MacroChip's states, which are
+         applied before this one. -->
+    <Style Selector="^.selected:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+    </Style>
+  </ControlTheme>
 </ResourceDictionary>

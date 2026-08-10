@@ -77,16 +77,16 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string NoSelectionMessage = "Select a key on the board to edit it.";
 
-        /// <summary>The word after the token in the header: "Left half · [d] position".</summary>
+        /// <summary>The word after the token in the header: "Left half · d position".</summary>
         public const string PositionSuffix = "position";
 
         /// <summary>The middle dot the header and the assignment line are built round.</summary>
         public const string Separator = "·";
 
-        /// <summary>The assignment line's first label: "factory [d]".</summary>
+        /// <summary>The assignment line's first label: "factory d".</summary>
         public const string FactoryLabel = "factory";
 
-        /// <summary>Its second: "now [esc]".</summary>
+        /// <summary>Its second: "now esc".</summary>
         public const string CurrentLabel = "now";
 
         /// <summary>
@@ -194,7 +194,7 @@ namespace KinesisEdit.ViewModels
         public bool HasPositionDescription => _positionDescription.Length > 0;
 
         /// <summary>
-        /// The token the header names the position by — <c>[d]</c>. It is the <b>factory</b>
+        /// The token the header names the position by — <c>d</c>. It is the <b>factory</b>
         /// assignment, because that is what identifies the position on the board however often it
         /// is remapped, and it is mono because it is literally a value in the layout file.
         /// </summary>
@@ -211,7 +211,7 @@ namespace KinesisEdit.ViewModels
             private set => SetProperty(ref _capCaption, value);
         }
 
-        /// <summary>The assignment line's factory half: <c>[d]</c>.</summary>
+        /// <summary>The assignment line's factory half: <c>d</c>.</summary>
         public string FactoryAssignmentText
         {
             get => _factoryAssignmentText;
@@ -224,7 +224,7 @@ namespace KinesisEdit.ViewModels
             }
         }
 
-        /// <summary>Its "now" half: <c>[esc]</c>, or the same token again on an untouched key.</summary>
+        /// <summary>Its "now" half: <c>esc</c>, or the same token again on an untouched key.</summary>
         public string CurrentAssignmentText
         {
             get => _currentAssignmentText;

@@ -266,22 +266,96 @@
     the two strips that share one line of the compose bar with `then wait`, a millisecond field and
     `ms`.
 
-    IT IS ToggleSegment WITH THE FAMILY'S OWN RHYTHM PUT BACK, and nothing else. ToggleSegment is
-    BaseButton, so it wears the app's `PaddingButton` 13,8 at the control type step (12px) — right
-    for a standalone latch with room around it, and 148px too wide once six word-segments have to
-    share a 480px rail with a label, a field and a unit. SegmentedItem, the layer switcher's
-    container, has always been 11,4 at FontSizeBody — the mock's own `padding: 4px 11px` — and that
-    is what these two strips are: segments in a row, not latches on a panel. Measured at the rail's
-    floor, the two setters below take 35px off the line — six word-segments, ~7px each.
+    IT TAKES ToggleSegment'S GEOMETRY AND DRAWS ITS OWN FACE (issue #150). #148 derived it for the
+    METRICS alone — ToggleSegment is BaseButton, so it wears the app's `PaddingButton` 13,8 at the
+    control type step (12px), which is right for a standalone latch with room around it and 35px too
+    wide once six word-segments have to share a 480px rail with a label, a field and a unit.
+    SegmentedItem, the layer switcher's container, has always been 11,4 at FontSizeBody — the mock's
+    own `padding: 4px 11px` — and that is what these two strips are: segments in a row, not latches
+    on a panel. Those two setters are unchanged and still the reason this derives rather than copies.
 
-    ONLY THE METRICS ARE OVERRIDDEN. Every colour, every state and the `:not(:disabled)` qualifier
-    on the accent face come from ToggleSegment, so the composer's `tap` and the pedal editor's
-    `Macro` latch cannot drift apart in face while differing in size — which is the whole reason
-    this is a derived theme rather than a second copy of that ramp.
+    WHAT #150 ADDED IS THE FACE, AND IT IS THE MOCK'S, MEASURED OFF IT. The designer's compose bar
+    draws an UNSELECTED segment as bare text — no background, no border — and the selected one as a
+    neutral raised pill: sampled at 1:1, the pill is `#22262D` on the composer's `#13161A` ground
+    with an `#E3E6EC` label, which is `SurfaceRaised` on `SurfaceInset` in `TextPrimary` to within a
+    step of the ramp. There is NO border on it: the transition into the ground is a single
+    antialiased pixel on all four sides, which is a rounded fill and not a 1px stroke. The accent
+    appears nowhere on the strip — a lit `tap` is not a selection among peers being pointed at, it is
+    the one of three the step already is, and the mock says that with weight and a face rather than
+    with the app's one accent.
+
+    THIS IS THE MACRO COMPOSER AND NOTHING ELSE. ToggleSegment keeps the accent fill for the pedal
+    editor's Single Action / Macro latch and the lighting tab's zone chips; SegmentedItem keeps it
+    for the layer switcher; SpeedBar and DirectionSegment keep it too. The split is why this theme
+    now restates a ramp instead of inheriting one.
+
+    EVERY INHERITED POINTER FACE HAD TO BE RE-STATED, and that is the trap in deriving here rather
+    than starting from BaseButton. ToggleSegment paints four of them — `:pointerover`, its
+    `:not(:focus-visible)` border twin, `:pressed`, and its border twin — and Avalonia walks BasedOn
+    FIRST, so inheriting them unchanged would put the old bordered button face back the moment the
+    pointer arrived: bare text at rest and a chip on hover, which is exactly the flicker the mock
+    does not have. So hover is a quiet step off the ground (`SurfaceBar`, half way to the pill),
+    press is one further (`SurfaceLine`), and both borders stay transparent.
+
+    THE DISABLED FACE IS TRANSPARENT rather than BaseButton's inset one, for the reason SegmentedItem
+    gives verbatim: a filled dead segment would carry MORE presence than a live one beside it. With
+    nothing selected the whole compose bar is dead, so that is five boxes drawn around words the user
+    is being told they cannot touch. The label still drops to TextDisabled, and `BorderThickness`
+    stays 1 throughout, so nothing on the row reflows as the state changes.
   -->
   <ControlTheme x:Key="ComposerSegment" TargetType="Button" BasedOn="{StaticResource ToggleSegment}">
     <Setter Property="Padding" Value="11,4" />
     <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
+
+    <!-- THE THIRD METRIC #148 MISSED, and the one that made the pill look wrong (issue #150).
+         `Padding` and `FontSize` set what the segment is worth; this is what stops the row deciding
+         instead. A segment sits in a horizontal StackPanel inside a Grid column whose height is set
+         by the tallest thing on the line — the 32px millisecond TextBox — and a stretched child
+         takes all of it: measured, the pill was 32px tall against the mock's 21, a block where the
+         mock draws a chip around a word. Centred, it measures to its own content and the row goes
+         on being as tall as its field.
+
+         SegmentedControl, the layer switcher's trough, centres itself for exactly this reason; this
+         is the same setter one level down, because these segments are in no trough of their own. -->
+    <Setter Property="VerticalAlignment" Value="Center" />
+
+    <!-- Bare text. Transparent rather than absent, so the whole word is still hit-testable and the
+         thickness is there for the focus ring to colour without moving the row. -->
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <!-- The pill. `:not(:disabled)` for the reason this file repeats everywhere: BasedOn is walked
+         first, so BaseButton's disabled face lands before anything here. -->
+    <Style Selector="^.selected:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^.selected:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <!-- Declared last, so it outranks the pill: a segment gated off must not read as the chosen one.
+         The label is BaseButton's TextDisabled; only the face is taken back. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
   </ControlTheme>
 
   <!--

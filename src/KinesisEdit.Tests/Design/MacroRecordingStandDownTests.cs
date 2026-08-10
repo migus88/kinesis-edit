@@ -53,7 +53,7 @@ namespace KinesisEdit.Tests.Design
             Press(host, PhysicalKey.Escape);
 
             Assert.Equal(1, panel.Steps.Count);
-            Assert.Equal("[esc]", panel.Steps.Items[0].TokenText);
+            Assert.Equal("esc", panel.Steps.Items[0].TokenText);
             Assert.True(panel.IsRecording, "Escape ended the recording it was supposed to be a step of.");
             Assert.NotNull(editor.SelectedKey);
         }

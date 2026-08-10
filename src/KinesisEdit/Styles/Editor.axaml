@@ -215,6 +215,15 @@
     <Setter Property="Theme" Value="{StaticResource MacroChip}" />
   </Style>
 
+  <!-- The TRIGGER strip's latches, and only those (issue #150). The mock draws the selected
+       co-trigger as a SOLID accent fill where the selected slot chip and the selected composer
+       modifier stay accent outlines, so the three chips part company on exactly one face — which is
+       why this is a derived theme rather than a fourth setter on `macroChip`. A bridge and nothing
+       else: `CoTriggerChip` in Themes/ControlThemes/Pills.axaml owns the face. -->
+  <Style Selector="Button.coTriggerChip">
+    <Setter Property="Theme" Value="{StaticResource CoTriggerChip}" />
+  </Style>
+
   <!-- ===== The macro step editor =============================================================
        The rows of the `Sequence` list, inside the 480px rail. Each row is a Button on the
        `RowButton` control theme (so hover and press are the theme's, not this file's) carrying its
@@ -297,9 +306,32 @@
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
   </Style>
 
+  <!-- THE SELECTED ROW IS A QUIET RING AND NO FILL SINCE ISSUE #150, and the numbers are the mock's
+       own. Sampled at 1:1, the designer draws it as `#273048` around `#11141B` on a `#121316` rail —
+       a hairline at roughly a fifth of the accent, over an interior that is the rail to within five
+       levels of blue. It shipped as the FULL `AccentBrush` around the 14% `AccentSelectionFill`
+       wash, which is what "the colours are off" was about: the selection was the loudest thing in
+       the panel, and on a five-row list it read as a blue band.
+
+       `AccentSelectionFill` used as a BORDER is the closest existing role, and not by a little: over
+       the rail it composites to `#1D2939` against the mock's `#273048` (distance ~20), where
+       `AccentSelectedRing` — the obvious guess — lands at `#3E6FA8` and is ~117 away. It is also the
+       semantically right one; the role is "the accent at selection strength", and nothing says it
+       may only be a fill.
+
+       THE INTERIOR GOES BACK TO TRANSPARENT, which is what the mock draws and what the resting
+       frame already is. That keeps this row TELLABLE APART FROM A DROP TARGET, which is the reason
+       the drop ring exists: the drop ring is the full `AccentBrush` and is painted INSIDE the frame,
+       so a selected row that is also the drop target now shows two concentric rings, one quiet and
+       one bright, where before both were `AccentBrush` and merged into one thick band. The drag
+       ghost is untouched and stays a raised neutral card.
+
+       SCOPED TO THE MACRO STEP ROWS AND NOTHING ELSE. This is a paint-only class with one call site,
+       not a `ControlTheme`: `RowButton`'s own `.selected`, the key cap's ring, the token picker's
+       rows and the lighting mode rail are all untouched, so the app's selection language is
+       unchanged everywhere it is not this list. -->
   <Style Selector="Border.macroStepRowFrame.selected">
-    <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentSelectionFillBrush}" />
   </Style>
 
   <!-- The key a step strikes, as a chip: the modifier marks and the token in one bordered box
@@ -313,9 +345,20 @@
 
        Hidden entirely on a delay-only row (`HasToken` false), which is why the chip is a Border in
        the row rather than a border on the row: there is nothing to draw a box around there. -->
+  <!-- THE BOX IS A TINT OF THE GLYPH, NOT THE GLYPH (issue #150). Both used to be the full
+       `MacroStepKey`, which put the same weight of purple on a 21 px box as on the two characters
+       inside it and made the chip read as a solid purple lozenge — the second half of "the colours
+       are off". The mock draws a bright token in a quiet box: sampled at 1:1, its border is
+       `#31213D` on the rail's `#121316`, which is the macro purple at ~0.17, while the glyph stays
+       full strength. `MacroStepKeyTintBorder` is that alpha, per variant so the box follows whichever
+       purple its own variant uses for the type.
+
+       The FILL stays transparent. The mock's is `#1B1522` — the same purple at ~0.05, which is
+       fifteen levels off the rail and within the tolerance the border was chosen at; a second role
+       for it would be a token nobody could see. -->
   <Style Selector="Border.macroStepToken">
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="BorderBrush" Value="{DynamicResource MacroStepKeyBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource MacroStepKeyTintBorderBrush}" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
     <Setter Property="Padding" Value="6,2" />
     <Setter Property="TextElement.Foreground" Value="{DynamicResource MacroStepKeyBrush}" />

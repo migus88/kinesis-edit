@@ -124,7 +124,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public bool AreStepModifiersEnabled => _areStepModifiersEnabled;
 
-        /// <summary>The selected step's key as the file spells it — <c>[1]</c> — or a dash.</summary>
+        /// <summary>The selected step's key as the file spells it — <c>1</c> — or a dash.</summary>
         public string StepTokenText
         {
             get => _stepTokenText;

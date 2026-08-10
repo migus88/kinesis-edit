@@ -83,7 +83,7 @@ namespace KinesisEdit.ViewModels
         public TokenPickerViewModel Picker { get; }
 
         /// <summary>
-        /// What the position sends right now, as the file spells it: <c>[esc]</c>. Mono, because it
+        /// What the position sends right now, as the file spells it: <c>esc</c>. Mono, because it
         /// is literally a value in <c>layoutN.txt</c>; empty when nothing is selected.
         /// </summary>
         public string CurrentToken
@@ -218,7 +218,7 @@ namespace KinesisEdit.ViewModels
         /// Takes the captured keypress and makes it the position's assignment. <c>Remap</c> rather
         /// than <c>ApplyRemap</c>, deliberately and exactly as the editor's own capture path does:
         /// pressing a position's own factory action un-does the remap (04 §2.1), which is how the
-        /// legacy apps behaved and what a user pressing <c>d</c> on the <c>[d]</c> position expects.
+        /// legacy apps behaved and what a user pressing <c>d</c> on the <c>d</c> position expects.
         /// </summary>
         public void ReceiveKeystroke(CapturedKeystroke keystroke)
         {
