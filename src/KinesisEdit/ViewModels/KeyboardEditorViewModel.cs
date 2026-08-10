@@ -3,7 +3,6 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Input;
-using KinesisEdit.Core.Keys;
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
@@ -25,7 +24,8 @@ namespace KinesisEdit.ViewModels
     /// <see cref="KeyboardKeyViewModel"/>/<see cref="KeyboardLayerViewModel"/>.
     /// </para>
     /// </summary>
-    public sealed partial class KeyboardEditorViewModel : DeviceEditorViewModel, IDisposable
+    public sealed partial class KeyboardEditorViewModel
+        : DeviceEditorViewModel, IDisposable, IResetScopeHost, IMacroInsertionHost
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -103,70 +103,41 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string NothingToSaveMessage = "No unsaved changes. Nothing was written to the keyboard.";
 
-        /// <summary>Title of the confirmation raised before a layer is erased. Not a spec string.</summary>
-        public const string ResetLayerTitle = "Reset Layer";
-
         /// <summary>
-        /// The layer-reset prompt. It says what is erased and — because nothing this app does is
-        /// written behind the user's back — that the drive is untouched until Save.
+        /// The reset prompts' wording, all six strings of it. It lives on
+        /// <see cref="ResetScopeCoordinator"/> now, beside the commands it guards; these stay as the
+        /// names this class's callers and tests know it by, so the rehoming changed no public
+        /// contract of this class — the same forwarding the <see cref="MacroInspectorRailWidth"/>
+        /// const above does for the rail's width.
         /// </summary>
-        public const string ResetLayerConfirmation =
-            "Do you want to clear every remap and macro on this layer? Nothing is written to the keyboard until you save.";
+        public const string ResetLayerTitle = ResetScopeCoordinator.ResetLayerTitle;
 
-        /// <summary>The affirmative, named after what it does rather than "Yes" (mockup 1k). It still answers <c>Yes</c>.</summary>
-        public const string ResetLayerConfirmCaption = "Clear layer";
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayerConfirmation"/>
+        public const string ResetLayerConfirmation = ResetScopeCoordinator.ResetLayerConfirmation;
 
-        /// <summary>Title of the confirmation raised before every layer is erased.</summary>
-        public const string ResetLayoutTitle = "Reset Layout";
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayerConfirmCaption"/>
+        public const string ResetLayerConfirmCaption = ResetScopeCoordinator.ResetLayerConfirmCaption;
 
-        /// <summary>
-        /// What the reset prompts call the profile when there is no number to name — demo mode,
-        /// which reads no file and so has no <see cref="ProfileCaption"/>.
-        /// </summary>
-        public const string ResetLayoutFallbackScope = "this profile";
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayoutTitle"/>
+        public const string ResetLayoutTitle = ResetScopeCoordinator.ResetLayoutTitle;
 
-        /// <summary>
-        /// The whole-profile prompt. Same shape as the layer's, and deliberately different words:
-        /// the two scopes share one suppression key, so the sentence is the only thing that tells
-        /// the user which of them is about to run.
-        /// <para>
-        /// <b>It names the profile, and says the others are safe</b> (issue #135). The command has
-        /// always cleared the open profile and only that one — it calls
-        /// <c>KeyboardLayout.Reset()</c> on the open session's layout and never walks the session
-        /// cache — but the old wording ("every layer of this profile", affirmed by a button reading
-        /// <c>Clear all layers</c>) was read as <i>every profile</i>, which is the one mistake a
-        /// reset prompt must not invite. Since #133 the editor really does hold several profiles in
-        /// memory at once, so the reassurance is load-bearing rather than decorative.
-        /// </para>
-        /// </summary>
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayoutFallbackScope"/>
+        public const string ResetLayoutFallbackScope = ResetScopeCoordinator.ResetLayoutFallbackScope;
+
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetDeclineCaption"/>
+        public const string ResetDeclineCaption = ResetScopeCoordinator.ResetDeclineCaption;
+
+        /// <inheritdoc cref="ResetScopeCoordinator.BuildResetLayoutConfirmation"/>
         public static string BuildResetLayoutConfirmation(string profileCaption)
         {
-            return "Do you want to clear every remap and macro on every layer of "
-                   + ResolveResetScope(profileCaption)
-                   + "? No other profile is touched, and nothing is written to the keyboard until you save.";
+            return ResetScopeCoordinator.BuildResetLayoutConfirmation(profileCaption);
         }
 
-        /// <summary>
-        /// The affirmative of the whole-profile prompt, named after what it does (mockup 1k) and —
-        /// since issue #135 — after <em>what it does it to</em>. It still answers <c>Yes</c>.
-        /// </summary>
+        /// <inheritdoc cref="ResetScopeCoordinator.BuildResetLayoutConfirmCaption"/>
         public static string BuildResetLayoutConfirmCaption(string profileCaption)
         {
-            return "Clear " + ResolveResetScope(profileCaption);
+            return ResetScopeCoordinator.BuildResetLayoutConfirmCaption(profileCaption);
         }
-
-        /// <summary>
-        /// What the two reset strings call the thing being cleared: the profile's own caption when
-        /// there is one, and <see cref="ResetLayoutFallbackScope"/> when there is not. One helper so
-        /// the sentence and the button can never name different scopes.
-        /// </summary>
-        private static string ResolveResetScope(string profileCaption)
-        {
-            return string.IsNullOrWhiteSpace(profileCaption) ? ResetLayoutFallbackScope : profileCaption;
-        }
-
-        /// <summary>The way out of either reset prompt. It still answers <c>No</c>.</summary>
-        public const string ResetDeclineCaption = "Cancel";
 
         /// <summary>
         /// The action row's <c>Discard changes</c> (issue #133). Sentence case, like every caption
@@ -348,17 +319,19 @@ namespace KinesisEdit.ViewModels
         /// every path that can move the layout ends in a fresh set; replaced whole rather than
         /// mutated, because Core announces nothing.
         /// <para>
+        /// The set itself belongs to <see cref="EditorAdvisoryProjection"/>, which builds it and
+        /// fans it out; this is the name it is <em>published</em> under, and the announcement is
+        /// raised in <see cref="RebuildAdvisories"/> because a property may only be raised by the
+        /// class that declares it.
+        /// </para>
+        /// <para>
         /// <b>Nothing here gates anything.</b> No command's <c>CanExecute</c> reads it, a save with
         /// advisories succeeds, and an over-budget layout is written as it stands — the board
         /// truncates. That is the design law ("advisories never block"), and it is the reason this
         /// is a read-out and not a validator.
         /// </para>
         /// </summary>
-        public EditorAdvisories Advisories
-        {
-            get => _advisories;
-            private set => SetProperty(ref _advisories, value);
-        }
+        public EditorAdvisories Advisories => _advisoryProjection.Advisories;
 
         /// <summary>
         /// The summary strip's own view model: the <b>open section's</b> count and sentence, and
@@ -553,40 +526,38 @@ namespace KinesisEdit.ViewModels
         /// <summary>Leaves listening state without changing anything (the view binds Escape to it).</summary>
         public IRelayCommand CancelRemapCommand { get; }
 
-        /// <summary>Drops the selected key's remap (specs/10-apps-and-ui.md, "Reset Key").</summary>
-        public IRelayCommand ResetKeyCommand { get; }
-
         /// <summary>
-        /// Resets every key of the shown layer, after the confirmation of
-        /// <see cref="NotificationKeys.ResetLayer"/> — which the user can switch off for good on
-        /// the Settings tab ("Confirm before resetting a layer", mockup 1j).
+        /// Drops the selected key's remap (specs/10-apps-and-ui.md, "Reset Key").
+        /// <para>
+        /// The three resets are <see cref="ResetScopeCoordinator"/>'s since issue #115 and these
+        /// three properties hand out its very commands, so the rehoming changed nothing the view,
+        /// the key inspector, the legend row or a test can see.
+        /// </para>
         /// </summary>
-        public IRelayCommand ResetLayerCommand { get; }
+        public IRelayCommand ResetKeyCommand => _resetScopes.ResetKeyCommand;
 
-        /// <summary>
-        /// Resets every key of every layer, after the same confirmation under the same key; only
-        /// the wording differs (see <see cref="ResetLayoutConfirmation"/>).
-        /// </summary>
-        public IRelayCommand ResetLayoutCommand { get; }
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayerCommand"/>
+        public IRelayCommand ResetLayerCommand => _resetScopes.ResetLayerCommand;
+
+        /// <inheritdoc cref="ResetScopeCoordinator.ResetLayoutCommand"/>
+        public IRelayCommand ResetLayoutCommand => _resetScopes.ResetLayoutCommand;
 
         /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
         public IAsyncRelayCommand SaveCommand { get; }
 
-        /// <summary>Opens Search Keys over the macro and inserts the picked action (11 §11.6).</summary>
-        public IRelayCommand InsertSpecialActionCommand { get; }
-
         /// <summary>
-        /// ⌘F, the grammar's "focus the token search from anywhere in the editor"
-        /// (docs/design/mockups.md <c>2b</c>).
+        /// Opens Search Keys over the macro and inserts the picked action (11 §11.6).
         /// <para>
-        /// It has somewhere to write now. On the Layout tab it puts the caret in the <b>key
-        /// inspector's</b> own search field, where ↵ assigns the picked action to the selected
-        /// position — which is what the accelerator was always meant to do, and could not before the
-        /// rail existed. With the rail on its Macro panel it <b>is</b> the insertion picker
-        /// (<see cref="InsertSpecialActionCommand"/>): finding a token there means inserting it.
+        /// Both insertion commands are <see cref="MacroInsertionHost"/>'s since issue #115 and these
+        /// two properties hand out its very commands: this one is bound in
+        /// <c>Views/KeyboardEditorView.axaml</c> and <see cref="OpenSearchCommand"/> is run by the
+        /// grammar in that view's code-behind, so neither may move off this class.
         /// </para>
         /// </summary>
-        public IRelayCommand OpenSearchCommand { get; }
+        public IRelayCommand InsertSpecialActionCommand => _macroInsertion.InsertSpecialActionCommand;
+
+        /// <inheritdoc cref="MacroInsertionHost.OpenSearchCommand"/>
+        public IRelayCommand OpenSearchCommand => _macroInsertion.OpenSearchCommand;
 
         /// <summary>Opens the Export files panel (11 §11.5); never available in demo mode (03 §3.5).</summary>
         public IRelayCommand ExportCommand { get; }
@@ -609,6 +580,9 @@ namespace KinesisEdit.ViewModels
         private readonly IAppPreferencesStore _preferences;
         private readonly ProfileImporter _importer;
         private readonly EditorOverlayHost _overlays;
+        private readonly ResetScopeCoordinator _resetScopes;
+        private readonly EditorAdvisoryProjection _advisoryProjection;
+        private readonly MacroInsertionHost _macroInsertion;
         private readonly KeyboardVisual? _visual;
         private readonly Action<CapturedKeystroke> _keystrokeCapturedHandler;
         private readonly EventHandler _activeOverlayChangedHandler;
@@ -621,7 +595,6 @@ namespace KinesisEdit.ViewModels
         private KeyboardKeyViewModel? _selectedKey;
         private KeyboardKeyViewModel? _listeningKey;
         private KeyboardLayout? _layout;
-        private EditorAdvisories _advisories = EditorAdvisories.Empty;
         private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
         private int _modifiedKeyCount;
@@ -690,6 +663,16 @@ namespace KinesisEdit.ViewModels
             _importer = new ProfileImporter(filePicker);
             _overlays = new EditorOverlayHost(_capture);
 
+            // The editor's whole multi-profile state, and the per-profile unsaved-rename set that
+            // rides alongside it (KeyboardEditorViewModel.Profiles.cs, .MacroNames.cs). The cache is
+            // built FIRST because the name store is handed it: a rename made in a profile the user
+            // has since left is written from the layout that profile's session still holds
+            // (issue #133), and the store also needs the session's app_settings.txt — neither of
+            // which a field initializer can reach, since it may name neither `this` nor another
+            // field. Both exist before anything below can ask whether the editor is dirty.
+            _sessionCache = new ProfileSessionCache();
+            _macroNames = new MacroNameStore(_preferences, _sessionCache);
+
             // THE RAIL'S WIDTH IS ONE NUMBER FOR THE WHOLE EDITOR, and it is built first because the
             // Lighting tab below is handed this very instance (issue #124): the mode rail and the key
             // inspector are two contents of one column, so a width dragged on either tab is the width
@@ -730,6 +713,12 @@ namespace KinesisEdit.ViewModels
             // and it follows that store for as long as the editor is open.
             AdvisoryStrip = new AdvisoryStripViewModel(SelectAnchoredKey, SelectAnchoredMacro, _preferences);
 
+            // Building the set, marking the caps it names and narrowing it onto the strip are one
+            // job — invariant 21's "every advisory appears exactly twice" — so they are one type,
+            // and it owns the set. This class publishes it as Advisories above and raises that name
+            // when it moves; nothing here holds a second copy.
+            _advisoryProjection = new EditorAdvisoryProjection(AdvisoryStrip);
+
             // The Lighting tab is rendered only for a board whose led file is the two-layer key
             // backlight model the panel edits — absent, never disabled, on every other board and on
             // one with no lighting hardware at all. The question is device-level on purpose: this
@@ -741,13 +730,10 @@ namespace KinesisEdit.ViewModels
             SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(SelectKey);
             BeginRemapCommand = new RelayCommand(BeginRemap, () => CanBeginRemap());
             CancelRemapCommand = new RelayCommand(CancelRemap, () => IsListening);
-            // The !IsLoading && !IsBusy guard matches CanBeginRemap/CanSave: a save serializes the
-            // model on a background thread, so mutating it from here mid-save would race it.
-            ResetKeyCommand = new RelayCommand(ResetKey, () => SelectedKey is not null && SelectedKey.CanEdit && !IsLoading && !IsBusy);
-            // Both resets ask first, so both are async; Reset Key does not, because it drops one
-            // position's remap and the spec's own reset confirmation covers macros, not remaps.
-            ResetLayerCommand = new AsyncRelayCommand(ResetLayerAsync, () => SelectedLayer is not null && !IsLoading && !IsBusy);
-            ResetLayoutCommand = new AsyncRelayCommand(ResetLayoutAsync, () => Layout is not null && !IsLoading && !IsBusy);
+            // The three reset scopes and the two prompts that name them (ResetScopeCoordinator).
+            // Built HERE and not later: BoardLegend and CreateInspector below are both handed one of
+            // its commands in their own constructors, so it has to exist before either of them.
+            _resetScopes = new ResetScopeCoordinator(this, _notifications);
             // Its neighbour in the action row and its opposite in meaning: a reset clears to factory
             // defaults, a discard restores what was loaded (KeyboardEditorViewModel.Discard.cs).
             DiscardChangesCommand = new AsyncRelayCommand(DiscardChangesAsync, () => CanDiscardChanges());
@@ -758,8 +744,11 @@ namespace KinesisEdit.ViewModels
             CopyMacroCommand = new RelayCommand(ArmMacroCopy, () => CanCopyMacro());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
             SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
-            InsertSpecialActionCommand = new RelayCommand(InsertSpecialAction, () => CanInsertIntoMacro());
-            OpenSearchCommand = new RelayCommand(OpenSearch, () => CanOpenSearch());
+            // §11.6's macro insertion and ⌘F (MacroInsertionHost). It reads the rail lazily through
+            // the host interface, so it may be built before CreateInspector runs; _recentTokens is
+            // this editor's one store (KeyboardEditorViewModel.Inspector.cs) and is initialized with
+            // the field, so it is already there.
+            _macroInsertion = new MacroInsertionHost(this, _recentTokens);
             ExportCommand = new RelayCommand(OpenExport, () => CanExport());
             ImportCommand = new AsyncRelayCommand(ImportAsync, () => CanImport());
             CloseOverlayCommand = new RelayCommand(_overlays.Dismiss, () => ActiveOverlay is not null);
@@ -1049,8 +1038,9 @@ namespace KinesisEdit.ViewModels
 
             // The one place a session enters the editor's per-profile cache, so the first load, a
             // switch, an import and a discard all keep it correct without any of them saying so
-            // (KeyboardEditorViewModel.Profiles.cs). Re-filing a cached session is a no-op.
-            CacheSession(outcome.Session);
+            // (ProfileSessionCache). Re-filing a cached session is a no-op, and a null one — a load
+            // that failed, a board with no drive — files nothing.
+            _sessionCache.Add(outcome.Session);
 
             Layout = outcome.Layout;
             ProfileCaption = outcome.Session is null ? string.Empty : BuildProfileCaption(outcome.Session.ProfileNumber);
@@ -1437,179 +1427,6 @@ namespace KinesisEdit.ViewModels
             NotifyCommands();
         }
 
-        /// <summary>
-        /// Shows a one-shot panel whose single result is a keystroke to append to the macro under
-        /// edit — the Macro Timing Delays and Search Keys panels of §11.3/§11.6. Both hooks come
-        /// off again the moment the panel closes, however it closed, so a dismissed panel can
-        /// never write into the macro afterwards.
-        /// </summary>
-        private void ShowMacroInsertOverlay(
-            EditorOverlayViewModel overlay,
-            Action<Action<KeyDefinition>> subscribe,
-            Action<Action<KeyDefinition>> unsubscribe)
-        {
-            ShowOverlay(overlay);
-
-            if (!ReferenceEquals(ActiveOverlay, overlay))
-            {
-                return;
-            }
-
-            // A lambda, not a method group: InsertIntoOpenMacro reports "no macro is being edited"
-            // with a bool this path has nothing to do with, and the panel may be gone by then.
-            var insert = new Action<KeyDefinition>(key => InsertIntoOpenMacro(key));
-
-            EventHandler? closed = null;
-
-            closed = (_, _) =>
-            {
-                unsubscribe(insert);
-
-                overlay.Closed -= closed;
-            };
-
-            subscribe(insert);
-
-            overlay.Closed += closed;
-        }
-
-        /// <summary>
-        /// §11.6's <c>Search Keys (Macro)</c>: the same picker the key inspector hosts, wrapped in a
-        /// modal because an insertion is a question with one answer that has to come back here. The
-        /// session's <c>Recent</c> history is shared, so an action inserted into a macro is offered
-        /// by the rail's own chip afterwards.
-        /// </summary>
-        private void InsertSpecialAction()
-        {
-            if (!CanInsertIntoMacro())
-            {
-                return;
-            }
-
-            var overlay = new TokenPickerOverlayViewModel(
-                TokenPickerOverlayViewModel.MacroTitle,
-                Layout!.Dialect,
-                _recentTokens);
-
-            ShowMacroInsertOverlay(
-                overlay,
-                handler => overlay.Selected += handler,
-                handler => overlay.Selected -= handler);
-        }
-
-        /// <summary>
-        /// ⌘F. With the rail on its Macro panel this <em>is</em> the insertion picker, so the
-        /// token the user searches for is inserted where they were working. Everywhere else it puts
-        /// the caret in the <b>key inspector's</b> search field — the rail is not modal, so nothing
-        /// is opened over anything: the picker is already on screen beside the board, and ↵ on a row
-        /// assigns it to the selected position.
-        /// <para>
-        /// A modal panel that is already up keeps the keyboard: ⌘F never replaces one feature panel
-        /// with another, and it never reaches past a scrim into the rail underneath it.
-        /// </para>
-        /// </summary>
-        private void OpenSearch()
-        {
-            if (!CanOpenSearch())
-            {
-                return;
-            }
-
-            if (ActiveOverlay is TokenPickerOverlayViewModel picker)
-            {
-                picker.FocusSearch();
-
-                return;
-            }
-
-            if (CanInsertIntoMacro())
-            {
-                InsertSpecialAction();
-
-                return;
-            }
-
-            if (ActiveOverlay is not null)
-            {
-                return;
-            }
-
-            // The rail's own Remap panel. It refuses politely on a locked position and while nothing
-            // is selected — the panel decides, not this class.
-            Inspector.Open();
-
-            _remapPanel.FocusSearch();
-        }
-
-        private bool CanOpenSearch()
-        {
-            return Layout is not null && !IsLoading && !IsBusy;
-        }
-
-        /// <summary>
-        /// §11.6's insertion targets the macro the <b>key inspector</b> has open — since issue #93
-        /// that is the app's one macro editor — so three things have to be true: the rail is open,
-        /// it is showing its Macro panel, and the selected position really carries a macro. Without
-        /// the mode test the button would stay live beside a Remap panel and the picked token would
-        /// be appended to a macro the user cannot see.
-        /// </summary>
-        private bool CanInsertIntoMacro()
-        {
-            return Layout is not null
-                   && Inspector.IsOpen
-                   && Inspector.SelectedMode == KeyInspectorMode.Macro
-                   && FindOpenMacro() is not null
-                   && !IsLoading
-                   && !IsBusy
-                   && ActiveOverlay is null;
-        }
-
-        /// <summary>
-        /// The macro the rail's Macro panel is editing, or null. It is read off the model rather than
-        /// asked of the panel: the panel holds it privately, and both stores answer the same two
-        /// questions the panel asks — the key's <b>active</b> slot on a slot device (which the panel
-        /// normalises to the first populated one when it reads), the layer-plus-trigger entry on a
-        /// flat-list one (06 §1).
-        /// </summary>
-        private Macro? FindOpenMacro()
-        {
-            if (SelectedKey is not { } key || Layout is not { } layout)
-            {
-                return null;
-            }
-
-            if (!layout.UsesFlatMacroList)
-            {
-                return key.Key.GetMacro(key.Key.ActiveMacroIndex);
-            }
-
-            var flat = layout.FindMacros(SelectedLayer?.Index ?? Macro.UnassignedIndex, key.Key.TriggerKey.Code);
-
-            return flat.Count > 0 ? flat[0] : null;
-        }
-
-        /// <summary>
-        /// Appends one key to the macro the rail has open — §11.6's <c>Search Keys (Macro)</c> hook.
-        /// The write lands on the model and then goes through the editor's one refresh funnel, which
-        /// is what re-reads the rail's step list, the counters, the advisories and the dirty flag;
-        /// Core announces nothing on its own. False when no macro is open.
-        /// </summary>
-        private bool InsertIntoOpenMacro(KeyDefinition key)
-        {
-            ArgumentNullException.ThrowIfNull(key);
-
-            if (FindOpenMacro() is not { } macro)
-            {
-                return false;
-            }
-
-            macro.AddKeystroke(new Keystroke(key));
-
-            RefreshCounters();
-
-            return true;
-        }
-
         private void OpenExport()
         {
             if (!CanExport())
@@ -1692,29 +1509,6 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Drops the selected key's remap. This is <see cref="KeyboardKey.ClearRemap"/> and not
-        /// <c>Remap(OriginalKey)</c> on purpose: the latter also clears the position's tap-and-hold
-        /// and multi-modifier assignment as a side effect (docs/app/keyboard-model.md,
-        /// "Watch out"), which is not what "reset this key's remap" means.
-        /// </summary>
-        private void ResetKey()
-        {
-            var key = SelectedKey;
-
-            if (key is null || !key.CanEdit)
-            {
-                return;
-            }
-
-            CancelRemap();
-
-            key.Key.ClearRemap();
-            key.RefreshFromModel();
-
-            RefreshCounters();
-        }
-
-        /// <summary>
         /// Re-reads everything the chrome says about the model: the two spec-10 counters, the
         /// legend row's five layer-scoped counts, and the dirty flag behind the amber Save.
         /// <b>Every path that can write to the layout ends here</b> — a captured remap, the three
@@ -1736,8 +1530,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-reads what the app has to say about the layout and pushes it everywhere it is shown:
-        /// the per-key flag, the macro rows, and the strip's own count and sentence.
+        /// Re-reads what the app has to say about the layout and announces it: the set, the fan-out
+        /// onto the per-key flag, each layer's tally and the strip are all
+        /// <see cref="EditorAdvisoryProjection.Rebuild"/>'s, and this is where the move is published
+        /// under <see cref="Advisories"/> — which the save toast counts and the key inspector is
+        /// refreshed from. Only the raise stays here, because only this class may raise it.
         /// <para>
         /// Hooked to <see cref="RefreshCounters"/> and deliberately <b>not</b> to
         /// <see cref="RefreshDirtyState"/>. The set is derived from the
@@ -1749,23 +1546,10 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RebuildAdvisories()
         {
-            Advisories = EditorAdvisories.Build(Layout);
-
-            foreach (var layer in Layers)
+            if (_advisoryProjection.Rebuild(Layout, Layers, _selectedTab, SelectedLayer?.Index))
             {
-                foreach (var key in layer.Keys)
-                {
-                    key.HasAdvisory = _advisories.HasAdvisoryForKey(layer.Index, key.Index);
-                }
-
-                // The one count the layer cannot derive from its own caps: the fact lives out here,
-                // in EditorAdvisories, so it is pushed in exactly like the per-cap flag above. It is
-                // an aggregate of what the strip already says, not a third place an advisory is
-                // reported (invariant 21).
-                layer.AdvisoryCount = _advisories.CountForLayer(layer.Index);
+                OnPropertyChanged(nameof(Advisories));
             }
-
-            RefreshAdvisorySummary();
         }
 
         /// <summary>
@@ -1775,7 +1559,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RefreshAdvisorySummary()
         {
-            AdvisoryStrip.Project(_advisories, _selectedTab, SelectedLayer?.Index);
+            _advisoryProjection.Project(_selectedTab, SelectedLayer?.Index);
         }
 
         /// <summary>
@@ -1841,134 +1625,10 @@ namespace KinesisEdit.ViewModels
             // move. It is still unsaved work the user would lose — hence the second term, the one
             // deliberate exception to "app_settings.txt sits outside the dirty model"
             // (KeyboardEditorViewModel.MacroNames.cs).
-            IsDirty = AnyProfileIsDirty() || HasUnsavedMacroNames;
-        }
-
-        /// <summary>
-        /// Erases the shown layer, after the confirmation of <see cref="NotificationKeys.ResetLayer"/>.
-        /// <para>
-        /// <b>The question is asked through the notification service and nowhere else.</b> Whether
-        /// the user switched it off lives in <c>app_settings.txt</c>, and
-        /// <see cref="NotificationService"/> already short-circuits a hidden key to
-        /// <see cref="MessageBoxOutcome.ForSuppressed"/>; reading <c>IsHidden</c> here would be a
-        /// second policy for one decision. Hence <see cref="MessageBoxRequest.SuppressedResult"/>
-        /// is <c>Yes</c>: a suppressed confirmation means "go ahead", not "do nothing".
-        /// </para>
-        /// </summary>
-        private async Task ResetLayerAsync()
-        {
-            var layer = SelectedLayer;
-
-            if (layer is null)
-            {
-                return;
-            }
-
-            if (!await ConfirmResetAsync(ResetLayerTitle, ResetLayerConfirmation, ResetLayerConfirmCaption).ConfigureAwait(true))
-            {
-                return;
-            }
-
-            // Re-read: the confirmation is modal but the layer selection is not frozen behind it,
-            // and erasing a layer the user is no longer looking at would be the worst kind of bug.
-            layer = SelectedLayer;
-
-            if (layer is null)
-            {
-                return;
-            }
-
-            CancelRemap();
-            DeactivateInspector();
-
-            layer.Layer.Reset();
-            layer.RefreshFromModel();
-
-            // KeyboardLayer.Reset clears every rule including the macro slots, so the rail is
-            // sitting on macros that no longer exist. RefreshCounters rebuilds the library snapshot
-            // and pushes it.
-            RefreshCounters();
-        }
-
-        /// <summary>
-        /// Erases every layer, after a confirmation that <b>shares</b> the layer reset's
-        /// suppression key.
-        /// <para>
-        /// One preference, not two: the catalog models a single reset confirmation
-        /// ("Confirm before resetting a layer", mockup 1j), and a user who switched it off has
-        /// answered the question "should a reset stop and ask me?" for both scopes. Leaving the
-        /// wider scope unsuppressible would put two policies behind one checkbox and leave a prompt
-        /// the settings screen cannot re-enable. What differs is the wording — the sentence names
-        /// every layer — and the stakes are bounded the same way: a reset changes memory only, and
-        /// nothing reaches the drive until Save.
-        /// </para>
-        /// </summary>
-        private async Task ResetLayoutAsync()
-        {
-            if (Layout is null)
-            {
-                return;
-            }
-
-            if (!await ConfirmResetAsync(
-                    ResetLayoutTitle,
-                    BuildResetLayoutConfirmation(ProfileCaption),
-                    BuildResetLayoutConfirmCaption(ProfileCaption)).ConfigureAwait(true))
-            {
-                return;
-            }
-
-            // Re-read after the box: a load or an import may have replaced the model behind it.
-            var layout = Layout;
-
-            if (layout is null)
-            {
-                return;
-            }
-
-            CancelRemap();
-            DeactivateInspector();
-
-            layout.Reset();
-
-            foreach (var layer in Layers)
-            {
-                layer.RefreshFromModel();
-            }
-
-            RefreshCounters();
-        }
-
-        /// <summary>
-        /// Puts one of the two reset confirmations on screen and reports whether the erase may go
-        /// ahead. False for every other answer, including a box that could not be shown at all —
-        /// a confirmation that failed must not erase anything, and must not bring the app down
-        /// either (the same rule the lighting tab's Reset All follows).
-        /// </summary>
-        private async Task<bool> ConfirmResetAsync(string title, string message, string confirmCaption)
-        {
-            MessageBoxOutcome outcome;
-
-            try
-            {
-                outcome = await _notifications.ShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = title,
-                    Message = message,
-                    Icon = MessageBoxIcon.Confirmation,
-                    Buttons = MessageBoxButtons.YesNo,
-                    YesCaption = confirmCaption,
-                    NoCaption = ResetDeclineCaption,
-                    SuppressionKey = NotificationKeys.ResetLayer,
-                    SuppressedResult = MessageBoxResult.Yes
-                }).ConfigureAwait(true);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-
-            return outcome.Result == MessageBoxResult.Yes;
+            // The open session is asked first (ProfileSessionCache.AnyIsDirty): it is the profile the
+            // edit that triggered this refresh landed in, so the common path still costs exactly one
+            // serialization and the other eight are never asked.
+            IsDirty = _sessionCache.AnyIsDirty(_session) || HasUnsavedMacroNames;
         }
 
         /// <summary>
@@ -2066,7 +1726,11 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
-            var sessions = CollectSessionsToSave();
+            // INVARIANT 31's two halves, joined here because they live in the two types that own
+            // them: every opened profile that is dirty, plus every one carrying a macro rename no
+            // session can see (a name rides app_settings.txt, so the profile re-serializes
+            // identically). Empty is a legitimate answer, handled just below.
+            var sessions = _sessionCache.CollectSessionsToSave(_macroNames.RenamedProfiles);
 
             if (sessions.Count == 0)
             {
@@ -2089,7 +1753,7 @@ namespace KinesisEdit.ViewModels
 
             // Before a single byte is written, and over the whole set — see
             // BuildPreflightViolationMessage.
-            if (BuildPreflightViolationMessage(sessions) is { } rejection)
+            if (ProfileSessionCache.BuildPreflightViolationMessage(sessions) is { } rejection)
             {
                 await TryShowMessageBoxAsync(new MessageBoxRequest
                 {
@@ -2113,7 +1777,7 @@ namespace KinesisEdit.ViewModels
                 // disables Save and every editing command for as long as the editor is open.
                 _notifications.ShowLoading(SavingCaption);
 
-                results = await Task.Run(() => SaveAll(sessions)).ConfigureAwait(true);
+                results = await Task.Run(() => ProfileSessionCache.SaveAll(sessions)).ConfigureAwait(true);
             }
             catch (Exception exception)
             {
@@ -2138,7 +1802,7 @@ namespace KinesisEdit.ViewModels
                 return false;
             }
 
-            if (BuildRejectedSaveMessage(results!) is { } refused)
+            if (ProfileSessionCache.BuildRejectedSaveMessage(results!) is { } refused)
             {
                 await TryShowMessageBoxAsync(new MessageBoxRequest
                 {
@@ -2163,7 +1827,7 @@ namespace KinesisEdit.ViewModels
             RefreshDirtyState();
 
             var message = AdvisoryStripViewModel.BuildPostSaveMessage(
-                BuildSavedProfilesMessage(results!),
+                ProfileSessionCache.BuildSavedProfilesMessage(results!),
                 Advisories.Total);
 
             if (message is not null)
@@ -2268,6 +1932,42 @@ namespace KinesisEdit.ViewModels
             SelectProfileCommand.NotifyCanExecuteChanged();
         }
 
+        // The two host interfaces the collaborators split out by issue #115 read this editor
+        // through: ResetScopeCoordinator's and MacroInsertionHost's. Every other member each of
+        // them names is already public on this class and satisfies the interface as it stands; the
+        // five below are implemented EXPLICITLY, because a split must not turn a private method of
+        // the editor into part of its public surface.
+
+        /// <inheritdoc/>
+        void IResetScopeHost.CancelRemap()
+        {
+            CancelRemap();
+        }
+
+        /// <inheritdoc/>
+        void IResetScopeHost.DeactivateInspector()
+        {
+            DeactivateInspector();
+        }
+
+        /// <inheritdoc/>
+        void IResetScopeHost.RefreshCounters()
+        {
+            RefreshCounters();
+        }
+
+        /// <inheritdoc/>
+        void IMacroInsertionHost.FocusRemapSearch()
+        {
+            _remapPanel.FocusSearch();
+        }
+
+        /// <inheritdoc/>
+        void IMacroInsertionHost.RefreshCounters()
+        {
+            RefreshCounters();
+        }
+
         /// <summary>
         /// Stops capture and detaches from it, and tears down every overlay and macro-panel
         /// subscription with it. The capture service is app-wide and outlives the editor, so
@@ -2311,10 +2011,10 @@ namespace KinesisEdit.ViewModels
             CancelCopyKey();
 
             // Last, and the only path that lets a session go: since issue #133 every profile the
-            // user opened is still held (KeyboardEditorViewModel.Profiles.cs), so closing the
-            // editor is what releases all of them — with whatever they still carry unsaved, which
-            // is exactly what ConfirmCloseAsync asked about on the way here.
-            DisposeSessions();
+            // user opened is still held (ProfileSessionCache), so closing the editor is what
+            // releases all of them — with whatever they still carry unsaved, which is exactly what
+            // ConfirmCloseAsync asked about on the way here.
+            _sessionCache.Dispose();
         }
 
         /// <summary>What one load attempt produced: a session (or none, in demo mode), a model, and a failure.</summary>

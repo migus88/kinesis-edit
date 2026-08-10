@@ -1,42 +1,27 @@
 using KinesisEdit.Core.Model;
-using KinesisEdit.Core.Settings;
 
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// Everything that keeps a macro's <em>name</em> alive across a load and a save (issue #93,
-    /// mockup <c>2i</c>). Split out of <see cref="KeyboardEditorViewModel"/>'s main file for the
-    /// same reason <c>KeyboardEditorViewModel.Legend.cs</c> and <c>…Inspector.cs</c> were: that file
-    /// is the largest in the app and docs/guides/Coding Conventions.md forbids growing it into a god
-    /// class. Everything here is the same class and runs on the same rules.
+    /// The editor's side of the macro names that keep a macro's <em>name</em> alive across a load
+    /// and a save (issue #93, mockup <c>2i</c>): which profile scopes a name, when the stamp and the
+    /// harvest run, and the announcements the rename state owes the chrome. The state itself and
+    /// both writes live in <see cref="MacroNameStore"/> — see that type for why a name belongs to a
+    /// place rather than an identity, and why the unsaved-rename state is a per-profile set.
     ///
-    /// <para><b>A name belongs to a place, not to an identity.</b> There is no shared macro anywhere
-    /// on disk — every key's slot holds its own copy (06 §1) — so the two steps below walk the
-    /// layout's macro <em>sites</em> (<see cref="MacroSites"/>) and nothing groups them. The
-    /// app-level <c>MacroLibrary</c> that used to sit here, disambiguating same-name macros and
-    /// propagating a rename across every site of a group, was deleted with issue #141: it maintained
-    /// an identity the hardware does not have, and renaming the macro on key A must leave the
-    /// identical-looking one on key B alone.</para>
+    /// <para>Split out of <see cref="KeyboardEditorViewModel"/>'s main file for the reason
+    /// <c>…Legend.cs</c>, <c>…Inspector.cs</c> and <c>…Profiles.cs</c> were — that file is the
+    /// largest in the app and docs/guides/Coding Conventions.md forbids growing it into a god class.
+    /// Everything here is the same class and runs on the same rules.</para>
     ///
-    /// <para><b>Names are not in the layout file.</b> They ride <c>settings/app_settings.txt</c> as
-    /// <c>macro_name_&lt;profile&gt;_&lt;layer&gt;_&lt;trigger&gt;_&lt;slot&gt;</c>
-    /// (<see cref="MacroNameKey"/>), so a freshly parsed layout always arrives unnamed and this
-    /// class is what stamps the stored names back on — <see cref="ApplyStoredMacroNames"/> on load,
-    /// <see cref="PersistMacroNames"/> on save.</para>
-    ///
-    /// <para><b>A rename is part of the session's dirty model — deliberately, and this is the one
+    /// <para><b>A rename is part of the session's dirty model — deliberately, and it is the one
     /// exception.</b> docs/app/settings.md's rule is that <c>app_settings.txt</c> sits outside the
     /// dirty model: a swatch and a "don't ask again" answer are written the moment they are made.
     /// A macro name is not like those. It names something the user is editing, it is meaningless
     /// beside a profile that was never saved, and discarding the session has to discard it too — so
-    /// it marks the session dirty (<see cref="HasUnsavedMacroNames"/>, folded into
-    /// <c>IsDirty</c>) and reaches the drive only through <c>Save</c>. Swatches and suppression
-    /// answers are untouched by this and keep writing through immediately.</para>
-    ///
-    /// <para><b>Nothing here throws on a store that cannot write.</b> Demo mode and a drive with no
-    /// <c>app_settings.txt</c> both discard the write; the names still live on
-    /// <see cref="Macro.Name"/> for the rest of the session, so the rail's name field behaves
-    /// identically.</para>
+    /// it marks the session dirty (<see cref="HasUnsavedMacroNames"/>, folded into <c>IsDirty</c>)
+    /// and reaches the drive only through <c>Save</c>. Swatches and suppression answers are
+    /// untouched by this and keep writing through immediately.</para>
     /// </summary>
     public sealed partial class KeyboardEditorViewModel
     {
@@ -53,16 +38,15 @@ namespace KinesisEdit.ViewModels
         /// opened</b>. Folded into <c>IsDirty</c>, because a name is session state that Save writes
         /// and Discard drops — see the type's remarks.
         /// </summary>
-        public bool HasUnsavedMacroNames => _renamedProfiles.Count > 0;
+        public bool HasUnsavedMacroNames => _macroNames.HasUnsavedNames;
 
         /// <summary>
-        /// The profile numbers carrying a rename that is not on the drive yet — added by
-        /// <see cref="MarkMacroNamesDirty"/>, removed by the save that wrote them. A <b>set</b>
-        /// rather than the single flag it was until issue #133: with every visited profile kept
-        /// alive in <c>_sessions</c>, a switch no longer discards the profile it leaves, so a rename
-        /// made in profile 3 has to still be there — and still be saved — after a trip to profile 7.
+        /// The per-profile unsaved-rename set and both directions of the <c>app_settings.txt</c>
+        /// name traffic (<see cref="MacroNameStore"/>). Built in this class's constructor, where its
+        /// two collaborators are: the session's preferences store, and the session cache it finds
+        /// another profile's layout in. Neither is reachable from a field initializer.
         /// </summary>
-        private readonly HashSet<int> _renamedProfiles = [];
+        private readonly MacroNameStore _macroNames;
 
         /// <summary>
         /// Records that a name moved <b>in the open profile</b> — a name is written straight onto
@@ -70,22 +54,17 @@ namespace KinesisEdit.ViewModels
         /// <c>layout&lt;n&gt;.txt</c>.
         /// <para>
         /// <b>It has no production caller today</b>, and that is the whole of why a stored name
-        /// survives issue #146. The rail's inline name field was the one path that raised it, and
-        /// #146 removed the field with the rest of the panel's <c>MACRO</c> section; with nothing
-        /// marking a profile, <see cref="PersistMacroNames"/> returns on its first line and the
-        /// <c>macro_name_*</c> lines already in <c>app_settings.txt</c> are simply never rewritten.
-        /// A stored name is therefore loaded, carried on <see cref="Macro.Name"/> for the session
-        /// and left on the drive untouched.
-        /// </para>
-        /// <para>
-        /// Public because it is the seam that says "this profile's names are out of date", which is
-        /// a fact about the editor rather than about whatever noticed it — and because the naming
-        /// surface that will call it again is a UI decision, not a change to this file.
+        /// survives issue #146, which removed the rail's inline name field: with nothing marking a
+        /// profile, <see cref="PersistMacroNames"/> walks an empty set and the <c>macro_name_*</c>
+        /// lines already in <c>app_settings.txt</c> are simply never rewritten. Public because it is
+        /// the seam that says "this profile's names are out of date" — a fact about the editor
+        /// rather than about whatever noticed it — and because the naming surface that will call it
+        /// again is a UI decision, not a change to this file.
         /// </para>
         /// </summary>
         public void MarkMacroNamesDirty()
         {
-            if (!_renamedProfiles.Add(ProfileNumber))
+            if (!_macroNames.Mark(ProfileNumber))
             {
                 return;
             }
@@ -96,15 +75,15 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Drops one profile's "a macro was renamed" mark without writing anything. Two callers, and
-        /// only two: the save that persisted that profile's names, and the layout half of
-        /// <c>Discard changes</c>, which throws the renames away with the rest of the profile's
-        /// unsaved work. A profile <b>switch</b> deliberately does not call it — since issue #133 a
-        /// switch abandons nothing, so clearing the mark there would lose a rename silently.
+        /// Drops one profile's "a macro was renamed" mark without writing anything, and announces it
+        /// — the store holds the set, this class owns the property over it. Two callers, and only
+        /// two: the save that persisted that profile's names, and the layout half of
+        /// <c>Discard changes</c>. A profile <b>switch</b> deliberately does not call it (issue
+        /// #133): a switch abandons nothing, so clearing the mark there would lose a rename silently.
         /// </summary>
         private void ClearUnsavedMacroNames(int profileNumber)
         {
-            if (!_renamedProfiles.Remove(profileNumber))
+            if (!_macroNames.Clear(profileNumber))
             {
                 return;
             }
@@ -132,124 +111,30 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            ApplyStoredMacroNames(layout);
-        }
-
-        /// <summary>
-        /// Reads this profile's names out of the session's one <c>app_settings.txt</c> store and
-        /// puts them on the layout's macros. A site with no stored name is left unnamed, so Core
-        /// derives its display name from what it types — which is what keeps a derived name
-        /// following the macro's content instead of freezing at the moment it was first shown.
-        /// </summary>
-        private void ApplyStoredMacroNames(KeyboardLayout layout)
-        {
-            var profileNumber = ProfileNumber;
-
-            if (profileNumber < 1)
-            {
-                // No session — a load that failed, or a device with no drive at all. There is no
-                // profile to scope a name to, so the macros keep their derived names and nothing is
-                // lost. Demo mode does *not* come through here: it opens a real profile (issue #96)
-                // and reads its names normally; what it refuses is the write, in the store.
-                return;
-            }
-
-            var settings = _preferences.Current;
-
-            MacroSites.ApplyNames(
-                layout,
-                site => MacroNameKey.TryCreate(profileNumber, site.LayerIndex, site.TriggerKeyCode, site.SlotNumber, out var key)
-                    ? settings.GetMacroName(key)
-                    : null);
+            _macroNames.ApplyStoredNames(layout, ProfileNumber);
         }
 
         /// <summary>
         /// Writes the macro names of <b>every profile carrying a rename</b> to
-        /// <c>app_settings.txt</c>, through the session's one store — never through a second
-        /// <c>LoadAppSettings</c>/<c>SaveAppSettings</c> pair, which is what would let the colour
-        /// picker and the settings screen serve each other stale state (docs/app/settings.md).
+        /// <c>app_settings.txt</c>, one <see cref="MacroNameStore.Persist"/> and one clear each.
+        /// <b>The walk stays here</b> because the clear announces
+        /// <see cref="HasUnsavedMacroNames"/>, and a property may only be raised by the class that
+        /// declares it; the snapshot is what makes clearing it mid-walk safe. Finding each profile's
+        /// layout is the store's, which is why the loop is now two calls and no reasoning.
         /// <para>
-        /// One call to <see cref="IAppPreferencesStore.UpdateMacroNames"/> per profile, and that is
-        /// safe by construction: <c>AppSettings.WithMacroNamesForProfile</c> is already scoped to one
-        /// profile number and tombstones only that profile's keys, so nine calls leave nine
-        /// independent sets rather than the last one winning.
-        /// </para>
-        /// <para>
-        /// The whole current picture is handed over, not a diff:
-        /// <c>WithMacroNamesForProfile</c> tombstones every key of this profile the new set does not
-        /// carry, so a rename, a delete and an unassignment all resolve into removals by themselves.
-        /// Only <b>explicitly</b> named macros are in that set — a derived name is recomputed on
-        /// every load and is never written.
+        /// A profile with no session to scope its names to (a load that failed, a board with no
+        /// drive) is cleared without a write: the names stay on <see cref="Macro.Name"/> for the
+        /// rest of the session, because there is nowhere to put them.
         /// </para>
         /// </summary>
         private void PersistMacroNames()
         {
-            if (_renamedProfiles.Count == 0)
+            foreach (var profileNumber in _macroNames.SnapshotRenamedProfiles())
             {
-                return;
-            }
-
-            // A copy, because the clear below mutates the set this walks.
-            foreach (var profileNumber in _renamedProfiles.ToArray())
-            {
-                if (profileNumber < 1 || FindLayoutFor(profileNumber) is not { } layout)
-                {
-                    // No session to scope the names to (a load that failed, a board with no drive).
-                    // The names stay on Macro.Name for the rest of the session; there is nowhere to
-                    // put them.
-                    ClearUnsavedMacroNames(profileNumber);
-
-                    continue;
-                }
-
-                PersistMacroNamesOf(profileNumber, layout);
+                _macroNames.Persist(profileNumber);
 
                 ClearUnsavedMacroNames(profileNumber);
             }
-        }
-
-        /// <summary>
-        /// The layout whose names belong to <paramref name="profileNumber"/>: the open profile's,
-        /// and any other visited profile's straight off the session the editor is still holding
-        /// (issue #133). Null for a profile with no session at all.
-        /// <para>
-        /// Reading another session's layout is legal because a name lives on <see cref="Macro.Name"/>
-        /// — on the model that session holds — rather than in anything this class owns, so there is
-        /// no second snapshot to fall out of step with the first.
-        /// </para>
-        /// </summary>
-        private KeyboardLayout? FindLayoutFor(int profileNumber)
-        {
-            if (profileNumber == ProfileNumber)
-            {
-                return Layout;
-            }
-
-            return _sessions.TryGetValue(profileNumber, out var session)
-                ? session.Layout
-                : null;
-        }
-
-        private void PersistMacroNamesOf(int profileNumber, KeyboardLayout layout)
-        {
-            var names = new List<KeyValuePair<MacroNameKey, string>>();
-
-            foreach (var stored in MacroSites.EnumerateStoredNames(layout))
-            {
-                // A site the settings layer cannot name — an unbound flat-list macro has no trigger
-                // and no layer — is simply absent, exactly as it was before it was ever named.
-                if (MacroNameKey.TryCreate(
-                        profileNumber,
-                        stored.Key.LayerIndex,
-                        stored.Key.TriggerKeyCode,
-                        stored.Key.SlotNumber,
-                        out var key))
-                {
-                    names.Add(KeyValuePair.Create(key, stored.Value));
-                }
-            }
-
-            _preferences.UpdateMacroNames(profileNumber, settings => settings.WithMacroNamesForProfile(profileNumber, names));
         }
     }
 }

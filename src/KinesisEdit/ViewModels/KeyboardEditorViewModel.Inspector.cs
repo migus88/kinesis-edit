@@ -240,10 +240,15 @@ namespace KinesisEdit.ViewModels
         /// <see cref="RefreshLegend"/> — so every path that can write the layout reaches it — and
         /// from the selection paths, which move what the rail is <em>about</em> without writing
         /// anything at all.
+        /// <para>
+        /// The advisory set is read through <see cref="Advisories"/>, the one name it is published
+        /// under; <see cref="Advisories.EditorAdvisoryProjection"/> owns it, and the rail is the
+        /// second of its two reading surfaces (the first being the strip it projects onto).
+        /// </para>
         /// </summary>
         private void RefreshInspector()
         {
-            Inspector.Refresh(SelectedKey, SelectedLayer, Layout, _advisories);
+            Inspector.Refresh(SelectedKey, SelectedLayer, Layout, Advisories);
         }
 
         /// <summary>
