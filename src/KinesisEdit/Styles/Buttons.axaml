@@ -101,6 +101,14 @@
     <Setter Property="Theme" Value="{StaticResource ToggleSegment}" />
   </Style>
 
+  <!-- The same segment at the segmented family's own 11,4 / 11px rhythm: the macro composer's
+       `tap` / `press` / `release` and `fixed` / `random`, which since issue #148 share ONE line
+       with `then wait`, the millisecond field and `ms`. See Themes/ControlThemes/Segmented.axaml
+       for why the metrics are a derived theme rather than a setter on this bridge. -->
+  <Style Selector="Button.composerSegment">
+    <Setter Property="Theme" Value="{StaticResource ComposerSegment}" />
+  </Style>
+
   <!-- One lighting zone (specs/07-lighting.md §4): a small chip in a wrapping row.
 
        IT POINTS AT `ToggleSegment` RATHER THAN AT A THEME OF ITS OWN, because since issue #124 a

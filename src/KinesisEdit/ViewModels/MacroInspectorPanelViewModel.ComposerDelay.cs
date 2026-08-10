@@ -6,7 +6,7 @@ namespace KinesisEdit.ViewModels
 {
     /// <summary>
     /// The composer's <b>delay</b> section (issue #139) — <c>then wait</c>, a
-    /// <c>none</c> / <c>fixed</c> / <c>random</c> segment and a millisecond field — and the place
+    /// <c>fixed</c> / <c>random</c> segment and a millisecond field — and the place
     /// specs/11-feature-dialogs.md §11.3's <c>Macro Timing Delays</c> now lives.
     ///
     /// <para><b>§11.3's rules are unchanged; its third surface is gone.</b> Until #139 a delay was
@@ -33,25 +33,28 @@ namespace KinesisEdit.ViewModels
         /// The label <b>beside</b> the delay segment, in the step row's own voice. It was the
         /// section caption <c>THEN WAIT</c> until issue #146 folded the composer into two rows: the
         /// mock draws no section labels there at all, and this is the one whose words the row still
-        /// needs — <c>none</c> / <c>fixed</c> / <c>random</c> says nothing on its own about what is
-        /// being waited for. Lower case because it is now a phrase in a sentence rather than a
-        /// heading over a block.
+        /// needs — <c>fixed</c> / <c>random</c> says nothing on its own about what is being waited
+        /// for. Lower case because it is now a phrase in a sentence rather than a heading over a
+        /// block.
         /// </summary>
         public const string StepDelayLabel = "then wait";
-
-        /// <summary>The segment for "no delay behind this step". This app's wording.</summary>
-        public const string NoDelayCaption = "none";
 
         /// <summary>The segment for §11.3's custom 1-999 ms delay. This app's wording.</summary>
         public const string FixedDelayCaption = "fixed";
 
-        /// <summary>What <c>none</c> means, for the segment's tooltip: the step runs straight on.</summary>
-        public const string NoDelayDescription = "No delay after this step";
-
-        /// <summary>The three delay states, in the order the segment draws them.</summary>
+        /// <summary>
+        /// The <b>two</b> delay states the strip draws, in that order (issue #148).
+        ///
+        /// <para><b><see cref="MacroStepDelayMode.None"/> is deliberately not among them, and is
+        /// still a real state of the step.</b> The designer's compose bar draws <c>fixed</c> /
+        /// <c>random</c> and nothing else; a step that waits for neither simply lights no segment
+        /// and shows an empty field. What took the third segment's job is the field itself —
+        /// <b>emptying it clears the delay</b> (see <see cref="ApplyStepDelayText"/>), which is the
+        /// same write <c>none</c> used to make, from the control the number was going to come from
+        /// anyway.</para>
+        /// </summary>
         public static IReadOnlyList<MacroStepDelayMode> StepDelayModes { get; } =
         [
-            MacroStepDelayMode.None,
             MacroStepDelayMode.Fixed,
             MacroStepDelayMode.Random
         ];
@@ -68,7 +71,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>Whether the millisecond field is live — the <c>fixed</c> segment is the chosen one.</summary>
         public bool IsCustomStepDelay => _isCustomStepDelay;
 
-        /// <summary>The three segments as they currently stand; replaced whole on every change.</summary>
+        /// <summary>The two segments as they currently stand; replaced whole on every change.</summary>
         public IReadOnlyList<MacroStepDelayOption> StepDelayOptions
         {
             get => _stepDelayOptions;
@@ -98,6 +101,10 @@ namespace KinesisEdit.ViewModels
         /// selected step, so the wrong <c>0</c> would sit under every step that has no delay — which a
         /// captured frame is exactly how you notice. Empty text is the honest rendering of "none yet",
         /// and it is what the placeholder-free field showed in §11.3's own modal.</para>
+        ///
+        /// <para><b>Since issue #148 emptying it is also how a delay is taken off.</b> The strip lost
+        /// its <c>none</c> segment to the designer's mock, so this field carries that write: blank
+        /// clears, a number writes, and anything else is a rejected input.</para>
         /// </summary>
         public string StepDelayText
         {
@@ -229,35 +236,24 @@ namespace KinesisEdit.ViewModels
 
             SetStepDelayChoice(option!.Mode);
 
-            switch (option.Mode)
+            if (option.Mode == MacroStepDelayMode.Random)
             {
-                case MacroStepDelayMode.None:
-                    StepDelayError = string.Empty;
+                StepDelayError = string.Empty;
 
-                    Steps.TrySetSelectedDelay(MacroInspectorDelay.None);
+                Steps.TrySetSelectedDelay(MacroInspectorDelay.Random);
 
-                    break;
+                return;
+            }
 
-                case MacroStepDelayMode.Random:
-                    StepDelayError = string.Empty;
-
-                    Steps.TrySetSelectedDelay(MacroInspectorDelay.Random);
-
-                    break;
-
-                case MacroStepDelayMode.Fixed:
-                    // Nothing to write yet is not a refusal — it is an empty field with §11.3's own
-                    // message beside it, which the first usable number clears by writing.
-                    if (MacroDelayTokens.IsValidDelay(_stepDelayMilliseconds))
-                    {
-                        WriteCustomStepDelay(_stepDelayMilliseconds);
-                    }
-                    else
-                    {
-                        StepDelayError = MacroInspectorStepsViewModel.InvalidDelayMessage;
-                    }
-
-                    break;
+            // `fixed` with nothing to write yet is not a refusal — it is an empty field with §11.3's
+            // own message beside it, which the first usable number clears by writing.
+            if (MacroDelayTokens.IsValidDelay(_stepDelayMilliseconds))
+            {
+                WriteCustomStepDelay(_stepDelayMilliseconds);
+            }
+            else
+            {
+                StepDelayError = MacroInspectorStepsViewModel.InvalidDelayMessage;
             }
         }
 
@@ -276,27 +272,55 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Takes a typed millisecond count. It <b>validates whether or not the value moved</b> — an
-        /// empty field is 0, and 0 is §11.3's "nothing chosen", which has to report itself even when
-        /// the field was already empty — but it only <b>writes</b> when the value really changed, so
-        /// re-typing the number that is already on the step cannot dirty the profile.
-        /// </summary>
-        /// <summary>
-        /// Takes what was typed. An empty box is 0 — §11.3's "nothing chosen" — and so is anything
-        /// that is not a number at all, which then reports itself through the same validation rather
-        /// than being silently ignored.
+        /// Takes what was typed, and answers it in <b>three</b> ways rather than two (issue #148).
+        /// The field is the only control the delay has left besides the two segments, so it has to
+        /// carry the write the deleted <c>none</c> segment used to make — and that write cannot be
+        /// spelled as "unusable", or a rejected input would silently erase a good delay.
+        /// <list type="bullet">
+        /// <item><b>Blank</b> (or whitespace) is <em>no delay</em>: it clears the step, exactly as
+        /// <c>none</c> did, and reports nothing.</item>
+        /// <item><b>Not a number</b> is a rejected input: §11.3's message, and neither the step nor
+        /// the field's own value moves, so what was typed stays on screen to be corrected.</item>
+        /// <item><b>A number</b> goes on to <see cref="ApplyStepDelayMilliseconds"/>, which writes
+        /// it or refuses it against §11.3's 1-999.</item>
+        /// </list>
         /// </summary>
         private void ApplyStepDelayText(string? text)
         {
-            var parsed = int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
-                ? value
-                : 0;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                ClearStepDelay();
 
-            ApplyStepDelayMilliseconds(parsed);
+                return;
+            }
+
+            if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+            {
+                RejectStepDelay();
+
+                return;
+            }
+
+            ApplyStepDelayMilliseconds(value);
         }
 
+        /// <summary>
+        /// Takes a millisecond count. <b>0 is the empty field</b> — the sentinel
+        /// <see cref="StepDelayText"/> already draws as blank, and §11.3's range starts at 1 — so it
+        /// clears the delay rather than reporting itself; every other value outside 1-999 is a
+        /// rejected input and writes nothing. It <b>validates whether or not the value moved</b>, but
+        /// only <b>writes</b> when it really changed, so re-typing the number already on the step
+        /// cannot dirty the profile.
+        /// </summary>
         private void ApplyStepDelayMilliseconds(int value)
         {
+            if (value == 0)
+            {
+                ClearStepDelay();
+
+                return;
+            }
+
             var moved = SetProperty(ref _stepDelayMilliseconds, value, nameof(StepDelayMilliseconds));
 
             if (moved)
@@ -325,6 +349,49 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
+        /// Takes the delay off the selected step — the write the <c>none</c> segment used to make.
+        /// The strip is left with <b>neither</b> segment lit, because "no delay" is a state of the
+        /// step and no longer a choice on the strip.
+        ///
+        /// <para>On a <b>delay-only</b> row (06 §2.2) this drops the row, exactly as <c>none</c> did:
+        /// a row that was nothing but a delay has nothing left once the delay goes
+        /// (<see cref="MacroInspectorStepsViewModel.TrySetSelectedDelay"/>).</para>
+        /// </summary>
+        private void ClearStepDelay()
+        {
+            if (SetProperty(ref _stepDelayMilliseconds, 0, nameof(StepDelayMilliseconds)))
+            {
+                OnPropertyChanged(nameof(StepDelayText));
+            }
+
+            if (!IsStepDelayEnabled)
+            {
+                return;
+            }
+
+            StepDelayError = string.Empty;
+
+            Steps.TrySetSelectedDelay(MacroInspectorDelay.None);
+
+            SetStepDelayChoice(MacroStepDelayMode.None);
+        }
+
+        /// <summary>
+        /// Reports §11.3's message for something that is not a number at all, and <b>touches nothing
+        /// else</b> — not the step, not the field's value and not the strip. A rejected input is the
+        /// panel's one error ramp; it must never be mistaken for the emptied field that clears.
+        /// </summary>
+        private void RejectStepDelay()
+        {
+            if (!IsStepDelayEnabled)
+            {
+                return;
+            }
+
+            StepDelayError = MacroInspectorStepsViewModel.InvalidDelayMessage;
+        }
+
+        /// <summary>
         /// Writes a custom delay of <paramref name="milliseconds"/>, or reports §11.3's refusal. The
         /// key is resolved by <see cref="MacroInspectorStepsViewModel.TrySetSelectedDelay"/> through
         /// the <b>token</b>, never the code — <c>dran</c> and the generated <c>d002</c> share code
@@ -344,7 +411,7 @@ namespace KinesisEdit.ViewModels
             Steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(milliseconds));
 
             // Typing a number is itself a choice of `fixed`, so the segment follows it — otherwise a
-            // delay could be on the step while the strip above still read `none`.
+            // delay could be on the step while the strip above still lit `random`, or nothing at all.
             SetStepDelayChoice(MacroStepDelayMode.Fixed);
         }
 
@@ -358,7 +425,11 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public enum MacroStepDelayMode
     {
-        /// <summary>Nothing follows the step.</summary>
+        /// <summary>
+        /// Nothing follows the step. Still a real state — <c>ReadDelayMode</c> answers it and the
+        /// strip draws it by lighting neither segment — but no longer a segment of its own
+        /// (issue #148).
+        /// </summary>
         None = 0,
 
         /// <summary>§11.3's custom delay, 1-999 ms, written <c>d001</c>..<c>d999</c>.</summary>
@@ -369,7 +440,9 @@ namespace KinesisEdit.ViewModels
     }
 
     /// <summary>
-    /// One segment of the composer's delay control.
+    /// One segment of the composer's delay control — <c>fixed</c> or <c>random</c>, and since issue
+    /// #148 never <see cref="MacroStepDelayMode.None"/>: "no delay" is a state of the step that the
+    /// strip expresses by lighting nothing, and the millisecond field is what writes it.
     ///
     /// <para><b>Immutable and not a view model</b>, exactly as <see cref="MacroChordModifier"/> and
     /// <see cref="MacroStepDirection"/> are, and for the same two reasons.</para>
@@ -379,7 +452,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>The state this segment writes.</summary>
         public MacroStepDelayMode Mode { get; }
 
-        /// <summary>Its caption — <c>none</c>, <c>fixed</c>, <c>random</c>.</summary>
+        /// <summary>Its caption — <c>fixed</c> or <c>random</c>.</summary>
         public string Caption { get; }
 
         /// <summary>Whether the selected step is currently in this state.</summary>
@@ -390,15 +463,20 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// §11.3's own caption for this state, carrying the range it accepts — the segment's
-        /// <c>ToolTip.Tip</c>. The strip reads <c>none</c> / <c>fixed</c> / <c>random</c> in #137's
-        /// wording, which says nothing about bounds, and <b>the random delay's 1-150 ms range appears
-        /// nowhere else in the app</b>: the fixed one is stated by the field's own arrows and its
-        /// validation message, but a random delay has no field to state it. Dropping these consts with
-        /// the delay editor they used to label would have quietly taken that number out of the UI.
+        /// <c>ToolTip.Tip</c>. The strip reads <c>fixed</c> / <c>random</c> in #137's wording, which
+        /// says nothing about bounds, and <b>the random delay's 1-150 ms range appears nowhere else
+        /// in the app</b>: the fixed one is stated by its own caption and its validation message, but
+        /// a random delay has no field to state it. Dropping these consts with the delay editor they
+        /// used to label would have quietly taken that number out of the UI.
         /// </summary>
         public string Description { get; }
 
-        /// <summary>Builds one segment in one state.</summary>
+        /// <summary>
+        /// Builds one segment in one state. <paramref name="mode"/> is refused for
+        /// <see cref="MacroStepDelayMode.None"/> rather than given a caption of its own: since issue
+        /// #148 the strip has no such segment, and inventing one here would be a control the view
+        /// cannot draw and the user cannot press.
+        /// </summary>
         public MacroStepDelayOption(MacroStepDelayMode mode, bool isOn, bool isEnabled)
         {
             Mode = mode;
@@ -414,7 +492,7 @@ namespace KinesisEdit.ViewModels
             {
                 MacroStepDelayMode.Fixed => MacroInspectorPanelViewModel.FixedDelayCaption,
                 MacroStepDelayMode.Random => MacroInspectorStepViewModel.RandomDelayText,
-                _ => MacroInspectorPanelViewModel.NoDelayCaption
+                _ => throw NotASegment(mode)
             };
         }
 
@@ -424,8 +502,17 @@ namespace KinesisEdit.ViewModels
             {
                 MacroStepDelayMode.Fixed => MacroInspectorStepsViewModel.CustomDelayCaption,
                 MacroStepDelayMode.Random => MacroInspectorStepsViewModel.RandomDelayCaption,
-                _ => MacroInspectorPanelViewModel.NoDelayDescription
+                _ => throw NotASegment(mode)
             };
+        }
+
+        private static ArgumentOutOfRangeException NotASegment(MacroStepDelayMode mode)
+        {
+            return new ArgumentOutOfRangeException(
+                nameof(mode),
+                mode,
+                "The delay strip draws `fixed` and `random` only; `None` is a state of the step, "
+                + "cleared by emptying the millisecond field.");
         }
     }
 }

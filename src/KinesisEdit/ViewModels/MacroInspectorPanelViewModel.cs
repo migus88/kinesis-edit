@@ -77,12 +77,15 @@ namespace KinesisEdit.ViewModels
         public const string PanelTitle = KeyInspectorTabViewModel.MacroCaption;
 
         /// <summary>
-        /// The footer's copy action. Deliberately <b>not</b> the rail footer's <c>Copy to…</c>: that
-        /// one copies the whole position (its assignment, its tap-and-hold, all of its macros), this
-        /// one copies the single macro the panel is showing, and the two sit six rows apart on the
-        /// same rail. The noun is what tells them apart.
+        /// The footer's copy action, <b>as the designer's mock captions it</b> (issue #148). It was
+        /// <c>Copy macro to…</c>: the rail's own footer six rows below carries a <c>Copy to…</c> that
+        /// copies the whole position — its assignment, its tap-and-hold and every macro on it — and
+        /// the noun was what told the two apart. The mock draws the panel's footer with the short
+        /// caption and that is what shipped, with the collision accepted rather than argued away and
+        /// recorded in docs/app/design-system.md: what disambiguates them now is where they are, not
+        /// what they say.
         /// </summary>
-        public const string CopyMacroCaption = "Copy macro to…";
+        public const string CopyMacroCaption = "Copy to…";
 
         /// <summary>
         /// What the same button says while that pick is armed and waiting for its target click —
@@ -169,13 +172,19 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// Label of the playback-speed meter. <c>2i</c> wrote it <c>Playback speed</c>; the
-        /// designer's mock puts the row inside a 440 px rail as <c>Speed ──●── 5 of 9</c>, and the
+        /// designer's mock puts the row inside a 480 px rail as <c>Speed ──●── 5 of 9</c>, and the
         /// shorter word is what fits beside the slider it labels.
         /// </summary>
         public const string SpeedMeterLabel = "Speed";
 
-        /// <summary>Label of the per-macro budget meter, verbatim from mockup <c>2i</c>.</summary>
-        public const string MacroLengthMeterLabel = "this macro";
+        // `MacroLengthMeterLabel` (`this macro`), `MacroCountMeterLabel` (`macros`) and `MeterJoin`
+        // (` · `) were deleted with the muted line they spelled (issue #148). #146 demoted the pair
+        // to one line on the argument that `macros n/m` was the last readout of 06 §6's profile-wide
+        // count; the designer's mock draws neither, and the user took the mock knowing that. What
+        // went with them is stated in docs/app/design-system.md's deviation list rather than left
+        // for a reader to notice: nothing in the app reads out the profile's macro count or the
+        // per-macro character cap any more. The METERS themselves went too — a `MacroMeterViewModel`
+        // nobody binds is a budget computed for no one.
 
         /// <summary>Label of the per-layout budget meter, verbatim from mockup <c>2i</c>.</summary>
         public const string LayoutKeystrokeMeterLabel = "layout keystrokes";
@@ -186,18 +195,6 @@ namespace KinesisEdit.ViewModels
         /// what lets the meter sit on the <c>Repeat</c> row instead of taking a row of its own.
         /// </summary>
         public const string LayoutKeystrokeUnit = "chars";
-
-        /// <summary>
-        /// Between the two budget readings on the panel's one muted meter line —
-        /// <c>this macro 128 / 500 · macros 24 / 100</c>. U+00B7; both embedded families carry it.
-        /// </summary>
-        public const string MeterJoin = " · ";
-
-        /// <summary>
-        /// Label of the profile-wide macro-count meter. This app's wording; <c>2i</c> draws no such
-        /// row — see <see cref="MacroCountMeter"/> for why it is here anyway.
-        /// </summary>
-        public const string MacroCountMeterLabel = "macros";
 
         /// <summary>Label of the repeat control. This app's wording; <c>2i</c> draws only speed.</summary>
         public const string RepeatLabel = "Repeat";
@@ -250,7 +247,7 @@ namespace KinesisEdit.ViewModels
         public MacroCaptureMode CaptureMode => _captureMode;
 
         /// <summary>
-        /// The rail widens from 268 px to 440 px while this panel is showing — a <b>floor</b> rather
+        /// The rail widens from 268 px to 480 px while this panel is showing — a <b>floor</b> rather
         /// than an override, so a rail the user has dragged wider is never yanked back
         /// (<see cref="InspectorRailWidthViewModel"/>). docs/design/handoff.md § Geometry states the
         /// macro-editing variant at 300 px; issue #146's mock draws a composer, a slot strip and a
@@ -307,21 +304,8 @@ namespace KinesisEdit.ViewModels
         /// <summary>The playback-speed meter, <c>5 of 9</c> (issue #146's mock).</summary>
         public MacroMeterViewModel SpeedMeter { get; }
 
-        /// <summary>The per-macro budget meter, <c>128 / 500</c> (06 §6).</summary>
-        public MacroMeterViewModel MacroLengthMeter { get; }
-
         /// <summary>The per-layout budget meter, <c>5 140 / 7 200</c> (04 §5.3).</summary>
         public MacroMeterViewModel LayoutKeystrokeMeter { get; }
-
-        /// <summary>
-        /// The profile-wide macro count, <c>24 / 100</c> (06 §6). The <b>only</b> readout of that
-        /// device limit in the app: it lived on the Macros tab's footer until issue #140 removed the
-        /// tab, and dropping a working readout of a real limit silently is what the capability law
-        /// is against. Its maximum is <see cref="MacroLimits.ResolveMaxMacroCount"/>'s —
-        /// firmware-gated (09 §2) and never a literal — and a device that states none reads as a
-        /// bare number that can never be over budget.
-        /// </summary>
-        public MacroMeterViewModel MacroCountMeter { get; }
 
         /// <summary>Playback speed of the macro under edit, clamped to the device's range (06 §4).</summary>
         public int Speed
@@ -507,9 +491,7 @@ namespace KinesisEdit.ViewModels
             // mock): it is a position in a range, not a consumption of a budget, and the other three
             // really are budgets.
             SpeedMeter = new MacroMeterViewModel(SpeedMeterLabel, MacroMeterViewModel.OfSeparator);
-            MacroLengthMeter = new MacroMeterViewModel(MacroLengthMeterLabel);
             LayoutKeystrokeMeter = new MacroMeterViewModel(LayoutKeystrokeMeterLabel);
-            MacroCountMeter = new MacroMeterViewModel(MacroCountMeterLabel);
 
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
             InsertStepCommand = new RelayCommand(InsertPlaceholderStep, CanRecord);
@@ -1109,15 +1091,7 @@ namespace KinesisEdit.ViewModels
         private void RefreshMeters()
         {
             SpeedMeter.Set(_speed, HasSpeed ? SpeedMaximum : null);
-            MacroLengthMeter.Set(
-                _macro is not null && _layout is not null ? MacroLengthMetric.Measure(_macro, _layout) : 0,
-                _capability.MaxCharactersPerMacro);
             LayoutKeystrokeMeter.Set(_layout?.TotalKeystrokes ?? 0, _capability.MaxTotalKeystrokes);
-
-            // The firmware-gated figure, never a literal: ExpandedMacroCount doubles it on a board
-            // new enough to honour it (09 §2), and a device that states no count reads as a bare
-            // number rather than as "0".
-            MacroCountMeter.Set(_layout?.MacroCount ?? 0, _maxMacroCount);
         }
 
         /// <summary>

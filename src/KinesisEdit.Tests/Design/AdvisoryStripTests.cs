@@ -509,14 +509,16 @@ namespace KinesisEdit.Tests.Design
             // reports is an advisory.
             //
             // The meters live in Views/MacroInspectorPanelView.axaml since issue #140 deleted the
-            // Macros tab and moved the last of them (MacroCountMeter) onto the rail; the editor is
-            // still swept for the error ramp, so the claim covers the same screen it always did.
+            // Macros tab and moved the last of them onto the rail; the editor is still swept for the
+            // error ramp, so the claim covers the same screen it always did.
             var files = AuthoredXaml.Files();
             var panel = AuthoredXaml.WithoutComments(files["Views/MacroInspectorPanelView.axaml"]);
             var editor = AuthoredXaml.WithoutComments(files["Views/KeyboardEditorView.axaml"]);
 
-            // All FOUR of the panel's footer meters, the fourth being #140's own.
-            var meters = new[] { "SpeedMeter", "MacroLengthMeter", "LayoutKeystrokeMeter", "MacroCountMeter" };
+            // BOTH of the panel's meters. It was four until issue #148 deleted the muted
+            // `this macro … · macros …` line the designer's mock does not draw, taking
+            // `MacroLengthMeter` and `MacroCountMeter` with it.
+            var meters = new[] { "SpeedMeter", "LayoutKeystrokeMeter" };
 
             foreach (var meter in meters)
             {

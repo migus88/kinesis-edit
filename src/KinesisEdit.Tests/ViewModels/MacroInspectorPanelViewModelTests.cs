@@ -35,11 +35,14 @@ namespace KinesisEdit.Tests.ViewModels
         {
             Assert.Equal("Macro", MacroInspectorPanelViewModel.PanelTitle);
 
-            // The two footer actions of issue #141. `Copy macro to…` says its noun on purpose: the
-            // rail's own footer, six rows below, carries a `Copy to…` that copies the WHOLE
-            // position, and two buttons reading the same on one rail would be two actions with one
-            // name. The cancel is the rail footer's own wording, because it ends that same pick.
-            Assert.Equal("Copy macro to…", MacroInspectorPanelViewModel.CopyMacroCaption);
+            // The two footer actions of issue #141, the first of them recaptioned to the designer's
+            // mock by issue #148. It said `Copy macro to…` until then, so that the rail's own footer
+            // six rows below — a `Copy to…` that copies the WHOLE position — could not be confused
+            // with it. The mock draws the short caption and the mock won: the two are told apart by
+            // where they are now, not by what they say. The cancel is unchanged, and is the rail
+            // footer's own wording, because it ends that same pick.
+            Assert.Equal("Copy to…", MacroInspectorPanelViewModel.CopyMacroCaption);
+            Assert.Equal(KeyInspectorViewModel.CopyToCaption, MacroInspectorPanelViewModel.CopyMacroCaption);
             Assert.Equal(KeyInspectorViewModel.CancelCopyCaption, MacroInspectorPanelViewModel.CancelCopyCaption);
             Assert.Equal("Delete", MacroInspectorPanelViewModel.DeleteMacroCaption);
 
@@ -94,14 +97,14 @@ namespace KinesisEdit.Tests.ViewModels
             // `Playback speed` until #146: the mock draws `Speed ──●── 5 of 9` on one row of a rail
             // that also has to hold the slider.
             Assert.Equal("Speed", MacroInspectorPanelViewModel.SpeedMeterLabel);
-            Assert.Equal("this macro", MacroInspectorPanelViewModel.MacroLengthMeterLabel);
             Assert.Equal("layout keystrokes", MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
             Assert.Equal("chars", MacroInspectorPanelViewModel.LayoutKeystrokeUnit);
-            Assert.Equal(" · ", MacroInspectorPanelViewModel.MeterJoin);
 
-            // The fourth, since issue #140 moved 06 §6's profile-wide count here from the Macros
-            // tab's footer. Its label is the tab's own wording, kept verbatim.
-            Assert.Equal("macros", MacroInspectorPanelViewModel.MacroCountMeterLabel);
+            // TWO METERS, not four (issue #148). `this macro 128 / 500 · macros 24 / 100` was the
+            // muted line #146 demoted the other pair onto, and the mock draws neither — so the
+            // labels, the join and the two `MacroMeterViewModel`s went with the line. What that
+            // costs is written down in docs/app/design-system.md: nothing in the app reads out 06
+            // §6's profile-wide macro count or the per-macro character cap any more.
 
             // The two header strips of #137, one row and one label each since #146 drew them side
             // by side. `SLOTS` is plural: it labels the whole chip strip, not the slot under edit.
@@ -374,23 +377,26 @@ namespace KinesisEdit.Tests.ViewModels
 
             var capability = scene.Device.Device.Macros;
 
-            Assert.Equal(capability.MaxCharactersPerMacro, scene.Panel.MacroLengthMeter.Limit);
             Assert.Equal(capability.MaxTotalKeystrokes, scene.Panel.LayoutKeystrokeMeter.Limit);
             Assert.Equal(capability.Speed!.Maximum, scene.Panel.SpeedMeter.Limit);
 
-            // AdvisoryText.Number's space separator, mockup 1i/2i — never the invariant comma.
-            Assert.Equal("2 / 300", scene.Panel.MacroLengthMeter.Caption);
+            // AdvisoryText.Number's space separator, mockup 1i/2i — never the invariant comma. The
+            // RGB's 7200 is the four-digit half of the reading, so the grouping is visible in it.
+            Assert.Equal(
+                MacroMeterViewModel.Build(scene.Layout.TotalKeystrokes, capability.MaxTotalKeystrokes),
+                scene.Panel.LayoutKeystrokeMeter.Caption);
+            Assert.Contains(" 200", scene.Panel.LayoutKeystrokeMeter.Caption, StringComparison.Ordinal);
             Assert.DoesNotContain(",", scene.Panel.LayoutKeystrokeMeter.Caption, StringComparison.Ordinal);
         }
 
         /// <summary>
-        /// The speed meter reads <c>5 of 9</c> and the three budgets read <c>n / m</c> (issue #146's
-        /// mock). It is one type with one separator argument rather than two types: the arithmetic
-        /// and the over-budget rule are identical, and only the English differs — <c>5 / 9</c> would
-        /// claim the macro has used five ninths of something.
+        /// The speed meter reads <c>5 of 9</c> and the budget beside it reads <c>n / m</c> (issue
+        /// #146's mock). It is one type with one separator argument rather than two types: the
+        /// arithmetic and the over-budget rule are identical, and only the English differs —
+        /// <c>5 / 9</c> would claim the macro has used five ninths of something.
         /// </summary>
         [AvaloniaFact]
-        public void TheSpeedMeter_ReadsNOfM_WhileEveryBudgetKeepsItsSlash()
+        public void TheSpeedMeter_ReadsNOfM_WhileTheBudgetKeepsItsSlash()
         {
             var scene = new Scene(this);
 
@@ -404,85 +410,44 @@ namespace KinesisEdit.Tests.ViewModels
                 scene.Panel.SpeedMeter.Caption);
             Assert.Contains(MacroMeterViewModel.OfSeparator, scene.Panel.SpeedMeter.Caption, StringComparison.Ordinal);
 
-            foreach (var budget in new[]
-                     {
-                         scene.Panel.MacroLengthMeter,
-                         scene.Panel.LayoutKeystrokeMeter,
-                         scene.Panel.MacroCountMeter
-                     })
-            {
-                Assert.Contains(MacroMeterViewModel.CaptionSeparator, budget.Caption, StringComparison.Ordinal);
-                Assert.DoesNotContain(MacroMeterViewModel.OfSeparator, budget.Caption, StringComparison.Ordinal);
-            }
+            var budget = scene.Panel.LayoutKeystrokeMeter;
+
+            Assert.Contains(MacroMeterViewModel.CaptionSeparator, budget.Caption, StringComparison.Ordinal);
+            Assert.DoesNotContain(MacroMeterViewModel.OfSeparator, budget.Caption, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// The panel keeps <b>two</b> meters (issue #148), and the profile-wide macro count is not
+        /// one of them — yet the <em>limit</em> it read is still enforced, which is the half that
+        /// had to survive the readout's deletion. <c>MacroLimits.ResolveMaxMacroCount</c> is
+        /// firmware-gated (09 §2) and still what refuses the macro that would exceed it.
+        /// </summary>
         [AvaloniaFact]
-        public void MacroCountMeter_ReadsTheProfilesCountAgainstTheDevicesOwnFirmwareGatedLimit()
+        public void TheDeletedMacroCountMeter_TookNoDeviceLimitWithIt()
         {
-            // Issue #140's fourth meter, and the only readout of 06 §6's macro count left in the app
-            // now that the Macros tab is gone. Its maximum is MacroLimits' — firmware-gated by
-            // 09 §2 — and NEVER a literal, which is asserted by comparing against the resolver
-            // rather than against a number.
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
 
-            Assert.Equal(MacroInspectorPanelViewModel.MacroCountMeterLabel, scene.Panel.MacroCountMeter.Label);
-            Assert.Equal(MacroLimits.ResolveMaxMacroCount(scene.Device), scene.Panel.MacroCountMeter.Limit);
-            Assert.NotNull(scene.Panel.MacroCountMeter.Limit);
-            Assert.Equal(0, scene.Panel.MacroCountMeter.Value);
-
-            scene.Record("a");
-
-            // It counts the PROFILE's macros, not this position's, so recording one moves it.
-            Assert.Equal(scene.Layout.MacroCount, scene.Panel.MacroCountMeter.Value);
-            Assert.Equal(1, scene.Panel.MacroCountMeter.Value);
-            Assert.False(scene.Panel.MacroCountMeter.IsOverBudget);
             Assert.Equal(
-                $"1 / {MacroLimits.ResolveMaxMacroCount(scene.Device)}",
-                scene.Panel.MacroCountMeter.Caption);
-        }
+                [MacroInspectorPanelViewModel.SpeedMeterLabel, MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel],
+                new[] { scene.Panel.SpeedMeter.Label, scene.Panel.LayoutKeystrokeMeter.Label });
 
-        [AvaloniaFact]
-        public void MacroCountMeter_OnADeviceThatStatesNoCount_ReadsAsABareNumberThatIsNeverOverBudget()
-        {
-            // The Advantage2 states no macros-per-layout figure (06 §6), and null is "no limit"
-            // rather than zero — a board whose count could never be met would read as permanently
-            // over budget, which is the opposite of what the file says.
-            var scene = new Scene(this, DeviceId.Advantage2);
-
-            Assert.Null(MacroLimits.ResolveMaxMacroCount(scene.Device));
-
-            scene.Select(scene.Layout.Layers[0].Keys.First(key => key.CanAssignMacro).Index);
-            scene.Record("a");
-
-            Assert.Null(scene.Panel.MacroCountMeter.Limit);
-            Assert.False(scene.Panel.MacroCountMeter.IsOverBudget);
-            Assert.Equal("1", scene.Panel.MacroCountMeter.Caption);
-        }
-
-        [AvaloniaFact]
-        public void MacroCountMeter_PastTheLimit_GoesOverBudgetAndRefusesNothing()
-        {
-            // Amber, never an error state, and never a refusal — the profile is reported as it
-            // stands. The macros are put there behind the panel so the meter is measured against a
-            // model the panel did not build, which is the half a record-driven case cannot show.
-            var scene = new Scene(this);
             var limit = MacroLimits.ResolveMaxMacroCount(scene.Device)!.Value;
 
-            TestLayouts.FillMacroSlots(scene.Layout, limit + 1);
+            TestLayouts.FillMacroSlots(scene.Layout, limit);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
 
-            Assert.Equal(limit + 1, scene.Panel.MacroCountMeter.Value);
-            Assert.Equal(limit, scene.Panel.MacroCountMeter.Limit);
-            Assert.True(scene.Panel.MacroCountMeter.IsOverBudget);
+            Assert.Equal(MacroInspectorPanelViewModel.BuildMacroCountLimitMessage(limit), scene.Panel.Message);
+            Assert.False(scene.Key.Key.IsMacro);
         }
 
         [AvaloniaFact]
         public void Meters_OverBudget_ReportAndNeverRefuse()
         {
-            var meter = new MacroMeterViewModel(MacroInspectorPanelViewModel.MacroLengthMeterLabel);
+            var meter = new MacroMeterViewModel(MacroInspectorPanelViewModel.LayoutKeystrokeMeterLabel);
 
             meter.Set(5140, 7200);
             Assert.False(meter.IsOverBudget);
@@ -1602,7 +1567,10 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(scene.Panel.HasStepKey);
             Assert.Equal("[b]", scene.Panel.StepTokenText);
             Assert.Equal(MacroInspectorStepViewModel.TapAction, scene.SelectedDirection().Caption);
-            Assert.Equal(MacroStepDelayMode.None, scene.SelectedDelayMode());
+
+            // A step with no delay lights NEITHER segment (issue #148) and shows an empty field.
+            Assert.Null(scene.SelectedDelayMode());
+            Assert.Equal(string.Empty, scene.Panel.StepDelayText);
         }
 
         [AvaloniaFact]
@@ -1786,9 +1754,130 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(["a", MacroDelayTokens.RandomToken], scene.MacroTokens());
 
-            scene.SetDelayMode(MacroStepDelayMode.None);
+            // ...and off again by EMPTYING THE FIELD, which is what the deleted `none` segment did
+            // (issue #148). The step has to be carrying a fixed delay for the box to have something
+            // to empty, so the fixture is walked back through one — clearing a field that was
+            // already blank would prove nothing about the write.
+            scene.TypeDelay("120");
+
+            Assert.Equal(["a", "d120"], scene.MacroTokens());
+
+            scene.TypeDelay(string.Empty);
 
             Assert.Equal(["a"], scene.MacroTokens());
+            Assert.Null(scene.SelectedDelayMode());
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+        }
+
+        /// <summary>
+        /// The strip is the two segments the designer's mock draws, and <c>none</c> is not among
+        /// them (issue #148) — while <see cref="MacroStepDelayMode.None"/> survives as a state of the
+        /// step, which is what "lights neither segment" means.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheDelayStrip_IsFixedAndRandomOnly_AndNoneIsAStateRatherThanASegment()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+
+            Assert.Equal(
+                [MacroStepDelayMode.Fixed, MacroStepDelayMode.Random],
+                MacroInspectorPanelViewModel.StepDelayModes);
+            Assert.Equal(
+                [MacroStepDelayMode.Fixed, MacroStepDelayMode.Random],
+                scene.Panel.StepDelayOptions.Select(option => option.Mode));
+            Assert.Equal(
+                [MacroInspectorPanelViewModel.FixedDelayCaption, MacroInspectorStepViewModel.RandomDelayText],
+                scene.Panel.StepDelayOptions.Select(option => option.Caption));
+
+            // The enum member is still real, and a segment for it is refused outright rather than
+            // given a caption nobody can press.
+            Assert.Equal(0, (int)MacroStepDelayMode.None);
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new MacroStepDelayOption(MacroStepDelayMode.None, isOn: true, isEnabled: true));
+        }
+
+        /// <summary>
+        /// Emptying the millisecond field is the write that took the <c>none</c> segment's place
+        /// (issue #148) — including on a <b>delay-only</b> row (06 §2.2), where taking the delay off
+        /// drops the row, because a row that was nothing but a delay has nothing left.
+        /// </summary>
+        [AvaloniaFact]
+        public void ClearingTheField_OnADelayOnlyRow_DropsTheRow()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.CurrentMacro!.ClearKeystrokes();
+            scene.CurrentMacro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveCustom(80, TokenDialect.Gen1)!));
+            scene.Panel.Steps.RefreshFromModel();
+
+            scene.SelectStep(0);
+
+            Assert.True(scene.Panel.Steps.Items[0].IsDelayOnly);
+            Assert.Equal("80", scene.Panel.StepDelayText);
+
+            scene.TypeDelay(string.Empty);
+
+            Assert.Empty(scene.CurrentMacro.Keystrokes);
+            Assert.Empty(scene.Panel.Steps.Items);
+        }
+
+        /// <summary>
+        /// The other half of the field's new job, and the one that must not be confused with it: a
+        /// value that is <b>not a number at all</b> is a rejected input. It raises §11.3's message,
+        /// writes nothing, and leaves the delay the step already had exactly where it was — an
+        /// emptied field clears, a mistyped one does not.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("abc")]
+        [InlineData("8o")]
+        [InlineData("-")]
+        public void GarbageInTheField_IsRejected_AndLeavesTheStepsDelayAlone(string typed)
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+            scene.TypeDelay("80");
+
+            Assert.Equal(["a", "d080"], scene.MacroTokens());
+
+            scene.TypeDelay(typed);
+
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.True(scene.Panel.HasStepDelayError);
+            Assert.Equal(["a", "d080"], scene.MacroTokens());
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+        }
+
+        /// <summary>
+        /// A number outside §11.3's 1-999 is still refused, and still writes nothing — the field's
+        /// clearing job did not turn every unusable value into "no delay". Driven from a step that
+        /// <b>already carries</b> a delay, so a refusal that silently cleared one would fail here.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("1000")]
+        [InlineData("-5")]
+        public void ATypedDelayOutsideTheRange_IsRejected_AndLeavesTheStepsDelayAlone(string typed)
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+            scene.SelectStep(0);
+            scene.TypeDelay("80");
+
+            scene.TypeDelay(typed);
+
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.Equal(["a", "d080"], scene.MacroTokens());
         }
 
         /// <summary>
@@ -1807,7 +1896,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Record("a");
             scene.SelectStep(0);
 
-            Assert.Equal(MacroStepDelayMode.None, scene.SelectedDelayMode());
+            Assert.Null(scene.SelectedDelayMode());
 
             scene.SetDelayMode(MacroStepDelayMode.Fixed);
 
@@ -1849,11 +1938,15 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(["a", "d080"], scene.MacroTokens());
             Assert.Equal("80", scene.Panel.StepDelayText);
 
-            // Clearing the box is "nothing chosen" again, and reports itself rather than writing.
+            // Clearing the box is "no delay", and since issue #148 it WRITES that rather than
+            // reporting an unusable value: it is the control the `none` segment's job moved onto.
             scene.Panel.StepDelayText = string.Empty;
 
             Assert.Equal(0, scene.Panel.StepDelayMilliseconds);
-            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayText);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+            Assert.Equal(["a"], scene.MacroTokens());
+            Assert.False(scene.Panel.Steps.Items[0].HasDelay);
         }
 
         /// <summary>
@@ -1880,10 +1973,13 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         [AvaloniaTheory]
-        [InlineData(0)]
         [InlineData(1000)]
+        [InlineData(-5)]
         public void ATypedDelayOutsideTheRange_ReportsSpecElevenPointThreesMessageAndWritesNothing(int delay)
         {
+            // 0 IS NOT IN THIS THEORY ANY MORE (issue #148): it is the sentinel the millisecond field
+            // draws as blank, and blank is now the write that clears a delay rather than an unusable
+            // value that reports itself. See TheMillisecondField_… and ClearingTheField_… above.
             var scene = new Scene(this);
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
@@ -2418,10 +2514,22 @@ namespace KinesisEdit.Tests.ViewModels
                     Panel.StepDelayOptions.First(option => option.Mode == mode));
             }
 
-            /// <summary>Whichever delay segment is lit.</summary>
-            public MacroStepDelayMode SelectedDelayMode()
+            /// <summary>
+            /// Types <paramref name="text"/> into the millisecond field, which is where the delay is
+            /// cleared since issue #148 deleted the <c>none</c> segment.
+            /// </summary>
+            public void TypeDelay(string text)
             {
-                return Panel.StepDelayOptions.First(option => option.IsOn).Mode;
+                Panel.StepDelayText = text;
+            }
+
+            /// <summary>
+            /// Whichever delay segment is lit, or <c>null</c> where <b>neither</b> is — which is how
+            /// the strip says "no delay" since issue #148 took the third segment away.
+            /// </summary>
+            public MacroStepDelayMode? SelectedDelayMode()
+            {
+                return Panel.StepDelayOptions.FirstOrDefault(option => option.IsOn)?.Mode;
             }
 
             /// <summary>

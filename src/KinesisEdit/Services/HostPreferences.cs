@@ -30,8 +30,12 @@ namespace KinesisEdit.Services
         /// <summary>The narrowest the rail may be dragged (<c>WidthInspectorRailMin</c>).</summary>
         public const double MinimumInspectorRailWidth = 240;
 
-        /// <summary>The widest the rail may be dragged (<c>WidthInspectorRailMax</c>).</summary>
-        public const double MaximumInspectorRailWidth = 520;
+        /// <summary>
+        /// The widest the rail may be dragged (<c>WidthInspectorRailMax</c>). <b>560 since issue
+        /// #148</b>, which raised the Macro panel's floor to 480: a floor the seam can barely be
+        /// dragged past is an override wearing a floor's name, so the band's top moved with it.
+        /// </summary>
+        public const double MaximumInspectorRailWidth = 560;
 
         /// <summary>
         /// A fresh install: follow the OS for both theme and motion, remember no window, and leave

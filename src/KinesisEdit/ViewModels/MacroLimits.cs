@@ -9,9 +9,10 @@ namespace KinesisEdit.ViewModels
     /// macros a profile may hold, which specs/09-firmware.md §2 lets the firmware raise.
     /// <para>
     /// It lived on the old <c>MacroPanelViewModel</c> until issue #93 decomposed that class, and is
-    /// a static of its own because two answers depend on it: the key inspector's Macro panel refuses
-    /// a macro that would exceed it, and its <c>MacroCountMeter</c> reads it out. Neither may
-    /// hard-code the figure — the firmware can raise it.
+    /// a static of its own because it was two answers: the key inspector's Macro panel refuses a
+    /// macro that would exceed it, and its <c>MacroCountMeter</c> read it out. <b>The readout went
+    /// with issue #148</b> — the designer's mock draws no such line — so the refusal is the only
+    /// consumer now, and it still may not hard-code the figure, because the firmware can raise it.
     /// </para>
     /// </summary>
     public static class MacroLimits

@@ -25,22 +25,29 @@ namespace KinesisEdit.Tests.Design
     /// <i>"Standing compose bar"</i> mock (issue #146): the slot and trigger chips on one row, the
     /// numberless step rows with their key chip and delay pill, the fixed-height list, the compose
     /// bar pinned under it, the Speed/Repeat block and the red <c>Delete</c> — plus the one
-    /// measurement the whole panel hangs off, the rail widening from 268 px to <b>440</b>.
+    /// measurement the whole panel hangs off, the rail widening from 268 px to <b>480</b>.
     /// <para>
-    /// The panel is hosted at the rail's real <b>440 px</b>, not at a comfortable test width: a row
-    /// that reads fine at 600 px runs off the rail at 440, and no view-model test can see it.
+    /// The panel is hosted at the rail's real <b>480 px</b>, not at a comfortable test width: a row
+    /// that reads fine at 600 px runs off the rail at the floor, and no view-model test can see it.
     /// </para>
     /// </summary>
     public class MacroInspectorPanelTests
     {
         /// <summary>The rail's macro-editing width (<c>WidthInspectorRailWide</c>).</summary>
-        private const double WideRailWidth = 440;
+        private const double WideRailWidth = 480;
 
         /// <summary>Its ordinary width (<c>WidthInspectorRail</c>), for the comparison below.</summary>
         private const double RailWidth = 268;
 
-        /// <summary>The step list's fixed box (<c>ScrollViewer.macroStepList</c>).</summary>
-        private const double StepListHeight = 280;
+        /// <summary>
+        /// The step list's fixed box (<c>ScrollViewer.macroStepList</c>). <b>Five rows</b> since
+        /// issue #148 — see <see cref="TheStepList_IsAFixedBox_SoTheComposerNeverMoves"/>, which
+        /// divides it by a measured row rather than trusting this pair of numbers.
+        /// </summary>
+        private const double StepListHeight = 180;
+
+        /// <summary>How many step rows the box is supposed to show (issue #148, down from eight).</summary>
+        private const int StepListRows = 5;
 
         /// <summary>
         /// How far a probed pixel may sit from the token it is meant to be painted in. Wider than a
@@ -343,14 +350,16 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// The four budgets, in the mock's own shape: <c>Speed</c> reads <c>5 of 9</c> beside its
-        /// slider, the layout keystroke budget reads <c>1 014 / 7 200</c> with <c>chars</c> after
-        /// it, and <c>this macro</c> / <c>macros</c> survive as one muted line under them.
+        /// The <b>two</b> budgets the mock draws, in its own shape: <c>Speed</c> reads <c>5 of 9</c>
+        /// beside its slider and the layout keystroke budget reads <c>1 014 / 7 200</c> with
+        /// <c>chars</c> after it. Issue #148 deleted the muted <c>this macro … · macros …</c> line
+        /// #146 had demoted the other two onto — the mock draws neither, and the panel now says
+        /// nothing about 06 §6's profile-wide count or the per-macro cap.
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheMeters_ReadOutTheFourBudgetsTheMockNames(string variantName)
+        public async Task TheMeters_ReadOutTheTwoBudgetsTheMockNames(string variantName)
         {
             using var scenes = new ViewSceneFactory();
 
@@ -365,15 +374,17 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains(MacroInspectorPanelViewModel.SpeedMeterLabel, texts);
             Assert.Contains(MacroInspectorPanelViewModel.RepeatLabel, texts);
-            Assert.Contains(MacroInspectorPanelViewModel.MacroLengthMeterLabel, texts);
-            Assert.Contains(MacroInspectorPanelViewModel.MacroCountMeterLabel, texts);
-            Assert.Contains(MacroInspectorPanelViewModel.MeterJoin, texts);
             Assert.Contains(MacroInspectorPanelViewModel.LayoutKeystrokeUnit, texts);
 
             Assert.Contains(panel.SpeedMeter.Caption, texts);
-            Assert.Contains(panel.MacroLengthMeter.Caption, texts);
             Assert.Contains(panel.LayoutKeystrokeMeter.Caption, texts);
-            Assert.Contains(panel.MacroCountMeter.Caption, texts);
+
+            // The deleted line, written out rather than taken off constants — the constants went
+            // with it and the claim outlives them.
+            foreach (var gone in new[] { "this macro", "macros", " · " })
+            {
+                Assert.DoesNotContain(gone, texts);
+            }
 
             // `N of M`, not `N / M`: a playback speed is a step out of a scale rather than a
             // consumption against a budget.
@@ -388,9 +399,7 @@ namespace KinesisEdit.Tests.Design
             var readouts = new[]
             {
                 panel.SpeedMeter.Caption,
-                panel.MacroLengthMeter.Caption,
-                panel.LayoutKeystrokeMeter.Caption,
-                panel.MacroCountMeter.Caption
+                panel.LayoutKeystrokeMeter.Caption
             };
 
             foreach (var readout in readouts)
@@ -487,10 +496,13 @@ namespace KinesisEdit.Tests.Design
             Assert.Contains(MacroInspectorPanelViewModel.DeleteMacroCaption, captions);
             Assert.DoesNotContain(MacroInspectorPanelViewModel.CancelCopyCaption, captions);
 
-            // The noun is the whole point: the rail's own footer carries a `Copy to…` that copies
-            // the WHOLE position, and the two must not read alike — which is why this one keeps its
-            // noun even though the mock shortens it.
-            Assert.DoesNotContain(KeyInspectorViewModel.CopyToCaption, captions);
+            // THE NOUN WENT WITH ISSUE #148, and this is the assertion that used to hold it. The
+            // panel's copy read `Copy macro to…` so it could not be confused with the `Copy to…` on
+            // the rail's own footer six rows below, which copies the WHOLE position; the designer's
+            // mock captions it short and the mock is what shipped. The two are the SAME string now
+            // — deliberately, and recorded in docs/app/design-system.md — and what tells them apart
+            // is that they are in two different footers.
+            Assert.Equal(KeyInspectorViewModel.CopyToCaption, MacroInspectorPanelViewModel.CopyMacroCaption);
 
             var delete = DeleteButtonOf(view);
 
@@ -566,6 +578,11 @@ namespace KinesisEdit.Tests.Design
         /// An over-budget meter goes <b>amber and still saves</b>. It must never reach the error
         /// ramp — that is the design law the three flipped macro-budget rows of #91 exist to
         /// protect, and this is the same law on the rail.
+        /// <para>
+        /// It is the <b>layout keystroke</b> budget that is driven over since issue #148: the
+        /// per-macro and profile-wide readouts went with the muted line the mock does not draw, and
+        /// this is the one budget the panel still states. The law is unchanged.
+        /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
@@ -574,25 +591,32 @@ namespace KinesisEdit.Tests.Design
         {
             using var scenes = new ViewSceneFactory();
 
-            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var editor = await scenes.CreateEditorAsync();
+            var layer = Assert.IsType<KeyboardLayerViewModel>(editor.SelectedLayer);
+
+            editor.SelectKeyCommand.Execute(layer.FindByIndex(TestLayouts.RgbDigitOneKeyIndex));
+
+            SelectMacroMode(editor);
+
+            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
             var view = new MacroInspectorPanelView { DataContext = panel };
 
             using var host = Show(view, variantName);
 
             host.Capture();
 
-            Assert.False(panel.MacroLengthMeter.IsOverBudget);
+            Assert.False(panel.LayoutKeystrokeMeter.IsOverBudget);
 
-            OverfillTheMacro(panel);
+            OverfillTheLayout(editor, panel);
 
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.True(panel.MacroLengthMeter.IsOverBudget);
+            Assert.True(panel.LayoutKeystrokeMeter.IsOverBudget);
 
             var readout = view.GetVisualDescendants()
                 .OfType<TextBlock>()
-                .First(block => block.IsEffectivelyVisible && block.Text == panel.MacroLengthMeter.Caption);
+                .First(block => block.IsEffectivelyVisible && block.Text == panel.LayoutKeystrokeMeter.Caption);
 
             Assert.Contains("statusWarning", readout.Classes);
             Assert.DoesNotContain("statusError", readout.Classes);
@@ -638,14 +662,13 @@ namespace KinesisEdit.Tests.Design
             Assert.NotNull(field.Theme);
             Assert.False(field.IsEffectivelyEnabled, "The delay field is live with no step selected.");
 
-            // The three states of a step's trailing delay, and every one of them dead until the
-            // composer is pointed at a row. `none` is kept although the mock draws only the other
-            // two: without it "no delay" is unauthorable.
+            // The strip the mock draws, and nothing else (issue #148): `none` is gone, and both
+            // survivors are dead until the composer is pointed at a row. "No delay" is a state of
+            // the step now — neither segment lit — written by emptying the field beside them.
             var segments = DelaySegmentsOf(view);
 
             Assert.Equal(
-                [MacroInspectorPanelViewModel.NoDelayCaption,
-                 MacroInspectorPanelViewModel.FixedDelayCaption,
+                [MacroInspectorPanelViewModel.FixedDelayCaption,
                  MacroInspectorStepViewModel.RandomDelayText],
                 segments.Select(segment => segment.Content as string));
             Assert.All(segments, segment => Assert.False(segment.IsEffectivelyEnabled));
@@ -665,6 +688,84 @@ namespace KinesisEdit.Tests.Design
 
             Assert.True(panel.Steps.Items[0].HasDelay);
             Assert.Contains(panel.Steps.Items[0].DelayText, VisibleTextsOf(view));
+
+            // ...and emptying it takes the delay off again, which is what the deleted `none` segment
+            // used to do. Neither segment is lit afterwards: "no delay" is a state, not a choice.
+            panel.StepDelayText = string.Empty;
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            Assert.False(panel.Steps.Items[0].HasDelay);
+            Assert.Equal(string.Empty, panel.StepDelayError);
+            Assert.All(DelaySegmentsOf(view), segment => Assert.DoesNotContain("selected", segment.Classes));
+        }
+
+        /// <summary>
+        /// <b>Row 2 of the compose bar is ONE line</b> — the designer's mock draws
+        /// <c>tap press release · then wait · fixed random · [ 80 ] ms</c> across a single row, and
+        /// this panel drew it in a <c>WrapPanel</c> precisely because it did not fit.
+        /// <para>
+        /// Asserted at the rail's <b>floor</b>, where it is hardest, and in the state where every
+        /// control is at its widest: a selected segment is SemiBold, which is a pixel wider than the
+        /// resting one, so a row measured with nothing selected is a row measured too narrow. Two
+        /// claims, because either alone can pass on a broken layout — every control shares one
+        /// baseline (nothing wrapped), and nothing reaches past the composer's own box (nothing was
+        /// merely clipped instead of wrapped).
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheComposersActionRow_IsOneLineAtTheRailsFloor(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            // The widest state there is: a step selected (so `tap` is lit) with a three-digit fixed
+            // delay (so `fixed` is lit too, and the field holds its longest legal value).
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+            panel.StepDelayText = "999";
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var field = Assert.Single(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+            var row = Assert.IsType<Grid>(field.GetVisualParent());
+            var members = DirectionSegmentsOf(view)
+                .Concat(DelaySegmentsOf(view))
+                .Cast<Control>()
+                .Append(field)
+                .ToArray();
+
+            Assert.Equal(6, members.Length);
+
+            // ONE LINE: every control sits on the same top edge, and the row is no taller than the
+            // tallest of them. A wrap would put the second half a row lower and double the height.
+            var tops = members.Select(member => member.TranslatePoint(default, view)!.Value.Y).ToArray();
+
+            Assert.All(tops, top => Assert.Equal(tops[0], top));
+            Assert.Equal(members.Max(member => member.Bounds.Height), row.Bounds.Height);
+
+            // ...AND NOTHING RAN OFF THE END. `ms` is the last thing on the line, so its right edge
+            // is the row's; the composer's box is what it may not pass.
+            var unit = Assert.Single(
+                VisibleRunsOf(view),
+                block => block.Text == MacroInspectorStepViewModel.MillisecondSuffix);
+            var box = ComposerBoxOf(view);
+            var limit = RightEdgeOf(box, view) - box.BorderThickness.Right - box.Padding.Right;
+
+            Assert.True(
+                RightEdgeOf(unit, view) <= limit,
+                $"`ms` runs {RightEdgeOf(unit, view) - limit:0.#} px past the compose bar at {WideRailWidth} px.");
+            Assert.True(
+                RightEdgeOf(field, view) <= RightEdgeOf(unit, view),
+                "The millisecond field overlaps the unit beside it — the row is wider than its column.");
         }
 
         /// <summary>
@@ -886,6 +987,12 @@ namespace KinesisEdit.Tests.Design
         /// step, deleting one or opening a placeholder slid the composer — the modifier latches, the
         /// key field and <c>Record key</c> — up or down the rail <em>under the pointer</em> between
         /// one click and the next.
+        /// <para>
+        /// It is <b>five rows</b> since issue #148, and the count is asserted by <em>dividing the box
+        /// by a real row</em> rather than by restating 180 and 36. The eight-row number it replaced
+        /// was derived from an assumed 35 px row and the row has never been 35: it is a 1 px frame
+        /// around a 34 px button, and a pair of hard-coded numbers cannot notice that.
+        /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
@@ -910,6 +1017,15 @@ namespace KinesisEdit.Tests.Design
             // shortcut the grip's tooltip advertises.
             Assert.Equal(StepListHeight, list.Bounds.Height);
             Assert.Empty(list.GetVisualDescendants().OfType<SelectingItemsControl>());
+
+            // FIVE ROWS, measured. The rows stack with no gap, and the scroller adds neither padding
+            // nor a border, so the box is exactly its rows — which is what makes the division the
+            // honest assertion and 180-vs-36 a coincidence waiting to rot.
+            var row = RowOf(view, 1);
+
+            Assert.Equal(default, list.Padding);
+            Assert.Equal(default, list.BorderThickness);
+            Assert.Equal(StepListRows * row.Bounds.Height, list.Bounds.Height);
 
             var composer = ComposerBoxOf(view);
             var origin = composer.TranslatePoint(default, view)!.Value;
@@ -1652,11 +1768,13 @@ namespace KinesisEdit.Tests.Design
                  MacroInspectorStepViewModel.ReleaseAction],
                 directions.Select(segment => segment.Content as string));
 
-            // Dead, all of it — and the direction segments are `toggleSegment` and not the chip
-            // face: they are a one-of-N choice, which the segment's filled face is what says.
+            // Dead, all of it — and the direction segments are `composerSegment` and not the chip
+            // face: they are a one-of-N choice, which the segment's filled face is what says. The
+            // class moved off `toggleSegment` with issue #148, which put row 2 on one line by taking
+            // the composer's segments down to the segmented family's own 11,4.
             Assert.All(latches, latch => Assert.False(latch.IsEffectivelyEnabled));
             Assert.All(directions, segment => Assert.False(segment.IsEffectivelyEnabled));
-            Assert.All(directions, segment => Assert.Contains("toggleSegment", segment.Classes));
+            Assert.All(directions, segment => Assert.Contains("composerSegment", segment.Classes));
             Assert.False(RecordStepKeyButtonOf(view).IsEffectivelyEnabled);
 
             // ...except the two affordances a selection comes to exist through.
@@ -1902,26 +2020,32 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// Pushes the macro past the device's per-macro cap through the panel's own record path, so
-        /// the amber comes from the model rather than from a hand-set flag.
+        /// Pushes the profile past the device's 7 200-keystroke layout budget (04 §5.3) and then
+        /// records one step through the panel's own path, so the amber arrives on the refresh the
+        /// app really uses rather than from a hand-set flag.
+        /// <para>
+        /// The bulk is put on <b>another</b> position, straight onto the model: the budget is a fact
+        /// about the profile, and recording seven thousand keystrokes one at a time through the
+        /// capture path would rebuild the step list on every one of them.
+        /// </para>
         /// </summary>
-        private static void OverfillTheMacro(MacroInspectorPanelViewModel panel)
+        private static void OverfillTheLayout(KeyboardEditorViewModel editor, MacroInspectorPanelViewModel panel)
         {
-            var limit = panel.MacroLengthMeter.Limit ?? 0;
+            var layout = editor.Layout ?? throw new InvalidOperationException("The editor scene holds no layout.");
+            var limit = panel.LayoutKeystrokeMeter.Limit ?? 0;
             var key = KeyRegistry.FindByToken("a", TokenDialect.Gen1)!;
+            var carrier = layout.Layers[0].Keys.First(candidate =>
+                candidate.CanAssignMacro && candidate.Index != TestLayouts.RgbDigitOneKeyIndex);
+            var filler = layout.CreateMacro();
 
-            panel.RecordCommand.Execute(null);
-
-            for (var index = panel.MacroLengthMeter.Value; index <= limit; index++)
+            for (var index = layout.TotalKeystrokes; index <= limit; index++)
             {
-                panel.ReceiveKeystroke(new CapturedKeystroke
-                {
-                    Key = key,
-                    PhysicalKey = PhysicalKeyCode.None
-                });
+                filler.AddKeystroke(new Keystroke(key));
             }
 
-            panel.Deactivate();
+            carrier.SetMacro(1, filler);
+
+            RecordStep(panel, "a");
         }
 
         /// <summary>Records one plain step through the panel's own capture path.</summary>
@@ -1997,7 +2121,7 @@ namespace KinesisEdit.Tests.Design
             return ComposerControls<MacroStepDirection>(view);
         }
 
-        /// <summary>The composer's <c>none</c> / <c>fixed</c> / <c>random</c> segments.</summary>
+        /// <summary>The composer's <c>fixed</c> / <c>random</c> segments (<c>none</c> went in #148).</summary>
         private static Button[] DelaySegmentsOf(Control view)
         {
             return ComposerControls<MacroStepDelayOption>(view);

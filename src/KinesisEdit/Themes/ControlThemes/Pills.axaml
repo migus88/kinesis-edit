@@ -308,7 +308,7 @@
     <!-- A square-ish target rather than a labelled button: the content is one digit, one `+` or one
          key mark, so the SIZE is the minimum and the padding only keeps a two-run mark (`R⇧`) off
          the border. 34x30 is the mock's own chip and is what puts five slots plus three co-triggers
-         on one 440px row. -->
+         on one 480px row. -->
     <Setter Property="Padding" Value="8,4" />
     <Setter Property="MinWidth" Value="34" />
     <Setter Property="MinHeight" Value="30" />

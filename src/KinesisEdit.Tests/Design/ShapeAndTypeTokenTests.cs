@@ -98,16 +98,18 @@ namespace KinesisEdit.Tests.Design
         [InlineData("HeightTabBar", 38)]
         [InlineData("HeightAdvisoryStrip", 30)]
         [InlineData("WidthInspectorRail", 268)]
-        // 440 since issue #146, up from the handoff's 300: the redesigned Macro panel draws a step
-        // row and the composer's first row as single lines, and neither fits in 300. It is still a
-        // floor inside the band below, which KeyboardEditorViewModelTests pins to the C# constant.
-        [InlineData("WidthInspectorRailWide", 440)]
+        // 440 with issue #146 and 480 with issue #148, up from the handoff's 300: the redesigned
+        // Macro panel draws a step row and BOTH rows of the compose bar as single lines, and #148's
+        // second row measures 432 px with the panel's own chrome taking 50 more. It is still a floor
+        // inside the band below, which KeyboardEditorViewModelTests pins to the C# constant.
+        [InlineData("WidthInspectorRailWide", 480)]
         // The band the rail's drag seam moves between (issue #119). They are what the grid column's
         // own MinWidth/MaxWidth are set from, and KeyboardEditorViewModelTests pins each to the
         // HostPreferences constant that clamps the stored width — so a token moved here without its
-        // sibling fails there rather than drifting.
+        // sibling fails there rather than drifting. The top moved to 560 with the floor (#148): a
+        // floor the seam can barely be dragged past is an override wearing a floor's name.
         [InlineData("WidthInspectorRailMin", 240)]
-        [InlineData("WidthInspectorRailMax", 520)]
+        [InlineData("WidthInspectorRailMax", 560)]
         [InlineData("GutterSplit", 26)]
         [InlineData("CardGridGap", 12)]
         [InlineData("WidthCardStatusRail", 2)]

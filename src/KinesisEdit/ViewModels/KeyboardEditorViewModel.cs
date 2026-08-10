@@ -34,7 +34,7 @@ namespace KinesisEdit.ViewModels
         public const string SavingCaption = "Saving…";
 
         /// <summary>
-        /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>, 440 px —
+        /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>, 480 px —
         /// docs/design/handoff.md § Geometry says 300, raised by issue #146). A <b>floor</b> on
         /// <see cref="EffectiveInspectorRailWidth"/>, never a replacement — see
         /// <see cref="InspectorRailWidthViewModel.EffectiveWidth"/>.
@@ -523,7 +523,7 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The width the rail is drawn at: the user's, or <b>at least</b> the 440 px macro editing
+        /// The width the rail is drawn at: the user's, or <b>at least</b> the 480 px macro editing
         /// is given while the Macro panel is showing. A floor and not an override — the
         /// deviation of issue #119, spelled out on
         /// <see cref="InspectorRailWidthViewModel.EffectiveWidth"/>.
@@ -781,7 +781,7 @@ namespace KinesisEdit.ViewModels
             Inspector = CreateInspector();
 
             // EffectiveInspectorRailWidth has two inputs and the key inspector owns one of them: the
-            // Macro panel raises the floor to 440 the moment it shows. IsWide announces itself, so
+            // Macro panel raises the floor to 480 the moment it shows. IsWide announces itself, so
             // the width the column is bound to follows a mode switch without anything having to push
             // it — the handler below is what carries that announcement onto the rail object.
             _inspectorPropertyChangedHandler = OnInspectorPropertyChanged;

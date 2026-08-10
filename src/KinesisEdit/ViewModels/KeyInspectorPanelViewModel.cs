@@ -100,7 +100,7 @@ namespace KinesisEdit.ViewModels
         public virtual bool IsRecording => false;
 
         /// <summary>
-        /// Whether the rail should widen to <c>WidthInspectorRailWide</c> (440 px) while this panel
+        /// Whether the rail should widen to <c>WidthInspectorRailWide</c> (480 px) while this panel
         /// is showing, instead of its ordinary <c>WidthInspectorRail</c> (268 px).
         /// docs/design/handoff.md § Geometry states both — "inspector rail: 268px wide on Layout,
         /// 300px on the macro-editing variant" — and issue #146 raised the macro number to 440 so

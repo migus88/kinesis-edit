@@ -147,11 +147,11 @@ namespace KinesisEdit.Tests.ViewModels
         [AvaloniaFact]
         public void MacroRailWidth_StaysInsideTheBandTheSeamCanReach()
         {
-            // The floor moved to 440 with issue #146, and it is only a floor if the seam can be
-            // dragged to both sides of it: a macro width outside the band would be a width the
-            // clamp refuses, so the rail would open at one number and store another. Asserted
-            // against the clamp itself rather than against the two constants, because the clamp is
-            // what the stored width actually goes through.
+            // The floor moved to 440 with issue #146 and to 480 with #148, and it is only a floor if
+            // the seam can be dragged to both sides of it: a macro width outside the band would be a
+            // width the clamp refuses, so the rail would open at one number and store another.
+            // Asserted against the clamp itself rather than against the two constants, because the
+            // clamp is what the stored width actually goes through.
             Assert.InRange(
                 InspectorRailWidthViewModel.MacroRailWidth,
                 HostPreferences.MinimumInspectorRailWidth,
@@ -160,6 +160,12 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(
                 InspectorRailWidthViewModel.MacroRailWidth,
                 HostPreferences.ClampInspectorRailWidth(InspectorRailWidthViewModel.MacroRailWidth));
+
+            // ...and "both sides" has to mean something. A ceiling a few pixels above the floor
+            // would leave the seam nowhere to go and make the floor an override in all but name.
+            Assert.True(
+                HostPreferences.MaximumInspectorRailWidth - InspectorRailWidthViewModel.MacroRailWidth >= 80,
+                "The macro floor leaves the drag seam less than 80 px of travel above it.");
         }
 
         [AvaloniaFact]

@@ -47,9 +47,9 @@
        resizes a grid COLUMN — so the width moved onto the column in KeyboardEditorView.axaml, where
        the splitter can reach it. It had to MOVE rather than be layered over: a local Width on the
        Border would have beaten whatever the column said, and the two would have disagreed the
-       moment the seam was dragged. The `.wide` companion went with it; the 300px macro variant is a
+       moment the seam was dragged. The `.wide` companion went with it; the macro panel's wide variant is a
        FLOOR the editor folds into EffectiveInspectorRailWidth now, not an override, so a user who
-       dragged the rail past 300 is never yanked back to it.
+       dragged the rail wider is never yanked back to it.
 
        LightingModeRailView is the class's second consumer and sets its own local Width, which is
        still correct: that rail is not resizable and is not in this grid at all.
@@ -216,7 +216,7 @@
   </Style>
 
   <!-- ===== The macro step editor =============================================================
-       The rows of the `Sequence` list, inside the 440px rail. Each row is a Button on the
+       The rows of the `Sequence` list, inside the 480px rail. Each row is a Button on the
        `RowButton` control theme (so hover and press are the theme's, not this file's) carrying its
        token chip, what it does and the delay behind it.
 
@@ -253,10 +253,17 @@
        next. A fixed box costs an empty gap under a two-step macro and buys a composer that is
        always in the same place.
 
-       280 is eight rows at the row's own 6,4 rhythm. Under a 440px rail that leaves the composer,
-       the Speed/Repeat block and the footer on screen together at the 680px default window. -->
+       180 IS FIVE ROWS, AND IT IS A MEASURED NUMBER (issue #148, down from #146's 280, which was
+       eight). A row is `Border.macroStepRowFrame` — a 1px frame around a `Button.macroStepRow` whose
+       own 6,4 padding and `× ghost` (13,8 on the button type step) make it 34 tall — so the row
+       pitch is 36, not the 35 the eight-row arithmetic assumed, and the scroller adds no padding or
+       border of its own. Five of them is exactly 180, which `MacroInspectorPanelTests` asserts by
+       measuring a real row rather than by restating the pair.
+
+       Under a 480px rail that leaves the composer, the Speed/Repeat block and the footer on screen
+       together at the 680px default window, with three fewer rows of hole under a short macro. -->
   <Style Selector="ScrollViewer.macroStepList">
-    <Setter Property="Height" Value="280" />
+    <Setter Property="Height" Value="180" />
   </Style>
 
   <!-- One step row. It is a Button so the whole row is the hit target for selecting the step that

@@ -5,13 +5,16 @@
     BaseButton carries the template, the geometry, the type step, the focus ring and the disabled
     face that ToggleSegment at the bottom of this file derives from.
 
-    Five themes, one shape language: a row of adjoining choices where exactly one — or, for the
+    Six themes, one shape language: a row of adjoining choices where exactly one — or, for the
     toggle, each one independently — is on.
 
       SegmentedControl / SegmentedItem  the layer switcher: a trough with the segments inside it,
                                         one selected.
-      ToggleSegment                     a standalone two-state segment: the macro co-triggers and
-                                        the pedal's Single Action / Macro latch.
+      ToggleSegment                     a standalone two-state segment: the pedal's Single Action /
+                                        Macro latch and the lighting tab's zone chips.
+      ComposerSegment                   ToggleSegment at SegmentedItem's own 11,4 / 11px: the macro
+                                        composer's tap/press/release and fixed/random, which share
+                                        one line of the compose bar.
       DirectionSegment                  one arrow of the lighting tab's direction row, which a mode
                                         may not accept — and which is then STRUCK THROUGH in place
                                         rather than removed.
@@ -256,6 +259,29 @@
 
     <!-- Disabled and the focus ring both come from BaseButton: the inset face is right here, where
          the toggle has a face of its own to lose. -->
+  </ControlTheme>
+
+  <!--
+    THE MACRO COMPOSER'S SEGMENTS (issue #148) — `tap` / `press` / `release` and `fixed` / `random`,
+    the two strips that share one line of the compose bar with `then wait`, a millisecond field and
+    `ms`.
+
+    IT IS ToggleSegment WITH THE FAMILY'S OWN RHYTHM PUT BACK, and nothing else. ToggleSegment is
+    BaseButton, so it wears the app's `PaddingButton` 13,8 at the control type step (12px) — right
+    for a standalone latch with room around it, and 148px too wide once six word-segments have to
+    share a 480px rail with a label, a field and a unit. SegmentedItem, the layer switcher's
+    container, has always been 11,4 at FontSizeBody — the mock's own `padding: 4px 11px` — and that
+    is what these two strips are: segments in a row, not latches on a panel. Measured at the rail's
+    floor, the two setters below take 35px off the line — six word-segments, ~7px each.
+
+    ONLY THE METRICS ARE OVERRIDDEN. Every colour, every state and the `:not(:disabled)` qualifier
+    on the accent face come from ToggleSegment, so the composer's `tap` and the pedal editor's
+    `Macro` latch cannot drift apart in face while differing in size — which is the whole reason
+    this is a derived theme rather than a second copy of that ramp.
+  -->
+  <ControlTheme x:Key="ComposerSegment" TargetType="Button" BasedOn="{StaticResource ToggleSegment}">
+    <Setter Property="Padding" Value="11,4" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSizeBody}" />
   </ControlTheme>
 
   <!--
