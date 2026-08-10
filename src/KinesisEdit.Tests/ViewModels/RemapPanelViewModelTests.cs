@@ -56,7 +56,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // The arm survives somebody else's edit: a refresh is not a selection change.
             Assert.True(scene.Panel.IsRecording);
-            Assert.Equal("[1]", scene.Panel.CurrentToken);
+            Assert.Equal("1", scene.Panel.CurrentToken);
         }
 
         [Fact]
@@ -66,13 +66,13 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Select(TestLayouts.RgbDigitOneKeyIndex);
 
-            Assert.Equal("[1]", scene.Panel.CurrentToken);
+            Assert.Equal("1", scene.Panel.CurrentToken);
 
             scene.Key.Key.Remap(TestLayouts.Gen1Key("esc"));
             scene.Key.RefreshFromModel();
             scene.Refresh();
 
-            Assert.Equal("[esc]", scene.Panel.CurrentToken);
+            Assert.Equal("esc", scene.Panel.CurrentToken);
         }
 
         [Fact]
@@ -121,7 +121,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.ReceiveKeystroke(Keystroke("esc"));
 
-            Assert.Equal("[esc]", scene.Panel.CurrentToken);
+            Assert.Equal("esc", scene.Panel.CurrentToken);
             Assert.True(scene.Key.Key.IsModified);
             Assert.Equal("esc", scene.Key.Key.ModifiedKey!.Gen1Token);
             Assert.False(scene.Panel.IsRecording);
@@ -159,7 +159,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.ReceiveKeystroke(Keystroke("1"));
 
             Assert.False(scene.Key.Key.IsModified);
-            Assert.Equal("[1]", scene.Panel.CurrentToken);
+            Assert.Equal("1", scene.Panel.CurrentToken);
         }
 
         [Fact]
@@ -192,7 +192,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.Picker.Query = "esc";
             scene.Panel.Picker.ChooseCommand.Execute(null);
 
-            Assert.Equal("[esc]", scene.Panel.CurrentToken);
+            Assert.Equal("esc", scene.Panel.CurrentToken);
             Assert.Equal("esc", scene.Key.Key.ModifiedKey!.Gen1Token);
         }
 
@@ -258,7 +258,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(string.Empty, scene.Panel.Picker.Query);
             Assert.False(scene.Panel.IsRecording);
-            Assert.Equal("[2]", scene.Panel.CurrentToken);
+            Assert.Equal("2", scene.Panel.CurrentToken);
         }
 
         [Fact]
@@ -362,11 +362,11 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.Picker.Query = "2";
 
-            var row = scene.Panel.Picker.Rows.First(candidate => candidate.Token == "[2]");
+            var row = scene.Panel.Picker.Rows.First(candidate => candidate.Token == "2");
 
             scene.Panel.Picker.ChooseCommand.Execute(row);
 
-            Assert.Equal("[2]", scene.Panel.CurrentToken);
+            Assert.Equal("2", scene.Panel.CurrentToken);
             Assert.True(scene.Key.Key.IsModified);
             Assert.True(scene.Panel.HasDuplicateAdvisory);
             Assert.Contains("[2] is on 2 positions", scene.Panel.DuplicateAdvisory, StringComparison.Ordinal);
@@ -384,7 +384,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.Picker.Query = "2";
 
-            var row = scene.Panel.Picker.Rows.First(candidate => candidate.Token == "[2]");
+            var row = scene.Panel.Picker.Rows.First(candidate => candidate.Token == "2");
 
             scene.Panel.Picker.ChooseCommand.Execute(row);
 
@@ -407,7 +407,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.Picker.Query = "vol+";
             scene.Panel.Picker.ChooseCommand.Execute(null);
 
-            Assert.Equal("[vol+]", scene.Panel.CurrentToken);
+            Assert.Equal("vol+", scene.Panel.CurrentToken);
             Assert.False(scene.Panel.HasDuplicateAdvisory);
         }
 
@@ -421,7 +421,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.Picker.Query = "2";
 
             scene.Panel.Picker.ChooseCommand.Execute(
-                scene.Panel.Picker.Rows.First(row => row.Token == "[2]"));
+                scene.Panel.Picker.Rows.First(row => row.Token == "2"));
 
             Assert.True(scene.Panel.HasDuplicateAdvisory);
 

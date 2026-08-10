@@ -74,6 +74,10 @@ namespace KinesisEdit.Tests.Design
         // darkened for text on light, where #C77DD8 reads at 2.9:1. Deliberately not the accent
         // (two sanctioned meanings, neither of them this) and not the advisory ramp.
         [InlineData("MacroStepKey", "#C77DD8", "#8E45A0")]
+        // ...and the box around it, at 0.17 of the same hue (issue #150). The alpha is measured off
+        // the designer's mock (`#31213D` on a `#121316` rail); the hue is each variant's own, which
+        // is why this pair is not variant-independent the way the four status tint-borders are.
+        [InlineData("MacroStepKeyTintBorder", "#2BC77DD8", "#2B8E45A0")]
         // Dimming a light window uses the same near-black at the same alpha.
         [InlineData("Scrim", "#9E080A0C", "#9E080A0C")]
         public void Role_InEachVariant_IsTheHandoffValue(string role, string dark, string light)

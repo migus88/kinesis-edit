@@ -136,7 +136,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // No numbers on the rows since issue #146 — only positions, which nothing draws.
             Assert.Equal([1, 2, 3, 4], steps.Items.Select(step => step.Position));
-            Assert.Equal("[lshft]", steps.Items[0].TokenText);
+            Assert.Equal("lshft", steps.Items[0].TokenText);
             Assert.Equal(MacroInspectorStepViewModel.PressAction, steps.Items[0].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.HeldAction, steps.Items[1].ActionText);
             Assert.Equal(MacroInspectorStepViewModel.ReleaseAction, steps.Items[2].ActionText);
@@ -252,7 +252,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var step = Assert.Single(steps.Items);
 
-            Assert.Equal("[ent]", step.TokenText);
+            Assert.Equal("ent", step.TokenText);
             Assert.Equal(MacroInspectorStepViewModel.TapAction, step.ActionText);
             Assert.Equal("80 ms", step.DelayText);
             Assert.Equal(80, step.DelayMilliseconds);
@@ -276,7 +276,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(steps.Items[0].IsDelayOnly);
             Assert.Equal(MacroInspectorStepViewModel.DelayAction, steps.Items[0].ActionText);
             Assert.Equal("random", steps.Items[0].DelayText);
-            Assert.Equal("[a]", steps.Items[1].TokenText);
+            Assert.Equal("a", steps.Items[1].TokenText);
         }
 
         [AvaloniaFact]
@@ -348,7 +348,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // The selection follows the step, or a second ⌥↑ would move a different row.
             Assert.Equal(2, steps.SelectedStep!.Position);
-            Assert.Equal("[c]", steps.SelectedStep.TokenText);
+            Assert.Equal("c", steps.SelectedStep.TokenText);
         }
 
         [AvaloniaFact]
@@ -911,6 +911,75 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(
                 MacroInspectorStepsViewModel.FirmwareRefusalMessage,
                 FirmwareGateCatalog.Find(DeviceId.FreestyleEdge, FirmwareFeature.CustomMacroDelays)!.Message);
+        }
+
+        /// <summary>
+        /// <b>A rebuild never announces the null it is about to undo</b> — the root of the defect
+        /// that made <c>80 ms</c> unauthorable (issue #150).
+        ///
+        /// <para>Every write goes through <c>WriteBlocks</c>, which rebuilds the rows; the rows are
+        /// new objects, so the selection is dropped and re-taken by position. That drop used to be
+        /// announced, and the composer above reads <c>SelectedStep is not null</c> to decide whether
+        /// its controls are enabled — so one keystroke into the millisecond field disabled the very
+        /// field being typed into, and Avalonia clears focus off a control that goes effectively
+        /// disabled. The observable claim is the <b>count</b>: one announcement per write, never two,
+        /// and never one that says "nothing is selected" while something is.</para>
+        /// </summary>
+        [AvaloniaFact]
+        public void AWriteThatRebuildsTheRows_AnnouncesTheSelectionOnce_AndNeverAsEmpty()
+        {
+            var steps = SelectFirstStep(out _);
+            var announcements = 0;
+            var sawEmpty = false;
+
+            steps.SelectionChanged += (_, _) =>
+            {
+                announcements++;
+                sawEmpty |= steps.SelectedStep is null;
+            };
+
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(8)));
+
+            Assert.Equal(1, announcements);
+            Assert.False(sawEmpty, "The rebuild announced the transient null it was about to undo.");
+            Assert.NotNull(steps.SelectedStep);
+            Assert.Equal(8, steps.SelectedStep!.DelayMilliseconds);
+
+            // ...and again on the second digit, which is the keystroke the caret never survived.
+            Assert.True(steps.TrySetSelectedDelay(MacroInspectorDelay.Custom(80)));
+
+            Assert.Equal(2, announcements);
+            Assert.False(sawEmpty);
+            Assert.Equal(80, steps.SelectedStep!.DelayMilliseconds);
+        }
+
+        /// <summary>
+        /// The other half, and the one the silencing must not swallow: a rebuild that <b>really</b>
+        /// ends with nothing selected still says so. The composer's disabled-with-no-selection state
+        /// is documented and deliberate, and it is reached exactly here.
+        /// </summary>
+        [AvaloniaFact]
+        public void ARebuildThatGenuinelyEmptiesTheSelection_StillAnnouncesIt()
+        {
+            var steps = SelectFirstStep(out _);
+            var announcements = 0;
+
+            steps.SelectionChanged += (_, _) => announcements++;
+
+            // The only step goes, so there is no position to put the selection back on.
+            steps.RemoveStepCommand.Execute(steps.Items[0]);
+
+            Assert.Equal(1, announcements);
+            Assert.Null(steps.SelectedStep);
+            Assert.False(steps.HasSelection);
+
+            // Loading another macro is the other route to the empty state, and it is a different
+            // path through Rebuild — Load drops the selection before rebuilding rather than losing
+            // it to the rebuild. Nothing was selected already, so nothing is announced.
+            steps.Load(MacroOf("b"));
+
+            Assert.Equal(1, announcements);
+            Assert.Null(steps.SelectedStep);
         }
 
         private MacroInspectorStepsViewModel Create()

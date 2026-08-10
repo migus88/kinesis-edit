@@ -15,7 +15,7 @@
     simply refreshes the rail. That is the whole reason it replaces the feature panels it replaces.
 
     MONO IS THE FILE'S VOICE. The position token and the whole assignment line are mono, because
-    `[d]` and `[esc]` are literally what the layout file contains; everything the app says in its
+    `d` and `esc` are literally what the layout file contains; everything the app says in its
     own voice — "position", "factory", "now", the exclusivity sentence, the warning — is sans.
     Mockup 1e draws the header line entirely in sans; issue #92 tightens the token to mono, and
     that is the one deliberate departure from the mock's own typography here.
@@ -88,7 +88,7 @@
                            VerticalAlignment="Center" />
               </StackPanel>
 
-              <!-- `factory [d] · now [esc]`, mono end to end: every part of it is either a value in
+              <!-- `factory d · now esc`, mono end to end: every part of it is either a value in
                    the layout file or the punctuation between two of them. -->
               <StackPanel Orientation="Horizontal" Spacing="4">
                 <TextBlock Text="{x:Static vm:KeyInspectorViewModel.FactoryLabel}" Classes="monoValueSmall muted" />

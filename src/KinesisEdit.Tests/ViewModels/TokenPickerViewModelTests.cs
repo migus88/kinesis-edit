@@ -50,7 +50,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(picker.Rows.Count, picker.MatchCount);
             Assert.True(picker.MatchCount < picker.TotalCount, "The query narrowed nothing.");
-            Assert.Contains(picker.Rows, row => row.Token == "[esc]");
+            Assert.Contains(picker.Rows, row => row.Token == "esc");
             Assert.Equal($"{picker.MatchCount}/{picker.TotalCount}", picker.CounterText);
         }
 
@@ -67,7 +67,7 @@ namespace KinesisEdit.Tests.ViewModels
             var group = Assert.Single(picker.Groups);
 
             Assert.Equal(TokenPickerGroupViewModel.TitleFor(KeyTable.Navigation) + " · 1", group.Header);
-            Assert.Equal("[esc]", Assert.Single(group.Rows).Token);
+            Assert.Equal("esc", Assert.Single(group.Rows).Token);
         }
 
         [Fact]
@@ -92,15 +92,15 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.Query = "ESC";
 
-            Assert.Contains(picker.Rows, row => row.Token == "[esc]");
+            Assert.Contains(picker.Rows, row => row.Token == "esc");
 
             picker.Query = "print scrn";
 
-            Assert.Contains(picker.Rows, row => row.Token == "[prnt]");
+            Assert.Contains(picker.Rows, row => row.Token == "prnt");
 
             picker.Query = "PRNT";
 
-            Assert.Contains(picker.Rows, row => row.Token == "[prnt]");
+            Assert.Contains(picker.Rows, row => row.Token == "prnt");
         }
 
         [Fact]
@@ -193,7 +193,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.SelectCategoryCommand.Execute(RecentChip(picker));
 
-            Assert.Equal(new[] { "[F1]", "[esc]" }, picker.Rows.Select(row => row.Token));
+            Assert.Equal(new[] { "F1", "esc" }, picker.Rows.Select(row => row.Token));
         }
 
         [Fact]
@@ -207,7 +207,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.SelectCategoryCommand.Execute(RecentChip(picker));
 
-            Assert.Equal(new[] { "[esc]", "[F1]" }, picker.Rows.Select(row => row.Token));
+            Assert.Equal(new[] { "esc", "F1" }, picker.Rows.Select(row => row.Token));
         }
 
         [Fact]
@@ -218,7 +218,7 @@ namespace KinesisEdit.Tests.ViewModels
             picker.SelectCategoryCommand.Execute(RecentChip(picker));
             picker.Remember(TestLayouts.Gen1Key("esc"));
 
-            Assert.Equal("[esc]", Assert.Single(picker.Rows).Token);
+            Assert.Equal("esc", Assert.Single(picker.Rows).Token);
         }
 
         [Fact]
@@ -234,7 +234,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             modal.SelectCategoryCommand.Execute(RecentChip(modal));
 
-            Assert.Equal("[esc]", Assert.Single(modal.Rows).Token);
+            Assert.Equal("esc", Assert.Single(modal.Rows).Token);
         }
 
         [Fact]
@@ -277,7 +277,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             var alias = Assert.Single(picker.Rows, row => row.IsAlias);
 
-            Assert.Equal("[numlk]", alias.Token);
+            Assert.Equal("numlk", alias.Token);
             Assert.Equal("Num Lock — keypad layer duplicate", alias.Detail);
             Assert.DoesNotContain("[", alias.Detail, StringComparison.Ordinal);
         }
@@ -294,8 +294,8 @@ namespace KinesisEdit.Tests.ViewModels
             legacy.Query = "esc";
 
             Assert.All(gen1.Rows, row => Assert.False(row.IsAlias));
-            Assert.DoesNotContain(gen1.Rows, row => row.Token == "[escape]");
-            Assert.DoesNotContain(legacy.Rows, row => row.Token == "[esc]");
+            Assert.DoesNotContain(gen1.Rows, row => row.Token == "escape");
+            Assert.DoesNotContain(legacy.Rows, row => row.Token == "esc");
         }
 
         [Fact]
@@ -354,13 +354,13 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.Query = "vol";
 
-            var chosen = picker.Rows.First(row => row.Token == "[vol+]");
+            var chosen = picker.Rows.First(row => row.Token == "vol+");
 
             picker.SelectRowCommand.Execute(chosen);
 
             picker.Query = "vol+";
 
-            Assert.Equal("[vol+]", picker.SelectedRow!.Token);
+            Assert.Equal("vol+", picker.SelectedRow!.Token);
         }
 
         [Fact]
@@ -405,7 +405,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             picker.Query = "vol";
 
-            var row = picker.Rows.First(candidate => candidate.Token == "[vol-]");
+            var row = picker.Rows.First(candidate => candidate.Token == "vol-");
             KeyDefinition? chosen = null;
 
             picker.Chosen += definition => chosen = definition;

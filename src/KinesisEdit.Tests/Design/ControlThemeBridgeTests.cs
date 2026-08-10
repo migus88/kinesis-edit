@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using KinesisEdit.Controls;
@@ -156,6 +157,13 @@ namespace KinesisEdit.Tests.Design
                 (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
                 (typeof(MacroInspectorPanelView).FullName!, "composerSegment", "ComposerSegment"),
+
+                // `coTriggerChip` SPLIT OFF `macroChip` WITH ISSUE #150: the mock draws the lit
+                // TRIGGER latch as a solid accent fill where the selected slot chip and composer
+                // modifier stay accent outlines, and all three wore one class until then. The slot
+                // chips and the modifier latches still write `macroChip`, which has its own case
+                // below for the reason stated there.
+                (typeof(MacroInspectorPanelView).FullName!, "coTriggerChip", "CoTriggerChip"),
                 (typeof(MacroInspectorPanelView).FullName!, "ghost", "GhostButton")
             })
             {
@@ -186,9 +194,10 @@ namespace KinesisEdit.Tests.Design
         [InlineData("Light")]
         public void TheMacroChip_BridgesToItsTheme_AndRingsBothOfItsStates(string variantName)
         {
-            // Issue #146's one new theme, and the Macro panel's whole small-latch vocabulary: the
-            // SLOTS chips, the TRIGGER co-triggers and the composer's modifier latches all write
-            // `macroChip`.
+            // Issue #146's one new theme, and — until #150 — the Macro panel's whole small-latch
+            // vocabulary: the SLOTS chips, the TRIGGER co-triggers and the composer's modifier
+            // latches all wrote `macroChip`. The co-triggers moved onto `CoTriggerChip` with #150
+            // (see the case below); the other two are still this, and this is still their face.
             //
             // It is asserted on a BARE BUTTON rather than through the table above, which is the one
             // case in this file that cannot use a real view: the classes are written by
@@ -221,6 +230,55 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(DesignTokens.Resolve("StatusAdvisoryBrush", variant), chip.BorderBrush);
             Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), chip.Background);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheCoTriggerChip_FillsWhereMacroChipRings_AndKeepsTheAmberOverIt(string variantName)
+        {
+            // Issue #150's one new theme, and it is MacroChip with a single face changed. The two
+            // claims that matter are precedence claims, and neither is visible in the markup:
+            //
+            //  1. the derived `.selected` really does out-rank MacroChip's — Avalonia walks BasedOn
+            //     first, which is the whole reason the fill can be given to one chip and not the
+            //     other three;
+            //  2. `.colliding` still wins the BORDER over it. That one is the trap: CoTriggerChip
+            //     deliberately declares NO `.selected` BorderBrush, because one declared there would
+            //     land after MacroChip's amber ring and silently take the collision mark off the
+            //     strip. A future edit that "completes" the selected face by adding the border is
+            //     exactly what this fails on.
+            //
+            // A bare button rather than the real view, for the reason the case above gives: this is
+            // about the style layer carrying the bridge at all.
+            var variant = ToVariant(variantName);
+            var latch = new Button { Classes = { "coTriggerChip" }, Content = "⇧" };
+
+            using var host = ThemedHost.Show(latch, variant);
+
+            Assert.Same(DesignTokens.Resolve("CoTriggerChip", variant), latch.Theme);
+
+            // Off: MacroChip's own neutral rest face, inherited whole.
+            Assert.Equal(DesignTokens.Resolve("SurfaceBarBrush", variant), latch.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), latch.BorderBrush);
+
+            latch.Classes.Add("selected");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), latch.Background);
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), latch.Foreground);
+            Assert.Equal(FontWeight.SemiBold, latch.FontWeight);
+
+            latch.Classes.Add("colliding");
+
+            Assert.Equal(DesignTokens.Resolve("StatusAdvisoryBrush", variant), latch.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), latch.Background);
+
+            // ...and a gated latch is dead rather than lit, which `:not(:disabled)` is what buys.
+            latch.Classes.Remove("colliding");
+            latch.IsEnabled = false;
+
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), latch.Background);
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), latch.Foreground);
         }
 
         [AvaloniaFact]

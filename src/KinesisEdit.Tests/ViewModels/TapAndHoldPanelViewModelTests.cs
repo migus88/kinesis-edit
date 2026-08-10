@@ -146,8 +146,8 @@ namespace KinesisEdit.Tests.ViewModels
             panel.ArmHoldActionCommand.Execute(null);
             panel.ReceiveKeystroke(Keystroke("lctrl"));
 
-            Assert.Equal("[a]", panel.TapActionText);
-            Assert.Equal("[lctrl]", panel.HoldActionText);
+            Assert.Equal("a", panel.TapActionText);
+            Assert.Equal("lctrl", panel.HoldActionText);
             Assert.DoesNotContain('\n', panel.HoldActionText);
         }
 

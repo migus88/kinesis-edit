@@ -120,7 +120,7 @@ namespace KinesisEdit.Tests.Design
 
             var blocks = Descendants<TextBlock>(host).Where(block => block.IsEffectivelyVisible).ToArray();
 
-            var token = Assert.Single(blocks, block => block.Text == "[esc]");
+            var token = Assert.Single(blocks, block => block.Text == "esc");
             var name = Assert.Single(blocks, block => block.Text == "Esc");
             var header = Assert.Single(blocks, block => block.Text == "Navigation · 1");
 
@@ -266,7 +266,7 @@ namespace KinesisEdit.Tests.Design
             var texts = VisibleTexts(host);
 
             Assert.Contains("Num Lock — keypad layer duplicate", texts);
-            Assert.DoesNotContain("alias of [numlk]", texts);
+            Assert.DoesNotContain("alias of numlk", texts);
         }
 
         [AvaloniaTheory]
@@ -549,7 +549,7 @@ namespace KinesisEdit.Tests.Design
             {
                 Picker.Query = "2";
 
-                Picker.ChooseCommand.Execute(Picker.Rows.First(row => row.Token == "[2]"));
+                Picker.ChooseCommand.Execute(Picker.Rows.First(row => row.Token == "2"));
             }
 
             public RemapPanelView CreatePanelView()

@@ -162,7 +162,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Refresh();
 
             Assert.Single(scene.Panel.Steps.Items);
-            Assert.Equal("[a]", scene.Panel.Steps.Items[0].TokenText);
+            Assert.Equal("a", scene.Panel.Steps.Items[0].TokenText);
         }
 
         [AvaloniaFact]
@@ -221,7 +221,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             scene.Panel.ReceiveKeystroke(Captured("a"));
 
-            Assert.Equal("[a]", Assert.Single(scene.Panel.Steps.Items).TokenText);
+            Assert.Equal("a", Assert.Single(scene.Panel.Steps.Items).TokenText);
 
             // Still armed: a take runs until it is stopped, so one press is not the end of a
             // recording — the sequence header's count is what moves as it grows.
@@ -672,7 +672,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.Equal(2, scene.Key.Key.ActiveMacroIndex);
             Assert.Equal(2, scene.Panel.SelectedSlot!.Slot);
-            Assert.Equal(["[b]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(["b"], scene.Panel.Steps.Items.Select(step => step.TokenText));
 
             // `Assigned` is the panel's ONE hop to RefreshCounters(), and so to IsDirty.
             Assert.Equal(0, assigned);
@@ -682,7 +682,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.SelectSlotCommand.Execute(scene.Panel.SlotOptions[0]);
 
             Assert.Equal(1, scene.Key.Key.ActiveMacroIndex);
-            Assert.Equal(["[a]"], scene.Panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(["a"], scene.Panel.Steps.Items.Select(step => step.TokenText));
             Assert.Equal(0, assigned);
         }
 
@@ -1565,7 +1565,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             Assert.True(scene.Panel.IsComposerEnabled);
             Assert.True(scene.Panel.HasStepKey);
-            Assert.Equal("[b]", scene.Panel.StepTokenText);
+            Assert.Equal("b", scene.Panel.StepTokenText);
             Assert.Equal(MacroInspectorStepViewModel.TapAction, scene.SelectedDirection().Caption);
 
             // A step with no delay lights NEITHER segment (issue #148) and shows an empty field.
@@ -2288,7 +2288,7 @@ namespace KinesisEdit.Tests.ViewModels
             scene.Panel.Steps.MoveStepDownCommand.Execute(null);
 
             Assert.Equal(["b", "a", "c"], scene.MacroTokens());
-            Assert.Equal("[a]", scene.Panel.StepTokenText);
+            Assert.Equal("a", scene.Panel.StepTokenText);
             Assert.Same(scene.Panel.Steps.Items[1], scene.Panel.Steps.SelectedStep);
         }
 

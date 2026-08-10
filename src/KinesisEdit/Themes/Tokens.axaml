@@ -143,6 +143,20 @@
       <Color x:Key="MacroStepKeyColor">#C77DD8</Color>
       <SolidColorBrush x:Key="MacroStepKeyBrush" Color="{StaticResource MacroStepKeyColor}" />
 
+      <!-- THE BOX AROUND THAT KEY, at 17% of it (issue #150). The step row's token chip drew its
+           border in the full `MacroStepKey`, which put the same weight of purple on the box as on
+           the glyph inside it and made a 21px chip read as a solid purple lozenge. Sampled off the
+           designer's mock at 1:1, the chip is `#31213D` on the rail's `#121316` — the macro purple
+           at ~0.17 — with the glyph left at full strength: a bright token in a quiet box.
+
+           It is the same tint/tint-border shape the four status ramps already use, at the alpha the
+           mock measures rather than at `StatusAdvisoryTintBorder`'s 0.38. Per variant rather than
+           variant-independent, unlike those: `MacroStepKey` itself parts from `BadgeMacro` on light
+           (#C77DD8 reads at 2.9:1 on a near-white row), so a single ARGB would tie the box to the
+           dark hue on both. Each variant tints its own. -->
+      <Color x:Key="MacroStepKeyTintBorderColor">#2BC77DD8</Color>
+      <SolidColorBrush x:Key="MacroStepKeyTintBorderBrush" Color="{StaticResource MacroStepKeyTintBorderColor}" />
+
       <!-- Elevation. Flat elevation is a 1px SurfaceLine border and no shadow at all; only
            popovers and modals cast one. The halos are spread-only shadows, never offset
            outlines: focus is 3px of accent at 28% alpha, a selected keycap 2px at 30%.
@@ -298,6 +312,14 @@
            `StatusDemo` and `BadgeLed` do. -->
       <Color x:Key="MacroStepKeyColor">#8E45A0</Color>
       <SolidColorBrush x:Key="MacroStepKeyBrush" Color="{StaticResource MacroStepKeyColor}" />
+
+      <!-- The chip's box at the same 0.17, over THIS variant's purple — see the dark note. The mock
+           is dark-only, so the light member is derived rather than sampled: the alpha is the mock's
+           and the hue is light's own `MacroStepKey`, which is the same rule the pair above follows.
+           Over the rail's `#F4F5F6` it lands on a pale lilac hairline, which is the light analogue
+           of the dark chip's quiet box — verified on a captured frame, not reasoned about. -->
+      <Color x:Key="MacroStepKeyTintBorderColor">#2B8E45A0</Color>
+      <SolidColorBrush x:Key="MacroStepKeyTintBorderBrush" Color="{StaticResource MacroStepKeyTintBorderColor}" />
 
       <!-- The scrim and the shadows are the same in both variants: they are the absence of
            light, and dimming a light window uses the same near-black at the same alpha.

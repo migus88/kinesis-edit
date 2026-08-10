@@ -848,7 +848,7 @@ namespace KinesisEdit.Tests.Design
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.Equal(["[e]", "[s]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(["e", "s", "t"], panel.Steps.Items.Select(step => step.TokenText));
 
             var scroller = Assert.Single(
                 view.GetVisualDescendants().OfType<ScrollViewer>(),
@@ -866,7 +866,7 @@ namespace KinesisEdit.Tests.Design
 
             Press(host, PhysicalKey.ArrowDown, RawInputModifiers.Alt);
 
-            Assert.Equal(["[s]", "[e]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(["s", "e", "t"], panel.Steps.Items.Select(step => step.TokenText));
 
             // ...and back, from a row that is once again inside the scroller. THE RE-FOCUS IS
             // LOAD-BEARING AND IS NOT ABOUT THE SCROLLER: MoveStep rebuilds every row, so the
@@ -879,7 +879,7 @@ namespace KinesisEdit.Tests.Design
 
             Press(host, PhysicalKey.ArrowUp, RawInputModifiers.Alt);
 
-            Assert.Equal(["[e]", "[s]", "[t]"], panel.Steps.Items.Select(step => step.TokenText));
+            Assert.Equal(["e", "s", "t"], panel.Steps.Items.Select(step => step.TokenText));
         }
 
         [AvaloniaFact]

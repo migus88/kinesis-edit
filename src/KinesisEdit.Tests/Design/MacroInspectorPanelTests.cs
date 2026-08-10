@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -56,6 +57,18 @@ namespace KinesisEdit.Tests.Design
         /// tint than to the ramp the row would use without it.
         /// </summary>
         private const double GlyphAntiAliasTolerance = 60;
+
+        /// <summary>
+        /// How far in from a chip's left edge <see cref="FaceOf"/> probes: inside the 3 px corner
+        /// rounding at mid-height, and well clear of a centred glyph inside 8 px of padding.
+        /// </summary>
+        private const int FaceProbeInset = 4;
+
+        /// <summary>
+        /// How far two faces may sit apart and still count as the same paint. Well below the step
+        /// between the accent fill and the 14 % wash over it, which is what it exists to tell apart.
+        /// </summary>
+        private const double FaceProbeTolerance = 24;
 
         /// <summary>
         /// The handoff states 300 px for "the macro-editing variant"; issue #146 widened it to 440,
@@ -154,7 +167,7 @@ namespace KinesisEdit.Tests.Design
                 Assert.Contains(step.TokenText, VisibleRunsOf(chip).Select(run => run.Text));
             }
 
-            Assert.Contains("[e]", texts);
+            Assert.Contains("e", texts);
             Assert.Contains(MacroInspectorStepViewModel.TapAction, texts);
 
             // NO NUMBERS. Written out rather than taken off a constant, because the constants that
@@ -701,6 +714,90 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
+        /// <b>Typing a multi-digit delay keeps the caret</b> (issue #150). The reported defect: one
+        /// digit into the millisecond field dropped keyboard focus, so <c>80</c> and <c>120</c> could
+        /// not be typed at all — the field took the <c>8</c>, wrote it, and the caret was gone before
+        /// the <c>0</c>.
+        /// <para>
+        /// <b>This test has to go through the control, and that is the whole point of it.</b> The
+        /// defect lives in the binding round trip: <c>TextBox.Text</c> updates its source on every
+        /// keystroke, the write rebuilds the step rows, the rebuild announced a transient empty
+        /// selection, the composer answered by taking <c>IsStepDelayEnabled</c> false for one turn,
+        /// and Avalonia clears focus off a control that becomes effectively disabled. Nearly four
+        /// thousand green tests missed it because every one of them assigns <c>StepDelayText</c>
+        /// directly — which skips both the <c>TextBox</c> hop and the focus hop, and therefore skips
+        /// the bug. So this drives <b>real text input</b> through the headless window into the
+        /// rendered field, one character at a time, exactly as a keyboard does.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark", "80")]
+        [InlineData("Light", "120")]
+        public async Task TypingIntoTheDelayField_KeepsTheCaretAndLandsEveryDigit(string variantName, string typed)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            // A step, so the composer is live — and the SECOND one, so the write cannot be confused
+            // with a rebuild that happens to land on row 1 whatever it does.
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[1]);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var field = Assert.Single(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+
+            Assert.True(field.IsEffectivelyEnabled, "The delay field is dead with a step selected.");
+            Assert.Equal(string.Empty, field.Text ?? string.Empty);
+
+            field.Focus();
+
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(field.IsFocused, "The millisecond field refused focus.");
+
+            foreach (var digit in typed)
+            {
+                host.Window.KeyTextInput(digit.ToString());
+
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.True(
+                    field.IsFocused,
+                    $"Typing '{digit}' into the delay field dropped the caret — `{typed} ms` is unauthorable.");
+                Assert.True(field.IsEffectivelyEnabled, $"Typing '{digit}' disabled the field it was typed into.");
+            }
+
+            host.Capture();
+
+            // The whole number arrived — in the box, in the view model, and on the step itself. A
+            // field that kept focus and lost a digit would be the same defect wearing a smaller hat.
+            var expected = int.Parse(typed, CultureInfo.InvariantCulture);
+
+            Assert.Equal(typed, field.Text);
+            Assert.Equal(typed, panel.StepDelayText);
+            Assert.Equal(expected, panel.StepDelayMilliseconds);
+            Assert.Equal(string.Empty, panel.StepDelayError);
+
+            var step = Assert.IsType<MacroInspectorStepViewModel>(panel.Steps.SelectedStep);
+
+            Assert.Equal(1, step.Position - 1);
+            Assert.True(step.HasDelay);
+            Assert.Equal(expected, step.DelayMilliseconds);
+
+            // ...and the strip agrees: typing a number IS the choice of `fixed`.
+            var fixedSegment = DelaySegmentsOf(view)[0];
+
+            Assert.Contains("selected", fixedSegment.Classes);
+        }
+
+        /// <summary>
         /// <b>Row 2 of the compose bar is ONE line</b> — the designer's mock draws
         /// <c>tap press release · then wait · fixed random · [ 80 ] ms</c> across a single row, and
         /// this panel drew it in a <c>WrapPanel</c> precisely because it did not fit.
@@ -745,12 +842,35 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Equal(6, members.Length);
 
-            // ONE LINE: every control sits on the same top edge, and the row is no taller than the
+            // ONE LINE: every control shares one vertical CENTRE, and the row is no taller than the
             // tallest of them. A wrap would put the second half a row lower and double the height.
-            var tops = members.Select(member => member.TranslatePoint(default, view)!.Value.Y).ToArray();
+            //
+            // Centres and not top edges since issue #150: the segments hug their own content now
+            // (`ComposerSegment` centres itself, which is what took the pill from a 32 px block down
+            // to the mock's chip-around-a-word) and are therefore shorter than the millisecond field
+            // beside them. Sharing a top edge stopped being true, and stopped being the claim —
+            // "nothing wrapped" was always about the baseline they share.
+            var centres = members
+                .Select(member => member.TranslatePoint(default, view)!.Value.Y + (member.Bounds.Height / 2))
+                .ToArray();
 
-            Assert.All(tops, top => Assert.Equal(tops[0], top));
+            // Half a pixel of slack, and no more: a 25 px segment centred against a 32 px field
+            // lands on x.5 where the field lands on x.0, and a wrap would be a whole row out.
+            Assert.All(
+                centres,
+                centre => Assert.True(
+                    Math.Abs(centre - centres[0]) <= 1,
+                    $"A control on row 2 is centred at {centre} where the first is at {centres[0]} — the row wrapped."));
             Assert.Equal(members.Max(member => member.Bounds.Height), row.Bounds.Height);
+
+            // ...and the segments really are shorter than the field, which is the metric that
+            // changed. A segment that went back to filling the row would pass every claim above.
+            Assert.All(
+                DirectionSegmentsOf(view).Concat(DelaySegmentsOf(view)),
+                segment => Assert.True(
+                    segment.Bounds.Height < field.Bounds.Height,
+                    $"A composer segment is {segment.Bounds.Height} tall — it is filling the row "
+                    + $"rather than hugging its word ({field.Bounds.Height} is the field's own height)."));
 
             // ...AND NOTHING RAN OFF THE END. `ms` is the last thing on the line, so its right edge
             // is the row's; the composer's box is what it may not pass.
@@ -896,8 +1016,8 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            var left = Assert.Single(panel.Steps.Items, step => step.TokenText == "[b]");
-            var right = Assert.Single(panel.Steps.Items, step => step.TokenText == "[c]");
+            var left = Assert.Single(panel.Steps.Items, step => step.TokenText == "b");
+            var right = Assert.Single(panel.Steps.Items, step => step.TokenText == "c");
 
             Assert.Equal(MacroModifierMarks.NoSide, Assert.Single(left.Modifiers).Side);
             Assert.Equal(MacroModifierMarks.RightSide, Assert.Single(right.Modifiers).Side);
@@ -1078,8 +1198,20 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             Assert.Contains("selected", frame.Classes);
-            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), frame.BorderBrush);
-            Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), frame.Background);
+
+            // A QUIET RING AND NO FILL SINCE ISSUE #150 — the mock's own face, sampled at 1:1. It was
+            // the full `AccentBrush` around the 14 % wash, which made a five-row list read as a blue
+            // band; `AccentSelectionFill` used as the border is the closest existing role to the
+            // mock's `#273048`, and the interior goes back to the rail.
+            Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), frame.BorderBrush);
+            Assert.Equal(Brushes.Transparent.Color, ((ISolidColorBrush)frame.Background!).Color);
+
+            // ...and that is what keeps the selection apart from a DROP TARGET, which is the whole
+            // reason the drop ring is a ring: the drop ring is the full accent and is drawn inside
+            // this frame, so the two are now a bright ring inside a quiet one rather than two
+            // `AccentBrush` hairlines that merge. Asserted here so a future edit cannot quietly give
+            // the selection the loud ring back.
+            Assert.NotEqual(DesignTokens.Resolve("AccentBrush", variant), frame.BorderBrush);
 
             // The ring really is around all three: the grip and the delete mark are inside the
             // frame's own box, not beside it.
@@ -1113,7 +1245,7 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            Assert.Equal(["[e]", "[s]", "[t]"], TokensOf(panel));
+            Assert.Equal(["e", "s", "t"], TokensOf(panel));
 
             Drag(host, RowBodyPointOf(host, view, 1), RowBodyPointOf(host, view, 3));
 
@@ -1121,7 +1253,7 @@ namespace KinesisEdit.Tests.Design
 
             // The first step carried to the last row: the delay folded behind a step travels with
             // it, which is MoveStep's rule and stays MoveStep's rule.
-            Assert.Equal(["[s]", "[t]", "[e]"], TokensOf(panel));
+            Assert.Equal(["s", "t", "e"], TokensOf(panel));
         }
 
         /// <summary>
@@ -1146,7 +1278,7 @@ namespace KinesisEdit.Tests.Design
 
             host.Capture();
 
-            Assert.Equal(["[t]", "[e]", "[s]"], TokensOf(panel));
+            Assert.Equal(["t", "e", "s"], TokensOf(panel));
         }
 
         /// <summary>
@@ -1175,7 +1307,7 @@ namespace KinesisEdit.Tests.Design
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.Equal(["[e]", "[s]", "[t]"], TokensOf(panel));
+            Assert.Equal(["e", "s", "t"], TokensOf(panel));
             Assert.Same(panel.Steps.Items[1], panel.Steps.SelectedStep);
         }
 
@@ -1320,7 +1452,7 @@ namespace KinesisEdit.Tests.Design
             // ...and both are gone the moment the gesture ends. The reorder still happened.
             Assert.False(ghost.IsEffectivelyVisible);
             Assert.All(panel.Steps.Items, step => Assert.False(step.IsDragSource));
-            Assert.Equal(["[s]", "[e]", "[t]"], TokensOf(panel));
+            Assert.Equal(["s", "e", "t"], TokensOf(panel));
         }
 
         /// <summary>
@@ -1367,7 +1499,7 @@ namespace KinesisEdit.Tests.Design
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(["[e]", "[s]", "[t]"], TokensOf(panel));
+            Assert.Equal(["e", "s", "t"], TokensOf(panel));
         }
 
         /// <summary>
@@ -1475,7 +1607,7 @@ namespace KinesisEdit.Tests.Design
             host.Capture();
 
             Assert.Equal([false, true, false], LatchStatesOf(view));
-            Assert.Equal(["[b]"], TokensOf(panel));
+            Assert.Equal(["b"], TokensOf(panel));
 
             // Back to slot 1 — a different macro, with a different trigger — through the chip's own
             // command, which is how the app puts the write there.
@@ -1484,7 +1616,7 @@ namespace KinesisEdit.Tests.Design
             Dispatcher.UIThread.RunJobs();
             host.Capture();
 
-            Assert.Equal(["[e]", "[s]", "[t]"], TokensOf(panel));
+            Assert.Equal(["e", "s", "t"], TokensOf(panel));
             Assert.Equal([false, false, false], LatchStatesOf(view));
 
             // ...and back again, so the relight is proved in both directions.
@@ -1553,7 +1685,7 @@ namespace KinesisEdit.Tests.Design
 
             // The token left the strip with issue #146 — the rail's own header names the position,
             // and drawing `[hk7]` twice on one rail said nothing the second time.
-            Assert.DoesNotContain("[hk7]", texts);
+            Assert.DoesNotContain("hk7", texts);
 
             // The `CO-TRIGGERS` block left the footer with them; nothing may draw a second copy.
             Assert.DoesNotContain("CO-TRIGGERS", texts);
@@ -1578,7 +1710,11 @@ namespace KinesisEdit.Tests.Design
                 latches.Min(latch => LeftEdgeOf(latch, view))
                 > SlotChipsOf(view).Max(chip => RightEdgeOf(chip, view)));
 
-            var accent = DesignTokens.ResolveBrushColor("AccentBrush", variant);
+            // A LIT CO-TRIGGER IS A SOLID ACCENT FILL SINCE ISSUE #150, so its label is the colour
+            // that rides one — `AccentText`, not `AccentBrush`. The slot chips and the composer's
+            // modifier latches keep the outline face and therefore keep the accent LABEL; the split
+            // is asserted side by side in TheThreeChipStrips_PartCompanyOnExactlyOneFace below.
+            var accentLabel = DesignTokens.ResolveBrushColor("AccentTextBrush", variant);
             var secondary = DesignTokens.ResolveBrushColor("TextSecondaryBrush", variant);
             var selectedRuns = 0;
 
@@ -1609,7 +1745,7 @@ namespace KinesisEdit.Tests.Design
                     // one as type.
                     if (model.IsOn)
                     {
-                        Assert.Equal(accent, colour);
+                        Assert.Equal(accentLabel, colour);
                         selectedRuns++;
                     }
                     else
@@ -1621,6 +1757,82 @@ namespace KinesisEdit.Tests.Design
 
             // The run of the one that is on, or the assertion above passed vacuously.
             Assert.Equal(1, selectedRuns);
+        }
+
+        /// <summary>
+        /// <b>The panel's three chip strips part company on exactly one face</b> (issue #150). The
+        /// mock draws a lit <c>TRIGGER</c> latch as a <b>solid accent fill</b> and the selected slot
+        /// chip (<c>1</c>) and composer modifier (<c>^</c>) as accent <b>outlines</b> over the 14 %
+        /// wash — a co-trigger says "this modifier is held", where a slot chip says "this is the one
+        /// I am editing".
+        /// <para>
+        /// All three wore <c>macroChip</c> until #150, so the fill could not be given to one without
+        /// giving it to all three. This asserts the split on one rendered panel with all three lit at
+        /// once, which is the only place the claim can be made — each strip on its own would pass
+        /// whichever theme it happened to be pointed at.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheThreeChipStrips_PartCompanyOnExactlyOneFace(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+            var variant = ToVariant(variantName);
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            // All three lit, through the panel's own commands: a slot is always selected, a step is
+            // selected so the modifier latches come alive, and one co-trigger is switched on.
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+            panel.ToggleChordModifierCommand.Execute(panel.ChordModifiers[1]);
+            panel.ToggleCoTriggerCommand.Execute(panel.CoTriggers[1]);
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var slot = Assert.Single(SlotChipsOf(view), chip => chip.Classes.Contains("selected"));
+            var modifier = Assert.Single(LatchesOf(view), latch => latch.Classes.Contains("selected"));
+            var coTrigger = Assert.Single(CoTriggerChipsOf(view), latch => latch.Classes.Contains("selected"));
+
+            // The bridge, first: a class that stopped matching leaves the chip on the other theme
+            // and merely looks a little wrong.
+            Assert.Same(DesignTokens.Resolve("MacroChip", variant), slot.Theme);
+            Assert.Same(DesignTokens.Resolve("MacroChip", variant), modifier.Theme);
+            Assert.Same(DesignTokens.Resolve("CoTriggerChip", variant), coTrigger.Theme);
+
+            // The outlines: a wash behind an accent label, ringed in the accent.
+            foreach (var outlined in new[] { slot, modifier })
+            {
+                Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), outlined.Background);
+                Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), outlined.BorderBrush);
+                Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), outlined.Foreground);
+            }
+
+            // ...and the fill: the accent itself, with the label that rides one.
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), coTrigger.Background);
+            Assert.Equal(DesignTokens.Resolve("AccentTextBrush", variant), coTrigger.Foreground);
+
+            // The ring is deliberately NOT restated by CoTriggerChip — see the theme's remarks: a
+            // `.selected` BorderBrush declared there would out-rank the amber `.colliding` ring
+            // MacroChip declares last. On a solid accent fill an accent ring reads as no ring.
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), coTrigger.BorderBrush);
+
+            // At the glass, and this is the assertion the resolved brushes cannot make: the two
+            // faces really are different colours on screen.
+            var fill = DesignTokens.ResolveBrushColor("AccentBrush", variant);
+
+            Assert.True(
+                Distance(fill, FaceOf(host, coTrigger)) < FaceProbeTolerance,
+                "The lit co-trigger is not drawn in the solid accent fill.");
+            Assert.True(
+                Distance(fill, FaceOf(host, slot)) > FaceProbeTolerance,
+                "The selected slot chip is drawn in the co-trigger's solid accent fill.");
         }
 
         /// <summary>
@@ -1868,7 +2080,7 @@ namespace KinesisEdit.Tests.Design
 
             // One keystroke and the arm is gone: it is not a take, it is a single value.
             Assert.Equal(MacroCaptureMode.None, panel.CaptureMode);
-            Assert.Equal("[1]", panel.Steps.Items[0].TokenText);
+            Assert.Equal("1", panel.Steps.Items[0].TokenText);
 
             var control = LatchesOf(view)
                 .Single(latch => latch.DataContext is MacroChordModifier { Modifier: MacroModifiers.LeftControl });
@@ -1880,7 +2092,7 @@ namespace KinesisEdit.Tests.Design
 
             var step = panel.Steps.Items[0];
 
-            Assert.Equal("[1]", step.TokenText);
+            Assert.Equal("1", step.TokenText);
             Assert.Equal(MacroModifierMarks.ControlMark, Assert.Single(step.Modifiers).Symbol);
 
             // The chord reads as ONE keystroke on the row — the mark and the token in one chip.
@@ -1889,7 +2101,7 @@ namespace KinesisEdit.Tests.Design
                 border => border.Classes.Contains("macroStepToken"));
 
             Assert.Equal(
-                MacroModifierMarks.ControlMark + "[1]",
+                MacroModifierMarks.ControlMark + "1",
                 string.Concat(VisibleRunsOf(chip).Select(run => run.Text)));
         }
 
@@ -2252,6 +2464,18 @@ namespace KinesisEdit.Tests.Design
                                  && !border.IsHitTestVisible
                                  && border.BorderBrush is ISolidColorBrush brush
                                  && brush.Color == accent);
+        }
+
+        /// <summary>
+        /// The colour a few pixels in from <paramref name="control"/>'s left edge, at mid-height:
+        /// on its face, inside the chip's 3 px corner rounding and clear of its centred glyph.
+        /// </summary>
+        private static Color FaceOf(ThemedHost host, Control control)
+        {
+            var point = control.TranslatePoint(new Point(FaceProbeInset, control.Bounds.Height / 2), host.Window)
+                ?? throw new InvalidOperationException("The control is not in the window's tree.");
+
+            return FramePixels.At(host.Capture(), (int)point.X, (int)point.Y);
         }
 
         private static double Distance(Color first, Color second)

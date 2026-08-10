@@ -61,7 +61,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             _capture.RaiseKeystroke(TestLayouts.Gen1Key("z"));
 
-            Assert.Equal("[z]", Assert.Single(panel.Steps.Items).TokenText);
+            Assert.Equal("z", Assert.Single(panel.Steps.Items).TokenText);
             Assert.False(key.IsModified);
             Assert.Equal(0, editor.ModifiedKeyCount);
         }
@@ -95,7 +95,7 @@ namespace KinesisEdit.Tests.ViewModels
 
             // Exactly one keystroke: it wrote the step, disarmed itself, and the editor answered
             // the RecordingChanged by stopping the service it owns.
-            Assert.Equal("[q]", Assert.Single(panel.Steps.Items).TokenText);
+            Assert.Equal("q", Assert.Single(panel.Steps.Items).TokenText);
             Assert.Equal(MacroCaptureMode.None, panel.CaptureMode);
             Assert.False(_capture.IsCapturing);
             Assert.False(editor.IsCaptureActive);

@@ -24,7 +24,7 @@ namespace KinesisEdit.ViewModels
     {
         /// <summary>
         /// How the key inspector names the first panel of a split board (mockups <c>1e</c>/<c>2a</c>:
-        /// "Left half · [d] position"). It is the <b>drawn</b> panel, not a hand of the user's:
+        /// "Left half · d position"). It is the <b>drawn</b> panel, not a hand of the user's:
         /// on the Freestyle Edge RGB panel 0 is the hotkey column plus the left typing half.
         /// </summary>
         public const string LeftHalfDescription = "Left half";
@@ -35,7 +35,7 @@ namespace KinesisEdit.ViewModels
         /// <summary>
         /// Where a cap sits, in the inspector's words. A board drawn in one piece has no halves to
         /// name and answers with an empty string rather than calling its only panel "left" — the
-        /// header then reads "[d] position", which is still true.
+        /// header then reads "d position", which is still true.
         /// <para>
         /// It takes the section count rather than reading it off the cap because the cap knows only
         /// its own <see cref="Section"/>; the layer is what knows how many panels the board has
@@ -60,16 +60,23 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// One key-table entry spelled the way the device's own config file spells it —
-        /// <c>[esc]</c>, <c>[d]</c>. The brackets are the file's (specs/04-layout-files.md), which
-        /// is what makes this mono type rather than sans: "mono means this is literally a value in
-        /// a config file".
-        /// <para>
-        /// An entry with no token in this dialect falls back to its caption, unbracketed, so the
-        /// inspector says <em>something</em> about a position it cannot spell rather than showing
-        /// an empty pair of brackets. Every position of every shipped geometry is built from a
-        /// token, so the fallback is a guard rather than a path.
-        /// </para>
+        /// One key-table entry spelled the way the device's own config file spells it — <c>esc</c>,
+        /// <c>d</c>.
+        ///
+        /// <para><b>The file's square brackets are deliberately not drawn</b> (issue #150). They were
+        /// here until then, and they were what made the mono law — "mono means this is literally a
+        /// value in a config file" — literally true of every token in the app. The designer's mock
+        /// draws a bare token in a chip, the chip is what says "this is a value", and the user chose
+        /// the mock knowing the cost. The type stays mono, so the law still <em>reads</em>; it is a
+        /// recorded deviation rather than a silent one — see docs/app/design-system.md's deviation
+        /// ledger.</para>
+        ///
+        /// <para>An entry with no token in this dialect falls back to its caption, so the inspector
+        /// says <em>something</em> about a position it cannot spell rather than nothing at all.
+        /// Nothing distinguishes that fallback from a token any more — the brackets were the only
+        /// thing that ever did — and nothing in the app depends on telling them apart: every
+        /// consumer draws the string and none of them parses it. Every position of every shipped
+        /// geometry is built from a token, so the fallback is a guard rather than a path.</para>
         /// </summary>
         public static string FormatToken(KeyDefinition key, TokenDialect dialect)
         {
@@ -78,7 +85,7 @@ namespace KinesisEdit.ViewModels
             var token = key.GetToken(dialect);
 
             return token.Length > 0
-                ? "[" + token + "]"
+                ? token
                 : KeyCaption.For(key, dialect, KeyCaption.IsMacOs, EmbeddedFontGlyphCoverage.Instance);
         }
 
@@ -152,19 +159,19 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>
         /// What the board shipped this position doing, as its config file spells it — the
-        /// <c>factory [d]</c> half of the inspector's assignment line (mockups <c>1e</c>/<c>2a</c>)
+        /// <c>factory d</c> half of the inspector's assignment line (mockups <c>1e</c>/<c>2a</c>)
         /// and the token its header names the position by.
         /// <para>
         /// It is <see cref="KeyboardKey.OriginalKey"/> and never the silkscreen: the print is what
         /// the cap says (<see cref="Caption"/>), the token is what the file says, and on the hotkey
         /// column the two differ outright — the cap reads <c>vdrv</c> and the file reads
-        /// <c>[hk7]</c>. Fixed for the life of the position, so it never notifies.
+        /// <c>hk7</c>. Fixed for the life of the position, so it never notifies.
         /// </para>
         /// </summary>
         public string FactoryAssignmentText { get; }
 
         /// <summary>
-        /// What the position does <b>now</b>, as the file would spell it — the <c>now [esc]</c>
+        /// What the position does <b>now</b>, as the file would spell it — the <c>now esc</c>
         /// half of the assignment line. <see cref="KeyboardKey.ModifiedOrOriginalKey"/>, so it
         /// equals <see cref="FactoryAssignmentText"/> until the position is remapped.
         /// <para>
