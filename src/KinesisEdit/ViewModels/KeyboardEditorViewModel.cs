@@ -25,7 +25,7 @@ namespace KinesisEdit.ViewModels
     /// </para>
     /// </summary>
     public sealed partial class KeyboardEditorViewModel
-        : DeviceEditorViewModel, IDisposable, IResetScopeHost, IMacroInsertionHost
+        : DeviceEditorViewModel, IDisposable, IResetScopeHost, IMacroInsertionHost, IEditorKeystrokeHost
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -399,27 +399,18 @@ namespace KinesisEdit.ViewModels
         public bool IsOverlayAwaitingKeystroke => _overlays.Active is IKeystrokeSink { WantsKeystrokes: true };
 
         /// <summary>
-        /// Whether the next physical keystroke already belongs to somebody: a key waiting for its
-        /// new assignment, a macro being recorded, an armed field of a modal panel, or an armed
-        /// record button in the key inspector rail. These are the consumers of "one keystroke, one
-        /// target" (invariant 5), and while any of them is live the editor's keyboard grammar is
-        /// <b>off entirely</b> — a user assigning ⌘S to a key must get <c>s</c>-with-Meta recorded,
-        /// not a save.
-        /// <para>
-        /// <b>The rail's flag is not optional here.</b> The rail is not modal, so gate 2 of the
-        /// view's key handler (an open overlay owns the keyboard) never fires for it — without this
-        /// term ⌘S would start serializing the model while a hold action was being recorded.
-        /// </para>
+        /// Whether the next physical keystroke already belongs to somebody — the consumers of "one
+        /// keystroke, one target" (invariant 5), and the gate the editor's whole keyboard grammar
+        /// is off behind.
         /// <para>
         /// It is read on demand by <see cref="Views.KeyboardEditorView"/>'s key handler and is
         /// deliberately not observable: nothing binds it, and its sources already raise their own
-        /// notifications.
+        /// notifications. The state machine behind it is
+        /// <see cref="EditorKeystrokeRouter"/>'s since issue #154 and this property hands out its
+        /// very answer, so the rehoming changed nothing the view or a test can see.
         /// </para>
         /// </summary>
-        public bool IsCaptureActive =>
-            IsListening
-            || IsOverlayAwaitingKeystroke
-            || Inspector.IsRecording;
+        public bool IsCaptureActive => _keystrokes.IsCaptureActive;
 
         /// <summary>The device's layers, in model order.</summary>
         public IReadOnlyList<KeyboardLayerViewModel> Layers
@@ -454,23 +445,19 @@ namespace KinesisEdit.ViewModels
             }
         }
 
-        /// <summary>The key waiting for the next physical keypress, or null when nothing is listening.</summary>
-        public KeyboardKeyViewModel? ListeningKey
-        {
-            get => _listeningKey;
-            private set
-            {
-                if (SetProperty(ref _listeningKey, value))
-                {
-                    OnPropertyChanged(nameof(IsListening));
-
-                    NotifyCommands();
-                }
-            }
-        }
+        /// <summary>
+        /// The key waiting for the next physical keypress, or null when nothing is listening.
+        /// <para>
+        /// The remap state machine is <see cref="EditorKeystrokeRouter"/>'s since issue #154 and
+        /// this property reads its state; the announcement is raised here, in
+        /// <see cref="IEditorKeystrokeHost.OnListeningChanged"/>, because a property may only be
+        /// raised by the class that declares it.
+        /// </para>
+        /// </summary>
+        public KeyboardKeyViewModel? ListeningKey => _keystrokes.ListeningKey;
 
         /// <summary>Whether a key is currently listening for its new assignment.</summary>
-        public bool IsListening => ListeningKey is not null;
+        public bool IsListening => _keystrokes.IsListening;
 
         /// <summary>
         /// The editor's one rail width — the object the Keys tab's key inspector and the Lighting
@@ -520,11 +507,20 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand { get; }
 
-        /// <summary>Puts the selected key into listening state.</summary>
-        public IRelayCommand BeginRemapCommand { get; }
+        /// <summary>
+        /// Puts the selected key into listening state.
+        /// <para>
+        /// Both remap commands are <see cref="EditorKeystrokeRouter"/>'s since issue #154 and these
+        /// two properties hand out its very commands — <see cref="CancelRemapCommand"/> is bound in
+        /// <c>Views/KeyboardEditorView.axaml</c> beside the listening banner and run by the
+        /// grammar in its code-behind — so the rehoming changed nothing the view or a test can see,
+        /// and <see cref="NotifyCommands"/> still re-asks the very instances that are bound.
+        /// </para>
+        /// </summary>
+        public IRelayCommand BeginRemapCommand => _keystrokes.BeginRemapCommand;
 
-        /// <summary>Leaves listening state without changing anything (the view binds Escape to it).</summary>
-        public IRelayCommand CancelRemapCommand { get; }
+        /// <inheritdoc cref="EditorKeystrokeRouter.CancelRemapCommand"/>
+        public IRelayCommand CancelRemapCommand => _keystrokes.CancelRemapCommand;
 
         /// <summary>
         /// Drops the selected key's remap (specs/10-apps-and-ui.md, "Reset Key").
@@ -583,8 +579,8 @@ namespace KinesisEdit.ViewModels
         private readonly ResetScopeCoordinator _resetScopes;
         private readonly EditorAdvisoryProjection _advisoryProjection;
         private readonly MacroInsertionHost _macroInsertion;
+        private readonly EditorKeystrokeRouter _keystrokes;
         private readonly KeyboardVisual? _visual;
-        private readonly Action<CapturedKeystroke> _keystrokeCapturedHandler;
         private readonly EventHandler _activeOverlayChangedHandler;
         private readonly EventHandler _lightingChangedHandler;
         private readonly PropertyChangedEventHandler _inspectorPropertyChangedHandler;
@@ -593,7 +589,6 @@ namespace KinesisEdit.ViewModels
         private IReadOnlyList<string> _invalidLineMessages = [];
         private KeyboardLayerViewModel? _selectedLayer;
         private KeyboardKeyViewModel? _selectedKey;
-        private KeyboardKeyViewModel? _listeningKey;
         private KeyboardLayout? _layout;
         private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
@@ -604,17 +599,6 @@ namespace KinesisEdit.ViewModels
         private bool _isDirty;
         private bool _hasLoadStarted;
         private bool _isDisposed;
-
-        /// <summary>
-        /// Set by <see cref="OnKeystrokeCaptured"/> whenever a keystroke went to <b>any</b> sink —
-        /// the open modal's, or an armed key-inspector panel's — and read-and-cleared by the view on
-        /// the very key event that produced it. See <see cref="TryTakeOverlayKeystroke"/>.
-        /// <para>
-        /// It is latched by the <em>router</em> rather than announced by the panel, so there is one
-        /// answer to "did a sink take this one" no matter which sink took it.
-        /// </para>
-        /// </summary>
-        private bool _hasOverlayTakenKeystroke;
 
         /// <summary>
         /// Creates the editor for <paramref name="device"/>. Construction is deliberately cheap —
@@ -728,8 +712,13 @@ namespace KinesisEdit.ViewModels
             SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab is not null);
             SelectLayerCommand = new RelayCommand<KeyboardLayerViewModel>(SelectLayer);
             SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(SelectKey);
-            BeginRemapCommand = new RelayCommand(BeginRemap, () => CanBeginRemap());
-            CancelRemapCommand = new RelayCommand(CancelRemap, () => IsListening);
+            // The remap state machine, spec 10's keystroke routing and the editor's ONE
+            // subscription to the capture service (EditorKeystrokeRouter). Built HERE, where its
+            // two commands used to be created, because everything below it re-asks them:
+            // NotifyCommands names both, and the first SelectTab at the end of this constructor
+            // runs it. It is handed the same capture service EditorOverlayHost above was — two
+            // consumers of one app-wide service, each stopping only what it started.
+            _keystrokes = new EditorKeystrokeRouter(this, _capture);
             // The three reset scopes and the two prompts that name them (ResetScopeCoordinator).
             // Built HERE and not later: BoardLegend and CreateInspector below are both handed one of
             // its commands in their own constructors, so it has to exist before either of them.
@@ -789,9 +778,6 @@ namespace KinesisEdit.ViewModels
             Lighting.ModelChanged += _lightingChangedHandler;
 
             _overlays.ActiveChanged += _activeOverlayChangedHandler;
-
-            _keystrokeCapturedHandler = OnKeystrokeCaptured;
-            _capture.KeystrokeCaptured += _keystrokeCapturedHandler;
         }
 
         /// <summary>
@@ -964,29 +950,15 @@ namespace KinesisEdit.ViewModels
             return true;
         }
 
-        /// <summary>
-        /// Whether the keystroke being handled right now was already taken by the open panel's own
-        /// keystroke sink — and clears the record as it answers, so one keystroke is reported once.
-        /// <para>
-        /// It exists because <see cref="IsOverlayAwaitingKeystroke"/> cannot answer the question.
-        /// The capture service previews the window's key events in the <b>tunnel</b> phase, above
-        /// this editor's view, so by the time the view's own handler runs the sink has already
-        /// received the key <em>and disarmed</em> — leaving the panel looking idle. Escape read
-        /// that as "nothing is waiting" and closed the whole panel in the same keypress it was
-        /// meant only to fill an armed field with.
-        /// </para>
-        /// <para>
-        /// The view reads it on <b>every</b> key down it sees, not only on Escape, so a latch set
-        /// by an ordinary keystroke cannot survive into a later Escape.
-        /// </para>
-        /// </summary>
+        /// <inheritdoc cref="EditorKeystrokeRouter.TryTakeOverlayKeystroke"/>
+        /// <remarks>
+        /// The latch is <see cref="EditorKeystrokeRouter"/>'s since issue #154 — one field with one
+        /// owner, where it used to be written from two partials of this class and cleared from two
+        /// more. This stays as the name <c>Views/KeyboardEditorView.axaml.cs</c> calls it by.
+        /// </remarks>
         public bool TryTakeOverlayKeystroke()
         {
-            var taken = _hasOverlayTakenKeystroke;
-
-            _hasOverlayTakenKeystroke = false;
-
-            return taken;
+            return _keystrokes.TryTakeOverlayKeystroke();
         }
 
         private LoadOutcome LoadProfile()
@@ -1283,130 +1255,26 @@ namespace KinesisEdit.ViewModels
             SelectedKey = null;
         }
 
-        private bool CanBeginRemap()
-        {
-            // An armed rail panel and a listening key would fight over the same keystrokes, and an
-            // open feature panel owns them outright, so neither may start a remap.
-            return SelectedKey is not null
-                   && SelectedKey.CanEdit
-                   && !IsLoading
-                   && !IsBusy
-                   && !Inspector.IsRecording
-                   && ActiveOverlay is null;
-        }
-
-        /// <summary>
-        /// Enters listening state: from here the next captured keystroke becomes the assignment.
-        /// Only one key ever listens, so an in-flight listen is cancelled first.
-        /// </summary>
+        /// <inheritdoc cref="EditorKeystrokeRouter.BeginRemap"/>
+        /// <remarks>
+        /// A forwarder, so the click contract above reads as it always did. The state machine is
+        /// <see cref="EditorKeystrokeRouter"/>'s since issue #154.
+        /// </remarks>
         private void BeginRemap()
         {
-            if (!CanBeginRemap())
-            {
-                return;
-            }
-
-            CancelRemap();
-
-            // A listening key and an armed copy are two different answers to "what does the next
-            // input mean", so only one of them is ever live. Arming the copy ends a listen for the
-            // same reason (ArmCopyKey), which is what makes the Escape order below unambiguous.
-            CancelCopyKey();
-
-            var key = SelectedKey!;
-
-            key.IsListening = true;
-            ListeningKey = key;
-
-            _capture.Start();
+            _keystrokes.BeginRemap();
         }
 
-        /// <summary>Leaves listening state and stops capture; the model is untouched.</summary>
+        /// <inheritdoc cref="EditorKeystrokeRouter.CancelRemap"/>
+        /// <remarks>
+        /// A forwarder, and deliberately still a method of this class: it is called from seventeen
+        /// places across five partials, and at <see cref="ShowOverlay"/>, <see cref="SelectTab"/>
+        /// and <see cref="SelectLayer"/> the stand-down triple is <em>interleaved</em> with other
+        /// work. Issue #154 changed what the call resolves to and nothing about where it sits.
+        /// </remarks>
         private void CancelRemap()
         {
-            if (ListeningKey is null)
-            {
-                return;
-            }
-
-            StopListening();
-        }
-
-        private void StopListening()
-        {
-            if (ListeningKey is not null)
-            {
-                ListeningKey.IsListening = false;
-                ListeningKey = null;
-            }
-
-            // Capture is never left running: it swallows keystrokes from the rest of the app while
-            // it is on (docs/app/keystroke-capture.md).
-            _capture.Stop();
-        }
-
-        /// <summary>
-        /// The routing rule of specs/10-apps-and-ui.md: "a captured key is forwarded to the Tap
-        /// and Hold dialog <b>if that dialog is open</b>; otherwise it is applied as a remap, or
-        /// appended to the active macro when the macro-entry box is focused". One keystroke reaches
-        /// exactly one target, in that order — an open sink panel first, then a recording macro,
-        /// then a listening key. The editor owns the single subscription, so the order lives in one
-        /// place.
-        /// <para>
-        /// A <b>modal</b> sink takes precedence on being <em>open</em>, not on being armed: a panel
-        /// with no field armed swallows the keystroke and discards it, which is what keeps anything
-        /// under a scrim from quietly consuming keys aimed at the panel. The <b>rail</b> is the
-        /// opposite, and deliberately so — see <see cref="TryRouteToInspector"/>.
-        /// </para>
-        /// </summary>
-        private void OnKeystrokeCaptured(CapturedKeystroke keystroke)
-        {
-            if (keystroke is null)
-            {
-                return;
-            }
-
-            // Ahead of everything, because an armed record button in the rail is the most specific
-            // claim on the next keystroke there is. It is also the only branch here that tests
-            // WantsKeystrokes rather than mere existence.
-            if (TryRouteToInspector(keystroke))
-            {
-                return;
-            }
-
-            if (ActiveOverlay is IKeystrokeSink overlaySink)
-            {
-                // Latched for the view, which is still to see this same key event: the sink may
-                // disarm as it takes the key, and "no field is armed any more" must not read as
-                // "the panel was idle, close it" (see TryTakeOverlayKeystroke).
-                _hasOverlayTakenKeystroke = true;
-
-                overlaySink.ReceiveKeystroke(keystroke);
-
-                return;
-            }
-
-            ApplyRemap(keystroke);
-        }
-
-        private void ApplyRemap(CapturedKeystroke keystroke)
-        {
-            var key = ListeningKey;
-
-            if (key is null)
-            {
-                return;
-            }
-
-            // Remap(originalKey) is how "assign the key its own action" clears the remap
-            // (04 §2.1) — the capture path deliberately goes through the editor path so that
-            // pressing a key's own default un-does it, exactly like the legacy apps.
-            key.Key.Remap(keystroke.Key);
-
-            StopListening();
-
-            key.RefreshFromModel();
-            RefreshCounters();
+            _keystrokes.CancelRemap();
         }
 
         /// <summary>
@@ -1416,8 +1284,9 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void OnActiveOverlayChanged()
         {
-            // The latch belongs to the panel that set it; a swap or a dismiss ends its claim.
-            _hasOverlayTakenKeystroke = false;
+            // The latch belongs to the panel that set it; a swap or a dismiss ends its claim. It is
+            // the router's one field, reached here as a call (issue #154).
+            _keystrokes.ClearOverlayKeystroke();
 
             OnPropertyChanged(nameof(ActiveOverlay));
             OnPropertyChanged(nameof(HasActiveOverlay));
@@ -1932,11 +1801,11 @@ namespace KinesisEdit.ViewModels
             SelectProfileCommand.NotifyCanExecuteChanged();
         }
 
-        // The two host interfaces the collaborators split out by issue #115 read this editor
-        // through: ResetScopeCoordinator's and MacroInsertionHost's. Every other member each of
-        // them names is already public on this class and satisfies the interface as it stands; the
-        // five below are implemented EXPLICITLY, because a split must not turn a private method of
-        // the editor into part of its public surface.
+        // The three host interfaces the collaborators split out by issues #115 and #154 read this
+        // editor through: ResetScopeCoordinator's, MacroInsertionHost's and EditorKeystrokeRouter's.
+        // Every other member each of them names is already public on this class and satisfies the
+        // interface as it stands; the ten below are implemented EXPLICITLY, because a split must
+        // not turn a private method of the editor into part of its public surface.
 
         /// <inheritdoc/>
         void IResetScopeHost.CancelRemap()
@@ -1968,6 +1837,43 @@ namespace KinesisEdit.ViewModels
             RefreshCounters();
         }
 
+        /// <inheritdoc/>
+        void IEditorKeystrokeHost.CancelCopyKey()
+        {
+            CancelCopyKey();
+        }
+
+        /// <inheritdoc/>
+        void IEditorKeystrokeHost.RefreshCounters()
+        {
+            RefreshCounters();
+        }
+
+        /// <inheritdoc/>
+        void IEditorKeystrokeHost.NotifyCommands()
+        {
+            NotifyCommands();
+        }
+
+        /// <inheritdoc/>
+        void IEditorKeystrokeHost.OnListeningChanged()
+        {
+            // Exactly what the ListeningKey setter raised before the state moved out, in exactly
+            // that order: the property, its derived flag, then every editing command. Nothing more
+            // — IsCaptureActive was never raised from here and adding it would be a behaviour
+            // change wearing tidiness as a disguise.
+            OnPropertyChanged(nameof(ListeningKey));
+            OnPropertyChanged(nameof(IsListening));
+
+            NotifyCommands();
+        }
+
+        /// <inheritdoc/>
+        void IEditorKeystrokeHost.OnCaptureActiveChanged()
+        {
+            OnPropertyChanged(nameof(IsCaptureActive));
+        }
+
         /// <summary>
         /// Stops capture and detaches from it, and tears down every overlay and macro-panel
         /// subscription with it. The capture service is app-wide and outlives the editor, so
@@ -1990,7 +1896,11 @@ namespace KinesisEdit.ViewModels
 
             _isDisposed = true;
 
-            _capture.KeystrokeCaptured -= _keystrokeCapturedHandler;
+            // The router's two halves are run apart, at the two points its own members always sat
+            // at: coming off the capture service first, and leaving listening state last, after the
+            // rail and the overlay host have handed the service back. EditorKeystrokeRouter.Dispose
+            // is the same pair for a caller with no such sequence to keep.
+            _keystrokes.Detach();
 
             Lighting.ModelChanged -= _lightingChangedHandler;
 
@@ -2007,7 +1917,7 @@ namespace KinesisEdit.ViewModels
             _overlays.Close();
             _overlays.ActiveChanged -= _activeOverlayChangedHandler;
 
-            StopListening();
+            _keystrokes.StopListening();
             CancelCopyKey();
 
             // Last, and the only path that lets a session go: since issue #133 every profile the
