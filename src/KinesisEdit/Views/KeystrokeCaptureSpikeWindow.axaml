@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:input="clr-namespace:KinesisEdit.Input"
+        xmlns:controls="clr-namespace:KinesisEdit.Controls"
         mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="640"
         x:Class="KinesisEdit.Views.KeystrokeCaptureSpikeWindow"
         Title="Kinesis Edit — keystroke capture spike"
@@ -16,9 +17,9 @@
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,12,0,8">
-      <Button x:Name="CaptureToggleButton" Content="Start capture" Click="OnCaptureToggleClick" />
-      <Button x:Name="SuspendToggleButton" Content="Suspend" Click="OnSuspendToggleClick" />
-      <Button x:Name="ClearButton" Content="Clear" Click="OnClearClick" />
+      <controls:AccessibleButton x:Name="CaptureToggleButton" Content="Start capture" Click="OnCaptureToggleClick" />
+      <controls:AccessibleButton x:Name="SuspendToggleButton" Content="Suspend" Click="OnSuspendToggleClick" />
+      <controls:AccessibleButton x:Name="ClearButton" Content="Clear" Click="OnClearClick" />
       <CheckBox x:Name="AutoSuspendCheckBox"
                 Content="Auto-suspend while a text box is focused"
                 IsChecked="True" />

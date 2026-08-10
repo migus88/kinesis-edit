@@ -33,12 +33,12 @@
 
       <!-- Chromeless by design: a dismiss is not an action the eye should land on before the
            notice it is attached to. GhostButton is the theme that says so. -->
-      <Button Grid.Column="2"
-              Classes="ghost"
-              Command="{Binding DismissCommand}"
-              VerticalAlignment="Top">
+      <controls:AccessibleButton Grid.Column="2"
+                                 Classes="ghost"
+                                 Command="{Binding DismissCommand}"
+                                 VerticalAlignment="Top">
         <controls:Icon Data="{DynamicResource IconClose}" Stroke="{DynamicResource TextMutedBrush}" />
-      </Button>
+      </controls:AccessibleButton>
     </Grid>
   </Border>
 </UserControl>

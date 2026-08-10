@@ -34,13 +34,13 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:ColorSwatch">
-            <Button Classes="colorSwatch"
-                    ToolTip.Tip="{Binding Name}"
-                    Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectSwatchCommand}"
-                    CommandParameter="{Binding}">
+            <controls:AccessibleButton Classes="colorSwatch"
+                                       ToolTip.Tip="{Binding Name}"
+                                       Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectSwatchCommand}"
+                                       CommandParameter="{Binding}">
               <Border Classes="colorSwatchFill"
                       Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
-            </Button>
+            </controls:AccessibleButton>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
@@ -58,22 +58,22 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:CustomColorSlotViewModel">
-            <Button Classes="colorSwatch"
-                    ToolTip.Tip="{Binding Caption}"
-                    IsEnabled="{Binding HasColor}"
-                    Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectCustomColorCommand}"
-                    CommandParameter="{Binding}">
+            <controls:AccessibleButton Classes="colorSwatch"
+                                       ToolTip.Tip="{Binding Caption}"
+                                       IsEnabled="{Binding HasColor}"
+                                       Command="{Binding $parent[controls:ColorPickerView].((vm:ColorPickerViewModel)DataContext).SelectCustomColorCommand}"
+                                       CommandParameter="{Binding}">
               <Border Classes="colorSwatchFill"
                       Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
-            </Button>
+            </controls:AccessibleButton>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
       <!-- Never available in demo mode: spec 08 §3 bans saving app settings there. -->
-      <Button Content="{x:Static vm:ColorPickerViewModel.StoreCustomColorCaption}"
-              Command="{Binding StoreCustomColorCommand}"
-              HorizontalAlignment="Left" />
+      <controls:AccessibleButton Content="{x:Static vm:ColorPickerViewModel.StoreCustomColorCaption}"
+                                 Command="{Binding StoreCustomColorCommand}"
+                                 HorizontalAlignment="Left" />
     </StackPanel>
   </StackPanel>
 </UserControl>

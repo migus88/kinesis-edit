@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.SavantElitePedalView"
              x:DataType="vm:SavantElitePedalViewModel">
@@ -88,10 +89,10 @@
             <!-- Amber whenever the session is dirty: handoff.md §2 makes that a property of the
                  editor shell, not of one board, so it holds here as well as on the keyboard. The
                  view writes the class and nothing else; the ramp lives in PrimaryActionButton. -->
-            <Button Content="Save"
-                    Command="{Binding SaveCommand}"
-                    Classes="primaryAction"
-                    Classes.dirty="{Binding HasUnsavedChanges}" />
+            <controls:AccessibleButton Content="Save"
+                                       Command="{Binding SaveCommand}"
+                                       Classes="primaryAction"
+                                       Classes.dirty="{Binding HasUnsavedChanges}" />
           </StackPanel>
         </Grid>
 
@@ -167,12 +168,12 @@
 
                         <!-- A file that could not be read is shown read-only: there is no Edit
                              button at all, so nothing can rewrite lines nobody could see. -->
-                        <Button Grid.Column="4"
-                                Content="Edit"
-                                VerticalAlignment="Center"
-                                IsVisible="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).CanEdit}"
-                                Command="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).BeginEditCommand}"
-                                CommandParameter="{Binding}" />
+                        <controls:AccessibleButton Grid.Column="4"
+                                                   Content="Edit"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).CanEdit}"
+                                                   Command="{Binding $parent[views:SavantElitePedalView].((vm:SavantElitePedalViewModel)DataContext).BeginEditCommand}"
+                                                   CommandParameter="{Binding}" />
                       </Grid>
 
                       <!-- The entry box of 12 §5, inline under the row it programs. Its content is
@@ -196,14 +197,14 @@
                                     <!-- 12 §5 step 2. Buttons rather than toggles: the latch is the
                                          session's mode, and a switch clears the entry, so the view
                                          must never hold a state of its own here. -->
-                                    <Button Classes="toggleSegment"
-                                            Classes.selected="{Binding IsSingleMode}"
-                                            Content="Single Action"
-                                            Command="{Binding SetSingleModeCommand}" />
-                                    <Button Classes="toggleSegment"
-                                            Classes.selected="{Binding IsMacroMode}"
-                                            Content="Macro"
-                                            Command="{Binding SetMacroModeCommand}" />
+                                    <controls:AccessibleButton Classes="toggleSegment"
+                                                               Classes.selected="{Binding IsSingleMode}"
+                                                               Content="Single Action"
+                                                               Command="{Binding SetSingleModeCommand}" />
+                                    <controls:AccessibleButton Classes="toggleSegment"
+                                                               Classes.selected="{Binding IsMacroMode}"
+                                                               Content="Macro"
+                                                               Command="{Binding SetMacroModeCommand}" />
                                   </StackPanel>
                                 </Grid>
 
@@ -241,18 +242,18 @@
                                            IsVisible="{Binding HoldWinModifier}" />
 
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                  <Button Content="Special Actions ▾">
-                                    <Button.Flyout>
+                                  <controls:AccessibleButton Content="Special Actions ▾">
+                                    <controls:AccessibleButton.Flyout>
                                       <MenuFlyout Placement="BottomEdgeAlignedLeft"
                                                   ItemsSource="{Binding SpecialActionGroups}"
                                                   ItemContainerTheme="{StaticResource PedalSpecialActionGroupMenuItem}" />
-                                    </Button.Flyout>
-                                  </Button>
+                                    </controls:AccessibleButton.Flyout>
+                                  </controls:AccessibleButton>
 
-                                  <Button Content="Backspace" Command="{Binding BackspaceCommand}" />
-                                  <Button Content="Clear" Command="{Binding ClearEntryCommand}" />
-                                  <Button Content="Cancel" Command="{Binding CancelEditCommand}" />
-                                  <Button Content="Done" Command="{Binding DoneCommand}" Classes="primaryAction" />
+                                  <controls:AccessibleButton Content="Backspace" Command="{Binding BackspaceCommand}" />
+                                  <controls:AccessibleButton Content="Clear" Command="{Binding ClearEntryCommand}" />
+                                  <controls:AccessibleButton Content="Cancel" Command="{Binding CancelEditCommand}" />
+                                  <controls:AccessibleButton Content="Done" Command="{Binding DoneCommand}" Classes="primaryAction" />
                                 </StackPanel>
                               </StackPanel>
                             </Border>

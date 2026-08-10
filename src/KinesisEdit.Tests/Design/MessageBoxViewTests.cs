@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -211,15 +212,20 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>
-        /// The card's answer buttons, in the order they are laid out. Typed exactly, because
-        /// <see cref="CheckBox"/> derives from <see cref="Button"/> and the suppression opt-out is
-        /// not one of the answers.
+        /// The card's answer buttons, in the order they are laid out. Toggles are excluded, because
+        /// <see cref="CheckBox"/> derives from <see cref="ToggleButton"/> — and so from
+        /// <see cref="Button"/> — and the suppression opt-out is not one of the answers.
+        /// <para>
+        /// This used to say <c>GetType() == typeof(Button)</c>, which stopped matching anything at
+        /// all when issue #54 made every authored button an <c>AccessibleButton</c>. Excluding the
+        /// toggle branch says what was actually meant and is indifferent to the answer's exact type.
+        /// </para>
         /// </summary>
         private static IReadOnlyList<Button> Buttons(MessageBoxView view)
         {
             return view.GetVisualDescendants()
                 .OfType<Button>()
-                .Where(button => button.GetType() == typeof(Button) && button.IsEffectivelyVisible)
+                .Where(button => button is not ToggleButton && button.IsEffectivelyVisible)
                 .ToArray();
         }
 

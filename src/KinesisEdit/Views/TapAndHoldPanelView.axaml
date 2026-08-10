@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="268" d:DesignHeight="520"
              x:Class="KinesisEdit.Views.TapAndHoldPanelView"
              x:DataType="vm:TapAndHoldPanelViewModel">
@@ -75,11 +76,11 @@
                      TextWrapping="Wrap" />
         </Border>
 
-        <Button Classes="secondary"
-                Content="{Binding UpdateFirmwareCaption}"
-                Command="{Binding UpdateFirmwareCommand}"
-                IsVisible="{Binding CanUpdateFirmware}"
-                HorizontalAlignment="Left" />
+        <controls:AccessibleButton Classes="secondary"
+                                   Content="{Binding UpdateFirmwareCaption}"
+                                   Command="{Binding UpdateFirmwareCommand}"
+                                   IsVisible="{Binding CanUpdateFirmware}"
+                                   HorizontalAlignment="Left" />
       </StackPanel>
     </Border>
 
@@ -104,12 +105,12 @@
                            Text="{x:Static vm:TapAndHoldPanelViewModel.TapFieldLabel}"
                            Classes="body"
                            TextWrapping="Wrap" />
-                <Button Grid.Column="1"
-                        Classes="link"
-                        Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
-                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
-                        Command="{Binding SearchTapActionCommand}"
-                        VerticalAlignment="Top" />
+                <controls:AccessibleButton Grid.Column="1"
+                                           Classes="link"
+                                           Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
+                                           ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
+                                           Command="{Binding SearchTapActionCommand}"
+                                           VerticalAlignment="Top" />
               </Grid>
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Border Grid.Column="0"
@@ -121,9 +122,9 @@
                              TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" />
                 </Border>
-                <Button Grid.Column="1"
-                        Classes="recordAction"
-                        Command="{Binding ArmTapActionCommand}">
+                <controls:AccessibleButton Grid.Column="1"
+                                           Classes="recordAction"
+                                           Command="{Binding ArmTapActionCommand}">
                   <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Ellipse Classes="recordDot" VerticalAlignment="Center" />
                     <!-- The 1.4s pulse (DurationRecordingPulse), reached by the class the listening
@@ -134,7 +135,7 @@
                                Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Tap}"
                                VerticalAlignment="Center" />
                   </StackPanel>
-                </Button>
+                </controls:AccessibleButton>
               </Grid>
             </StackPanel>
 
@@ -145,12 +146,12 @@
                            Text="{x:Static vm:TapAndHoldPanelViewModel.HoldFieldLabel}"
                            Classes="body"
                            TextWrapping="Wrap" />
-                <Button Grid.Column="1"
-                        Classes="link"
-                        Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
-                        ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
-                        Command="{Binding SearchHoldActionCommand}"
-                        VerticalAlignment="Top" />
+                <controls:AccessibleButton Grid.Column="1"
+                                           Classes="link"
+                                           Content="{x:Static vm:TapAndHoldPanelViewModel.SearchCaption}"
+                                           ToolTip.Tip="{x:Static vm:TapAndHoldPanelViewModel.SearchHint}"
+                                           Command="{Binding SearchHoldActionCommand}"
+                                           VerticalAlignment="Top" />
               </Grid>
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Border Grid.Column="0"
@@ -162,16 +163,16 @@
                              TextTrimming="CharacterEllipsis"
                              VerticalAlignment="Center" />
                 </Border>
-                <Button Grid.Column="1"
-                        Classes="recordAction"
-                        Command="{Binding ArmHoldActionCommand}">
+                <controls:AccessibleButton Grid.Column="1"
+                                           Classes="recordAction"
+                                           Command="{Binding ArmHoldActionCommand}">
                   <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Ellipse Classes="recordDot" VerticalAlignment="Center" />
                     <TextBlock Text="{x:Static vm:TapAndHoldPanelViewModel.RecordCaption}"
                                Classes.recording="{Binding ArmedField, Converter={StaticResource EnumMatch}, ConverterParameter=Hold}"
                                VerticalAlignment="Center" />
                   </StackPanel>
-                </Button>
+                </controls:AccessibleButton>
               </Grid>
             </StackPanel>
 
@@ -237,10 +238,10 @@
                        TextWrapping="Wrap"
                        IsVisible="{Binding HasValidationMessage}" />
 
-            <Button Classes="primaryAction"
-                    Content="{x:Static vm:TapAndHoldPanelViewModel.AssignCaption}"
-                    Command="{Binding AssignCommand}"
-                    HorizontalAlignment="Left" />
+            <controls:AccessibleButton Classes="primaryAction"
+                                       Content="{x:Static vm:TapAndHoldPanelViewModel.AssignCaption}"
+                                       Command="{Binding AssignCommand}"
+                                       HorizontalAlignment="Left" />
           </StackPanel>
         </Border>
       </StackPanel>
@@ -258,10 +259,10 @@
 
           <ContentControl Content="{Binding Picker}" />
 
-          <Button Classes="secondary"
-                  Content="{x:Static vm:TapAndHoldPanelViewModel.CancelSearchCaption}"
-                  Command="{Binding CloseSearchCommand}"
-                  HorizontalAlignment="Left" />
+          <controls:AccessibleButton Classes="secondary"
+                                     Content="{x:Static vm:TapAndHoldPanelViewModel.CancelSearchCaption}"
+                                     Command="{Binding CloseSearchCommand}"
+                                     HorizontalAlignment="Left" />
         </StackPanel>
       </Border>
     </StackPanel>

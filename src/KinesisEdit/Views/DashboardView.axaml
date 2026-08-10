@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="KinesisEdit.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
@@ -19,11 +20,11 @@
           <TextBlock Text="{Binding HeaderSubtitle}" Classes="meta muted" />
         </StackPanel>
 
-        <Button Grid.Column="1"
-                Classes="secondary"
-                VerticalAlignment="Bottom"
-                Content="{Binding ScanAllCaption}"
-                Command="{Binding ScanCommand}" />
+        <controls:AccessibleButton Grid.Column="1"
+                                   Classes="secondary"
+                                   VerticalAlignment="Bottom"
+                                   Content="{Binding ScanAllCaption}"
+                                   Command="{Binding ScanCommand}" />
       </Grid>
 
       <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">

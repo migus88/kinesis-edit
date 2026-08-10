@@ -272,13 +272,13 @@
                        is not accessible text. The ancestor binding is anchored on the VIEW: a
                        `$parent[...]` written inside a themed button's content does not reach past
                        the presenter. -->
-                  <Button Classes="macroChip"
-                          Classes.selected="{Binding IsSelected}"
-                          Classes.colliding="{Binding IsColliding}"
-                          Content="{Binding ChipText}"
-                          ToolTip.Tip="{Binding Caption}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SelectSlotCommand}"
-                          CommandParameter="{Binding}" />
+                  <controls:AccessibleButton Classes="macroChip"
+                                             Classes.selected="{Binding IsSelected}"
+                                             Classes.colliding="{Binding IsColliding}"
+                                             Content="{Binding ChipText}"
+                                             ToolTip.Tip="{Binding Caption}"
+                                             Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SelectSlotCommand}"
+                                             CommandParameter="{Binding}" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -319,11 +319,11 @@
                        them, and NEITHER RUN CARRIES A COLOUR: the theme's `.selected` face sets
                        Foreground, a TextBlock inherits it and an `Icon` (painting from Stroke)
                        cannot, which is why this site is type. -->
-                  <Button Classes="coTriggerChip"
-                          Classes.selected="{Binding IsOn}"
-                          ToolTip.Tip="{Binding Caption}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
-                          CommandParameter="{Binding}">
+                  <controls:AccessibleButton Classes="coTriggerChip"
+                                             Classes.selected="{Binding IsOn}"
+                                             ToolTip.Tip="{Binding Caption}"
+                                             Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
+                                             CommandParameter="{Binding}">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                       <TextBlock Text="{Binding Side}"
                                  Classes="monoValueSmall"
@@ -337,7 +337,7 @@
                                  IsVisible="{Binding !HasMark}"
                                  VerticalAlignment="Center" />
                     </StackPanel>
-                  </Button>
+                  </controls:AccessibleButton>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -374,10 +374,10 @@
                        Classes="meta muted"
                        VerticalAlignment="Center" />
 
-            <Button Grid.Column="3"
-                    Classes="recordAction"
-                    Command="{Binding RecordCommand}"
-                    VerticalAlignment="Center">
+            <controls:AccessibleButton Grid.Column="3"
+                                       Classes="recordAction"
+                                       Command="{Binding RecordCommand}"
+                                       VerticalAlignment="Center">
               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                 <Ellipse Classes="recordDot" VerticalAlignment="Center" />
                 <!-- The 1.4s pulse (DurationRecordingPulse), reached by the class the listening cap
@@ -390,7 +390,7 @@
                            Classes.recording="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter=Run}"
                            VerticalAlignment="Center" />
               </StackPanel>
-            </Button>
+            </controls:AccessibleButton>
           </Grid>
 
           <!-- The live banner. Amber: it is the app telling the user their keyboard has been taken
@@ -463,19 +463,19 @@
                       <!-- The row's face is the shared `MacroStepCaption` template, because the
                            drag ghost above the list has to be the same runs in the same faces and a
                            second copy of them would drift from this one. -->
-                      <Button Grid.Column="1"
-                              Classes="macroStepRow"
-                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.SelectStepCommand}"
-                              CommandParameter="{Binding}"
-                              Content="{Binding}"
-                              ContentTemplate="{StaticResource MacroStepCaption}" />
+                      <controls:AccessibleButton Grid.Column="1"
+                                                 Classes="macroStepRow"
+                                                 Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.SelectStepCommand}"
+                                                 CommandParameter="{Binding}"
+                                                 Content="{Binding}"
+                                                 ContentTemplate="{StaticResource MacroStepCaption}" />
 
-                      <Button Grid.Column="2"
-                              Classes="ghost"
-                              Content="×"
-                              ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.RemoveStepHint}"
-                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.RemoveStepCommand}"
-                              CommandParameter="{Binding}" />
+                      <controls:AccessibleButton Grid.Column="2"
+                                                 Classes="ghost"
+                                                 Content="×"
+                                                 ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.RemoveStepHint}"
+                                                 Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.RemoveStepCommand}"
+                                                 CommandParameter="{Binding}" />
 
                       <!-- WHERE THE DRAG WOULD LAND. A reorder with no feedback reads as broken
                            even once it works, so the row under a carried step wears a ring while
@@ -505,14 +505,14 @@
                composer at it, so a step can be inserted in the MIDDLE of a macro. Appending by
                recording is what the header's `● Record sequence` still does. Nothing is written to
                the macro until a key lands on the placeholder. -->
-          <Button Classes="macroStepRow" Command="{Binding InsertStepCommand}">
+          <controls:AccessibleButton Classes="macroStepRow" Command="{Binding InsertStepCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
               <controls:Icon Classes="insertMark" Data="{DynamicResource IconInsert}" VerticalAlignment="Center" />
               <TextBlock Text="{x:Static vm:MacroInspectorStepsViewModel.InsertStepCaption}"
                          Classes="meta"
                          VerticalAlignment="Center" />
             </StackPanel>
-          </Button>
+          </controls:AccessibleButton>
 
           <!-- What the panel refused, and why. Amber: a budget or a full slot strip is a fact about
                the profile, not a failure. -->
@@ -595,12 +595,12 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="vm:MacroChordModifier">
-                      <Button Classes="macroChip"
-                              Classes.selected="{Binding IsOn}"
-                              IsEnabled="{Binding IsEnabled}"
-                              ToolTip.Tip="{Binding Description}"
-                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleChordModifierCommand}"
-                              CommandParameter="{Binding}">
+                      <controls:AccessibleButton Classes="macroChip"
+                                                 Classes.selected="{Binding IsOn}"
+                                                 IsEnabled="{Binding IsEnabled}"
+                                                 ToolTip.Tip="{Binding Description}"
+                                                 Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleChordModifierCommand}"
+                                                 CommandParameter="{Binding}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                           <TextBlock Text="{Binding Side}"
                                      Classes="monoValueSmall"
@@ -610,7 +610,7 @@
                                      Classes="keySymbol"
                                      VerticalAlignment="Center" />
                         </StackPanel>
-                      </Button>
+                      </controls:AccessibleButton>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -630,10 +630,10 @@
                   </Grid>
                 </Border>
 
-                <Button Grid.Column="2"
-                        Classes="secondary"
-                        Command="{Binding RecordStepKeyCommand}"
-                        VerticalAlignment="Center">
+                <controls:AccessibleButton Grid.Column="2"
+                                           Classes="secondary"
+                                           Command="{Binding RecordStepKeyCommand}"
+                                           VerticalAlignment="Center">
                   <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Ellipse Classes="recordDot"
                              Classes.standby="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter='None,Run'}"
@@ -646,7 +646,7 @@
                                Classes.recording="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter=SingleStep}"
                                VerticalAlignment="Center" />
                   </StackPanel>
-                </Button>
+                </controls:AccessibleButton>
               </Grid>
 
               <!-- ===== Row 2: what the step does, and what it waits =========================
@@ -699,12 +699,12 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate DataType="vm:MacroStepDirection">
-                        <Button Classes="composerSegment"
-                                Classes.selected="{Binding IsOn}"
-                                IsEnabled="{Binding IsEnabled}"
-                                Content="{Binding Caption}"
-                                Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDirectionCommand}"
-                                CommandParameter="{Binding}" />
+                        <controls:AccessibleButton Classes="composerSegment"
+                                                   Classes.selected="{Binding IsOn}"
+                                                   IsEnabled="{Binding IsEnabled}"
+                                                   Content="{Binding Caption}"
+                                                   Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDirectionCommand}"
+                                                   CommandParameter="{Binding}" />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
@@ -731,13 +731,13 @@
                              `random`'s 1-150 ms is stated nowhere else: the fixed delay's bounds
                              are drawn by its own caption and its validation message, but a random
                              one has no field. -->
-                        <Button Classes="composerSegment"
-                                Classes.selected="{Binding IsOn}"
-                                IsEnabled="{Binding IsEnabled}"
-                                Content="{Binding Caption}"
-                                ToolTip.Tip="{Binding Description}"
-                                Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
-                                CommandParameter="{Binding}" />
+                        <controls:AccessibleButton Classes="composerSegment"
+                                                   Classes.selected="{Binding IsOn}"
+                                                   IsEnabled="{Binding IsEnabled}"
+                                                   Content="{Binding Caption}"
+                                                   ToolTip.Tip="{Binding Description}"
+                                                   Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
+                                                   CommandParameter="{Binding}" />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
@@ -814,11 +814,11 @@
                   <TextBlock Text="{Binding Steps.DelayUnavailableReason}"
                              Classes="body statusWarning"
                              TextWrapping="Wrap" />
-                  <Button Classes="secondary"
-                          Content="{Binding Steps.UpdateFirmwareCaption}"
-                          Command="{Binding Steps.UpdateFirmwareCommand}"
-                          IsVisible="{Binding Steps.CanUpdateFirmware}"
-                          HorizontalAlignment="Left" />
+                  <controls:AccessibleButton Classes="secondary"
+                                             Content="{Binding Steps.UpdateFirmwareCaption}"
+                                             Command="{Binding Steps.UpdateFirmwareCommand}"
+                                             IsVisible="{Binding Steps.CanUpdateFirmware}"
+                                             HorizontalAlignment="Left" />
                 </StackPanel>
 
                 <!-- The panel's ONE error ramp, and it is not an advisory: a millisecond value the
@@ -896,14 +896,14 @@
 
             <Border Grid.Column="1" Classes="numericStepper" IsVisible="{Binding HasRepeat}">
               <Grid ColumnDefinitions="Auto,Auto,Auto">
-                <Button Grid.Column="0" Classes="ghost" Content="−" Command="{Binding DecreaseRepeatCommand}" />
+                <controls:AccessibleButton Grid.Column="0" Classes="ghost" Content="−" Command="{Binding DecreaseRepeatCommand}" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding Repeat}"
                            Classes="monoValue"
                            MinWidth="24"
                            TextAlignment="Center"
                            VerticalAlignment="Center" />
-                <Button Grid.Column="2" Classes="ghost" Content="+" Command="{Binding IncreaseRepeatCommand}" />
+                <controls:AccessibleButton Grid.Column="2" Classes="ghost" Content="+" Command="{Binding IncreaseRepeatCommand}" />
               </Grid>
             </Border>
 
@@ -954,17 +954,17 @@
            that destroys something the file holds. Recorded in docs/app/design-system.md. -->
       <Border Classes="inspectorSection">
         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-          <Button Classes="secondary"
-                  Content="{x:Static vm:MacroInspectorPanelViewModel.CopyMacroCaption}"
-                  Command="{Binding CopyMacroCommand}"
-                  IsVisible="{Binding !IsCopyArmed}" />
-          <Button Classes="secondary"
-                  Content="{x:Static vm:MacroInspectorPanelViewModel.CancelCopyCaption}"
-                  Command="{Binding CancelCopyCommand}"
-                  IsVisible="{Binding IsCopyArmed}" />
-          <Button Classes="discard"
-                  Content="{x:Static vm:MacroInspectorPanelViewModel.DeleteMacroCaption}"
-                  Command="{Binding DeleteMacroCommand}" />
+          <controls:AccessibleButton Classes="secondary"
+                                     Content="{x:Static vm:MacroInspectorPanelViewModel.CopyMacroCaption}"
+                                     Command="{Binding CopyMacroCommand}"
+                                     IsVisible="{Binding !IsCopyArmed}" />
+          <controls:AccessibleButton Classes="secondary"
+                                     Content="{x:Static vm:MacroInspectorPanelViewModel.CancelCopyCaption}"
+                                     Command="{Binding CancelCopyCommand}"
+                                     IsVisible="{Binding IsCopyArmed}" />
+          <controls:AccessibleButton Classes="discard"
+                                     Content="{x:Static vm:MacroInspectorPanelViewModel.DeleteMacroCaption}"
+                                     Command="{Binding DeleteMacroCommand}" />
         </StackPanel>
       </Border>
     </StackPanel>

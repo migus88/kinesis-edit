@@ -90,10 +90,10 @@
       <StackPanel Orientation="Horizontal"
                   Spacing="{DynamicResource Space8}"
                   HorizontalAlignment="Right">
-        <Button Classes="secondary"
-                Content="{Binding CancelCaption}"
-                Command="{Binding CancelCommand}"
-                IsVisible="{Binding ShowsCancel}" />
+        <controls:AccessibleButton Classes="secondary"
+                                   Content="{Binding CancelCaption}"
+                                   Command="{Binding CancelCommand}"
+                                   IsVisible="{Binding ShowsCancel}" />
 
         <ItemsControl ItemsSource="{Binding CustomButtons}">
           <ItemsControl.ItemsPanel>
@@ -103,31 +103,31 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="services:MessageBoxButton">
-              <Button Classes="secondary"
-                      Content="{Binding Caption}"
-                      CommandParameter="{Binding}"
-                      Command="{Binding $parent[UserControl].((vm:MessageBoxViewModel)DataContext).CustomButtonCommand}" />
+              <controls:AccessibleButton Classes="secondary"
+                                         Content="{Binding Caption}"
+                                         CommandParameter="{Binding}"
+                                         Command="{Binding $parent[UserControl].((vm:MessageBoxViewModel)DataContext).CustomButtonCommand}" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Button Classes.secondary="{Binding !IsNoDestructive}"
-                Classes.discard="{Binding IsNoDestructive}"
-                Content="{Binding NoCaption}"
-                Command="{Binding NoCommand}"
-                IsVisible="{Binding ShowsNo}" />
-        <Button x:Name="AcceptOk"
-                Classes.primaryAction="{Binding !IsOkDestructive}"
-                Classes.discard="{Binding IsOkDestructive}"
-                Content="{Binding OkCaption}"
-                Command="{Binding OkCommand}"
-                IsVisible="{Binding ShowsOk}" />
-        <Button x:Name="AcceptYes"
-                Classes.primaryAction="{Binding !IsYesDestructive}"
-                Classes.discard="{Binding IsYesDestructive}"
-                Content="{Binding YesCaption}"
-                Command="{Binding YesCommand}"
-                IsVisible="{Binding ShowsYes}" />
+        <controls:AccessibleButton Classes.secondary="{Binding !IsNoDestructive}"
+                                   Classes.discard="{Binding IsNoDestructive}"
+                                   Content="{Binding NoCaption}"
+                                   Command="{Binding NoCommand}"
+                                   IsVisible="{Binding ShowsNo}" />
+        <controls:AccessibleButton x:Name="AcceptOk"
+                                   Classes.primaryAction="{Binding !IsOkDestructive}"
+                                   Classes.discard="{Binding IsOkDestructive}"
+                                   Content="{Binding OkCaption}"
+                                   Command="{Binding OkCommand}"
+                                   IsVisible="{Binding ShowsOk}" />
+        <controls:AccessibleButton x:Name="AcceptYes"
+                                   Classes.primaryAction="{Binding !IsYesDestructive}"
+                                   Classes.discard="{Binding IsYesDestructive}"
+                                   Content="{Binding YesCaption}"
+                                   Command="{Binding YesCommand}"
+                                   IsVisible="{Binding ShowsYes}" />
       </StackPanel>
     </StackPanel>
   </Border>

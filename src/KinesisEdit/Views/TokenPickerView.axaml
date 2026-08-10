@@ -69,13 +69,13 @@
       </ItemsControl.ItemsPanel>
       <ItemsControl.ItemTemplate>
         <DataTemplate DataType="vm:TokenPickerCategoryViewModel">
-          <Button Classes="filterChip"
-                  Classes.selected="{Binding IsSelected}"
-                  IsVisible="{Binding IsShown}"
-                  Margin="0,0,4,4"
-                  Content="{Binding Caption}"
-                  CommandParameter="{Binding}"
-                  Command="{Binding $parent[views:TokenPickerView].((vm:TokenPickerViewModel)DataContext).SelectCategoryCommand}" />
+          <controls:AccessibleButton Classes="filterChip"
+                                     Classes.selected="{Binding IsSelected}"
+                                     IsVisible="{Binding IsShown}"
+                                     Margin="0,0,4,4"
+                                     Content="{Binding Caption}"
+                                     CommandParameter="{Binding}"
+                                     Command="{Binding $parent[views:TokenPickerView].((vm:TokenPickerViewModel)DataContext).SelectCategoryCommand}" />
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>

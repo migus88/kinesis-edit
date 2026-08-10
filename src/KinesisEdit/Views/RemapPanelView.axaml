@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="268" d:DesignHeight="520"
              x:Class="KinesisEdit.Views.RemapPanelView"
              x:DataType="vm:RemapPanelViewModel">
@@ -58,15 +59,15 @@
           <!-- Red, because handoff.md:82 gives that hue to Record as well as to Discard. The `●` is
                an Ellipse and not the mockup's U+25CF: neither embedded IBM Plex family carries the
                codepoint, so the character would tofu on a platform that substitutes nothing. -->
-          <Button Grid.Column="1"
-                  Classes="recordAction"
-                  Command="{Binding RecordCommand}"
-                  VerticalAlignment="Center">
+          <controls:AccessibleButton Grid.Column="1"
+                                     Classes="recordAction"
+                                     Command="{Binding RecordCommand}"
+                                     VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Ellipse Classes="recordDot" VerticalAlignment="Center" />
               <TextBlock Text="{Binding RecordCommandCaption}" VerticalAlignment="Center" />
             </StackPanel>
-          </Button>
+          </controls:AccessibleButton>
         </Grid>
 
         <!-- Said only while something is actually waiting for a key, so the panel never instructs

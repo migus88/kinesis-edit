@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:core="clr-namespace:KinesisEdit.Core.Devices;assembly=KinesisEdit.Core"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="268" d:DesignHeight="420"
              x:Class="KinesisEdit.Views.LockedKeyPanelView"
              x:DataType="vm:LockedKeyPanelViewModel">
@@ -124,12 +125,12 @@
         <StackPanel Orientation="Horizontal" Spacing="8">
           <!-- Dead, and never removed: the reason under it is the answer to the question the
                dead button asks. -->
-          <Button Classes="secondary"
-                  Content="{x:Static vm:LockedKeyPanelViewModel.CopyFromCaption}"
-                  IsEnabled="False" />
-          <Button Classes="secondary"
-                  Content="{x:Static vm:LockedKeyPanelViewModel.CopyToCaption}"
-                  Command="{Binding CopyToCommand}" />
+          <controls:AccessibleButton Classes="secondary"
+                                     Content="{x:Static vm:LockedKeyPanelViewModel.CopyFromCaption}"
+                                     IsEnabled="False" />
+          <controls:AccessibleButton Classes="secondary"
+                                     Content="{x:Static vm:LockedKeyPanelViewModel.CopyToCaption}"
+                                     Command="{Binding CopyToCommand}" />
         </StackPanel>
 
         <TextBlock Text="{x:Static vm:LockedKeyPanelViewModel.CopyDirectionReason}"
