@@ -52,7 +52,7 @@ namespace KinesisEdit.ViewModels
         private bool CanDiscardChanges()
         {
             return _session is not null
-                   && DiscardScopeOf(_selectedTab) != DiscardScope.None
+                   && DiscardScopeOf(SelectedTab) != DiscardScope.None
                    && !IsLoading
                    && !IsBusy
                    && ActiveOverlay is null;
@@ -76,7 +76,7 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            var scope = DiscardScopeOf(_selectedTab);
+            var scope = DiscardScopeOf(SelectedTab);
 
             if (!await ConfirmDiscardAsync(scope).ConfigureAwait(true))
             {
@@ -86,7 +86,7 @@ namespace KinesisEdit.ViewModels
             // Re-read everything the answer was about: the box is modal but the editor is not frozen
             // behind it, and reverting the page the user has since left would be the worst kind of
             // bug. Same re-read ResetLayerAsync does after its own confirmation.
-            if (_isDisposed || _session is not { } session || DiscardScopeOf(_selectedTab) != scope)
+            if (_isDisposed || _session is not { } session || DiscardScopeOf(SelectedTab) != scope)
             {
                 return;
             }
@@ -132,7 +132,7 @@ namespace KinesisEdit.ViewModels
 
             session.RevertLayout();
 
-            Apply(new LoadOutcome { Session = session, Layout = session.Layout });
+            _loader.ApplyReplacedLayout(session);
         }
 
         /// <summary>

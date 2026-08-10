@@ -1,6 +1,5 @@
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
-using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Model;
 
 namespace KinesisEdit.ViewModels
@@ -63,15 +62,6 @@ namespace KinesisEdit.ViewModels
         private EventHandler _macroInspectorAssignedHandler = null!;
 
         /// <summary>
-        /// Whether the capture service is running <b>because a rail panel asked for it</b>. It is the
-        /// "never stop a capture you did not start" rule made explicit: the rail raises
-        /// <see cref="KeyInspectorViewModel.RecordingChanged"/> on every mode switch and every
-        /// selection change too, and answering one of those with an unconditional
-        /// <c>_capture.Stop()</c> would deafen a panel that really is armed.
-        /// </summary>
-        private bool _isInspectorCapturing;
-
-        /// <summary>
         /// <b>The stand-down seam</b> (issue #122, AC 3): the one entry point for "the user did
         /// something else in the app, so the keyboard is not the macro's any more". Recording is the
         /// only editor state that silently claims every keystroke in the window, so a user who has
@@ -120,7 +110,7 @@ namespace KinesisEdit.ViewModels
         /// <paramref name="slot"/> is 1..5 on a slot device and 0 on a flat-list one.
         /// <para>
         /// The advisory strip's macro callback is its one caller
-        /// (<c>KeyboardEditorViewModel.SelectAnchoredMacro</c>): an advisory names a <em>site</em> —
+        /// (<see cref="EditorSelection.SelectAnchoredMacro"/>): an advisory names a <em>site</em> —
         /// layer, key, slot — and this is what turns a site back into the rail showing it.
         /// </para>
         /// </summary>
@@ -228,7 +218,10 @@ namespace KinesisEdit.ViewModels
                 CancelCopyKeyCommand,
                 [_remapPanel, _tapAndHoldPanel, _macroInspectorPanel]);
 
-            _inspectorRecordingChangedHandler = (_, _) => OnInspectorRecordingChanged();
+            // Capture belongs to the editor and never to a panel (invariant 4), and since issue
+            // #154 the one class that owns the service is EditorKeystrokeRouter: the rail announces
+            // that it armed or disarmed, and the router turns the service on and off around it.
+            _inspectorRecordingChangedHandler = (_, _) => _keystrokes.OnInspectorRecordingChanged();
 
             inspector.RecordingChanged += _inspectorRecordingChangedHandler;
 
@@ -316,43 +309,6 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The showing panel started or stopped waiting for a physical keystroke. Capture belongs to
-        /// the editor and never to a panel (docs/app/keyboard-editor.md, invariant 4), so this is
-        /// where the service is turned on and off — with one guard a plain start/stop would not need:
-        /// <see cref="_isInspectorCapturing"/>, because the rail announces its recording state on
-        /// every mode switch and every selection change, not only when something really armed.
-        /// </summary>
-        private void OnInspectorRecordingChanged()
-        {
-            var isRecording = Inspector.IsRecording;
-
-            OnPropertyChanged(nameof(IsCaptureActive));
-
-            if (isRecording == _isInspectorCapturing)
-            {
-                return;
-            }
-
-            _isInspectorCapturing = isRecording;
-
-            if (isRecording)
-            {
-                // A listening key, a recording macro and an armed rail field are three answers to
-                // "what does the next keystroke mean", and only one of them may be live
-                // (invariant 5).
-                CancelRemap();
-
-                _capture.Start();
-            }
-            else
-            {
-                _capture.Stop();
-            }
-
-            NotifyCommands();
-        }
-
-        /// <summary>
         /// The rail's Macro panel wrote to the profile's macros. Same shape as
         /// <see cref="OnTapAndHoldAssigned"/>, and required for the same reason: Core announces
         /// nothing, so the cap is re-read by hand (its macro dot) and then the funnel rebuilds the
@@ -370,34 +326,6 @@ namespace KinesisEdit.ViewModels
             RefreshCounters();
 
             NotifyCommands();
-        }
-
-        /// <summary>
-        /// Whether the keystroke being routed belongs to an armed rail panel — the new first branch
-        /// of <see cref="OnKeystrokeCaptured"/>.
-        /// <para>
-        /// <b>Armed, not merely open</b>, and that is the one real difference from the modal this
-        /// replaces. A feature panel took a keystroke on being <em>open</em>, because the scrim under
-        /// it meant nothing else could want one; the rail is not modal, so a panel that is merely
-        /// showing must let the keystroke fall through to the cap the user is remapping beside it.
-        /// </para>
-        /// </summary>
-        private bool TryRouteToInspector(CapturedKeystroke keystroke)
-        {
-            if (Inspector.ActivePanel is not IKeystrokeSink { WantsKeystrokes: true } sink)
-            {
-                return false;
-            }
-
-            // Latched for the view, which is still to see this same key event: the field disarms as
-            // it takes the key, and "nothing is armed any more" must not read as "the rail was idle,
-            // close it" (see TryTakeOverlayKeystroke). It is set BEFORE the dispatch for exactly
-            // that reason — afterwards is already too late.
-            _hasOverlayTakenKeystroke = true;
-
-            sink.ReceiveKeystroke(keystroke);
-
-            return true;
         }
 
         /// <summary>
@@ -430,12 +358,8 @@ namespace KinesisEdit.ViewModels
             _macroInspectorPanel.Assigned -= _macroInspectorAssignedHandler;
 
             // Belt to that brace: a panel that never announced itself cannot leave a claim behind.
-            if (_isInspectorCapturing)
-            {
-                _isInspectorCapturing = false;
-
-                _capture.Stop();
-            }
+            // The claim is the router's flag, so it is dropped by asking the router (issue #154).
+            _keystrokes.StopInspectorCapture();
         }
     }
 }
