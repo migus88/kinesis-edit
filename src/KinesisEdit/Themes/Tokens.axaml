@@ -56,7 +56,7 @@
            nothing but sits 5 off the pill; this value is the step between `SurfaceRaised` and
            `SurfaceLine`, which leaves the pill, the hover and the box all separable on the one block
            where the three meet. -->
-      <Color x:Key="SurfaceSunkenColor">#0F1214</Color>
+      <Color x:Key="SurfaceSunkenColor">#0E1421</Color>
       <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{StaticResource SurfaceSunkenColor}" />
 
       <!-- The hairline with the designer's blue in it (issue #152). `SurfaceLine` is the neutral
@@ -253,7 +253,7 @@
            further down, the divider (`SurfaceLine`, #DDE1E3). This sits between them — 232.5 in
            luminance against the pill's 239.6 and the rail's 244.9 — so the box is visibly recessed
            from the section around it without the lit `tap`/`fixed` pill sinking into it. -->
-      <Color x:Key="SurfaceSunkenColor">#E6E9EB</Color>
+      <Color x:Key="SurfaceSunkenColor">#E4E8F4</Color>
       <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{StaticResource SurfaceSunkenColor}" />
 
       <!-- The blue-tinted hairline. `SurfaceLine`'s #DDE1E3 pulled toward the accent hue and one

@@ -35,7 +35,7 @@ namespace KinesisEdit.Tests.Design
         // lower step to borrow, and the two darker ones are the composer's own pill
         // (`SurfaceRaised`) and its divider (`SurfaceLine`); this sits between them.
         // `SurfaceLineAccent` dark is the designer's own measured edge, #2B3550.
-        [InlineData("SurfaceSunken", "#0F1214", "#E6E9EB")]
+        [InlineData("SurfaceSunken", "#0E1421", "#E4E8F4")]
         [InlineData("SurfaceLineAccent", "#2B3550", "#CBD5E6")]
         // Text: six steps. Light deliberately collapses two pairs of them.
         [InlineData("TextPrimary", "#E8EBED", "#14181B")]
