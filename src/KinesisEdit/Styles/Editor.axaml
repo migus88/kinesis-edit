@@ -399,33 +399,42 @@
        about: everything above it EDITS the sequence and everything inside it BUILDS one step, so
        the block has to read as a tool sitting on the panel rather than as the next paragraph of it.
 
-       THE FILL IS FLUSH WITH THE RAIL, AND THE SEPARATION IS DONE BY WHAT STANDS IN IT (issue #152).
-       `Border.inspectorRail` is SurfaceInset, so this box is painted in the colour directly behind
-       it and is bounded by its hairline rather than by its fill — which is what the designer's mock
-       draws, measured off the designer's own PNG: box `#101318` against a `#121316` rail is 0.3 of a
-       luminance step BELOW it, i.e. level, while every control standing inside the box is `#13161A`,
-       a step ABOVE it. SurfaceInset is that relationship on our ramp (0.0 against the rail, where
-       SurfaceCanvas would sit 4.1 below it and read as a well); the +3 half is carried by
-       `Border.macroComposerKey` and `ComposerValueField` below, which come up to SurfacePanel.
+       THE BOX IS SUNK AND ITS CONTENTS ARE LIFTED, AND ITS EDGE CARRIES THE MOCK'S BLUE — three
+       decisions from one round of measurement, and the third cut at this block (issue #152).
+       `Border.inspectorRail` behind it is SurfaceInset, so the fill goes one step BELOW that
+       (`SurfaceSunken`, a role added for this and for the light variant, which had no lower step at
+       all), the two controls standing in it come one step ABOVE it (`Border.macroComposerKey` and
+       `ComposerValueField`, both SurfacePanel), and the hairline stops being neutral grey.
 
-       #152 SHIPPED THIS THE OTHER WAY UP FIRST, and the mistake is worth keeping written down: the
-       box went to SurfacePanel and the fields stayed inset, which does separate the three surfaces —
-       but it makes the block a lighter CARD SITTING ON the rail where the mock draws a bounded
-       region OF it, and side by side with the mock that is plainly the wrong hierarchy. The measured
-       relationship was in hand and the conclusion drawn from it was inverted.
+       TWO EARLIER CUTS WERE MEASURED AND REJECTED, and they are written down so that the next
+       reader does not re-derive either one:
+         1. The box LIFTED to SurfacePanel with its contents left inset. It separates the surfaces,
+            and it reads as a lighter card sitting ON the rail where the mock draws a bounded region
+            OF it — the wrong hierarchy, rejected on sight against the mock.
+         2. The box FLUSH with the rail (SurfaceInset), which is what the mock literally measures:
+            its box is `#101318` against a `#121316` panel, 0.3 of a luminance step below it. Scanned
+            in the running app that is byte-identical to the rail — zero separation — and the user
+            rejected it against their own screenshot. What the mock actually separates that block
+            with is its BORDER, `#2B3550`, distinctly blue where ours was neutral `#2C3136`, and
+            neither of the first two cuts reproduced that at all.
+       So the block now leans the way the mock leans, harder: recessed fill, lifted contents, and the
+       mock's blue edge (`SurfaceLineAccent`, whose dark value is that measurement verbatim).
 
-       WHAT MAY NOT HAPPEN EITHER WAY: `ComposerSegment` hovers at SurfaceBar and lights its selected
-       pill at SurfaceRaised, and the two live on this box. Four surfaces therefore have to stay
-       apart — box, the fields inside it, the hover face and the pill — which they do at 21.6 / 24.6 /
-       31.4 / 38.5 on dark and 244.9 / 255.0 / 250.8 / 239.6 on light, all read off captured frames.
+       WHAT MAY NOT HAPPEN IN ANY OF THEM: `ComposerSegment` hovers at SurfaceBar and lights its
+       selected pill at SurfaceRaised, and the two live on this box. Four surfaces therefore have to
+       stay apart — box, the fields inside it, the hover face and the pill — which they do at
+       17.5 / 24.6 / 31.4 / 38.5 on dark and 232.5 / 255.0 / 250.8 / 239.6 on light, all read off
+       captured frames. The edge has a fifth thing to stay clear of: the selected step row's ring
+       (`AccentSelectionFill`, composited about 30 away from this edge and visibly dimmer), because a
+       compose box that wore the selection colour would read as a selected row.
 
        PaddingCard's 14 would be too generous for a box already inside the section's own 12, so it
        carries the 12 step of the scale — spelled as a literal because `Space12` is an x:Double and
        markup cannot compose a Thickness out of one (the argument Themes/Geometry.axaml already
        makes for the card grid's three gap keys). -->
   <Style Selector="Border.composerBox">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineAccentBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
     <Setter Property="Padding" Value="12" />
@@ -438,13 +447,13 @@
        step already holds, because arming is `Record key` beside it. Wearing the armed field's face
        would promise a click that does nothing.
 
-       SURFACEPANEL, ONE STEP ABOVE THE BOX IT STANDS IN (issue #152), and the millisecond field
+       SURFACEPANEL, TWO STEPS ABOVE THE BOX IT STANDS IN (issue #152), and the millisecond field
        beside it does the same through `ComposerValueField`. This is the half of the mock the first
-       cut of #152 skipped: its box is level with the rail and the controls inside it are lifted
-       `+3.0` off it, which is what gives the block its structure. Painted inset — as this was, and as
-       the field family's rule would have it — the readout, the box and the rail behind them were one
-       flat wash at #131619 and the only thing telling them apart was a hairline. See
-       `Border.composerBox` above for the ramp the four surfaces on this block occupy.
+       cut of #152 skipped: there the controls standing in the box are lifted `+3.0` off it, which is
+       what gives the block its structure. Painted inset — as this was, and as the field family's rule
+       would have it — the readout, the box and the rail behind them were one flat wash at #131619
+       and the only thing telling them apart was a hairline. See `Border.composerBox` above for the
+       ramp the four surfaces on this block occupy, and for the two cuts that were rejected.
 
        SurfaceLineHigh rather than SurfaceLine, unchanged and still right: the plain hairline all but
        disappears here, and it disappears from either side of the step. MinHeight 32 is the TextBox

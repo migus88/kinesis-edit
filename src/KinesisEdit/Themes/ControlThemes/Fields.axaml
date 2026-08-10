@@ -211,18 +211,17 @@
 
     THE FAMILY RULE IN THIS FILE'S HEADER IS THE REASON, NOT AN EXCEPTION TO IT. "A field is a hole
     in the panel, not a thing on top of it: it rests on SurfaceInset." The compose bar's box
-    (`Border.composerBox`) rests on `Border.inspectorRail`, which is SurfaceInset — and the designer's
-    mock draws that box FLUSH with the rail, bounded by its border rather than by its fill. So the
-    ground under this one field is already the colour the rule would paint the field itself: a hole
-    cut in a hole is not a hole, it is a flat wash with a hairline drawn on it, which is exactly what
-    the panel shipped as before #152.
+    (`Border.composerBox`) stands on `Border.inspectorRail`, which is SurfaceInset itself, and since
+    #152 the box is a step BELOW even that (`SurfaceSunken`). So the ground under this one field is
+    already at or under the colour the rule would paint the field: a hole cut in a hole is not a
+    hole, it is a flat wash with a hairline drawn on it, which is exactly what the panel shipped as
+    before #152.
 
-    The mock separates the block by lifting WHAT IS INSIDE it — measured off the designer's own PNG,
-    its box is `#101318` and every control standing in it is `#13161A`, one step up (+3.0 luminance),
-    with the rail at `#121316` level with the box. SurfacePanel is that step on our ramp, and it is
-    also the only one available: `ComposerSegment` hovers at SurfaceBar and lights its pill at
-    SurfaceRaised, so a field on either would tie with a segment state sitting inches away on the
-    same row.
+    The mock separates that block by lifting WHAT IS INSIDE it — measured off the designer's own PNG,
+    its box is `#101318` and every control standing in it is `#13161A`, one step up (+3.0 luminance).
+    SurfacePanel is that step on our ramp, and it is also the only one available: `ComposerSegment`
+    hovers at SurfaceBar and lights its pill at SurfaceRaised, so a field on either would tie with a
+    segment state sitting inches away on the same row.
 
     DERIVED RATHER THAN SET ON `MonoValueField`, because that theme is app-wide — the token picker's
     result frame, the lighting tab's readouts, the Settings panel and §11.1's Tap-and-Hold delay all

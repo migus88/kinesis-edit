@@ -1098,34 +1098,54 @@ namespace KinesisEdit.Tests.Design
                 }
             }
 
-            // THE BOX IS FLUSH WITH THE RAIL AND THE CONTENTS ARE WHAT IS LIFTED — the mock's
-            // hierarchy, and the one #152 first shipped upside down. "Flush" is asserted against the
-            // RAIL'S OWN declaration rather than against a token spelled twice: the rail is not in
-            // this scene (the panel is hosted bare), and what the claim is really about is that the
-            // two styles name the same role, so moving either one alone fails here.
-            Assert.Equal(BackgroundKeyOf("Border.inspectorRail"), BackgroundKeyOf("Border.composerBox"));
-            Assert.NotEqual(BackgroundKeyOf("Border.composerBox"), BackgroundKeyOf("Border.macroComposerKey"));
-            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), box.Background);
+            // THE BOX IS SUNK BELOW THE RAIL AND ITS CONTENTS ARE LIFTED ABOVE IT. The rail is not in
+            // this scene — the panel is hosted bare — so the comparison is made between the two
+            // styles' own declared roles, resolved under this variant: that is also the honest form
+            // of the claim, since moving either style alone is what would break it.
+            var railFill = DesignTokens.ResolveBrushColor(
+                BackgroundKeyOf("Border.inspectorRail"),
+                variant);
+
+            Assert.True(
+                Luminance(DesignTokens.ResolveBrushColor(BackgroundKeyOf("Border.composerBox"), variant))
+                < Luminance(railFill),
+                "The compose box is not recessed below the rail it stands on.");
+            Assert.True(
+                Luminance(DesignTokens.ResolveBrushColor(BackgroundKeyOf("Border.macroComposerKey"), variant))
+                > Luminance(railFill),
+                "The composer's key readout is not lifted above the rail.");
+            Assert.Equal(DesignTokens.Resolve("SurfaceSunkenBrush", variant), box.Background);
             Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), KeyFieldOf(view).Background);
 
-            // ...and at the glass, in the direction the variant's own ramp travels: a surface comes
-            // FORWARD by climbing toward white on dark and by doing the same on light, where the
-            // ground is already near it — so "inside is lifted" is brighter in both.
+            // ...and at the glass, the same claim about the two surfaces that really are in one
+            // frame: a control standing in the box is brighter than the box in both variants, which
+            // is the direction "forward" travels on either ramp. Two flush surfaces would pass a
+            // test that only demanded a difference.
             Assert.True(
                 Luminance(inner) > Luminance(fill),
                 $"The key readout ({Luminance(inner):0.0}) is not lifted off the box ({Luminance(fill):0.0}).");
 
-            // The hairline is still what separates the box from the section around it, and it is
-            // carrying that alone now that the fill does not.
-            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), box.BorderBrush);
+            // THE EDGE CARRIES THE MOCK'S BLUE, AND IT IS NOT THE SELECTION RING. `AccentSelectionFill`
+            // is what a selected step row is ringed in since #150, and both are drawn on this panel at
+            // once — an edge that matched it would say the compose box is a selected row.
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineAccentBrush", variant), box.BorderBrush);
             Assert.Equal(new Thickness(1), box.BorderThickness);
+
+            var edge = FramePixels.At(
+                host.Capture(),
+                (int)box.TranslatePoint(default, host.Window)!.Value.X,
+                (int)box.TranslatePoint(new Point(0, box.Bounds.Height / 2), host.Window)!.Value.Y);
+            var selectionRing = Composite(
+                DesignTokens.ResolveBrushColor("AccentSelectionFillBrush", variant),
+                DesignTokens.ResolveBrushColor("SurfaceInsetBrush", variant));
+
             Assert.True(
-                Distance(FramePixels.At(
-                    host.Capture(),
-                    (int)box.TranslatePoint(default, host.Window)!.Value.X,
-                    (int)box.TranslatePoint(new Point(0, box.Bounds.Height / 2), host.Window)!.Value.Y),
-                    fill) > SeparableFaceStep,
+                Distance(edge, fill) > SeparableFaceStep,
                 "The box's border does not read against its own fill.");
+            Assert.True(
+                Distance(edge, selectionRing) > FaceProbeTolerance,
+                $"The compose box's edge ({edge}) is the selected row's ring ({selectionRing}) — "
+                + "the block reads as a selection.");
         }
 
         /// <summary>
@@ -2177,12 +2197,12 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, texts);
 
-            // SurfaceInset, which is `Border.inspectorRail`'s own fill: the box is FLUSH with the
-            // rail and bounded by its hairline, as the mock draws it. What the block is separated by
-            // is the step its CONTENTS stand on, proved at the glass by
-            // `TheComposeBoxAndWhatStandsInIt_AreFourSeparableSteps`.
-            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), composer.Background);
-            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), composer.BorderBrush);
+            // `SurfaceSunken` inside the designer's blue-tinted hairline (issue #152, third cut):
+            // the box is a step BELOW the rail behind it and its edge is the mock's own #2B3550,
+            // where a neutral line on a flush fill gave no separation at all. The ladder it sits in
+            // is proved at the glass by `TheComposeBoxAndWhatStandsInIt_AreFourSeparableSteps`.
+            Assert.Equal(DesignTokens.Resolve("SurfaceSunkenBrush", variant), composer.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineAccentBrush", variant), composer.BorderBrush);
 
             // THE FOUR CAPTIONS ARE GONE. Written out rather than taken off constants: the
             // constants were deleted, and the claim outlives them.
@@ -2760,6 +2780,20 @@ namespace KinesisEdit.Tests.Design
         private static double Luminance(Color colour)
         {
             return (0.2126 * colour.R) + (0.7152 * colour.G) + (0.0722 * colour.B);
+        }
+
+        /// <summary>
+        /// Source-over composite of a translucent role onto an opaque ground — what a wash such as
+        /// <c>AccentSelectionFill</c> actually reaches the glass as.
+        /// </summary>
+        private static Color Composite(Color source, Color ground)
+        {
+            var alpha = source.A / 255d;
+
+            return Color.FromRgb(
+                (byte)Math.Round((source.R * alpha) + (ground.R * (1 - alpha))),
+                (byte)Math.Round((source.G * alpha) + (ground.G * (1 - alpha))),
+                (byte)Math.Round((source.B * alpha) + (ground.B * (1 - alpha))));
         }
 
         private static double Distance(Color first, Color second)
