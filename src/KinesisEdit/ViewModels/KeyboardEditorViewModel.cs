@@ -25,7 +25,12 @@ namespace KinesisEdit.ViewModels
     /// </para>
     /// </summary>
     public sealed partial class KeyboardEditorViewModel
-        : DeviceEditorViewModel, IDisposable, IResetScopeHost, IMacroInsertionHost, IEditorKeystrokeHost
+        : DeviceEditorViewModel,
+            IDisposable,
+            IResetScopeHost,
+            IMacroInsertionHost,
+            IEditorKeystrokeHost,
+            IEditorSelectionHost
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -353,8 +358,13 @@ namespace KinesisEdit.ViewModels
         /// the board has a settings file, Lighting only where its led file is the model
         /// <see cref="LightingTabViewModel"/> edits. Every entry opens a working section — a
         /// feature the board lacks is not rendered at all rather than disabled.
+        /// <para>
+        /// The strip and everything the editor points at are <see cref="EditorSelection"/>'s since
+        /// issue #154; this, the four selection properties below and the three commands hand out its
+        /// very state, so the rehoming changed nothing the view or a test can see.
+        /// </para>
         /// </summary>
-        public IReadOnlyList<EditorTabViewModel> Tabs { get; }
+        public IReadOnlyList<EditorTabViewModel> Tabs => _selection.Tabs;
 
         /// <summary>
         /// The Settings tab's panel (docs/app/settings.md). Always built — it is cheap and reads
@@ -371,11 +381,15 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public LightingTabViewModel Lighting { get; }
 
-        /// <summary>The open section.</summary>
+        /// <summary>
+        /// The open section. Two-way bindable, and the setter runs the same guard as the command —
+        /// <see cref="EditorSelection.SelectTab"/> — so a binding cannot open a tab the strip does
+        /// not carry.
+        /// </summary>
         public EditorTab SelectedTab
         {
-            get => _selectedTab;
-            set => SelectTab(value);
+            get => _selection.SelectedTab;
+            set => _selection.SelectedTab = value;
         }
 
         /// <summary>
@@ -413,37 +427,13 @@ namespace KinesisEdit.ViewModels
         public bool IsCaptureActive => _keystrokes.IsCaptureActive;
 
         /// <summary>The device's layers, in model order.</summary>
-        public IReadOnlyList<KeyboardLayerViewModel> Layers
-        {
-            get => _layers;
-            private set => SetProperty(ref _layers, value);
-        }
+        public IReadOnlyList<KeyboardLayerViewModel> Layers => _selection.Layers;
 
         /// <summary>The layer the picture is showing.</summary>
-        public KeyboardLayerViewModel? SelectedLayer
-        {
-            get => _selectedLayer;
-            private set
-            {
-                if (SetProperty(ref _selectedLayer, value))
-                {
-                    NotifyCommands();
-                }
-            }
-        }
+        public KeyboardLayerViewModel? SelectedLayer => _selection.SelectedLayer;
 
         /// <summary>The key every key-scoped action applies to, or null when nothing is selected.</summary>
-        public KeyboardKeyViewModel? SelectedKey
-        {
-            get => _selectedKey;
-            private set
-            {
-                if (SetProperty(ref _selectedKey, value))
-                {
-                    NotifyCommands();
-                }
-            }
-        }
+        public KeyboardKeyViewModel? SelectedKey => _selection.SelectedKey;
 
         /// <summary>
         /// The key waiting for the next physical keypress, or null when nothing is listening.
@@ -496,16 +486,13 @@ namespace KinesisEdit.ViewModels
         public double EffectiveInspectorRailWidth => Rail.EffectiveWidth;
 
         /// <summary>Opens a section of the editor; a section this strip does not carry is refused.</summary>
-        public IRelayCommand<EditorTabViewModel> SelectTabCommand { get; }
+        public IRelayCommand<EditorTabViewModel> SelectTabCommand => _selection.SelectTabCommand;
 
         /// <summary>Switches the picture to another layer, cancelling anything in progress.</summary>
-        public IRelayCommand<KeyboardLayerViewModel> SelectLayerCommand { get; }
+        public IRelayCommand<KeyboardLayerViewModel> SelectLayerCommand => _selection.SelectLayerCommand;
 
-        /// <summary>
-        /// What a click on a key cap runs: it selects the key, and a second click on the key that
-        /// is already selected starts listening (specs/10-apps-and-ui.md, "Remap workflow").
-        /// </summary>
-        public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand { get; }
+        /// <inheritdoc cref="EditorSelection.SelectKeyCommand"/>
+        public IRelayCommand<KeyboardKeyViewModel> SelectKeyCommand => _selection.SelectKeyCommand;
 
         /// <summary>
         /// Puts the selected key into listening state.
@@ -580,17 +567,23 @@ namespace KinesisEdit.ViewModels
         private readonly EditorAdvisoryProjection _advisoryProjection;
         private readonly MacroInsertionHost _macroInsertion;
         private readonly EditorKeystrokeRouter _keystrokes;
+        private readonly EditorSelection _selection;
+
+        /// <summary>
+        /// The board picture, resolved once from the device (never from the profile) and shared:
+        /// <see cref="EditorSelection"/> is handed this very instance for the arrow keys' geometry,
+        /// while <see cref="BoardWidth"/>/<see cref="BoardHeight"/> and <see cref="Apply"/> keep
+        /// reading it here. It is immutable device-level data, so two readonly references to it are
+        /// not two copies of a state.
+        /// </summary>
         private readonly KeyboardVisual? _visual;
+
         private readonly EventHandler _activeOverlayChangedHandler;
         private readonly EventHandler _lightingChangedHandler;
         private readonly PropertyChangedEventHandler _inspectorPropertyChangedHandler;
         private IProfileSession? _session;
-        private IReadOnlyList<KeyboardLayerViewModel> _layers = [];
         private IReadOnlyList<string> _invalidLineMessages = [];
-        private KeyboardLayerViewModel? _selectedLayer;
-        private KeyboardKeyViewModel? _selectedKey;
         private KeyboardLayout? _layout;
-        private EditorTab _selectedTab = EditorTab.Keys;
         private string _profileCaption = string.Empty;
         private int _modifiedKeyCount;
         private int _macroCount;
@@ -690,12 +683,28 @@ namespace KinesisEdit.ViewModels
             // second preference — so the two tabs' rails are one resizable column (issue #124).
             Lighting = new LightingTabViewModel(device, notifications, _preferences, motionSettings, Rail);
 
+            // Everything the editor is POINTED AT — the tab strip, the shown layer, the selected
+            // key, the click contract and the arrow keys (EditorSelection). Built HERE, and it is
+            // the one build order this class has three separate reasons for:
+            //   * after Lighting, because the strip is filtered by Lighting.IsAvailable — a
+            //     device-level question, asked once, since this constructor runs before any profile
+            //     has been read and demo mode never reads one;
+            //   * before AdvisoryStrip below, which is handed two of its methods as the Review
+            //     walk's callbacks;
+            //   * before the first SelectTab at the end of this constructor, which is its own.
+            // It is handed the same board picture this class keeps: one immutable device fact, read
+            // by the arrow keys there and by BoardWidth/BoardHeight and Apply here.
+            _selection = new EditorSelection(this, device.Device, Lighting.IsAvailable, _visual);
+
             // The strip owns the projection and the Review walk; selecting what a note is about is
-            // this class's, because the board and the macro panel are. Built before SelectTab
+            // EditorSelection's, because the board and the macro panel are. Built before SelectTab
             // below, which projects onto it. It is handed the session's preferences because one of
             // them — `advisory_detail` — decides whether its sentence is trimmed or shown whole,
             // and it follows that store for as long as the editor is open.
-            AdvisoryStrip = new AdvisoryStripViewModel(SelectAnchoredKey, SelectAnchoredMacro, _preferences);
+            AdvisoryStrip = new AdvisoryStripViewModel(
+                _selection.SelectAnchoredKey,
+                _selection.SelectAnchoredMacro,
+                _preferences);
 
             // Building the set, marking the caps it names and narrowing it onto the strip are one
             // job — invariant 21's "every advisory appears exactly twice" — so they are one type,
@@ -703,15 +712,6 @@ namespace KinesisEdit.ViewModels
             // when it moves; nothing here holds a second copy.
             _advisoryProjection = new EditorAdvisoryProjection(AdvisoryStrip);
 
-            // The Lighting tab is rendered only for a board whose led file is the two-layer key
-            // backlight model the panel edits — absent, never disabled, on every other board and on
-            // one with no lighting hardware at all. The question is device-level on purpose: this
-            // constructor runs before any profile has been read, and demo mode never reads one.
-            Tabs = EditorTabViewModel.CreateAll(device.Device, Lighting.IsAvailable);
-
-            SelectTabCommand = new RelayCommand<EditorTabViewModel>(OnSelectTab, tab => tab is not null);
-            SelectLayerCommand = new RelayCommand<KeyboardLayerViewModel>(SelectLayer);
-            SelectKeyCommand = new RelayCommand<KeyboardKeyViewModel>(SelectKey);
             // The remap state machine, spec 10's keystroke routing and the editor's ONE
             // subscription to the capture service (EditorKeystrokeRouter). Built HERE, where its
             // two commands used to be created, because everything below it re-asks them:
@@ -903,51 +903,16 @@ namespace KinesisEdit.ViewModels
             _overlays.Show(overlay);
         }
 
-        /// <summary>
-        /// Moves the key selection one step across the <b>physical</b> board — the grammar's
-        /// "↑↓←→ move key selection across the physical grid, not tab order"
-        /// (docs/design/mockups.md <c>2b</c>). Returns whether the selection actually moved, which
-        /// is what tells the view there is a new cap to put the focus ring on.
-        /// <para>
-        /// The geometry is <see cref="KeyAdjacency"/>'s and lives in this class only because the
-        /// board picture does: <c>_visual</c> is the editor's, never the view's. With nothing
-        /// selected yet the first cap of the shown layer is where an arrow lands, so the grammar
-        /// has an entry point that does not need a click first.
-        /// </para>
-        /// <para>
-        /// It lands through <see cref="SelectKeyDirectly"/> and <b>never</b> through
-        /// <see cref="SelectKeyCommand"/>: the latter promotes a second hit on the already-selected
-        /// cap into listening, and arrowing onto a key must never start capture.
-        /// </para>
-        /// </summary>
+        /// <inheritdoc cref="EditorSelection.MoveSelection"/>
+        /// <remarks>
+        /// The selection is <see cref="EditorSelection"/>'s since issue #154. This stays as the name
+        /// <c>Views/KeyboardEditorView.axaml.cs</c>'s arrow keys call it by — and as a
+        /// <see cref="bool"/>, because the view puts the focus ring on the new cap only when it
+        /// really moved.
+        /// </remarks>
         public bool MoveSelection(NavigationDirection direction)
         {
-            if (direction is NavigationDirection.None || _visual is null || IsLoading || IsBusy)
-            {
-                return false;
-            }
-
-            if (SelectedLayer is not { } layer || layer.Keys.Count == 0)
-            {
-                return false;
-            }
-
-            if (SelectedKey is null)
-            {
-                SelectKeyDirectly(layer.Keys[0]);
-
-                return true;
-            }
-
-            if (KeyAdjacency.Next(_visual, SelectedKey.Index, direction) is not { } target
-                || layer.FindByIndex(target.Index) is not { } cap)
-            {
-                return false;
-            }
-
-            SelectKeyDirectly(cap);
-
-            return true;
+            return _selection.MoveSelection(direction);
         }
 
         /// <inheritdoc cref="EditorKeystrokeRouter.TryTakeOverlayKeystroke"/>
@@ -1023,7 +988,9 @@ namespace KinesisEdit.ViewModels
             // switch all announce it from one place.
             RefreshSelectedProfile();
 
-            Layers = outcome.Layout is not null && _visual is not null
+            // The picture is empty when either half of it is missing — a load that failed outright,
+            // or a device whose board has not been authored yet (#39–#42).
+            _selection.Layers = outcome.Layout is not null && _visual is not null
                 ? KeyboardLayerViewModel.BuildAll(outcome.Layout, _visual, outcome.Session?.Lighting)
                 : [];
 
@@ -1063,202 +1030,42 @@ namespace KinesisEdit.ViewModels
             return messages;
         }
 
+        /// <inheritdoc cref="EditorSelection.SelectTab"/>
+        /// <remarks>
+        /// A forwarder, and deliberately still a method of this class: the constructor's last
+        /// statement and <see cref="EditMacroAt"/> both open a section by name. Issue #154 changed
+        /// what the call resolves to and nothing about where it sits.
+        /// </remarks>
         private void SelectTab(EditorTab tab)
         {
-            // A section this strip does not carry stays shut whichever way it is asked for, so a
-            // two-way binding cannot open what the command refuses. There is no longer a second
-            // case: a tab that exists always works, because a feature the board lacks is not
-            // rendered at all (EditorTabViewModel).
-            if (FindTab(tab) is null)
-            {
-                return;
-            }
-
-            // Listening belongs to the keyboard picture, which only the Layout tab draws, so it is
-            // ended here or the capture service keeps swallowing keystrokes behind the section the
-            // user moved to. There is no second consumer to stand down: the rail is the app's one
-            // recording surface and it is deactivated just below.
-            CancelRemap();
-
-            // An armed copy is finished with a click on the board; a section that does not draw
-            // the board could never finish it, so it ends here too.
-            CancelCopyKey();
-
-            // The rail is drawn on the Layout tab only, so a record button armed in it must not go
-            // on capturing behind a section that does not show it. The rail is stood down, not
-            // closed: coming back to the Layout tab must find it as it was left.
-            DeactivateInspector();
-
-            // The property name is passed explicitly: the caller-member default would name this
-            // method rather than the property the view is bound to.
-            SetProperty(ref _selectedTab, tab, nameof(SelectedTab));
-
-            foreach (var entry in Tabs)
-            {
-                entry.IsSelected = entry.Tab == _selectedTab;
-            }
-
-            // The strip is the *open* section's, so the sentence and the count move with the tab.
-            // The set itself does not: a tab switch writes nothing.
-            RefreshAdvisorySummary();
-
-            // The two macro-insertion commands are only available while the macro panel is on
-            // screen, so switching sections has to re-evaluate them.
-            NotifyCommands();
+            _selection.SelectTab(tab);
         }
 
-        private EditorTabViewModel? FindTab(EditorTab tab)
-        {
-            foreach (var entry in Tabs)
-            {
-                if (entry.Tab == tab)
-                {
-                    return entry;
-                }
-            }
-
-            return null;
-        }
-
-        private void OnSelectTab(EditorTabViewModel? tab)
-        {
-            if (tab is null)
-            {
-                return;
-            }
-
-            SelectTab(tab.Tab);
-        }
-
-        /// <summary>
-        /// Switches layers. Anything half-done belongs to the layer it was started on — a key
-        /// listening for its new assignment most of all — so the switch cancels it and the whole
-        /// key collection is swapped.
-        /// </summary>
+        /// <inheritdoc cref="EditorSelection.SelectLayer"/>
+        /// <remarks>A forwarder; <see cref="Apply"/> and <see cref="EditMacroAt"/> are its callers.</remarks>
         private void SelectLayer(KeyboardLayerViewModel? layer)
         {
-            CancelRemap();
-            CancelCopyKey();
-            DeactivateInspector();
-            ClearSelectedKey();
-
-            foreach (var entry in Layers)
-            {
-                entry.IsSelected = ReferenceEquals(entry, layer);
-            }
-
-            SelectedLayer = layer;
-
-            // The Layout tab's strip is about the layer on screen, so it follows the switch. So is
-            // the legend row: its five counts are the shown layer's, and a switch writes nothing,
-            // so neither goes through RefreshCounters.
-            RefreshAdvisorySummary();
-            RefreshLegend();
+            _selection.SelectLayer(layer);
         }
 
-        /// <summary>
-        /// The click contract of specs/10-apps-and-ui.md: the first click selects, a second click
-        /// on the same key starts listening, and a click on the listening key cancels it again.
-        /// Selecting a different key always cancels listening first.
-        /// <para>
-        /// An armed <c>Copy key…</c> takes the click ahead of all of that: while a copy is waiting
-        /// for its target, the next cap clicked <em>is</em> the target and nothing else
-        /// (<see cref="CompleteCopyKey"/>). Without the interception the second half of the pick
-        /// would be read as the click contract's "a second hit on the selected cap" and start a
-        /// remap on the very key the user meant to copy from.
-        /// </para>
-        /// </summary>
-        private void SelectKey(KeyboardKeyViewModel? key)
-        {
-            // Clicking a cap is a request for the inspector, whichever branch the click then takes —
-            // including a second click on the cap that is already selected, which must reopen a rail
-            // the user pressed Escape on rather than only starting a remap. It is why the rail needs
-            // Open() at all: Refresh alone cannot tell "the user asked again" from "somebody else's
-            // edit went through the funnel".
-            if (key is not null)
-            {
-                Inspector.Open();
-            }
-
-            if (IsCopyArmed)
-            {
-                if (key is not null)
-                {
-                    CompleteCopyKey(key);
-
-                    return;
-                }
-
-                // A click that selects nothing is not a target; it ends the pick and then falls
-                // through to the ordinary "nothing is selected" branch below.
-                CancelCopyKey();
-            }
-
-            if (key is null)
-            {
-                CancelRemap();
-                ClearSelectedKey();
-
-                // Nothing is selected, so the rail has nothing to be about. A selection change
-                // writes nothing, so it never reaches RefreshCounters — hence the explicit push
-                // here and in SelectKeyDirectly.
-                RefreshInspector();
-
-                return;
-            }
-
-            if (ReferenceEquals(key, SelectedKey))
-            {
-                if (IsListening)
-                {
-                    CancelRemap();
-                }
-                else
-                {
-                    BeginRemap();
-                }
-
-                return;
-            }
-
-            SelectKeyDirectly(key);
-        }
-
-        /// <summary>
-        /// Moves the selection to <paramref name="key"/> and nothing else — no second-click
-        /// promotion to listening. It is what the click contract's "a different key" branch does,
-        /// and what <c>Review</c> needs: reviewing an advisory must not arm the keyboard.
-        /// </summary>
+        /// <inheritdoc cref="EditorSelection.SelectKeyDirectly"/>
+        /// <remarks>
+        /// A forwarder, kept because <see cref="EditMacroAt"/> lands a macro site on the board
+        /// through it — never through <see cref="SelectKeyCommand"/>, which would promote a second
+        /// hit on the already-selected cap into a remap (invariant 24).
+        /// </remarks>
         private void SelectKeyDirectly(KeyboardKeyViewModel key)
         {
-            if (ReferenceEquals(key, SelectedKey))
-            {
-                return;
-            }
-
-            CancelRemap();
-            ClearSelectedKey();
-
-            key.IsSelected = true;
-            SelectedKey = key;
-
-            RefreshInspector();
-        }
-
-        private void ClearSelectedKey()
-        {
-            if (SelectedKey is not null)
-            {
-                SelectedKey.IsSelected = false;
-            }
-
-            SelectedKey = null;
+            _selection.SelectKeyDirectly(key);
         }
 
         /// <inheritdoc cref="EditorKeystrokeRouter.BeginRemap"/>
         /// <remarks>
-        /// A forwarder, so the click contract above reads as it always did. The state machine is
-        /// <see cref="EditorKeystrokeRouter"/>'s since issue #154.
+        /// A forwarder, and the knot issue #154 had to get through the interface: the click
+        /// contract's second branch is a call to it, and the click contract is
+        /// <see cref="EditorSelection"/>'s while the state machine is
+        /// <see cref="EditorKeystrokeRouter"/>'s. Collaborators never see each other, so this class
+        /// is what joins them — <see cref="IEditorSelectionHost.BeginRemap"/> lands here.
         /// </remarks>
         private void BeginRemap()
         {
@@ -1267,10 +1074,12 @@ namespace KinesisEdit.ViewModels
 
         /// <inheritdoc cref="EditorKeystrokeRouter.CancelRemap"/>
         /// <remarks>
-        /// A forwarder, and deliberately still a method of this class: it is called from seventeen
-        /// places across five partials, and at <see cref="ShowOverlay"/>, <see cref="SelectTab"/>
-        /// and <see cref="SelectLayer"/> the stand-down triple is <em>interleaved</em> with other
-        /// work. Issue #154 changed what the call resolves to and nothing about where it sits.
+        /// A forwarder, and deliberately still a method of this class: it is called from a dozen
+        /// places across five partials, and at <see cref="ShowOverlay"/> the stand-down triple is
+        /// <em>interleaved</em> with other work — as it is at <see cref="EditorSelection.SelectTab"/>
+        /// and <see cref="EditorSelection.SelectLayer"/>, which reach it through
+        /// <see cref="IEditorSelectionHost.CancelRemap"/>. Issue #154 changed what the call resolves
+        /// to and nothing about where it sits.
         /// </remarks>
         private void CancelRemap()
         {
@@ -1415,7 +1224,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RebuildAdvisories()
         {
-            if (_advisoryProjection.Rebuild(Layout, Layers, _selectedTab, SelectedLayer?.Index))
+            if (_advisoryProjection.Rebuild(Layout, Layers, SelectedTab, SelectedLayer?.Index))
             {
                 OnPropertyChanged(nameof(Advisories));
             }
@@ -1428,47 +1237,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void RefreshAdvisorySummary()
         {
-            _advisoryProjection.Project(_selectedTab, SelectedLayer?.Index);
-        }
-
-        /// <summary>
-        /// <c>Review N</c>'s key half: puts the board's selection on the anchored cap. Handed to
-        /// <see cref="AdvisoryStripViewModel"/> as a callback, because the board is this class's.
-        /// <para>
-        /// It lands through <see cref="SelectKeyDirectly"/>, <b>never</b>
-        /// <see cref="SelectKeyCommand"/>: the click contract promotes a second hit on the
-        /// already-selected cap into listening, and reviewing is reading.
-        /// </para>
-        /// </summary>
-        private void SelectAnchoredKey(AdvisoryAnchor anchor)
-        {
-            if (anchor.KeyIndex is not int keyIndex || SelectedLayer?.FindByIndex(keyIndex) is not { } key)
-            {
-                return;
-            }
-
-            SelectKeyDirectly(key);
-        }
-
-        /// <summary>
-        /// <c>Review N</c>'s macro half: opens the anchored macro where it is edited — the board's
-        /// position, on the key inspector's Macro panel. The strip's other callback, for the same
-        /// reason the key half is one: the board and the rail are this class's.
-        /// <para>
-        /// An anchor names a <em>site</em> (layer, key, slot) while a macro is one logical thing that
-        /// may fire from three of them, so a review that merely highlighted the macro could be
-        /// pointing at all three at once. Landing on the anchored position is the answer that is
-        /// always about the one the advisory is about.
-        /// </para>
-        /// </summary>
-        private void SelectAnchoredMacro(AdvisoryAnchor anchor)
-        {
-            if (anchor.KeyIndex is not int keyIndex || anchor.LayerIndex is not int layerIndex)
-            {
-                return;
-            }
-
-            EditMacroAt(layerIndex, keyIndex, anchor.MacroIndex ?? MacroSites.FlatListSlot, startRecording: false);
+            _advisoryProjection.Project(SelectedTab, SelectedLayer?.Index);
         }
 
         /// <summary>
@@ -1801,11 +1570,12 @@ namespace KinesisEdit.ViewModels
             SelectProfileCommand.NotifyCanExecuteChanged();
         }
 
-        // The three host interfaces the collaborators split out by issues #115 and #154 read this
-        // editor through: ResetScopeCoordinator's, MacroInsertionHost's and EditorKeystrokeRouter's.
-        // Every other member each of them names is already public on this class and satisfies the
-        // interface as it stands; the ten below are implemented EXPLICITLY, because a split must
-        // not turn a private method of the editor into part of its public surface.
+        // The four host interfaces the collaborators split out by issues #115 and #154 read this
+        // editor through: ResetScopeCoordinator's, MacroInsertionHost's, EditorKeystrokeRouter's and
+        // EditorSelection's. Every other member each of them names is already public on this class
+        // and satisfies the interface as it stands; the twenty-four below are implemented
+        // EXPLICITLY, because a split must not turn a private method of the editor into part of its
+        // public surface.
 
         /// <inheritdoc/>
         void IResetScopeHost.CancelRemap()
@@ -1872,6 +1642,101 @@ namespace KinesisEdit.ViewModels
         void IEditorKeystrokeHost.OnCaptureActiveChanged()
         {
             OnPropertyChanged(nameof(IsCaptureActive));
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.OpenInspector()
+        {
+            Inspector.Open();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.RefreshInspector()
+        {
+            RefreshInspector();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.DeactivateInspector()
+        {
+            DeactivateInspector();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.BeginRemap()
+        {
+            // The knot of issue #154: the click contract's second branch reaches the remap state
+            // machine here, because EditorSelection never sees EditorKeystrokeRouter.
+            BeginRemap();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.CancelRemap()
+        {
+            CancelRemap();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.CancelCopyKey()
+        {
+            CancelCopyKey();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.CompleteCopyKey(KeyboardKeyViewModel target)
+        {
+            CompleteCopyKey(target);
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.RefreshAdvisorySummary()
+        {
+            RefreshAdvisorySummary();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.RefreshLegend()
+        {
+            RefreshLegend();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.NotifyCommands()
+        {
+            NotifyCommands();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.OnLayersChanged()
+        {
+            // Exactly what the Layers setter raised before the state moved out: the name and
+            // nothing else. It re-asked no command, because the load that writes it runs
+            // RefreshCounters and a SelectLayer of its own straight afterwards.
+            OnPropertyChanged(nameof(Layers));
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.OnSelectedLayerChanged()
+        {
+            OnPropertyChanged(nameof(SelectedLayer));
+
+            NotifyCommands();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.OnSelectedKeyChanged()
+        {
+            OnPropertyChanged(nameof(SelectedKey));
+
+            NotifyCommands();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSelectionHost.OnTabChanged()
+        {
+            // The property name only. SelectTab re-asks the commands itself, at the end and
+            // unconditionally, exactly as it did while the field lived here.
+            OnPropertyChanged(nameof(SelectedTab));
         }
 
         /// <summary>

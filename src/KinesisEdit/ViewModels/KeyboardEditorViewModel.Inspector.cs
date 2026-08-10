@@ -110,7 +110,7 @@ namespace KinesisEdit.ViewModels
         /// <paramref name="slot"/> is 1..5 on a slot device and 0 on a flat-list one.
         /// <para>
         /// The advisory strip's macro callback is its one caller
-        /// (<c>KeyboardEditorViewModel.SelectAnchoredMacro</c>): an advisory names a <em>site</em> —
+        /// (<see cref="EditorSelection.SelectAnchoredMacro"/>): an advisory names a <em>site</em> —
         /// layer, key, slot — and this is what turns a site back into the rail showing it.
         /// </para>
         /// </summary>
