@@ -212,15 +212,16 @@ namespace KinesisEdit.Tests.Design
 
             // Named by its class rather than by being the panel's only one: since issue #141 the
             // name field is a second real TextBox here, and it stands the recording down for the
-            // same reason — this case is about the millisecond count specifically.
+            // same reason — this case is about the millisecond count specifically. The class is
+            // `composerValue` since #152, which is `MonoValueField` with the compose bar's own fill.
             var field = view.GetVisualDescendants()
                 .OfType<MacroInspectorPanelView>()
                 .Single()
                 .GetVisualDescendants()
                 .OfType<TextBox>()
-                .Single(box => box.IsEffectivelyVisible && box.Classes.Contains("monoValue"));
+                .Single(box => box.IsEffectivelyVisible && box.Classes.Contains("composerValue"));
 
-            Assert.Contains("monoValue", field.Classes);
+            Assert.Contains("composerValue", field.Classes);
 
             field.Focus();
 

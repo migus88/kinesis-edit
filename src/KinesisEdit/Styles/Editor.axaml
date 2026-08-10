@@ -399,33 +399,32 @@
        about: everything above it EDITS the sequence and everything inside it BUILDS one step, so
        the block has to read as a tool sitting on the panel rather than as the next paragraph of it.
 
-       SURFACEPANEL AND NOT SURFACEINSET (issue #152), and the measurement is the argument. The box
-       carried the "quiet interior" `Border.hintBlock` and the token picker's result frame use —
-       but those sit on a SurfacePanel screen, and this one sits on `Border.inspectorRail`, which is
-       SurfaceInset ITSELF. The box was therefore painted in the colour directly behind it, and so
-       were the two inset controls inside it (`Border.macroComposerKey` and the millisecond
-       `MonoValueField`): rail, box and fields were one flat wash at #131619, and every edge in the
-       block was a hairline drawn over its own background. The designer's compose bar separates all
-       three — measured off the mock, its box sits 3.0 units of luminance BELOW the fields it holds
-       and level with the panel around it. This is that separation on our own ramp, which spells
-       depth the other way round (SurfaceInset is called inset because it is darker): the box comes
-       one step FORWARD to SurfacePanel, the fields stay inset and are now 2.7 below it on dark and
-       10.1 on light, and the block reads as a tool sitting on the rail rather than as the next
-       paragraph of it.
+       THE FILL IS FLUSH WITH THE RAIL, AND THE SEPARATION IS DONE BY WHAT STANDS IN IT (issue #152).
+       `Border.inspectorRail` is SurfaceInset, so this box is painted in the colour directly behind
+       it and is bounded by its hairline rather than by its fill — which is what the designer's mock
+       draws, measured off the designer's own PNG: box `#101318` against a `#121316` rail is 0.3 of a
+       luminance step BELOW it, i.e. level, while every control standing inside the box is `#13161A`,
+       a step ABOVE it. SurfaceInset is that relationship on our ramp (0.0 against the rail, where
+       SurfaceCanvas would sit 4.1 below it and read as a well); the +3 half is carried by
+       `Border.macroComposerKey` and `ComposerValueField` below, which come up to SurfacePanel.
 
-       IT ALSO HAS TO STAY OFF THE SEGMENTS' OWN FACES, which is the trap in repainting it at all:
-       `ComposerSegment` hovers at SurfaceBar and lights its selected pill at SurfaceRaised, so a box
-       on either token swallows the hover or the lit `tap`/`fixed` whole. SurfacePanel is the one
-       step up that keeps the three apart, and it leaves them evenly spread — box 24.3, hover 31.4,
-       pill 38.5 on dark; 255.0 / 250.8 / 239.6 on light — so the segment ramp reads monotonically
-       for the first time.
+       #152 SHIPPED THIS THE OTHER WAY UP FIRST, and the mistake is worth keeping written down: the
+       box went to SurfacePanel and the fields stayed inset, which does separate the three surfaces —
+       but it makes the block a lighter CARD SITTING ON the rail where the mock draws a bounded
+       region OF it, and side by side with the mock that is plainly the wrong hierarchy. The measured
+       relationship was in hand and the conclusion drawn from it was inverted.
+
+       WHAT MAY NOT HAPPEN EITHER WAY: `ComposerSegment` hovers at SurfaceBar and lights its selected
+       pill at SurfaceRaised, and the two live on this box. Four surfaces therefore have to stay
+       apart — box, the fields inside it, the hover face and the pill — which they do at 21.6 / 24.6 /
+       31.4 / 38.5 on dark and 244.9 / 255.0 / 250.8 / 239.6 on light, all read off captured frames.
 
        PaddingCard's 14 would be too generous for a box already inside the section's own 12, so it
        carries the 12 step of the scale — spelled as a literal because `Space12` is an x:Double and
        markup cannot compose a Thickness out of one (the argument Themes/Geometry.axaml already
        makes for the card grid's three gap keys). -->
   <Style Selector="Border.composerBox">
-    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
@@ -439,20 +438,36 @@
        step already holds, because arming is `Record key` beside it. Wearing the armed field's face
        would promise a click that does nothing.
 
-       SurfaceLineHigh rather than SurfaceLine: the plain hairline all but disappears against the
-       composer's fill, on either side of #152 — it used to be the same inset colour as this field,
-       and it is now the step above it. The fill stays SurfaceInset, which is what makes the field
-       read as genuinely recessed into the box since #152 rather than merely outlined on it.
-       MinHeight 32 is the TextBox step (MonoValueField's), so the readout and the millisecond box on
-       the row below line up rather than missing by two pixels. -->
+       SURFACEPANEL, ONE STEP ABOVE THE BOX IT STANDS IN (issue #152), and the millisecond field
+       beside it does the same through `ComposerValueField`. This is the half of the mock the first
+       cut of #152 skipped: its box is level with the rail and the controls inside it are lifted
+       `+3.0` off it, which is what gives the block its structure. Painted inset — as this was, and as
+       the field family's rule would have it — the readout, the box and the rail behind them were one
+       flat wash at #131619 and the only thing telling them apart was a hairline. See
+       `Border.composerBox` above for the ramp the four surfaces on this block occupy.
+
+       SurfaceLineHigh rather than SurfaceLine, unchanged and still right: the plain hairline all but
+       disappears here, and it disappears from either side of the step. MinHeight 32 is the TextBox
+       step (MonoValueField's), so the readout and the millisecond box on the row below line up
+       rather than missing by two pixels. -->
   <Style Selector="Border.macroComposerKey">
-    <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusControl}" />
     <Setter Property="Padding" Value="8,5" />
     <Setter Property="MinHeight" Value="32" />
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- The composer's millisecond field (issue #152). A one-setter bridge, as every bridge in this
+       layer is: `ComposerValueField` is `MonoValueField` with the compose bar's own fill and nothing
+       else, and the reason it is a derived theme rather than a setter on the shared one is written
+       at the theme (Themes/ControlThemes/Fields.axaml) — that theme is worn by the token picker, the
+       lighting tab, the Settings panel and §11.1, all of which stand on a SurfacePanel screen where
+       an inset field really is a hole. This one stands in a box that is itself SurfaceInset. -->
+  <Style Selector="TextBox.composerValue">
+    <Setter Property="Theme" Value="{StaticResource ComposerValueField}" />
   </Style>
 
   <!-- The `− 1 +` group of the Repeat row: one bordered box holding two `Button.ghost` around the

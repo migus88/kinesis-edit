@@ -77,6 +77,9 @@ namespace KinesisEdit.Tests.Design
         /// </summary>
         private const double MillisecondFieldWidth = 44;
 
+        /// <summary>Row 2's <c>ColumnSpacing</c> — the whole distance between two adjacent members.</summary>
+        private const double ComposerRowGap = 8;
+
         /// <summary>
         /// The smallest distance at which two probed faces still count as <b>separate steps</b> of
         /// the surface ramp. Deliberately small, and it is not a legibility budget: neighbouring
@@ -688,8 +691,11 @@ namespace KinesisEdit.Tests.Design
                 view.GetVisualDescendants().OfType<TextBox>(),
                 box => box.IsEffectivelyVisible);
 
-            Assert.Contains("monoValue", field.Classes);
-            Assert.NotNull(field.Theme);
+            // `composerValue` since issue #152, not `monoValue`: the same face with one role
+            // overridden (see `TheComposersField_IsMonoValueFieldWithOnlyItsFillChanged`), because
+            // this field stands in a box that is itself SurfaceInset.
+            Assert.Contains("composerValue", field.Classes);
+            Assert.Same(DesignTokens.Resolve("ComposerValueField", ToVariant(variantName)), field.Theme);
             Assert.False(field.IsEffectivelyEnabled, "The delay field is live with no step selected.");
 
             // The strip the mock draws, and nothing else (issue #148): `none` is gone, and both
@@ -903,6 +909,32 @@ namespace KinesisEdit.Tests.Design
             Assert.True(
                 RightEdgeOf(field, view) <= RightEdgeOf(unit, view),
                 "The millisecond field overlaps the unit beside it — the row is wider than its column.");
+
+            // ...AND THE SLACK IS ON THE RIGHT SIDE OF THE ROW (issue #152). The row is two phrases —
+            // what the step does, and what it waits — and the mock puts the whole gap between them:
+            // `release` to `then wait` is ~26 px there where `random` to the field is ~9. #152 first
+            // shipped the spacer between `random` and the field, which packs the wait phrase against
+            // the directions and reads as one run of six words with a hole before the number.
+            //
+            // Asserted as a COMPARISON rather than against a pixel count, because the spacer's own
+            // width is whatever the rail is not using — 2 px at this floor and 82 at the ceiling — so
+            // a number here would be a fact about one width.
+            var directions = DirectionSegmentsOf(view);
+            var waits = DelaySegmentsOf(view);
+            var beforeTheWaitGroup = LeftEdgeOf(WaitLabelOf(view), view) - RightEdgeOf(directions[^1], view);
+            var beforeTheField = LeftEdgeOf(field, view) - RightEdgeOf(waits[^1], view);
+
+            Assert.True(
+                beforeTheWaitGroup > beforeTheField,
+                $"The gap after `release` is {beforeTheWaitGroup:0.#} px and the gap before the field is "
+                + $"{beforeTheField:0.#} px — the row's slack is on the wrong side of the wait group.");
+
+            // ...and "adjacent" is meant literally: nothing but the row's own 8 px column spacing
+            // stands between `random` and the field, so the wait phrase travels with the number it
+            // qualifies however wide the rail is.
+            Assert.True(
+                beforeTheField <= ComposerRowGap + 1,
+                $"`random` ends {beforeTheField:0.#} px before the field — the two have come apart.");
         }
 
         /// <summary>
@@ -974,24 +1006,44 @@ namespace KinesisEdit.Tests.Design
                 Math.Abs(RightEdgeOf(unit, view) - RightEdgeOf(RecordStepKeyButtonOf(view), view)) <= 1,
                 $"`ms` ends at {RightEdgeOf(unit, view)} where `Record key` ends at "
                 + $"{RightEdgeOf(RecordStepKeyButtonOf(view), view)} — the two rows do not line up.");
+
+            // ...and the WAIT PHRASE TRAVELS WITH IT (issue #152). The spacer is column 1, so at this
+            // ceiling it is ~82 px wide; parked on the other side of `then wait fixed random` — which
+            // is how #152 first shipped it — all 82 would open up right here, between `random` and
+            // the number it qualifies.
+            var waits = DelaySegmentsOf(view);
+            var beforeTheField = LeftEdgeOf(field, view) - RightEdgeOf(waits[^1], view);
+
+            Assert.True(
+                beforeTheField <= ComposerRowGap + 1,
+                $"`random` ends {beforeTheField:0.#} px before the field at a {railWidth} px rail — "
+                + "the row's slack is between the wait group and the number.");
         }
 
         /// <summary>
-        /// <b>The compose box is filled, and its fill is clear of the segments' own faces
-        /// (issue #152).</b> It carried SurfaceInset, which is what <c>Border.inspectorRail</c>
-        /// behind it is painted in — box, rail and the two inset controls inside it were one flat
-        /// wash, and every edge in the block was a hairline over its own background.
+        /// <b>The compose bar's four surfaces are four separable steps, and they are stacked the way
+        /// the mock stacks them (issue #152).</b> The box is <b>flush with the rail</b> and bounded
+        /// by its hairline; what is lifted off it is <b>the controls standing in it</b> — the key
+        /// readout and the millisecond field, one step up. Measured off the designer's own PNG, its
+        /// box is level with the rail (0.3 below) and everything inside it is +3.0.
         /// <para>
-        /// <b>The trap this exists for:</b> <c>ComposerSegment</c> hovers at SurfaceBar and lights
-        /// its selected pill at SurfaceRaised, so a box moved onto either token swallows the hover or
-        /// the lit <c>fixed</c> whole. Read off the glass in both variants, because the claim is
-        /// about what is <em>separable on screen</em> and no pair of resolved brushes can make it.
+        /// <b>The trap this exists for, and it cuts both ways:</b> <c>ComposerSegment</c> hovers at
+        /// SurfaceBar and lights its selected pill at SurfaceRaised, and both live on this box. A box
+        /// moved up onto either token swallows the hover or the lit <c>fixed</c>; inner fields moved
+        /// up onto either tie with them instead. Read off the glass in both variants, because the
+        /// claim is about what is <em>separable on screen</em> and no set of resolved brushes can
+        /// make it.
+        /// </para>
+        /// <para>
+        /// The <b>direction</b> is asserted per variant rather than as "different": on dark the ramp
+        /// climbs toward white as a surface comes forward, on light it is the other way about, and a
+        /// test that only demanded a gap would pass a block whose contents had sunk instead of risen.
         /// </para>
         /// </summary>
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
-        public async Task TheComposeBox_IsFilledClearOfTheSegmentsOwnFaces(string variantName)
+        public async Task TheComposeBoxAndWhatStandsInIt_AreFourSeparableSteps(string variantName)
         {
             using var scenes = new ViewSceneFactory();
 
@@ -1018,35 +1070,62 @@ namespace KinesisEdit.Tests.Design
 
             Dispatcher.UIThread.RunJobs();
 
+            var variant = ToVariant(variantName);
             var box = ComposerBoxOf(view);
             var fill = FaceOf(host, box);
+            var inner = FaceOf(host, KeyFieldOf(view));
             var hover = FaceOf(host, hovered);
             var pill = FaceOf(host, lit);
+            var faces = new (string Name, Color Face)[]
+            {
+                ("the box fill", fill),
+                ("the key readout inside it", inner),
+                ("the segment's hover face", hover),
+                ("the lit segment's pill", pill)
+            };
 
-            // THREE SEPARABLE STEPS. Pairwise, because "box ≠ pill" alone would pass a box painted
-            // in the hover face, which is the half of the trap that only shows under a pointer.
-            Assert.True(
-                Distance(fill, hover) > SeparableFaceStep,
-                $"The box fill {fill} and the segment's hover face {hover} are the same paint.");
-            Assert.True(
-                Distance(hover, pill) > SeparableFaceStep,
-                $"The segment's hover face {hover} and its lit pill {pill} are the same paint.");
-            Assert.True(
-                Distance(fill, pill) > SeparableFaceStep,
-                $"The box fill {fill} and the lit segment's pill {pill} are the same paint.");
+            // FOUR SEPARABLE STEPS, pairwise — all six pairs, because any single missing pair is a
+            // collapse: box/pill alone would pass a box painted in the hover face, and box/hover
+            // alone would pass fields painted in the pill.
+            for (var first = 0; first < faces.Length; first++)
+            {
+                for (var second = first + 1; second < faces.Length; second++)
+                {
+                    Assert.True(
+                        Distance(faces[first].Face, faces[second].Face) > SeparableFaceStep,
+                        $"{faces[first].Name} ({faces[first].Face}) and {faces[second].Name} "
+                        + $"({faces[second].Face}) are the same paint.");
+                }
+            }
 
-            // ...and the controls INSIDE the box read as inset against it rather than merging with
-            // it, which is the separation the mock draws and the reason the fill moved at all.
-            Assert.Equal(
-                DesignTokens.Resolve("SurfaceInsetBrush", ToVariant(variantName)),
-                KeyFieldOf(view).Background);
-            Assert.True(
-                Distance(fill, FaceOf(host, KeyFieldOf(view))) > SeparableFaceStep,
-                "The composer's key readout is painted in the box's own fill.");
+            // THE BOX IS FLUSH WITH THE RAIL AND THE CONTENTS ARE WHAT IS LIFTED — the mock's
+            // hierarchy, and the one #152 first shipped upside down. "Flush" is asserted against the
+            // RAIL'S OWN declaration rather than against a token spelled twice: the rail is not in
+            // this scene (the panel is hosted bare), and what the claim is really about is that the
+            // two styles name the same role, so moving either one alone fails here.
+            Assert.Equal(BackgroundKeyOf("Border.inspectorRail"), BackgroundKeyOf("Border.composerBox"));
+            Assert.NotEqual(BackgroundKeyOf("Border.composerBox"), BackgroundKeyOf("Border.macroComposerKey"));
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), box.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), KeyFieldOf(view).Background);
 
-            // The hairline is still what separates the box from the section around it.
-            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", ToVariant(variantName)), box.BorderBrush);
+            // ...and at the glass, in the direction the variant's own ramp travels: a surface comes
+            // FORWARD by climbing toward white on dark and by doing the same on light, where the
+            // ground is already near it — so "inside is lifted" is brighter in both.
+            Assert.True(
+                Luminance(inner) > Luminance(fill),
+                $"The key readout ({Luminance(inner):0.0}) is not lifted off the box ({Luminance(fill):0.0}).");
+
+            // The hairline is still what separates the box from the section around it, and it is
+            // carrying that alone now that the fill does not.
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), box.BorderBrush);
             Assert.Equal(new Thickness(1), box.BorderThickness);
+            Assert.True(
+                Distance(FramePixels.At(
+                    host.Capture(),
+                    (int)box.TranslatePoint(default, host.Window)!.Value.X,
+                    (int)box.TranslatePoint(new Point(0, box.Bounds.Height / 2), host.Window)!.Value.Y),
+                    fill) > SeparableFaceStep,
+                "The box's border does not read against its own fill.");
         }
 
         /// <summary>
@@ -2098,11 +2177,11 @@ namespace KinesisEdit.Tests.Design
 
             Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, texts);
 
-            // SurfacePanel since issue #152, and NOT SurfaceInset: the rail behind this box is
-            // SurfaceInset itself, so the block used to be painted in the colour directly behind it.
-            // What it is now separable from is proved at the glass by
-            // `TheComposeBox_IsFilledClearOfTheSegmentsOwnFaces`.
-            Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), composer.Background);
+            // SurfaceInset, which is `Border.inspectorRail`'s own fill: the box is FLUSH with the
+            // rail and bounded by its hairline, as the mock draws it. What the block is separated by
+            // is the step its CONTENTS stand on, proved at the glass by
+            // `TheComposeBoxAndWhatStandsInIt_AreFourSeparableSteps`.
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), composer.Background);
             Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), composer.BorderBrush);
 
             // THE FOUR CAPTIONS ARE GONE. Written out rather than taken off constants: the
@@ -2505,6 +2584,14 @@ namespace KinesisEdit.Tests.Design
             return ComposerControls<MacroStepDelayOption>(view);
         }
 
+        /// <summary>Row 2's <c>then wait</c> label — the head of the wait phrase.</summary>
+        private static TextBlock WaitLabelOf(Control view)
+        {
+            return Assert.Single(
+                VisibleRunsOf(view),
+                block => block.Text == MacroInspectorPanelViewModel.StepDelayLabel);
+        }
+
         /// <summary>
         /// The composer's own single-shot <c>Record key</c> — told from the Sequence header's take
         /// by the command it runs.
@@ -2642,6 +2729,37 @@ namespace KinesisEdit.Tests.Design
                 ?? throw new InvalidOperationException("The control is not in the window's tree.");
 
             return FramePixels.At(host.Capture(), (int)point.X, (int)point.Y);
+        }
+
+        /// <summary>
+        /// The resource key a paint style in <c>Styles/Editor.axaml</c> sets its
+        /// <c>Background</c> from, read out of the authored markup. It is how a test can compare two
+        /// surfaces that are never in one scene — the compose box is rendered here, the rail behind
+        /// it is not.
+        /// </summary>
+        private static string BackgroundKeyOf(string selector)
+        {
+            var editor = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Styles/Editor.axaml"]);
+            var style = System.Text.RegularExpressions.Regex.Match(
+                editor,
+                $"<Style Selector=\"{System.Text.RegularExpressions.Regex.Escape(selector)}\">(.*?)</Style>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            Assert.True(style.Success, $"Styles/Editor.axaml declares no `{selector}`.");
+
+            var background = System.Text.RegularExpressions.Regex.Match(
+                style.Groups[1].Value,
+                "Property=\"Background\" Value=\"{DynamicResource ([A-Za-z]+)}\"");
+
+            Assert.True(background.Success, $"`{selector}` sets no Background.");
+
+            return background.Groups[1].Value;
+        }
+
+        /// <summary>Rec. 709 relative luminance — which of two faces is the one further forward.</summary>
+        private static double Luminance(Color colour)
+        {
+            return (0.2126 * colour.R) + (0.7152 * colour.G) + (0.0722 * colour.B);
         }
 
         private static double Distance(Color first, Color second)

@@ -155,7 +155,14 @@ namespace KinesisEdit.Tests.Design
                 // pedal latch (below) and the Lighting tab's zone chips (above).
                 (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
-                (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
+                // `composerValue` REPLACED THIS PANEL'S `monoValue` ROW WITH ISSUE #152, rather than
+                // joining it: the millisecond count is the panel's only TextBox, so the old row would
+                // now find no carrier at all and fail as a stale entry. `ComposerValueField` is
+                // `MonoValueField` with one role overridden — the fill, because this field stands in
+                // a box that is itself SurfaceInset — and the shared theme keeps its four other
+                // consumers untouched (FieldThemeTests holds that pair to it). The panel's mono
+                // TextBLOCKS still write `monoValue`; that class is a Text.axaml face, not a bridge.
+                (typeof(MacroInspectorPanelView).FullName!, "composerValue", "ComposerValueField"),
                 (typeof(MacroInspectorPanelView).FullName!, "composerSegment", "ComposerSegment"),
 
                 // `coTriggerChip` SPLIT OFF `macroChip` WITH ISSUE #150: the mock draws the lit

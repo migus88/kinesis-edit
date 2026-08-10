@@ -676,14 +676,21 @@
                    segments came down to the segmented family's own 11,4 (`ComposerSegment`), and
                    the row grew a column that exists only to be empty.
 
-                   THAT EMPTY `*` IS COLUMN 3, AND IT IS THE ONE THING ON THE ROW THAT MOVES
+                   THAT EMPTY `*` IS COLUMN 1, AND IT IS THE ONE THING ON THE ROW THAT MOVES
                    (issue #152). The millisecond field was the `*` itself until then, so a rail
                    dragged past its floor was spent widening a box that holds at most three digits.
-                   The slack belongs between `random` and the field instead: the field and its `ms`
-                   are then pinned to the row's right edge at every rail width, under `Record key`'s
-                   own right edge on the row above, which is how the mock draws the pair. -->
+
+                   IT SITS AFTER THE DIRECTIONS AND NOWHERE ELSE. The row is two phrases — what the
+                   step does, and what it waits — and the mock puts the whole gap between them:
+                   `release` ends and `then wait` begins about 26 px later, while `random` and the
+                   field are 9 px apart. Parked between `random` and the field instead (which is how
+                   #152 first shipped it) the wait phrase packs against `release` and the sentence
+                   reads `tap press release then wait fixed random ······ 80 ms`, breaking the one
+                   line the row exists to be. Everything to the right of the spacer travels together
+                   and stays pinned to the row's right edge at every rail width, under `Record key`'s
+                   own right edge on the row above. -->
               <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                   <ItemsControl Grid.Column="0" ItemsSource="{Binding StepDirections}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -704,13 +711,13 @@
 
                   <!-- `then wait` is a sentence fragment the controls complete, not a caption over
                        them — which is why it sits between the two strips rather than above either. -->
-                  <TextBlock Grid.Column="1"
+                  <TextBlock Grid.Column="2"
                              Text="{x:Static vm:MacroInspectorPanelViewModel.StepDelayLabel}"
                              Classes="meta muted"
                              IsVisible="{Binding Steps.AreDelaysAvailable}"
                              VerticalAlignment="Center" />
 
-                  <ItemsControl Grid.Column="2"
+                  <ItemsControl Grid.Column="3"
                                 ItemsSource="{Binding StepDelayOptions}"
                                 IsVisible="{Binding Steps.AreDelaysAvailable}">
                     <ItemsControl.ItemsPanel>
@@ -747,6 +754,13 @@
                        It is the opposite of an action field, which records a KEYPRESS and must
                        never be focusable. Mono — the count is written into the macro verbatim.
 
+                       `composerValue` AND NOT `monoValue` SINCE #152, and it is still the same face:
+                       `ComposerValueField` is `MonoValueField` — mono family, mono size, the same
+                       hairline, padding and 32 px step — with one role overridden, the fill, because
+                       this field stands in a box that is itself SurfaceInset and an inset field there
+                       is invisible. The shared theme is untouched for its four other consumers; see
+                       the bridge in Styles/Editor.axaml.
+
                        ENABLED ON THE SECTION AND NOT ON `fixed`, deliberately: typing a valid
                        number is what TAKES the choice off `random`, so a field that went dead
                        whenever `fixed` was not already the answer would be a control with no way of
@@ -773,7 +787,7 @@
                        above is pinned to the same step so the readout and this box line up rather
                        than missing by two pixels. -->
                   <TextBox Grid.Column="4"
-                           Classes="monoValue"
+                           Classes="composerValue"
                            Width="44"
                            MinWidth="44"
                            TextAlignment="Right"
