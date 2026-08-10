@@ -674,10 +674,16 @@
                    the font's own metrics, and a compose bar that reflows is not the standing one
                    the mock draws. Three levers made it one line — the `none` segment went, the
                    segments came down to the segmented family's own 11,4 (`ComposerSegment`), and
-                   the millisecond field became the `*` column so the row absorbs a dragged-wider
-                   rail instead of leaving a gap and gives way first at the floor. -->
+                   the row grew a column that exists only to be empty.
+
+                   THAT EMPTY `*` IS COLUMN 3, AND IT IS THE ONE THING ON THE ROW THAT MOVES
+                   (issue #152). The millisecond field was the `*` itself until then, so a rail
+                   dragged past its floor was spent widening a box that holds at most three digits.
+                   The slack belongs between `random` and the field instead: the field and its `ms`
+                   are then pinned to the row's right edge at every rail width, under `Record key`'s
+                   own right edge on the row above, which is how the mock draws the pair. -->
               <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="8">
                   <ItemsControl Grid.Column="0" ItemsSource="{Binding StepDirections}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -748,13 +754,28 @@
                        number are the whole control — and since #148 EMPTYING IT IS THE WRITE that
                        takes a delay off, which is what the deleted `none` segment used to do.
 
-                       THE `*` COLUMN WITH A MinWidth, not a fixed 72: the rail is drag-adjustable,
-                       so a fixed field left a growing hole to its right on every width past the
-                       floor, and at the floor itself the row needs the one control on it that can
-                       give way to be the one that does. -->
-                  <TextBox Grid.Column="3"
+                       THREE DIGITS WIDE, AND FIXED (issue #152). §11.3's range is 1-999, so the
+                       box never holds a fourth character, and it was the row's `*` column until
+                       then — which spent every pixel of a dragged-wider rail on a field that had
+                       nothing to put in them. 44 is measured, not chosen: `999` in this face
+                       measures 36.4 px inside `MonoValueField`'s 8,6 padding and 1 px border, and
+                       the rest is the caret's room and a digit's worth of slack. The empty `*`
+                       beside it is what absorbs the rail now, so the pair still gives way last
+                       rather than first.
+
+                       `MinWidth` BESIDE THE `Width`, AND IT IS NOT REDUNDANT: FluentTheme's own
+                       TextBox carries `TextControlThemeMinWidth` (64), a floor `Width` does not
+                       outrank — measure clamps a Width up into MinWidth — so the field silently
+                       came back 64 px wide the moment the local 48 that used to hold it down was
+                       removed. Both, or neither works.
+
+                       The HEIGHT is the theme's own 32 and stays there: `Border.macroComposerKey`
+                       above is pinned to the same step so the readout and this box line up rather
+                       than missing by two pixels. -->
+                  <TextBox Grid.Column="4"
                            Classes="monoValue"
-                           MinWidth="48"
+                           Width="44"
+                           MinWidth="44"
                            TextAlignment="Right"
                            IsVisible="{Binding Steps.AreDelaysAvailable}"
                            IsEnabled="{Binding IsStepDelayEnabled}"
@@ -764,7 +785,7 @@
                        effect. A number typed under `random`, or beside a step that waits for
                        nothing, is a candidate rather than something the file holds, and the mono law
                        is about values that exist verbatim in a config file. -->
-                  <TextBlock Grid.Column="4"
+                  <TextBlock Grid.Column="5"
                              Text="{x:Static vm:MacroInspectorStepViewModel.MillisecondSuffix}"
                              Classes="meta"
                              Classes.muted="{Binding !IsCustomStepDelay}"

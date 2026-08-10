@@ -71,6 +71,23 @@ namespace KinesisEdit.Tests.Design
         private const double FaceProbeTolerance = 24;
 
         /// <summary>
+        /// The millisecond field's fixed width (issue #152). <c>999</c> in <c>MonoValueField</c>'s
+        /// face measures 36.4 px inside its 8,6 padding and 1 px border; the rest is the caret's room
+        /// and a digit's worth of slack, on the 4 px grid.
+        /// </summary>
+        private const double MillisecondFieldWidth = 44;
+
+        /// <summary>
+        /// The smallest distance at which two probed faces still count as <b>separate steps</b> of
+        /// the surface ramp. Deliberately small, and it is not a legibility budget: neighbouring
+        /// steps of that ramp are a handful of units apart by design (the designer's own compose bar
+        /// separates its box from the fields inside it by 7.4), so anything larger would assert a
+        /// taste rather than the defect — two roles collapsing onto <em>one</em> token, which reads
+        /// as 0.
+        /// </summary>
+        private const double SeparableFaceStep = 4;
+
+        /// <summary>
         /// The handoff states 300 px for "the macro-editing variant"; issue #146 widened it to 440,
         /// because the compose bar's two rows of latches, a key field and a Record cannot be
         /// authored inside 300. Measured on the <b>laid-out</b> rail, because a bridge that stopped
@@ -886,6 +903,150 @@ namespace KinesisEdit.Tests.Design
             Assert.True(
                 RightEdgeOf(field, view) <= RightEdgeOf(unit, view),
                 "The millisecond field overlaps the unit beside it — the row is wider than its column.");
+        }
+
+        /// <summary>
+        /// <b>The millisecond field is three digits wide and stays there (issue #152).</b> §11.3's
+        /// range is 1–999, and the field was the row's <c>*</c> column until then — so a rail dragged
+        /// off its floor was spent widening a box that can never hold a fourth character. The empty
+        /// <c>*</c> beside it absorbs that now.
+        /// <para>
+        /// Measured at the floor <b>and</b> at the rail's ceiling, because one width proves nothing
+        /// about a column that grows: a field that is 44 px at 480 and 124 px at 560 passes every
+        /// claim made at 480 alone. The pair's right edge is asserted against <c>Record key</c>'s on
+        /// the row above, which is the alignment the mock draws and the thing the <c>*</c> would
+        /// break silently.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark", 480)]
+        [InlineData("Dark", 560)]
+        [InlineData("Light", 480)]
+        [InlineData("Light", 560)]
+        public async Task TheMillisecondField_IsThreeDigitsWide_AtEveryRailWidth(string variantName, double railWidth)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = ThemedHost.Show(view, ToVariant(variantName), railWidth, 900);
+
+            host.Capture();
+
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+            panel.StepDelayText = "999";
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var field = Assert.Single(view.GetVisualDescendants().OfType<TextBox>(), box => box.IsEffectivelyVisible);
+
+            Assert.Equal(MillisecondFieldWidth, field.Bounds.Width);
+
+            // ...and `999` really fits inside it. The width is only "three digits wide" if the three
+            // digits, this face's own metrics, and MonoValueField's 8,6 padding and 1 px border all
+            // land inside it — otherwise the box scrolls its own value out of sight.
+            var digits = new FormattedText(
+                "999",
+                CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(field.FontFamily, field.FontStyle, field.FontWeight),
+                field.FontSize,
+                Brushes.Black);
+            var content = field.Bounds.Width
+                          - field.Padding.Left
+                          - field.Padding.Right
+                          - field.BorderThickness.Left
+                          - field.BorderThickness.Right;
+
+            Assert.True(
+                digits.Width < content,
+                $"`999` measures {digits.Width:0.#} px inside a {content:0.#} px content box — the field clips or scrolls.");
+
+            // THE PAIR IS PINNED RIGHT: `ms` ends where `Record key` ends on the row above. The slack
+            // is between `random` and the field, so both rows finish on the same vertical.
+            var unit = Assert.Single(
+                VisibleRunsOf(view),
+                block => block.Text == MacroInspectorStepViewModel.MillisecondSuffix);
+
+            Assert.True(
+                Math.Abs(RightEdgeOf(unit, view) - RightEdgeOf(RecordStepKeyButtonOf(view), view)) <= 1,
+                $"`ms` ends at {RightEdgeOf(unit, view)} where `Record key` ends at "
+                + $"{RightEdgeOf(RecordStepKeyButtonOf(view), view)} — the two rows do not line up.");
+        }
+
+        /// <summary>
+        /// <b>The compose box is filled, and its fill is clear of the segments' own faces
+        /// (issue #152).</b> It carried SurfaceInset, which is what <c>Border.inspectorRail</c>
+        /// behind it is painted in — box, rail and the two inset controls inside it were one flat
+        /// wash, and every edge in the block was a hairline over its own background.
+        /// <para>
+        /// <b>The trap this exists for:</b> <c>ComposerSegment</c> hovers at SurfaceBar and lights
+        /// its selected pill at SurfaceRaised, so a box moved onto either token swallows the hover or
+        /// the lit <c>fixed</c> whole. Read off the glass in both variants, because the claim is
+        /// about what is <em>separable on screen</em> and no pair of resolved brushes can make it.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public async Task TheComposeBox_IsFilledClearOfTheSegmentsOwnFaces(string variantName)
+        {
+            using var scenes = new ViewSceneFactory();
+
+            var panel = await scenes.CreateMacroInspectorPanelAsync();
+            var view = new MacroInspectorPanelView { DataContext = panel };
+
+            using var host = Show(view, variantName);
+
+            host.Capture();
+
+            panel.Steps.SelectStepCommand.Execute(panel.Steps.Items[0]);
+            panel.StepDelayText = "80";
+
+            Dispatcher.UIThread.RunJobs();
+            host.Capture();
+
+            var segments = DelaySegmentsOf(view);
+            var lit = Assert.Single(segments, segment => segment.Classes.Contains("selected"));
+            var hovered = Assert.Single(segments, segment => !segment.Classes.Contains("selected"));
+
+            // The pointer is raised AFTER the layout pass, per design-system.md — a pseudo-class set
+            // before the template is applied is wiped by it.
+            ((IPseudoClasses)hovered.Classes).Set(":pointerover", true);
+
+            Dispatcher.UIThread.RunJobs();
+
+            var box = ComposerBoxOf(view);
+            var fill = FaceOf(host, box);
+            var hover = FaceOf(host, hovered);
+            var pill = FaceOf(host, lit);
+
+            // THREE SEPARABLE STEPS. Pairwise, because "box ≠ pill" alone would pass a box painted
+            // in the hover face, which is the half of the trap that only shows under a pointer.
+            Assert.True(
+                Distance(fill, hover) > SeparableFaceStep,
+                $"The box fill {fill} and the segment's hover face {hover} are the same paint.");
+            Assert.True(
+                Distance(hover, pill) > SeparableFaceStep,
+                $"The segment's hover face {hover} and its lit pill {pill} are the same paint.");
+            Assert.True(
+                Distance(fill, pill) > SeparableFaceStep,
+                $"The box fill {fill} and the lit segment's pill {pill} are the same paint.");
+
+            // ...and the controls INSIDE the box read as inset against it rather than merging with
+            // it, which is the separation the mock draws and the reason the fill moved at all.
+            Assert.Equal(
+                DesignTokens.Resolve("SurfaceInsetBrush", ToVariant(variantName)),
+                KeyFieldOf(view).Background);
+            Assert.True(
+                Distance(fill, FaceOf(host, KeyFieldOf(view))) > SeparableFaceStep,
+                "The composer's key readout is painted in the box's own fill.");
+
+            // The hairline is still what separates the box from the section around it.
+            Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", ToVariant(variantName)), box.BorderBrush);
+            Assert.Equal(new Thickness(1), box.BorderThickness);
         }
 
         /// <summary>
@@ -1936,7 +2097,12 @@ namespace KinesisEdit.Tests.Design
             var texts = VisibleTextsOf(view);
 
             Assert.Contains(MacroInspectorPanelViewModel.ComposerLabel, texts);
-            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), composer.Background);
+
+            // SurfacePanel since issue #152, and NOT SurfaceInset: the rail behind this box is
+            // SurfaceInset itself, so the block used to be painted in the colour directly behind it.
+            // What it is now separable from is proved at the glass by
+            // `TheComposeBox_IsFilledClearOfTheSegmentsOwnFaces`.
+            Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), composer.Background);
             Assert.Equal(DesignTokens.Resolve("SurfaceLineBrush", variant), composer.BorderBrush);
 
             // THE FOUR CAPTIONS ARE GONE. Written out rather than taken off constants: the

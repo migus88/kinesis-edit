@@ -1915,6 +1915,143 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
+        /// <b>Pressing the lit segment clears the delay (issue #152)</b> — the third route to "no
+        /// delay", beside the emptied field and a typed <c>0</c>, and the one that closes the gap
+        /// #148 left behind: a <c>random</c> delay puts no number in the field, so there was nothing
+        /// to empty and clearing it took two gestures.
+        /// <para>
+        /// Driven from a step that is <b>really carrying</b> the delay in question, because pressing
+        /// a lit segment on a step with nothing written is a different case with a different outcome
+        /// (see <see cref="UntogglingFixed_WhileItIsLitButUnwritten_WritesNothingAndDirtiesNothing"/>)
+        /// — and a fixture that never had a delay would pass either way.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData(MacroStepDelayMode.Fixed)]
+        [InlineData(MacroStepDelayMode.Random)]
+        public void PressingTheLitDelaySegment_ClearsTheDelay(MacroStepDelayMode mode)
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+            scene.SelectStep(1);
+
+            // The delay is put on through the route that really writes it: a number for `fixed`,
+            // the segment for `random` (which has no number to be given).
+            if (mode == MacroStepDelayMode.Fixed)
+            {
+                scene.TypeDelay("80");
+
+                Assert.Equal(["a", "b", "d080"], scene.MacroTokens());
+            }
+            else
+            {
+                scene.SetDelayMode(MacroStepDelayMode.Random);
+
+                Assert.Equal(["a", "b", MacroDelayTokens.RandomToken], scene.MacroTokens());
+            }
+
+            Assert.Equal(mode, scene.SelectedDelayMode());
+
+            scene.SetDelayMode(mode);
+
+            // Neither segment lit, the field emptied, and `None` written — `ClearStepDelay` verbatim.
+            Assert.Null(scene.SelectedDelayMode());
+            Assert.Equal(string.Empty, scene.Panel.StepDelayText);
+            Assert.Equal(0, scene.Panel.StepDelayMilliseconds);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+            Assert.False(scene.Panel.IsCustomStepDelay);
+            Assert.Equal(["a", "b"], scene.MacroTokens());
+            Assert.False(scene.Panel.Steps.Items[1].HasDelay);
+
+            // ...and the OTHER segment is unaffected by the press: an unlit one still writes.
+            scene.SetDelayMode(MacroStepDelayMode.Random);
+
+            Assert.Equal(MacroStepDelayMode.Random, scene.SelectedDelayMode());
+            Assert.Equal(["a", "b", MacroDelayTokens.RandomToken], scene.MacroTokens());
+        }
+
+        /// <summary>
+        /// <b><c>fixed</c> can be lit with nothing written</b>, and un-arming it must stay free.
+        /// Pressing it on a step with no delay latches the segment and arms the field without writing
+        /// (that is what makes a fixed delay authorable at all), so <c>IsOn</c> does not imply the
+        /// step carries anything. Pressing it again has to leave the step exactly as it was — and
+        /// <b>not dirty the profile</b>, since nothing was ever written.
+        /// <para>
+        /// <c>Assigned</c> is the panel's one hop to the editor's funnel, and so to <c>IsDirty</c>;
+        /// counting it is how a test says "the session is still clean".
+        /// </para>
+        /// </summary>
+        [AvaloniaFact]
+        public void UntogglingFixed_WhileItIsLitButUnwritten_WritesNothingAndDirtiesNothing()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a", "b");
+            scene.SelectStep(1);
+
+            var assigned = 0;
+
+            scene.Panel.Assigned += (_, _) => assigned++;
+
+            scene.SetDelayMode(MacroStepDelayMode.Fixed);
+
+            // Armed, reported, and nothing written — the state this test exists for.
+            Assert.Equal(MacroStepDelayMode.Fixed, scene.SelectedDelayMode());
+            Assert.Equal(MacroInspectorStepsViewModel.InvalidDelayMessage, scene.Panel.StepDelayError);
+            Assert.Equal(["a", "b"], scene.MacroTokens());
+
+            scene.SetDelayMode(MacroStepDelayMode.Fixed);
+
+            Assert.Null(scene.SelectedDelayMode());
+            Assert.False(scene.Panel.IsCustomStepDelay);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayError);
+            Assert.Equal(string.Empty, scene.Panel.StepDelayText);
+            Assert.Equal(["a", "b"], scene.MacroTokens());
+            Assert.False(scene.Panel.Steps.Items[1].HasDelay);
+
+            // NOTHING WAS WRITTEN, so nothing may have been announced: `TrySetSelectedDelay` refuses
+            // a `None` against a step whose delay is already absent.
+            Assert.Equal(0, assigned);
+        }
+
+        /// <summary>
+        /// Untoggling is the same write as the other two routes, so it has the same consequence on a
+        /// <b>delay-only</b> row (06 §2.2): the row goes, because a row that was nothing but a delay
+        /// has nothing left once the delay does.
+        /// <para>
+        /// The fixture opens the macro with the delay and keeps a keystroke behind it, so "the row
+        /// was dropped" and "the macro was emptied" cannot be confused for one another.
+        /// </para>
+        /// </summary>
+        [AvaloniaFact]
+        public void UntogglingOnADelayOnlyRow_DropsTheRow()
+        {
+            var scene = new Scene(this);
+
+            scene.Select(TestLayouts.RgbDigitOneKeyIndex);
+            scene.Record("a");
+
+            scene.CurrentMacro!.ClearKeystrokes();
+            scene.CurrentMacro.AddKeystroke(new Keystroke(MacroDelayTokens.ResolveRandom(TokenDialect.Gen1)!));
+            scene.CurrentMacro.AddKeystroke(new Keystroke(TestLayouts.Gen1Key("a")));
+            scene.Panel.Steps.RefreshFromModel();
+
+            scene.SelectStep(0);
+
+            Assert.True(scene.Panel.Steps.Items[0].IsDelayOnly);
+            Assert.Equal(MacroStepDelayMode.Random, scene.SelectedDelayMode());
+
+            scene.SetDelayMode(MacroStepDelayMode.Random);
+
+            Assert.Equal(["a"], scene.MacroTokens());
+            Assert.Single(scene.Panel.Steps.Items);
+            Assert.False(scene.Panel.Steps.Items[0].IsDelayOnly);
+        }
+
+        /// <summary>
         /// The millisecond field is <b>empty</b> on a step with no delay, not <c>0</c>. Zero is the
         /// "nothing chosen" sentinel and is not itself a legal delay (§11.3's range is 1-999), so
         /// drawing it put a number in the box that the box would reject if it were typed. It only
