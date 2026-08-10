@@ -27,6 +27,16 @@ namespace KinesisEdit.Tests.Design
         [InlineData("SurfaceBorderRaised", "#31363B", "#C9CFD2")]
         [InlineData("SurfaceThumbnail", "#262B30", "#EEF0F1")]
         [InlineData("SurfaceKeySelected", "#2A2F35", "#E4E7E9")]
+        // One step BELOW inset, and a blue-tinted hairline — both added by issue #152 for the
+        // macro compose bar's box, which stands on a rail that is SurfaceInset itself. The dark
+        // `SurfaceSunken` deliberately ties with `SurfaceCanvas`: the box is not a window
+        // background, and a future canvas change must not drag it along. LIGHT IS WHY THE ROLE
+        // EXISTS — there `SurfaceCanvas` and `SurfaceInset` are one value, so the ramp had no
+        // lower step to borrow, and the two darker ones are the composer's own pill
+        // (`SurfaceRaised`) and its divider (`SurfaceLine`); this sits between them.
+        // `SurfaceLineAccent` dark is the designer's own measured edge, #2B3550.
+        [InlineData("SurfaceSunken", "#0E1421", "#E4E8F4")]
+        [InlineData("SurfaceLineAccent", "#2B3550", "#CBD5E6")]
         // Text: six steps. Light deliberately collapses two pairs of them.
         [InlineData("TextPrimary", "#E8EBED", "#14181B")]
         [InlineData("TextSecondary", "#C6CCD1", "#4A5158")]

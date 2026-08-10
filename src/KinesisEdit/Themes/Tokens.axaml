@@ -41,6 +41,39 @@
       <Color x:Key="SurfaceKeySelectedColor">#2A2F35</Color>
       <SolidColorBrush x:Key="SurfaceKeySelectedBrush" Color="{StaticResource SurfaceKeySelectedColor}" />
 
+      <!-- One step BELOW the inset surface (issue #152) — a block sunk into a surface that is
+           already inset. Its one consumer is the macro compose bar's box, which stands on
+           `Border.inspectorRail`: the rail is SurfaceInset itself, so the box painted in any
+           existing step either matched the rail exactly or floated above it as a lighter card, and
+           the ramp had nothing lower. On dark that lower step is the canvas value, which this role
+           deliberately re-uses rather than reaching for `SurfaceCanvas` at the call site: the box is
+           not a window background and a future canvas change must not drag it along.
+
+           IT EXISTS FOR THE LIGHT DICTIONARY. Dark could have named `SurfaceCanvas` and been done;
+           light cannot, because there `SurfaceCanvas` and `SurfaceInset` are the SAME value and the
+           only darker steps left are already spoken for — `SurfaceRaised` is the composer's own
+           selected segment pill and `SurfaceBar` is its hover face. #EAECEE would have tied with
+           nothing but sits 5 off the pill; this value is the step between `SurfaceRaised` and
+           `SurfaceLine`, which leaves the pill, the hover and the box all separable on the one block
+           where the three meet. -->
+      <Color x:Key="SurfaceSunkenColor">#0E1421</Color>
+      <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{StaticResource SurfaceSunkenColor}" />
+
+      <!-- The hairline with the designer's blue in it (issue #152). `SurfaceLine` is the neutral
+           divider this app draws everywhere; the mock draws ONE edge differently — the compose bar's
+           box, at #2B3550 against a #121316 panel, a faintly blue grey rather than the accent. The
+           dark value is that measurement verbatim.
+
+           NOT AN ACCENT ROLE, and the distinction is the point: the accent means selection/focus or
+           "you changed this", and this edge means neither — it is the boundary of a standing tool.
+           `AccentSelectionFill` (the selected step row's ring since #150) composites to roughly
+           #1D2939 over the rail, some 30 away from this and visibly dimmer, so the two edges stay
+           tellable apart on a panel that draws both at once. Light is the same move on that ramp:
+           `SurfaceLine`'s #DDE1E3 pulled toward the accent hue and a step darker, so the edge gains
+           the same faint blue and the same small step of extra contrast it gains on dark. -->
+      <Color x:Key="SurfaceLineAccentColor">#2B3550</Color>
+      <SolidColorBrush x:Key="SurfaceLineAccentBrush" Color="{StaticResource SurfaceLineAccentColor}" />
+
       <!-- Text. Six steps, from the primary reading colour down to disabled. -->
       <Color x:Key="TextPrimaryColor">#E8EBED</Color>
       <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
@@ -212,6 +245,30 @@
       <SolidColorBrush x:Key="SurfaceThumbnailBrush" Color="{StaticResource SurfaceThumbnailColor}" />
       <Color x:Key="SurfaceKeySelectedColor">#E4E7E9</Color>
       <SolidColorBrush x:Key="SurfaceKeySelectedBrush" Color="{StaticResource SurfaceKeySelectedColor}" />
+
+      <!-- The sunken step, and THE REASON THE ROLE EXISTS AT ALL (issue #152) — see the dark
+           dictionary for what it is for. Light has no lower step to borrow: `SurfaceCanvas` and
+           `SurfaceInset` are one value here, so "a step down from the rail" had no light answer,
+           and the two darker steps left are the composer's own pill (`SurfaceRaised`, #EEF0F1) and,
+           further down, the divider (`SurfaceLine`, #DDE1E3). This sits between them — 232.5 in
+           luminance against the pill's 239.6 and the rail's 244.9 — so the box is visibly recessed
+           from the section around it without the lit `tap`/`fixed` pill sinking into it. -->
+      <Color x:Key="SurfaceSunkenColor">#E4E8F4</Color>
+      <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{StaticResource SurfaceSunkenColor}" />
+
+      <!-- The blue-tinted hairline. `SurfaceLine`'s #DDE1E3 pulled toward the accent hue and one
+           step darker: on light, contrast is gained by going down where dark gains it by going up, so
+           the edge reads as a stronger-than-neutral divider here exactly as #2B3550 does there, and
+           carries the same faint blue.
+
+           HOW FAR DARKER IS SET BY THE SELECTED STEP ROW, not by taste. That row is ringed in
+           `AccentSelectionFill`, which composites to about #DEE9F6 on this variant's rail — a pale
+           blue a lighter edge lands right on top of. #D4DCEA measured 20 away from it, inside the
+           distance this suite calls "the same paint" (24), so a compose box wearing it would have
+           read as a selected row. This sits 32 away, which is also why the light edge is a bigger
+           step off `SurfaceLine` than the dark one is. -->
+      <Color x:Key="SurfaceLineAccentColor">#CBD5E6</Color>
+      <SolidColorBrush x:Key="SurfaceLineAccentBrush" Color="{StaticResource SurfaceLineAccentColor}" />
 
       <!-- Light deliberately collapses two pairs of text steps — Secondary == BodyMuted and
            Faint == Disabled — because the dark ramp has more headroom than the light one.

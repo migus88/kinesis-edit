@@ -565,6 +565,67 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(DesignTokens.Resolve("FontSans", variant), search.FontFamily);
         }
 
+        /// <summary>
+        /// <b><c>ComposerValueField</c> is <c>MonoValueField</c> with exactly one role changed — the
+        /// fill (issue #152)</b> — and the shared theme is left alone for its other consumers.
+        /// <para>
+        /// The macro compose bar's box is flush with the rail it sits on (both SurfaceInset), so this
+        /// file's family rule — "a field is a hole in the panel, it rests on SurfaceInset" — would
+        /// paint the field in the colour already under it. The mock separates that block by lifting
+        /// what stands in it, so this one field comes up a step. Everything else it inherits, and the
+        /// assertions below are what stop the derivative quietly becoming a second theme.
+        /// </para>
+        /// <para>
+        /// <b>The disabled face is asserted on purpose:</b> Avalonia walks <c>BasedOn</c> first, so
+        /// the base theme's <c>:disabled</c> fill would land on top — and disabled is not an edge
+        /// case for this field, it is how the panel opens, before any step is selected.
+        /// </para>
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheComposersField_IsMonoValueFieldWithOnlyItsFillChanged(string variantName)
+        {
+            var variant = ToVariant(variantName);
+            var composer = Sized(new TextBox());
+            var shared = Sized(new TextBox());
+
+            composer.Theme = (ControlTheme)DesignTokens.Resolve("ComposerValueField", variant);
+            shared.Theme = (ControlTheme)DesignTokens.Resolve("MonoValueField", variant);
+
+            using var host = ThemedHost.Show(
+                new StackPanel { Children = { composer, shared } },
+                variant,
+                HostWidth,
+                HostHeight);
+
+            // The one role that differs, in both directions: the composer's fill is the step above
+            // the box, and the shared theme still paints the hole this file's header describes.
+            Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), composer.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), shared.Background);
+
+            // Everything else is inherited, and that is the claim: mono family and size (the field
+            // holds a value the macro file carries verbatim), the same hairline, the same geometry.
+            Assert.Equal(shared.FontFamily, composer.FontFamily);
+            Assert.Equal(DesignTokens.Resolve("FontMono", variant), composer.FontFamily);
+            Assert.Equal(shared.FontSize, composer.FontSize);
+            Assert.Equal(shared.Padding, composer.Padding);
+            Assert.Equal(shared.MinHeight, composer.MinHeight);
+            Assert.Equal(shared.CornerRadius, composer.CornerRadius);
+            Assert.Equal(shared.BorderThickness, composer.BorderThickness);
+            Assert.Equal(shared.BorderBrush, composer.BorderBrush);
+            Assert.Equal(typeof(TextBox), composer.Theme!.TargetType);
+
+            // ...and the dead face keeps the composer's fill rather than falling back through
+            // BasedOn to the base theme's inset one.
+            ApplyState(composer, "disabled");
+            ApplyState(shared, "disabled");
+
+            Assert.Equal(DesignTokens.Resolve("SurfacePanelBrush", variant), composer.Background);
+            Assert.Equal(DesignTokens.Resolve("SurfaceInsetBrush", variant), shared.Background);
+            Assert.Equal(DesignTokens.Resolve("TextDisabledBrush", variant), composer.Foreground);
+        }
+
         [AvaloniaTheory]
         [InlineData("Dark")]
         [InlineData("Light")]
@@ -745,7 +806,7 @@ namespace KinesisEdit.Tests.Design
             // Themes/Tokens.axaml is the only file in the app that may hold one. (A bare `#` is not
             // enough to look for — `/template/ Border#Root` is the correct way to name a part.)
             //
-            // Scoped to this file because these are the seven themes it owns;
+            // Scoped to this file because these are the nine themes it owns;
             // ControlThemeBridgeTests runs the same scan over the whole directory, so a file added
             // to the layer later is covered without anybody remembering to extend a list.
             var fields = AuthoredXaml.WithoutComments(AuthoredXaml.Files()["Themes/ControlThemes/Fields.axaml"]);

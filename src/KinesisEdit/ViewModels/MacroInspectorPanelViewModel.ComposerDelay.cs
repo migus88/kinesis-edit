@@ -226,6 +226,17 @@ namespace KinesisEdit.ViewModels
         /// reported "no delay", so <c>fixed</c> never latched and the field it arms never came alive —
         /// a fixed delay was unauthorable. The press is an <em>intent</em>, and the only place the
         /// number can come from is the field it arms, so it must survive not having one yet.</para>
+        ///
+        /// <para><b>The LIT segment untoggles to "no delay" (issue #152)</b>, which closes the gap
+        /// #148 left behind: emptying the millisecond field is the write that clears a delay, and a
+        /// <c>random</c> one has no number in the field to empty, so clearing it took two gestures —
+        /// type a number, then clear it. Pressing what is already lit is the third route to the same
+        /// state, and it is <see cref="ClearStepDelay"/> verbatim rather than a second spelling of it.
+        /// <b>It writes nothing when there was nothing written</b>: <c>fixed</c> can be lit on a step
+        /// that carries no delay (it latched and armed the field), and
+        /// <see cref="MacroInspectorStepsViewModel.TrySetSelectedDelay"/> refuses a
+        /// <see cref="MacroInspectorDelay.None"/> against a step whose delay is already absent, so
+        /// un-arming cannot dirty the profile.</para>
         /// </summary>
         private void SetStepDelayMode(MacroStepDelayOption? option)
         {
@@ -234,7 +245,14 @@ namespace KinesisEdit.ViewModels
                 return;
             }
 
-            SetStepDelayChoice(option!.Mode);
+            if (option!.IsOn)
+            {
+                ClearStepDelay();
+
+                return;
+            }
+
+            SetStepDelayChoice(option.Mode);
 
             if (option.Mode == MacroStepDelayMode.Random)
             {

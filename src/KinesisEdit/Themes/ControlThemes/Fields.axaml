@@ -8,7 +8,8 @@
     A field is a HOLE IN THE PANEL, not a thing on top of it: it rests on SurfaceInset with a
     SurfaceLine hairline, where a button rests on SurfaceBar with a SurfaceBorderRaised one
     (Themes/Controls.axaml, "A field (TextBox, ComboBox) rests on SurfaceInset instead"). That is
-    the single rule that makes the eight themes below read as one family.
+    the single rule that makes the nine themes below read as one family — and `ComposerValueField`
+    is the one deliberate exception, for the reason written at it.
 
     ================================================================================================
     TEMPLATE OR BasedOn — the decision, per control, and the reason
@@ -199,6 +200,46 @@
       <Setter Property="Background" Value="{DynamicResource SurfaceInsetBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    ================================================================================================
+    COMPOSER VALUE FIELD — MonoValueField standing on the macro compose bar, and nothing else
+    (issue #152). One overridden role: the fill.
+    ================================================================================================
+
+    THE FAMILY RULE IN THIS FILE'S HEADER IS THE REASON, NOT AN EXCEPTION TO IT. "A field is a hole
+    in the panel, not a thing on top of it: it rests on SurfaceInset." The compose bar's box
+    (`Border.composerBox`) stands on `Border.inspectorRail`, which is SurfaceInset itself, and since
+    #152 the box is a step BELOW even that (`SurfaceSunken`). So the ground under this one field is
+    already at or under the colour the rule would paint the field: a hole cut in a hole is not a
+    hole, it is a flat wash with a hairline drawn on it, which is exactly what the panel shipped as
+    before #152.
+
+    The mock separates that block by lifting WHAT IS INSIDE it — measured off the designer's own PNG,
+    its box is `#101318` and every control standing in it is `#13161A`, one step up (+3.0 luminance).
+    SurfacePanel is that step on our ramp, and it is also the only one available: `ComposerSegment`
+    hovers at SurfaceBar and lights its pill at SurfaceRaised, so a field on either would tie with a
+    segment state sitting inches away on the same row.
+
+    DERIVED RATHER THAN SET ON `MonoValueField`, because that theme is app-wide — the token picker's
+    result frame, the lighting tab's readouts, the Settings panel and §11.1's Tap-and-Hold delay all
+    wear it, and every one of them really is a hole in a SurfacePanel screen. `Border.macroComposerKey`
+    (Styles/Editor.axaml) is the same move for the readout on the row above; it is a local paint style
+    with one call site and needs no theme of its own.
+
+    THE DISABLED FACE HAD TO BE RE-STATED, and this is `ComposerSegment`'s trap in another family:
+    Avalonia walks BasedOn FIRST, so MonoValueField's `:disabled` would put SurfaceInset back — and
+    disabled is not an edge case here, it is what this field looks like whenever no step is selected,
+    which is how the panel opens. The border and the dimmed text stay inherited; only the fill is
+    ours.
+  -->
+  <ControlTheme x:Key="ComposerValueField" TargetType="TextBox" BasedOn="{StaticResource MonoValueField}">
+    <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
+
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource SurfacePanelBrush}" />
     </Style>
   </ControlTheme>
 
