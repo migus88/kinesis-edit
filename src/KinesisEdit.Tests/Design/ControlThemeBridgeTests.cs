@@ -146,10 +146,16 @@ namespace KinesisEdit.Tests.Design
                 // ring spans the grip and the delete mark too, so `Border.macroStepRowFrame`
                 // carries it.) `macroChip`, #146's own theme, has a case of its own below —
                 // TheMacroChip_BridgesToItsTheme_AndRingsBothOfItsStates.
+                //
+                // `composerSegment` REPLACED `toggleSegment` HERE with issue #148: the composer's
+                // two strips are the panel's only segments and both moved onto the derived theme,
+                // whose 11,4 / 11px is what put row 2 of the compose bar on one line.
+                // `ToggleSegment` itself is untouched and still reached — by the Savant Elite2
+                // pedal latch (below) and the Lighting tab's zone chips (above).
                 (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
-                (typeof(MacroInspectorPanelView).FullName!, "toggleSegment", "ToggleSegment"),
+                (typeof(MacroInspectorPanelView).FullName!, "composerSegment", "ComposerSegment"),
                 (typeof(MacroInspectorPanelView).FullName!, "ghost", "GhostButton")
             })
             {

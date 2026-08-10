@@ -59,6 +59,7 @@ namespace KinesisEdit.Tests.Design
                 ("SegmentedControl", nameof(ListBox)),
                 ("SegmentedItem", nameof(ListBoxItem)),
                 ("ToggleSegment", nameof(Button)),
+                ("ComposerSegment", nameof(Button)),
                 ("DirectionSegment", nameof(Button)),
                 ("SpeedBar", nameof(Button)),
                 ("TabStrip", nameof(TabStrip)),
@@ -170,6 +171,16 @@ namespace KinesisEdit.Tests.Design
                 { "ToggleSegment", "pressed", "SurfaceLineBrush" },
                 { "ToggleSegment", "selected", "AccentBrush" },
                 { "ToggleSegment", "disabled", "SurfaceInsetBrush" },
+
+                // The macro composer's own segments (issue #148). It derives from ToggleSegment and
+                // overrides METRICS ONLY, so the whole ramp above has to arrive unchanged — that is
+                // the claim these five rows exist to make, and a `Padding` setter that turned into a
+                // `Background` one would break them rather than pass quietly.
+                { "ComposerSegment", "rest", "SurfaceBarBrush" },
+                { "ComposerSegment", "hover", "SurfaceRaisedBrush" },
+                { "ComposerSegment", "pressed", "SurfaceLineBrush" },
+                { "ComposerSegment", "selected", "AccentBrush" },
+                { "ComposerSegment", "disabled", "SurfaceInsetBrush" },
 
                 // One arrow of the lighting tab's direction row: the toggle's ramp, because "this
                 // is the direction the effect runs" is the same kind of statement "this co-trigger
@@ -482,6 +493,47 @@ namespace KinesisEdit.Tests.Design
             Assert.Equal(0, RootOf(button).BoxShadow.Count);
 
             AssertClose(DesignTokens.ResolveBrushColor("SurfaceCanvasBrush", variant), PixelBeside(host, button));
+        }
+
+        /// <summary>
+        /// <c>ComposerSegment</c> is <c>ToggleSegment</c> with the <b>metrics</b> of the family's own
+        /// container put back, and nothing else (issue #148). Two halves, and both matter: the
+        /// composer's segments really are tighter than a standalone latch — which is what put row 2
+        /// of the compose bar on one line — and <c>ToggleSegment</c> itself did <b>not</b> move, so
+        /// the Savant Elite2 pedal latch and the Lighting tab's zone chips are where they were.
+        /// </summary>
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheComposerSegment_IsTheToggleAtTheSegmentedFamilysOwnRhythm(string variantName)
+        {
+            // Left-aligned, so each one measures to its own content: a stretched button is the
+            // panel's width and every theme would look identical.
+            var variant = ToVariant(variantName);
+            var composer = ContentSized(new Button { Theme = Theme("ComposerSegment", variant), Content = "release" });
+            var toggle = ContentSized(new Button { Theme = Theme("ToggleSegment", variant), Content = "release" });
+            var item = ContentSized(new ListBoxItem { Theme = Theme("SegmentedItem", variant), Content = "release" });
+
+            using var host = ThemedHost.Show(
+                new StackPanel { Children = { composer, toggle, item } },
+                variant,
+                HostWidth,
+                HostHeight);
+
+            // The family's own rhythm, taken from the container the layer switcher already wears
+            // rather than invented here — that is the whole argument for these two setters.
+            Assert.Equal(item.Padding, composer.Padding);
+            Assert.Equal(item.FontSize, composer.FontSize);
+
+            // ToggleSegment is BYTE-UNCHANGED: still the button type step at PaddingButton.
+            Assert.Equal(new Thickness(13, 8), toggle.Padding);
+            Assert.Equal((double)DesignTokens.Resolve("FontSizeControl", variant), toggle.FontSize);
+
+            // ...and the difference is real width on the glass, not merely two different numbers.
+            Assert.True(
+                composer.Bounds.Width < toggle.Bounds.Width,
+                $"The composer's segment ({composer.Bounds.Width}) is no narrower than the "
+                + $"standalone toggle ({toggle.Bounds.Width}).");
         }
 
         [AvaloniaTheory]
@@ -1031,6 +1083,15 @@ namespace KinesisEdit.Tests.Design
         }
 
         /// <summary>A bare button on <paramref name="key"/>, sized so a probe has room beside it.</summary>
+        /// <summary>Left-aligns <paramref name="control"/> so it measures to its own content.</summary>
+        private static TControl ContentSized<TControl>(TControl control)
+            where TControl : Control
+        {
+            control.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+
+            return control;
+        }
+
         private static Button SizedButton(string key, ThemeVariant variant)
         {
             return new Button

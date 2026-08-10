@@ -47,16 +47,28 @@
        tile, token and assignment line still fit on one line; 520 is where the rail stops being a
        rail and starts being half the window on the 1000px default.
 
-       THE FLOOR IS 440 SINCE ISSUE #146, AND THAT IS A DEVIATION FROM docs/design/handoff.md:90-96,
+       THE FLOOR IS 480 SINCE ISSUE #148, AND THAT IS A DEVIATION FROM docs/design/handoff.md:90-96,
        which says 300 on the macro-editing variant. The redesigned Macro panel puts a step row's
        grip, key chip, action word, delay pill and delete mark on ONE line, and the composer under
        it draws four modifier chips, a key field and `Record key` on another; at 300 both wrapped,
-       and a wrapped step row is exactly what the fixed-height list exists to make scannable. 440 is
-       still comfortably inside the band, so the seam can be dragged either side of it. -->
+       and a wrapped step row is exactly what the fixed-height list exists to make scannable. #146
+       took it to 440 on those two rows.
+
+       480 IS A MEASURED NUMBER, NOT AN ESTIMATE. #148 put the compose bar's action and delay
+       controls on ONE line, as the mock draws them — `tap` `press` `release` · then wait · `fixed`
+       `random` · [ 80 ] ms. Captured at the floor with the widest state of every control (the
+       selected segment is SemiBold, which is a pixel wider than the resting one), that row measures
+       432 px and the panel's own chrome takes 50 more, so 482 is the smallest width it fits in and
+       480 is what it fits in once the millisecond field is allowed to give way to its 48 px
+       MinWidth. Two levers came first and both were spent: the `none` segment went (60 px) and the
+       segments came down to the segmented family's own 11,4 / 11px (`ComposerSegment`, 35 px). It
+       is still a FLOOR, so a user who has dragged wider keeps their width — and Max moved with it,
+       because a floor the seam cannot be dragged past by a useful margin is an override wearing a
+       floor's name. -->
   <x:Double x:Key="WidthInspectorRail">268</x:Double>
-  <x:Double x:Key="WidthInspectorRailWide">440</x:Double>
+  <x:Double x:Key="WidthInspectorRailWide">480</x:Double>
   <x:Double x:Key="WidthInspectorRailMin">240</x:Double>
-  <x:Double x:Key="WidthInspectorRailMax">520</x:Double>
+  <x:Double x:Key="WidthInspectorRailMax">560</x:Double>
   <x:Double x:Key="GutterSplit">26</x:Double>
 
   <!-- The dashboard card grid: two columns, and a 2px status rail flush against the left edge

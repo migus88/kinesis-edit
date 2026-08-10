@@ -28,10 +28,12 @@ namespace KinesisEdit.ViewModels
         /// The rail width macro editing is entitled to (<c>WidthInspectorRailWide</c>). A
         /// <b>floor</b> on <see cref="EffectiveWidth"/>, never a replacement — see there.
         /// <para>
-        /// <b>440, not the handoff's 300</b> (docs/design/handoff.md § Geometry says 300 "on the
-        /// macro-editing variant"), and the deviation is issue #146's: the redesigned Macro panel
-        /// draws a step row and the composer's first row as single lines, and neither fits in 300.
-        /// Recorded in docs/app/design-system.md's deviation list.
+        /// <b>480, not the handoff's 300</b> (docs/design/handoff.md § Geometry says 300 "on the
+        /// macro-editing variant"). The deviation is issue #146's — the redesigned Macro panel draws
+        /// a step row and the composer's first row as single lines, and neither fits in 300, which
+        /// took it to 440 — and issue #148's, which put the compose bar's <em>second</em> row on one
+        /// line as the mock draws it. That row measures 432 px at its widest and the panel's chrome
+        /// takes 50 more. Recorded in docs/app/design-system.md's deviation list.
         /// </para>
         /// <para>
         /// Written as a plain number rather than read out of <c>Themes/Geometry.axaml</c>: a view
@@ -39,7 +41,7 @@ namespace KinesisEdit.ViewModels
         /// this constant are pinned to each other by a test.
         /// </para>
         /// </summary>
-        public const double MacroRailWidth = 440;
+        public const double MacroRailWidth = 480;
 
         /// <summary>
         /// How wide the user has dragged the rail, in DIPs — clamped into

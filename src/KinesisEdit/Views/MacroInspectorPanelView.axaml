@@ -5,7 +5,7 @@
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              xmlns:views="clr-namespace:KinesisEdit.Views"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="760"
+             mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="760"
              x:Class="KinesisEdit.Views.MacroInspectorPanelView"
              x:DataType="vm:MacroInspectorPanelViewModel">
   <!--
@@ -21,7 +21,7 @@
     under it — always the same shape in the same place, which is what makes it usable as the one
     control that edits a step.
 
-    THE RAIL IS 440px WIDE WHILE THIS PANEL IS SHOWING. The rail sets it off the panel's own
+    THE RAIL IS 480px WIDE WHILE THIS PANEL IS SHOWING. The rail sets it off the panel's own
     WantsWideRail, so this file names no width at all.
 
     THERE IS NO ASSIGN BUTTON. Editing in place means the first recorded keystroke IS the macro —
@@ -650,113 +650,119 @@
                    and a typed value validated, and `FirmwareFeature.CustomMacroDelays` is answered
                    IN PLACE with 09 §2's own words plus an `Update Firmware` button.
 
-                   `toggleSegment` AND NOT `macroChip` for these two strips: a chip is an
+                   `composerSegment` AND NOT `macroChip` for these two strips: a chip is an
                    independent latch that RINGS when it is on, and these are genuinely one-of-N
                    choices, which the segment's filled face is what says. Each segment carries its
                    own `IsEnabled`, because `press` and `release` die on a chord: 05 §5.8 discards a
                    direction on a modified keystroke.
 
-                   `none` IS KEPT even though the mock draws only `fixed` / `random`: without it "no
-                   delay" is unauthorable. Recorded as a deviation in docs/app/design-system.md.
+                   `none` IS GONE (issue #148). The mock draws `fixed` / `random` and this row now
+                   draws what the mock draws; "no delay" is authored by EMPTYING the millisecond
+                   field, which is the control the number was going to come from anyway. It is still
+                   a state of the step — a step that waits for neither lights neither segment.
 
-                   A WrapPanel, because keeping `none` is a fourth control the mock's single line
-                   did not budget for: on a rail this wide the row lands on one line or two
-                   depending on the font's own metrics, and wrapping is what stops it running off
-                   the edge on the machine where it does not fit. -->
+                   A GRID, AND DELIBERATELY NOTHING THAT CAN WRAP. This was a WrapPanel precisely
+                   because it did not fit: at 440px the row landed on one line or two depending on
+                   the font's own metrics, and a compose bar that reflows is not the standing one
+                   the mock draws. Three levers made it one line — the `none` segment went, the
+                   segments came down to the segmented family's own 11,4 (`ComposerSegment`), and
+                   the millisecond field became the `*` column so the row absorbs a dragged-wider
+                   rail instead of leaving a gap and gives way first at the floor. -->
               <StackPanel Spacing="6">
-                <WrapPanel>
-                  <ItemsControl ItemsSource="{Binding StepDirections}" Margin="0,0,8,0">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                  <ItemsControl Grid.Column="0" ItemsSource="{Binding StepDirections}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
-                        <WrapPanel />
+                        <StackPanel Orientation="Horizontal" Spacing="4" />
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate DataType="vm:MacroStepDirection">
-                        <Button Classes="toggleSegment"
+                        <Button Classes="composerSegment"
                                 Classes.selected="{Binding IsOn}"
                                 IsEnabled="{Binding IsEnabled}"
                                 Content="{Binding Caption}"
-                                Margin="0,0,4,4"
                                 Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDirectionCommand}"
                                 CommandParameter="{Binding}" />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
 
-                  <!-- The label travels WITH its segments, as one wrap item: `then wait` orphaned
-                       at the end of the direction row would be a sentence with nothing after it. -->
-                  <StackPanel Orientation="Horizontal"
-                              Margin="0,0,8,0"
-                              IsVisible="{Binding Steps.AreDelaysAvailable}">
-                    <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.StepDelayLabel}"
-                               Classes="meta muted"
-                               Margin="0,0,8,4"
-                               VerticalAlignment="Center" />
+                  <!-- `then wait` is a sentence fragment the controls complete, not a caption over
+                       them — which is why it sits between the two strips rather than above either. -->
+                  <TextBlock Grid.Column="1"
+                             Text="{x:Static vm:MacroInspectorPanelViewModel.StepDelayLabel}"
+                             Classes="meta muted"
+                             IsVisible="{Binding Steps.AreDelaysAvailable}"
+                             VerticalAlignment="Center" />
 
-                    <ItemsControl ItemsSource="{Binding StepDelayOptions}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <WrapPanel />
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="vm:MacroStepDelayOption">
-                          <!-- The tooltip carries §11.3's own caption and the range it accepts.
-                               `random`'s 1-150 ms is stated nowhere else: the fixed delay's bounds
-                               are drawn by its field's arrows and its validation message, but a
-                               random one has no field. -->
-                          <Button Classes="toggleSegment"
-                                  Classes.selected="{Binding IsOn}"
-                                  IsEnabled="{Binding IsEnabled}"
-                                  Content="{Binding Caption}"
-                                  ToolTip.Tip="{Binding Description}"
-                                  Margin="0,0,4,4"
-                                  Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
-                                  CommandParameter="{Binding}" />
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
+                  <ItemsControl Grid.Column="2"
+                                ItemsSource="{Binding StepDelayOptions}"
+                                IsVisible="{Binding Steps.AreDelaysAvailable}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:MacroStepDelayOption">
+                        <!-- The tooltip carries §11.3's own caption and the range it accepts.
+                             `random`'s 1-150 ms is stated nowhere else: the fixed delay's bounds
+                             are drawn by its own caption and its validation message, but a random
+                             one has no field. -->
+                        <Button Classes="composerSegment"
+                                Classes.selected="{Binding IsOn}"
+                                IsEnabled="{Binding IsEnabled}"
+                                Content="{Binding Caption}"
+                                ToolTip.Tip="{Binding Description}"
+                                Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
+                                CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
 
-                  <StackPanel Orientation="Horizontal"
-                              Spacing="6"
-                              Margin="0,0,0,4"
-                              IsVisible="{Binding Steps.AreDelaysAvailable}">
-                    <!-- A real TextBox, and that is correct here: focus landing in one ENDS the
-                         recording — the editor's `GotFocus` leg of `StopRecordingOnInteraction`
-                         stands the panel down and the banner goes with it — so the digits reach the
-                         field and the panel is never left claiming to record while the keyboard
-                         belongs to the box (docs/app/keystroke-capture.md, invariant 7). The
-                         service's own auto-suspend on text focus still applies underneath, but it
-                         is silent, and a silent suspension is exactly what this panel must not rely
-                         on.
+                  <!-- A real TextBox, and that is correct here: focus landing in one ENDS the
+                       recording — the editor's `GotFocus` leg of `StopRecordingOnInteraction`
+                       stands the panel down and the banner goes with it — so the digits reach the
+                       field and the panel is never left claiming to record while the keyboard
+                       belongs to the box (docs/app/keystroke-capture.md, invariant 7). The
+                       service's own auto-suspend on text focus still applies underneath, but it
+                       is silent, and a silent suspension is exactly what this panel must not rely
+                       on.
 
-                         It is the opposite of an action field, which records a KEYPRESS and must
-                         never be focusable. Mono — the count is written into the macro verbatim.
+                       It is the opposite of an action field, which records a KEYPRESS and must
+                       never be focusable. Mono — the count is written into the macro verbatim.
 
-                         ENABLED ON THE SECTION AND NOT ON `fixed`, deliberately: typing a valid
-                         number is what TAKES the choice off `random` (and off `none`), so a field
-                         that went dead whenever `fixed` was not already the answer would be a
-                         control with no way of ever becoming reachable. The arrows are gone from
-                         beside it since #146 — the segments and the number are the whole control,
-                         and the Repeat row below is where a stepper earns its width. -->
-                    <TextBox Classes="monoValue"
-                             Width="72"
-                             TextAlignment="Right"
-                             IsEnabled="{Binding IsStepDelayEnabled}"
-                             Text="{Binding StepDelayText, Mode=TwoWay}" />
+                       ENABLED ON THE SECTION AND NOT ON `fixed`, deliberately: typing a valid
+                       number is what TAKES the choice off `random`, so a field that went dead
+                       whenever `fixed` was not already the answer would be a control with no way of
+                       ever becoming reachable. The arrows went with #146 — the segments and the
+                       number are the whole control — and since #148 EMPTYING IT IS THE WRITE that
+                       takes a delay off, which is what the deleted `none` segment used to do.
 
-                    <!-- The unit loses its muted role only while the count is the delay actually in
-                         effect. A number typed under `none` or `random` is a candidate rather than
-                         something the file holds, and the mono law is about values that exist
-                         verbatim in a config file. -->
-                    <TextBlock Text="{x:Static vm:MacroInspectorStepViewModel.MillisecondSuffix}"
-                               Classes="meta"
-                               Classes.muted="{Binding !IsCustomStepDelay}"
-                               VerticalAlignment="Center" />
-                  </StackPanel>
-                </WrapPanel>
+                       THE `*` COLUMN WITH A MinWidth, not a fixed 72: the rail is drag-adjustable,
+                       so a fixed field left a growing hole to its right on every width past the
+                       floor, and at the floor itself the row needs the one control on it that can
+                       give way to be the one that does. -->
+                  <TextBox Grid.Column="3"
+                           Classes="monoValue"
+                           MinWidth="48"
+                           TextAlignment="Right"
+                           IsVisible="{Binding Steps.AreDelaysAvailable}"
+                           IsEnabled="{Binding IsStepDelayEnabled}"
+                           Text="{Binding StepDelayText, Mode=TwoWay}" />
+
+                  <!-- The unit loses its muted role only while the count is the delay actually in
+                       effect. A number typed under `random`, or beside a step that waits for
+                       nothing, is a candidate rather than something the file holds, and the mono law
+                       is about values that exist verbatim in a config file. -->
+                  <TextBlock Grid.Column="4"
+                             Text="{x:Static vm:MacroInspectorStepViewModel.MillisecondSuffix}"
+                             Classes="meta"
+                             Classes.muted="{Binding !IsCustomStepDelay}"
+                             IsVisible="{Binding Steps.AreDelaysAvailable}"
+                             VerticalAlignment="Center" />
+                </Grid>
 
                 <!-- The firmware refusal, drawn in place of the controls rather than beside them: a
                      firmware that cannot do this at all has nothing for the segments to write to.
@@ -871,27 +877,14 @@
                        VerticalAlignment="Center" />
           </Grid>
 
-          <!-- The two pure reports, on one line: `this macro 128 / 500 · macros 24 / 100`. The
-               middle dot IS a character — U+00B7 is Latin-1 and both embedded Plex families carry
-               it. Each half goes amber on its OWN budget, so a full profile does not paint an
-               ordinary macro over budget. -->
-          <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
-            <TextBlock Text="{Binding MacroLengthMeter.Label}" Classes="meta muted" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding MacroLengthMeter.Caption}"
-                       Classes="monoValueSmall"
-                       Classes.muted="{Binding !MacroLengthMeter.IsOverBudget}"
-                       Classes.statusWarning="{Binding MacroLengthMeter.IsOverBudget}"
-                       VerticalAlignment="Center" />
-            <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.MeterJoin}"
-                       Classes="meta muted"
-                       VerticalAlignment="Center" />
-            <TextBlock Text="{Binding MacroCountMeter.Label}" Classes="meta muted" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding MacroCountMeter.Caption}"
-                       Classes="monoValueSmall"
-                       Classes.muted="{Binding !MacroCountMeter.IsOverBudget}"
-                       Classes.statusWarning="{Binding MacroCountMeter.IsOverBudget}"
-                       VerticalAlignment="Center" />
-          </StackPanel>
+          <!-- `this macro 128 / 500 · macros 24 / 100` WAS DRAWN HERE, and issue #148 deleted it.
+               #146 kept the pair as one muted line on the argument that `macros n/m` was the last
+               readout of 06 §6's profile-wide count after #140 removed the Macros tab. The mock
+               draws neither, the user chose the mock knowing exactly that, and the choice is
+               recorded in docs/app/design-system.md rather than absorbed: the profile-wide macro
+               count and the per-macro cap are no longer stated anywhere in the app.
+
+               `LayoutKeystrokeMeter` above STAYS — the mock draws that one, on the Repeat row. -->
         </StackPanel>
       </Border>
 
