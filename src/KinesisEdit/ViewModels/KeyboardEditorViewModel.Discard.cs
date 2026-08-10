@@ -132,7 +132,7 @@ namespace KinesisEdit.ViewModels
 
             session.RevertLayout();
 
-            Apply(new LoadOutcome { Session = session, Layout = session.Layout });
+            _loader.ApplyReplacedLayout(session);
         }
 
         /// <summary>

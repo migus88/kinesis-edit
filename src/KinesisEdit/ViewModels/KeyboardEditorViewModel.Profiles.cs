@@ -1,7 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
 using KinesisEdit.Core.Devices;
-using KinesisEdit.Core.Profiles;
-using KinesisEdit.Core.VDrive;
 using KinesisEdit.Services;
 
 namespace KinesisEdit.ViewModels
@@ -211,22 +209,13 @@ namespace KinesisEdit.ViewModels
 
             IsLoading = true;
 
-            LoadOutcome outcome;
-
-            try
-            {
-                // A profile the user has already opened is handed back from the cache with its
-                // edits intact and no drive touched at all — which is what makes a return trip
-                // instant and lossless. Only a first visit reads, and it reads off the UI thread
-                // like the first load: on a real v-Drive that is two files parsed, and doing it
-                // inline would stall the app mid-click.
-                outcome = FindCachedProfile(option.Number)
-                          ?? await Task.Run(() => LoadProfileFrom(location, option.Number)).ConfigureAwait(true);
-            }
-            catch (Exception exception)
-            {
-                outcome = new LoadOutcome { Error = exception };
-            }
+            // A profile the user has already opened is handed back from the cache with its edits
+            // intact and no drive touched at all — which is what makes a return trip instant and
+            // lossless. Only a first visit reads, and it reads off the UI thread like the first
+            // load: on a real v-Drive that is two files parsed, and doing it inline would stall the
+            // app mid-click. Both halves, and the "never throw" that lets the outcome be decided
+            // before Apply runs, are EditorProfileLoader's since issue #154.
+            var outcome = await _loader.OpenProfileAsync(location, option.Number).ConfigureAwait(true);
 
             try
             {
@@ -238,7 +227,7 @@ namespace KinesisEdit.ViewModels
                     // files the arriving session in the cache and announces the new selection
                     // through RefreshSelectedProfile. The outgoing session is *kept*, not released:
                     // it is already in the cache and holds edits the user has not saved.
-                    Apply(outcome);
+                    _loader.Apply(outcome);
                 }
             }
             finally
@@ -269,45 +258,6 @@ namespace KinesisEdit.ViewModels
             await Lighting.LoadAsync().ConfigureAwait(true);
 
             return true;
-        }
-
-        /// <summary>
-        /// The profile as the editor already holds it, or null when this is its first visit. A hit
-        /// is marked as one (<c>LoadOutcome.IsCacheHit</c>) because <c>Apply</c> must not re-stamp
-        /// the stored macro names over a session whose names the user has since edited. The cache
-        /// answers with the session; <c>LoadOutcome</c> is the editor's own shape, so this wraps it.
-        /// </summary>
-        private LoadOutcome? FindCachedProfile(int profileNumber)
-        {
-            if (_sessionCache.Find(profileNumber) is not { } cached)
-            {
-                return null;
-            }
-
-            return new LoadOutcome { Session = cached, Layout = cached.Layout, IsCacheHit = true };
-        }
-
-        /// <summary>
-        /// Reads one profile off <paramref name="location"/> and reports what it got.
-        /// <para>
-        /// Unlike <c>LoadProfile</c>, a failure here degrades to <b>nothing</b> rather than to a
-        /// factory-default layout: the first load has no editor to keep, so an empty board is the
-        /// best it can do, while a switch already has a perfectly good profile open and must leave
-        /// it exactly as it was. A null <c>Session</c> is what tells the caller so.
-        /// </para>
-        /// </summary>
-        private LoadOutcome LoadProfileFrom(VDriveLocation location, int profileNumber)
-        {
-            try
-            {
-                var session = _profileSessions.Load(location, Device.DeviceId, profileNumber);
-
-                return new LoadOutcome { Session = session, Layout = session.Layout };
-            }
-            catch (Exception exception)
-            {
-                return new LoadOutcome { Error = exception };
-            }
         }
 
         /// <summary>

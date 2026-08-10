@@ -5,7 +5,6 @@ using KinesisEdit.Core.Geometry.Visual;
 using KinesisEdit.Core.Input;
 using KinesisEdit.Core.Layouts;
 using KinesisEdit.Core.Model;
-using KinesisEdit.Core.Profiles;
 using KinesisEdit.Core.VDrive.Io;
 using KinesisEdit.Services;
 using KinesisEdit.ViewModels.Advisories;
@@ -30,7 +29,9 @@ namespace KinesisEdit.ViewModels
             IResetScopeHost,
             IMacroInsertionHost,
             IEditorKeystrokeHost,
-            IEditorSelectionHost
+            IEditorSelectionHost,
+            IEditorProfileLoaderHost,
+            IEditorSaveHost
     {
         /// <summary>Prefix of the profile caption; the loaded profile number follows it.</summary>
         public const string ProfileCaptionPrefix = "Profile ";
@@ -525,8 +526,17 @@ namespace KinesisEdit.ViewModels
         /// <inheritdoc cref="ResetScopeCoordinator.ResetLayoutCommand"/>
         public IRelayCommand ResetLayoutCommand => _resetScopes.ResetLayoutCommand;
 
-        /// <summary>Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).</summary>
-        public IAsyncRelayCommand SaveCommand { get; }
+        /// <summary>
+        /// Writes the profile back to the v-Drive; never available in demo mode (03 §3.5).
+        /// <para>
+        /// The three file commands are <see cref="EditorSaveCoordinator"/>'s since issue #154 and
+        /// these three properties hand out its very commands — this one is bound in
+        /// <c>Views/KeyboardEditorView.axaml</c>'s toolbar and run by the grammar in its code-behind
+        /// — so the rehoming changed nothing the view or a test can see, and
+        /// <see cref="NotifyCommands"/> still re-asks the very instances that are bound.
+        /// </para>
+        /// </summary>
+        public IAsyncRelayCommand SaveCommand => _saves.SaveCommand;
 
         /// <summary>
         /// Opens Search Keys over the macro and inserts the picked action (11 §11.6).
@@ -542,46 +552,52 @@ namespace KinesisEdit.ViewModels
         /// <inheritdoc cref="MacroInsertionHost.OpenSearchCommand"/>
         public IRelayCommand OpenSearchCommand => _macroInsertion.OpenSearchCommand;
 
-        /// <summary>Opens the Export files panel (11 §11.5); never available in demo mode (03 §3.5).</summary>
-        public IRelayCommand ExportCommand { get; }
+        /// <inheritdoc cref="EditorSaveCoordinator.ExportCommand"/>
+        public IRelayCommand ExportCommand => _saves.ExportCommand;
 
-        /// <summary>
-        /// Imports an external <c>.txt</c> over this profile's layout or lighting
-        /// (specs/10-apps-and-ui.md, 07 §1.4); never available in demo mode (03 §3.5).
-        /// </summary>
-        public IAsyncRelayCommand ImportCommand { get; }
+        /// <inheritdoc cref="EditorSaveCoordinator.ImportCommand"/>
+        public IAsyncRelayCommand ImportCommand => _saves.ImportCommand;
 
         /// <summary>Dismisses the open feature panel; the overlay's own Cancel path runs first.</summary>
         public IRelayCommand CloseOverlayCommand { get; }
 
-        private readonly IProfileSessionFactory _profileSessions;
         private readonly IKeystrokeCaptureService _capture;
         private readonly INotificationService _notifications;
-        private readonly IFolderPickerService _folderPicker;
-        private readonly IVDriveFileService _files;
         private readonly IUrlLauncher _urlLauncher;
         private readonly IAppPreferencesStore _preferences;
-        private readonly ProfileImporter _importer;
         private readonly EditorOverlayHost _overlays;
         private readonly ResetScopeCoordinator _resetScopes;
         private readonly EditorAdvisoryProjection _advisoryProjection;
         private readonly MacroInsertionHost _macroInsertion;
         private readonly EditorKeystrokeRouter _keystrokes;
         private readonly EditorSelection _selection;
+        private readonly EditorProfileLoader _loader;
+        private readonly EditorSaveCoordinator _saves;
 
         /// <summary>
         /// The board picture, resolved once from the device (never from the profile) and shared:
-        /// <see cref="EditorSelection"/> is handed this very instance for the arrow keys' geometry,
-        /// while <see cref="BoardWidth"/>/<see cref="BoardHeight"/> and <see cref="Apply"/> keep
-        /// reading it here. It is immutable device-level data, so two readonly references to it are
-        /// not two copies of a state.
+        /// <see cref="EditorSelection"/> is handed this very instance for the arrow keys' geometry
+        /// and <see cref="EditorProfileLoader"/> for building the layers over, while
+        /// <see cref="BoardWidth"/>/<see cref="BoardHeight"/> keep reading it here. It is immutable
+        /// device-level data, so three readonly references to it are not three copies of a state.
         /// </summary>
         private readonly KeyboardVisual? _visual;
 
         private readonly EventHandler _activeOverlayChangedHandler;
         private readonly EventHandler _lightingChangedHandler;
         private readonly PropertyChangedEventHandler _inspectorPropertyChangedHandler;
+        /// <summary>
+        /// The profile the editor has open. It stays a field of <b>this</b> class through issue
+        /// #154's split, and deliberately: four partials read it (<c>…Profiles.cs</c>,
+        /// <c>…Discard.cs</c>, <c>…MacroNames.cs</c> and this one) and both new collaborators do
+        /// too, so a field on either of them would have left one owner and five readers reaching
+        /// through an interface for a value they used to have. <see cref="EditorProfileLoader"/>
+        /// writes it — through <see cref="IEditorProfileLoaderHost.Session"/>, in <c>Apply</c>, which
+        /// is the one place a session becomes the open one — and
+        /// <see cref="EditorSaveCoordinator"/> only ever reads it.
+        /// </summary>
         private IProfileSession? _session;
+
         private IReadOnlyList<string> _invalidLineMessages = [];
         private KeyboardLayout? _layout;
         private string _profileCaption = string.Empty;
@@ -590,7 +606,6 @@ namespace KinesisEdit.ViewModels
         private bool _isLoading = true;
         private bool _isBusy;
         private bool _isDirty;
-        private bool _hasLoadStarted;
         private bool _isDisposed;
 
         /// <summary>
@@ -630,14 +645,18 @@ namespace KinesisEdit.ViewModels
             IMotionSettings? motionSettings = null,
             IHostPreferencesStore? hostPreferences = null) : base(device)
         {
-            _profileSessions = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
+            // The four the file seams took with them (issue #154). They are validated here, in the
+            // order and at the point they always were, and handed to EditorProfileLoader and
+            // EditorSaveCoordinator below rather than kept as fields nothing on this class would
+            // read: a constructor argument that is wrong is a throw from the constructor either way.
+            var sessionFactory = profileSessions ?? throw new ArgumentNullException(nameof(profileSessions));
             _capture = capture ?? throw new ArgumentNullException(nameof(capture));
             _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
-            _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
-            _files = files ?? throw new ArgumentNullException(nameof(files));
+            var folders = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
+            var fileService = files ?? throw new ArgumentNullException(nameof(files));
             _urlLauncher = urlLauncher ?? throw new ArgumentNullException(nameof(urlLauncher));
             _preferences = sessions?.Active?.Preferences ?? NullAppPreferencesStore.Instance;
-            _importer = new ProfileImporter(filePicker);
+            var importer = new ProfileImporter(filePicker);
             _overlays = new EditorOverlayHost(_capture);
 
             // The editor's whole multi-profile state, and the per-profile unsaved-rename set that
@@ -732,14 +751,29 @@ namespace KinesisEdit.ViewModels
             // both of these in its constructor.
             CopyMacroCommand = new RelayCommand(ArmMacroCopy, () => CanCopyMacro());
             CancelCopyKeyCommand = new RelayCommand(CancelCopyKey, () => IsCopyArmed);
-            SaveCommand = new AsyncRelayCommand(SaveAsync, () => CanSave());
+            // Where a profile comes from, and what arriving means (EditorProfileLoader). Built after
+            // _visual and _sessionCache above, which it is handed: the board picture the layers are
+            // built over is the device's one immutable fact, and the cache is where a session is
+            // filed as it becomes the open one. Nothing calls it during construction — LoadAsync is
+            // the shell's, fired after the view swap.
+            _loader = new EditorProfileLoader(this, device, sessionFactory, _sessionCache, _visual);
+            // Everything the editor does with a FILE — Save, Import, Export, the dirty flag and the
+            // unsaved-work question (EditorSaveCoordinator). Built HERE, where its three commands
+            // used to be created, because everything below it re-asks them: NotifyCommands names all
+            // three, and the first SelectTab at the end of this constructor runs it.
+            _saves = new EditorSaveCoordinator(
+                this,
+                device,
+                _sessionCache,
+                _notifications,
+                folders,
+                fileService,
+                importer);
             // §11.6's macro insertion and ⌘F (MacroInsertionHost). It reads the rail lazily through
             // the host interface, so it may be built before CreateInspector runs; _recentTokens is
             // this editor's one store (KeyboardEditorViewModel.Inspector.cs) and is initialized with
             // the field, so it is already there.
             _macroInsertion = new MacroInsertionHost(this, _recentTokens);
-            ExportCommand = new RelayCommand(OpenExport, () => CanExport());
-            ImportCommand = new AsyncRelayCommand(ImportAsync, () => CanImport());
             CloseOverlayCommand = new RelayCommand(_overlays.Dismiss, () => ActiveOverlay is not null);
 
             // The profile picker (KeyboardEditorViewModel.Profiles.cs). Built here, from device
@@ -785,88 +819,28 @@ namespace KinesisEdit.ViewModels
         /// vanished, an unreadable file, an unsupported profile — every failure is reported through
         /// the notification service and degrades to the factory-default layout with saving
         /// disabled, because the shell fires this and forgets it. A second call is a no-op.
+        /// <para>
+        /// The whole session lifecycle is <see cref="EditorProfileLoader"/>'s since issue #154, this
+        /// included; the override stays here because <see cref="DeviceEditorViewModel.LoadAsync"/> is
+        /// what the shell fires, and it stays a forwarder rather than an <c>async</c> method so a
+        /// synchronous throw could only ever come from the loader's own task.
+        /// </para>
         /// </summary>
-        public override async Task LoadAsync()
+        public override Task LoadAsync()
         {
-            if (_isDisposed || _hasLoadStarted)
-            {
-                return;
-            }
-
-            _hasLoadStarted = true;
-            IsLoading = true;
-
-            LoadOutcome outcome;
-
-            try
-            {
-                outcome = await Task.Run(LoadProfile).ConfigureAwait(true);
-            }
-            catch (Exception exception)
-            {
-                outcome = new LoadOutcome { Error = exception };
-            }
-
-            try
-            {
-                Apply(outcome);
-            }
-            finally
-            {
-                IsLoading = false;
-            }
-
-            // The Settings tab reads its own file, and reports its own failures inline, so a
-            // settings read can never stop the picture from appearing. The Lighting tab only
-            // reads the picker's stored swatches; its model came with the profile above.
-            await Settings.LoadAsync().ConfigureAwait(true);
-            await Lighting.LoadAsync().ConfigureAwait(true);
-
-            if (outcome.Error is not null)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = LoadFailureTitle,
-                    Message = LoadFailureMessagePrefix + outcome.Error.Message,
-                    Icon = MessageBoxIcon.Error
-                }).ConfigureAwait(true);
-            }
+            return _loader.LoadAsync();
         }
 
-        /// <summary>
-        /// The unsaved-changes guard of docs/design/handoff.md §2 ("leaving via Home asks once
-        /// (modal) unless opted out"), asked by the shell before Home or another device replaces
-        /// this editor. The question itself is <see cref="UnsavedChangesPrompt"/>'s, so this board
-        /// and the pedal ask it in the same words, and asking it is
-        /// <see cref="ConfirmDiscardingUnsavedWorkAsync"/>'s — the profile picker asks the same one
-        /// before a switch.
-        /// <para>
-        /// A save in flight refuses outright, without a question — but with a toast, for the same
-        /// reason the pedal editor does it (docs/app/savant-elite.md, decision 5): leaving would
-        /// dispose this editor while <c>ProfileSession.Save</c> is still writing, and the write is
-        /// short enough that the navigation works the moment it finishes.
-        /// </para>
-        /// <para>
-        /// <b>What it cannot see:</b> the Settings tab. Settings are outside the session's dirty
-        /// comparison by design (docs/app/keyboard-editor.md, "Settings are outside the dirty
-        /// model"), so an unsaved settings row is invisible here — the tab has its own Save, and
-        /// giving this guard a second, differently-shaped question would be worse than the gap.
-        /// </para>
-        /// </summary>
-        public override async Task<bool> ConfirmCloseAsync()
+        /// <inheritdoc cref="EditorSaveCoordinator.ConfirmCloseAsync"/>
+        /// <remarks>
+        /// The guard is <see cref="EditorSaveCoordinator"/>'s since issue #154 — it is one of the
+        /// three readings of "may this profile be abandoned", beside <c>CanSave</c> and the write
+        /// set — and the override stays here because
+        /// <see cref="DeviceEditorViewModel.ConfirmCloseAsync"/> is what the shell asks.
+        /// </remarks>
+        public override Task<bool> ConfirmCloseAsync()
         {
-            if (IsBusy)
-            {
-                _notifications.ShowToast(new ToastRequest
-                {
-                    Title = UnsavedChangesPrompt.SaveInProgressTitle,
-                    Message = UnsavedChangesPrompt.SaveInProgressMessage
-                });
-
-                return false;
-            }
-
-            return await ConfirmDiscardingUnsavedWorkAsync().ConfigureAwait(true);
+            return _saves.ConfirmCloseAsync();
         }
 
         /// <summary>
@@ -926,110 +900,6 @@ namespace KinesisEdit.ViewModels
             return _keystrokes.TryTakeOverlayKeystroke();
         }
 
-        private LoadOutcome LoadProfile()
-        {
-            try
-            {
-                // A device with no location has no file to read: it edits a factory-default model
-                // in memory. Demo mode is deliberately *not* asked about here — a demo board with
-                // fixtures carries the synthetic DemoVDrive location (docs/app/app-shell.md, "The
-                // demo v-Drive") and is loaded through this very path, by a file service that
-                // serves the fixtures and refuses every write back to them. What demo mode forbids
-                // is writing (03 §3.5), which CanSave and CanImport still answer; refusing to read
-                // is what left demo mode showing an empty board.
-                if (Device.Location is null)
-                {
-                    return new LoadOutcome { Layout = KeyboardLayout.Create(Device.DeviceId) };
-                }
-
-                var session = _profileSessions.Load(
-                    Device.Location,
-                    Device.DeviceId,
-                    Device.Device.LayoutScheme.FirstProfileNumber);
-
-                return new LoadOutcome { Session = session, Layout = session.Layout };
-            }
-            catch (Exception exception)
-            {
-                return new LoadOutcome { Layout = TryCreateFallbackLayout(), Error = exception };
-            }
-        }
-
-        private KeyboardLayout? TryCreateFallbackLayout()
-        {
-            try
-            {
-                return KeyboardLayout.Create(Device.DeviceId);
-            }
-            catch (Exception)
-            {
-                // A device with no geometry has nothing to fall back to; the editor then shows the
-                // failure and an empty picture rather than crashing the shell.
-                return null;
-            }
-        }
-
-        private void Apply(LoadOutcome outcome)
-        {
-            _session = outcome.Session;
-
-            // The one place a session enters the editor's per-profile cache, so the first load, a
-            // switch, an import and a discard all keep it correct without any of them saying so
-            // (ProfileSessionCache). Re-filing a cached session is a no-op, and a null one — a load
-            // that failed, a board with no drive — files nothing.
-            _sessionCache.Add(outcome.Session);
-
-            Layout = outcome.Layout;
-            ProfileCaption = outcome.Session is null ? string.Empty : BuildProfileCaption(outcome.Session.ProfileNumber);
-            InvalidLineMessages = BuildInvalidLineMessages(outcome.Session);
-
-            // Which profile the picker reports is read off the session that just arrived
-            // (KeyboardEditorViewModel.Profiles.cs), so a first load, an import and a profile
-            // switch all announce it from one place.
-            RefreshSelectedProfile();
-
-            // The picture is empty when either half of it is missing — a load that failed outright,
-            // or a device whose board has not been authored yet (#39–#42).
-            _selection.Layers = outcome.Layout is not null && _visual is not null
-                ? KeyboardLayerViewModel.BuildAll(outcome.Layout, _visual, outcome.Session?.Lighting)
-                : [];
-
-            // Before the panels: a freshly parsed layout carries no macro names at all (they ride
-            // app_settings.txt, not layoutN.txt), so the stored names have to be stamped onto its
-            // macros before anything reads one (KeyboardEditorViewModel.MacroNames.cs). NOT on a
-            // cache hit: that layout is the one the user has been renaming macros on, and
-            // MacroSites.ApplyNames writes every site unconditionally, so re-stamping it would
-            // silently undo every unsaved rename.
-            AttachMacroNames(outcome.Layout, applyStoredNames: !outcome.IsCacheHit);
-
-            SelectLayer(Layers.Count > 0 ? Layers[0] : null);
-            RefreshCounters();
-
-            // The lighting panel edits the very model the session hands out, so mutating it is
-            // all a lighting save takes (ProfileSession.Save writes led<n>.txt whenever Lighting
-            // is non-null). It shares these layer view models, so a recoloured key repaints
-            // without the picture being rebuilt — on the lighting board, which is the only
-            // picture that draws an LED strip (KeyboardView.ShowsLedStrips).
-            Lighting.Attach(outcome.Session?.Lighting, Layers);
-        }
-
-        private static IReadOnlyList<string> BuildInvalidLineMessages(IProfileSession? session)
-        {
-            if (session is null || session.InvalidLines.Count == 0)
-            {
-                return [];
-            }
-
-            var messages = new List<string>(session.InvalidLines.Count);
-
-            foreach (var line in session.InvalidLines)
-            {
-                messages.Add(BuildInvalidLineMessage(line));
-            }
-
-            return messages;
-        }
-
         /// <inheritdoc cref="EditorSelection.SelectTab"/>
         /// <remarks>
         /// A forwarder, and deliberately still a method of this class: the constructor's last
@@ -1042,7 +912,11 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <inheritdoc cref="EditorSelection.SelectLayer"/>
-        /// <remarks>A forwarder; <see cref="Apply"/> and <see cref="EditMacroAt"/> are its callers.</remarks>
+        /// <remarks>
+        /// A forwarder; <see cref="EditMacroAt"/> is its caller here, and
+        /// <see cref="EditorProfileLoader.Apply"/> reaches it through
+        /// <see cref="IEditorProfileLoaderHost.SelectLayer"/> — collaborators never see each other.
+        /// </remarks>
         private void SelectLayer(KeyboardLayerViewModel? layer)
         {
             _selection.SelectLayer(layer);
@@ -1105,95 +979,18 @@ namespace KinesisEdit.ViewModels
             NotifyCommands();
         }
 
-        private void OpenExport()
-        {
-            if (!CanExport())
-            {
-                return;
-            }
-
-            ShowOverlay(new ExportOverlayViewModel(_session, _folderPicker, _files, _notifications));
-        }
-
-        private bool CanExport()
-        {
-            // Deliberately not gated on demo mode. Export writes to a folder the user picked, never
-            // to the v-Drive (specs/11-feature-dialogs.md §11.5), so it breaks none of 03 §3.5's
-            // promise — and demo mode is where it is most useful, which is why mockup 1f puts it on
-            // the Demo Mode bar. The write is scoped away from the fixture drive by path, in
-            // DemoVDriveFileService, not by a mode flag here.
-            return _session is not null && !IsLoading && !IsBusy && ActiveOverlay is null;
-        }
-
-        /// <summary>
-        /// Runs the import and re-renders whatever it replaced. The refresh goes through the same
-        /// <see cref="Apply"/> the load uses — the imported file built a brand-new model, exactly
-        /// as a load would have — so layers, the board, the macro panel, the counters and the
-        /// invalid-line list all come from one place.
-        /// </summary>
-        private async Task ImportAsync()
-        {
-            var session = _session;
-
-            if (session is null || !CanImport())
-            {
-                return;
-            }
-
-            CancelRemap();
-            CancelCopyKey();
-            DeactivateInspector();
-
-            var outcome = await _importer.ImportAsync(session, Device.DeviceId).ConfigureAwait(true);
-
-            if (_isDisposed)
-            {
-                return;
-            }
-
-            if (outcome.WasApplied)
-            {
-                Apply(new LoadOutcome { Session = session, Layout = session.Layout });
-            }
-
-            if (outcome.FailureMessage is not null)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = ProfileImporter.DialogTitle,
-                    Message = outcome.FailureMessage,
-                    Icon = MessageBoxIcon.Error
-                }).ConfigureAwait(true);
-
-                return;
-            }
-
-            if (outcome.SuccessMessage is not null)
-            {
-                _notifications.ShowToast(new ToastRequest
-                {
-                    Title = ProfileImporter.DialogTitle,
-                    Message = outcome.SuccessMessage
-                });
-            }
-        }
-
-        private bool CanImport()
-        {
-            // Demo mode holds no session to import into (03 §3.5), and the Advantage 360's
-            // factory profile disables Import with Save (specs/02-devices.md, "Profiles 0-9") —
-            // which is exactly what CanSave answers.
-            return _session is { CanSave: true } && !IsDemoMode && !IsLoading && !IsBusy && ActiveOverlay is null;
-        }
-
         /// <summary>
         /// Re-reads everything the chrome says about the model: the two spec-10 counters, the
         /// legend row's five layer-scoped counts, and the dirty flag behind the amber Save.
         /// <b>Every path that can write to the layout ends here</b> — a captured remap, the three
         /// resets, a completed key copy, an accepted tap-and-hold, every write the key inspector's
-        /// Macro panel announces, and <see cref="Apply"/> after a
+        /// Macro panel announces, and <see cref="EditorProfileLoader.Apply"/> after a
         /// load or an import. Core announces nothing, so a path that skips it leaves everything
         /// stale.
+        /// <para>
+        /// <b>It stays on this class</b> (invariant 16): the collaborators that write to the model
+        /// reach it <em>as a call</em> through their host interfaces, never by inlining a piece of it.
+        /// </para>
         /// </summary>
         private void RefreshCounters()
         {
@@ -1240,269 +1037,26 @@ namespace KinesisEdit.ViewModels
             _advisoryProjection.Project(SelectedTab, SelectedLayer?.Index);
         }
 
-        /// <summary>
-        /// Re-asks the session whether it still serializes to what was loaded. Split from
-        /// <see cref="RefreshCounters"/> because the lighting tab moves the session without moving
-        /// a counter, and calling the counter refresh from there would be a lie about what changed.
-        /// <para>
-        /// <b>A successful save calls it too</b>, rather than asserting <c>IsDirty = false</c>.
-        /// Core moves each saved session's baseline to the lines it just wrote (issue #133,
-        /// docs/app/profiles.md), so the sessions themselves already know they are clean — and with
-        /// several profiles in play, only one of them may have been written. One source of truth
-        /// answers; the flag is never set behind the sessions' backs.
-        /// </para>
-        /// </summary>
+        /// <inheritdoc cref="EditorSaveCoordinator.RefreshDirtyState"/>
+        /// <remarks>
+        /// A forwarder, and deliberately still a method of this class: <see cref="RefreshCounters"/>
+        /// ends in it (invariant 16), a lighting edit runs it on its own, and so does a macro rename
+        /// (<c>…MacroNames.cs</c>). Issue #154 changed what the call resolves to and nothing about
+        /// where it sits.
+        /// </remarks>
         private void RefreshDirtyState()
         {
-            // Across EVERY profile the editor has open, not just the one on screen (issue #133): a
-            // switch keeps the profile it leaves, so an edit made in profile 3 is still unsaved work
-            // while the user is looking at profile 7 — and the amber Save, whose one press now
-            // writes all of them, has to say so.
-            //
-            // A macro NAME is not in the layout file, so no session's line comparison can see one
-            // move. It is still unsaved work the user would lose — hence the second term, the one
-            // deliberate exception to "app_settings.txt sits outside the dirty model"
-            // (KeyboardEditorViewModel.MacroNames.cs).
-            // The open session is asked first (ProfileSessionCache.AnyIsDirty): it is the profile the
-            // edit that triggered this refresh landed in, so the common path still costs exactly one
-            // serialization and the other eight are never asked.
-            IsDirty = _sessionCache.AnyIsDirty(_session) || HasUnsavedMacroNames;
+            _saves.RefreshDirtyState();
         }
 
-        /// <summary>
-        /// The unsaved-changes question itself, and the one reading of its answer: <b>true means
-        /// the caller may go ahead and abandon the open profile</b> — because there was nothing to
-        /// lose, because the user discarded it, or because a save actually landed. A failed save is
-        /// false: letting the caller through after one would discard the very work the question was
-        /// asked about.
-        /// <para>
-        /// <b>It asks about every profile the editor has open, not only the one on screen</b>
-        /// (issue #133). <see cref="IsDirty"/> aggregates across the session cache and
-        /// <see cref="TrySaveAsync"/> writes every dirty profile, so one question and one `Save`
-        /// still cover the whole editor — which is what let the <em>profile switch</em> stop asking
-        /// it. Its callers are now the three exits where the editor really does go away: Home,
-        /// another device, and the window's close, all of them through
-        /// <see cref="ConfirmCloseAsync"/>. The wording is unchanged and stays
-        /// <see cref="UnsavedChangesPrompt"/>'s, so this board and the pedal ask in the same words;
-        /// naming the count would fork a string the pedal shares.
-        /// </para>
-        /// <para>
-        /// Demo mode answers true silently, and the test is explicit rather than falling out of
-        /// <see cref="IsDirty"/>. A demo session is a real session over the fixture drive, so an
-        /// edit really does make it dirty — but Save can never run there (03 §3.5), so the question
-        /// would offer an answer that does nothing and a Discard for work that was never going
-        /// anywhere. A load that produced no session reports itself clean anyway.
-        /// </para>
-        /// </summary>
-        private async Task<bool> ConfirmDiscardingUnsavedWorkAsync()
+        /// <inheritdoc cref="EditorSaveCoordinator.TryShowMessageBoxAsync"/>
+        /// <remarks>
+        /// A forwarder, kept because the profile picker's failure dialog is raised from
+        /// <c>…Profiles.cs</c>, which is this same class.
+        /// </remarks>
+        private Task<MessageBoxOutcome?> TryShowMessageBoxAsync(MessageBoxRequest request)
         {
-            if (IsDemoMode || !IsDirty)
-            {
-                return true;
-            }
-
-            // Asked once and carried: it picks the box — a read-only profile can hold edits it can
-            // never write, and offering it a Save would be a question with no working answer — and
-            // it is also what Yes meant, which is a different button in each of the two shapes.
-            var canSave = CanSave();
-
-            var outcome = await TryShowMessageBoxAsync(
-                UnsavedChangesPrompt.Build(UnsavedChangesPrompt.KeyboardMessage, canSave, canSuppress: true))
-                .ConfigureAwait(true);
-
-            return UnsavedChangesPrompt.Interpret(outcome, canSave) switch
-            {
-                UnsavedChangesAnswer.Save => await TrySaveAsync().ConfigureAwait(true),
-                UnsavedChangesAnswer.Discard => true,
-                _ => false
-            };
-        }
-
-        private bool CanSave()
-        {
-            // Demo mode never writes (03 §3.5), and the Advantage 360's factory profile is
-            // read-only (CanSave on the session).
-            return _session is not null && _session.CanSave && !IsDemoMode && !IsLoading && !IsBusy;
-        }
-
-        /// <summary>
-        /// The <see cref="SaveCommand"/> target. It drops the answer on purpose: a button press has
-        /// nowhere to report a failure that <see cref="TrySaveAsync"/> has already put on screen.
-        /// <see cref="ConfirmCloseAsync"/> is the caller that needs it.
-        /// </summary>
-        private async Task SaveAsync()
-        {
-            await TrySaveAsync().ConfigureAwait(true);
-        }
-
-        /// <summary>
-        /// Runs the save sequence off the UI thread between the loading indicator's show and hide,
-        /// then reports its outcome: the violations that stopped it (04 §5.3), or the device's
-        /// post-save refresh wording as a toast.
-        /// <para>
-        /// <b>It writes every profile the user changed, not only the one on screen</b> (issue #133).
-        /// The write set is <c>CollectSessionsToSave()</c> — every opened profile that is dirty, in
-        /// file order, and <b>nothing else</b>: with nothing changed anywhere, no file is written at
-        /// all and the press says so in a toast. With <b>more than one</b> in the set,
-        /// validation runs as a pre-pass over all of them, so a rejected profile 5 cannot leave
-        /// profiles 1 and 3 already on the drive; with one, the sequence is exactly what it always
-        /// was and Core's own gate is the only one (see <c>BuildPreflightViolationMessage</c>). A
-        /// profile nobody opened is never read and never written, because it has no session at all.
-        /// </para>
-        /// <para>
-        /// <b>True means every profile in the set is on the drive</b>, and nothing else does. There
-        /// are three ways not to get there — a session that cannot be written right now, a throw,
-        /// and validation stopping the write — and the unsaved-changes guard has to tell all three
-        /// apart from success, because letting a navigation through after any of them would
-        /// discard the work the user asked to keep.
-        /// </para>
-        /// </summary>
-        private async Task<bool> TrySaveAsync()
-        {
-            if (_session is null || !CanSave())
-            {
-                return false;
-            }
-
-            // INVARIANT 31's two halves, joined here because they live in the two types that own
-            // them: every opened profile that is dirty, plus every one carrying a macro rename no
-            // session can see (a name rides app_settings.txt, so the profile re-serializes
-            // identically). Empty is a legitimate answer, handled just below.
-            var sessions = _sessionCache.CollectSessionsToSave(_macroNames.RenamedProfiles);
-
-            if (sessions.Count == 0)
-            {
-                // Nothing changed, so nothing is written — not even the profile on screen. Said out
-                // loud rather than left as a dead press: the button is deliberately still live (the
-                // amber is the dirty signal, and a Save greyed out beside work that looks unsaved is
-                // worse than one that tells you there was nothing to do).
-                _notifications.ShowToast(new ToastRequest
-                {
-                    Title = SaveTitle,
-                    Message = NothingToSaveMessage
-                });
-
-                return false;
-            }
-
-            CancelRemap();
-            CancelCopyKey();
-            DeactivateInspector();
-
-            // Before a single byte is written, and over the whole set — see
-            // BuildPreflightViolationMessage.
-            if (ProfileSessionCache.BuildPreflightViolationMessage(sessions) is { } rejection)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = SaveTitle,
-                    Message = rejection,
-                    Icon = MessageBoxIcon.Error
-                }).ConfigureAwait(true);
-
-                return false;
-            }
-
-            List<ProfileSaveOutcome>? results = null;
-            Exception? error = null;
-
-            IsBusy = true;
-
-            try
-            {
-                // Shown inside the try, and hidden after IsBusy is cleared below: both calls fan
-                // out to the overlay, and a failure in either must not leave the flag stuck — it
-                // disables Save and every editing command for as long as the editor is open.
-                _notifications.ShowLoading(SavingCaption);
-
-                results = await Task.Run(() => ProfileSessionCache.SaveAll(sessions)).ConfigureAwait(true);
-            }
-            catch (Exception exception)
-            {
-                error = exception;
-            }
-            finally
-            {
-                IsBusy = false;
-
-                _notifications.HideLoading();
-            }
-
-            if (error is not null)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = SaveTitle,
-                    Message = SaveErrorMessagePrefix + error.Message,
-                    Icon = MessageBoxIcon.Error
-                }).ConfigureAwait(true);
-
-                return false;
-            }
-
-            if (ProfileSessionCache.BuildRejectedSaveMessage(results!) is { } refused)
-            {
-                await TryShowMessageBoxAsync(new MessageBoxRequest
-                {
-                    Title = SaveTitle,
-                    Message = refused,
-                    Icon = MessageBoxIcon.Error
-                }).ConfigureAwait(true);
-
-                return false;
-            }
-
-            // The macro names go to app_settings.txt now, and only now: a rename is part of a
-            // session's dirty model and reaches the drive when the profile does. It is written
-            // AFTER the layouts landed, so a save that Core rejected cannot leave the file naming
-            // macros the drive does not have (KeyboardEditorViewModel.MacroNames.cs).
-            PersistMacroNames();
-
-            // Every profile in the set is on the drive, and each of them moved its own baseline to
-            // the lines it wrote — so this is a re-read rather than an assertion, and it is the
-            // only honest one now that a press of Save may have written some of the held profiles
-            // and not others. It runs AFTER PersistMacroNames, whose cleared marks it also reads.
-            RefreshDirtyState();
-
-            var message = AdvisoryStripViewModel.BuildPostSaveMessage(
-                ProfileSessionCache.BuildSavedProfilesMessage(results!),
-                Advisories.Total);
-
-            if (message is not null)
-            {
-                // A message that counts advisories must not arrive on the success face: the amber
-                // variant of mockup 1k exists for exactly this toast, and BuildPostSaveMessage has
-                // already folded "saved with N advisories" into the text above. Everything was
-                // still written — an advisory is a remark, never a failure — so this stays a toast
-                // rather than becoming a message box (docs/design/README.md: advisories never block).
-                _notifications.ShowToast(new ToastRequest
-                {
-                    Title = SaveTitle,
-                    Message = message,
-                    Severity = Advisories.Total > 0 ? ToastSeverity.Advisory : ToastSeverity.Success
-                });
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Shows a box and returns its outcome, or <b>null</b> when it could not be put on screen.
-        /// Every caller that only reports something ignores the answer; the one caller that asks a
-        /// question — <see cref="ConfirmCloseAsync"/> — reads null as "the user did not answer".
-        /// </summary>
-        private async Task<MessageBoxOutcome?> TryShowMessageBoxAsync(MessageBoxRequest request)
-        {
-            try
-            {
-                return await _notifications.ShowMessageBoxAsync(request).ConfigureAwait(true);
-            }
-            catch (Exception)
-            {
-                // A box that cannot be put on screen (the window is already gone) must not bring
-                // the app down; the editor state already carries the outcome.
-                return null;
-            }
+            return _saves.TryShowMessageBoxAsync(request);
         }
 
         /// <summary>
@@ -1570,12 +1124,12 @@ namespace KinesisEdit.ViewModels
             SelectProfileCommand.NotifyCanExecuteChanged();
         }
 
-        // The four host interfaces the collaborators split out by issues #115 and #154 read this
-        // editor through: ResetScopeCoordinator's, MacroInsertionHost's, EditorKeystrokeRouter's and
-        // EditorSelection's. Every other member each of them names is already public on this class
-        // and satisfies the interface as it stands; the twenty-four below are implemented
-        // EXPLICITLY, because a split must not turn a private method of the editor into part of its
-        // public surface.
+        // The six host interfaces the collaborators split out by issues #115 and #154 read this
+        // editor through: ResetScopeCoordinator's, MacroInsertionHost's, EditorKeystrokeRouter's,
+        // EditorSelection's, EditorProfileLoader's and EditorSaveCoordinator's. Every other member
+        // each of them names is already public on this class and satisfies the interface as it
+        // stands; the ones below are implemented EXPLICITLY, because a split must not turn a private
+        // method — or a private setter — of the editor into part of its public surface.
 
         /// <inheritdoc/>
         void IResetScopeHost.CancelRemap()
@@ -1739,6 +1293,165 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(SelectedTab));
         }
 
+        /// <inheritdoc/>
+        bool IEditorProfileLoaderHost.IsDisposed => _isDisposed;
+
+        /// <inheritdoc/>
+        bool IEditorProfileLoaderHost.IsLoading
+        {
+            // Write-only here, and it lands on this class's own setter, which raises the name and
+            // re-asks every command — exactly what the load did while it lived here. The same holds
+            // for the four below: a collaborator announces nothing, so it assigns and the declaring
+            // class raises.
+            set => IsLoading = value;
+        }
+
+        /// <inheritdoc/>
+        KeyboardLayout? IEditorProfileLoaderHost.Layout
+        {
+            set => Layout = value;
+        }
+
+        /// <inheritdoc/>
+        string IEditorProfileLoaderHost.ProfileCaption
+        {
+            set => ProfileCaption = value;
+        }
+
+        /// <inheritdoc/>
+        IReadOnlyList<string> IEditorProfileLoaderHost.InvalidLineMessages
+        {
+            set => InvalidLineMessages = value;
+        }
+
+        /// <inheritdoc/>
+        IProfileSession? IEditorProfileLoaderHost.Session
+        {
+            set => _session = value;
+        }
+
+        /// <inheritdoc/>
+        IReadOnlyList<KeyboardLayerViewModel> IEditorProfileLoaderHost.Layers
+        {
+            get => Layers;
+
+            // EditorSelection's state, written through this class because collaborators never see
+            // each other. Its setter is what announces the new picture.
+            set => _selection.Layers = value;
+        }
+
+        /// <inheritdoc/>
+        KeyboardSettingsViewModel IEditorProfileLoaderHost.Settings => Settings;
+
+        /// <inheritdoc/>
+        LightingTabViewModel IEditorProfileLoaderHost.Lighting => Lighting;
+
+        /// <inheritdoc/>
+        void IEditorProfileLoaderHost.RefreshSelectedProfile()
+        {
+            RefreshSelectedProfile();
+        }
+
+        /// <inheritdoc/>
+        void IEditorProfileLoaderHost.AttachMacroNames(KeyboardLayout? layout, bool applyStoredNames)
+        {
+            AttachMacroNames(layout, applyStoredNames);
+        }
+
+        /// <inheritdoc/>
+        void IEditorProfileLoaderHost.SelectLayer(KeyboardLayerViewModel? layer)
+        {
+            SelectLayer(layer);
+        }
+
+        /// <inheritdoc/>
+        void IEditorProfileLoaderHost.RefreshCounters()
+        {
+            RefreshCounters();
+        }
+
+        /// <inheritdoc/>
+        Task<MessageBoxOutcome?> IEditorProfileLoaderHost.TryShowMessageBoxAsync(MessageBoxRequest request)
+        {
+            return TryShowMessageBoxAsync(request);
+        }
+
+        /// <inheritdoc/>
+        IProfileSession? IEditorSaveHost.Session => _session;
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.IsDisposed => _isDisposed;
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.IsLoading => IsLoading;
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.IsBusy
+        {
+            get => IsBusy;
+
+            // This class's own setter, which raises the name and re-asks every command — the save
+            // never announces anything itself.
+            set => IsBusy = value;
+        }
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.IsDirty
+        {
+            get => IsDirty;
+            set => IsDirty = value;
+        }
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.HasActiveOverlay => HasActiveOverlay;
+
+        /// <inheritdoc/>
+        bool IEditorSaveHost.HasUnsavedMacroNames => HasUnsavedMacroNames;
+
+        /// <inheritdoc/>
+        IReadOnlySet<int> IEditorSaveHost.RenamedProfiles => _macroNames.RenamedProfiles;
+
+        /// <inheritdoc/>
+        EditorAdvisories IEditorSaveHost.Advisories => Advisories;
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.ShowOverlay(EditorOverlayViewModel overlay)
+        {
+            ShowOverlay(overlay);
+        }
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.CancelRemap()
+        {
+            CancelRemap();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.CancelCopyKey()
+        {
+            CancelCopyKey();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.DeactivateInspector()
+        {
+            DeactivateInspector();
+        }
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.ReapplyProfile(IProfileSession session)
+        {
+            // The second knot of issue #154: an import's refresh is EditorProfileLoader's, because
+            // Apply is, and EditorSaveCoordinator never sees EditorProfileLoader.
+            _loader.ApplyReplacedLayout(session);
+        }
+
+        /// <inheritdoc/>
+        void IEditorSaveHost.PersistMacroNames()
+        {
+            PersistMacroNames();
+        }
+
         /// <summary>
         /// Stops capture and detaches from it, and tears down every overlay and macro-panel
         /// subscription with it. The capture service is app-wide and outlives the editor, so
@@ -1750,6 +1463,12 @@ namespace KinesisEdit.ViewModels
         /// on the panel's own <see cref="EditorOverlayViewModel.Closed"/>, so cancelling is what
         /// runs them. The rail's hooks are dropped first, which is why a half-finished assignment
         /// cannot write back into a disposed editor on the way out.
+        /// </para>
+        /// <para>
+        /// <see cref="EditorProfileLoader"/> and <see cref="EditorSaveCoordinator"/> are deliberately
+        /// absent: neither subscribes to anything and neither holds a resource, so there is nothing
+        /// to hand back. What the loader opened is released by <see cref="ProfileSessionCache"/> on
+        /// the last line, which is the only path that lets a session go.
         /// </para>
         /// </summary>
         public void Dispose()
@@ -1790,24 +1509,6 @@ namespace KinesisEdit.ViewModels
             // releases all of them — with whatever they still carry unsaved, which is exactly what
             // ConfirmCloseAsync asked about on the way here.
             _sessionCache.Dispose();
-        }
-
-        /// <summary>What one load attempt produced: a session (or none, in demo mode), a model, and a failure.</summary>
-        private sealed record LoadOutcome
-        {
-            public IProfileSession? Session { get; init; }
-
-            public KeyboardLayout? Layout { get; init; }
-
-            public Exception? Error { get; init; }
-
-            /// <summary>
-            /// Whether this profile came out of the editor's session cache rather than off the
-            /// drive. It changes exactly one thing in <see cref="Apply"/> — the stored macro names
-            /// are not re-stamped — and that one thing is the difference between a switch that keeps
-            /// the user's renames and one that wipes them.
-            /// </summary>
-            public bool IsCacheHit { get; init; }
         }
     }
 }
