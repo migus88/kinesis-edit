@@ -40,21 +40,21 @@
                                        LightLabel="{StaticResource KeycapLitLabelLightBrush}" />
   </UserControl.Resources>
 
-  <Button Classes="keyCap"
-          ClipToBounds="False"
-          Classes.selected="{Binding IsSelected}"
-          Classes.paintSelected="{Binding IsLightingSelected}"
-          Classes.listening="{Binding IsListening}"
-          Classes.modified="{Binding IsModified}"
-          Classes.macro="{Binding IsMacro}"
-          Classes.tapHold="{Binding IsTapAndHold}"
-          Classes.advisory="{Binding HasAdvisory}"
-          Classes.locked="{Binding !CanEdit}"
-          Classes.stateBadges="{Binding $parent[controls:KeyCapView].ShowsStateBadge}"
-          Classes.lighting="{Binding $parent[controls:KeyCapView].ShowsLighting}"
-          Command="{Binding $parent[controls:KeyboardView].KeySelectedCommand}"
-          CommandParameter="{Binding}"
-          ToolTip.Tip="{Binding Caption}">
+  <controls:AccessibleButton Classes="keyCap"
+                             ClipToBounds="False"
+                             Classes.selected="{Binding IsSelected}"
+                             Classes.paintSelected="{Binding IsLightingSelected}"
+                             Classes.listening="{Binding IsListening}"
+                             Classes.modified="{Binding IsModified}"
+                             Classes.macro="{Binding IsMacro}"
+                             Classes.tapHold="{Binding IsTapAndHold}"
+                             Classes.advisory="{Binding HasAdvisory}"
+                             Classes.locked="{Binding !CanEdit}"
+                             Classes.stateBadges="{Binding $parent[controls:KeyCapView].ShowsStateBadge}"
+                             Classes.lighting="{Binding $parent[controls:KeyCapView].ShowsLighting}"
+                             Command="{Binding $parent[controls:KeyboardView].KeySelectedCommand}"
+                             CommandParameter="{Binding}"
+                             ToolTip.Tip="{Binding Caption}">
     <!--
       THE CAP'S VERTICAL BUDGET, which is the whole reason this grid is shaped the way it is.
 
@@ -238,5 +238,5 @@
                    VerticalAlignment="Top" />
       </Panel>
     </Grid>
-  </Button>
+  </controls:AccessibleButton>
 </UserControl>

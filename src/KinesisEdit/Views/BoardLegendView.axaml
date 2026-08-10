@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="28"
              x:Class="KinesisEdit.Views.BoardLegendView"
              x:DataType="vm:BoardLegendViewModel">
@@ -142,12 +143,12 @@
 
          `Copy key…` is NOT the inspector's `Copy to…` of issue #92; it arms a pick on the board. -->
     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-      <Button Classes="secondary"
-              Content="{x:Static vm:BoardLegendViewModel.CopyKeyCaption}"
-              Command="{Binding CopyKeyCommand}" />
-      <Button Classes="secondary"
-              Content="{x:Static vm:BoardLegendViewModel.ResetLayerCaption}"
-              Command="{Binding ResetLayerCommand}" />
+      <controls:AccessibleButton Classes="secondary"
+                                 Content="{x:Static vm:BoardLegendViewModel.CopyKeyCaption}"
+                                 Command="{Binding CopyKeyCommand}" />
+      <controls:AccessibleButton Classes="secondary"
+                                 Content="{x:Static vm:BoardLegendViewModel.ResetLayerCaption}"
+                                 Command="{Binding ResetLayerCommand}" />
     </StackPanel>
   </Grid>
 </UserControl>

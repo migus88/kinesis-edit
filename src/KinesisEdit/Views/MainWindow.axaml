@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
         xmlns:views="clr-namespace:KinesisEdit.Views"
+        xmlns:controls="clr-namespace:KinesisEdit.Controls"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="680"
         x:Class="KinesisEdit.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -63,18 +64,18 @@
                `MainWindowViewModel.NavigateAsync`, not in the predicate. -->
 
           <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-            <Button Classes="navPill"
-                    Content="Home"
-                    Command="{Binding HomeCommand}"
-                    Classes.selected="{Binding IsHomeSelected}" />
-            <Button Classes="navPill"
-                    Content="Settings"
-                    Command="{Binding SettingsCommand}"
-                    Classes.selected="{Binding IsSettingsSelected}" />
-            <Button Classes="navPill"
-                    Content="Help"
-                    Command="{Binding HelpCommand}"
-                    Classes.selected="{Binding IsHelpSelected}" />
+            <controls:AccessibleButton Classes="navPill"
+                                       Content="Home"
+                                       Command="{Binding HomeCommand}"
+                                       Classes.selected="{Binding IsHomeSelected}" />
+            <controls:AccessibleButton Classes="navPill"
+                                       Content="Settings"
+                                       Command="{Binding SettingsCommand}"
+                                       Classes.selected="{Binding IsSettingsSelected}" />
+            <controls:AccessibleButton Classes="navPill"
+                                       Content="Help"
+                                       Command="{Binding HelpCommand}"
+                                       Classes.selected="{Binding IsHelpSelected}" />
           </StackPanel>
         </StackPanel>
 

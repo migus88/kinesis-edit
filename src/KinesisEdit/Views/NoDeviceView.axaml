@@ -161,26 +161,26 @@
       <!-- Three weights, three meanings: the primary names the board it will open, the secondary
            is the only thing in the app that starts a scan from here, and the link leaves the app. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space8}">
-        <Button Classes="primaryAction"
-                Content="{Binding DemoModeCaption}"
-                Command="{Binding LaunchDemoModeCommand}" />
+        <controls:AccessibleButton Classes="primaryAction"
+                                   Content="{Binding DemoModeCaption}"
+                                   Command="{Binding LaunchDemoModeCommand}" />
 
-        <Button Classes="secondary" Command="{Binding ScanCommand}">
+        <controls:AccessibleButton Classes="secondary" Command="{Binding ScanCommand}">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <controls:Icon Data="{DynamicResource IconRefresh}"
                            Stroke="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center" />
             <TextBlock Text="{Binding ScanCaption}" VerticalAlignment="Center" />
           </StackPanel>
-        </Button>
+        </controls:AccessibleButton>
 
         <!-- The mockup writes this caption as "Troubleshooting tips ↗". The arrow is the
              external-link mark, drawn as geometry beside the words rather than pasted into the
              string: a Latin-1 arrow in a caption is a glyph the shipped font may not carry, and
              the icon system exists precisely so a caption never has to. -->
-        <Button Classes="link"
-                Command="{Binding TroubleshootingTipsCommand}"
-                VerticalAlignment="Center">
+        <controls:AccessibleButton Classes="link"
+                                   Command="{Binding TroubleshootingTipsCommand}"
+                                   VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <TextBlock Text="{x:Static vm:NoDeviceViewModel.TroubleshootingButtonCaption}"
                        VerticalAlignment="Center" />
@@ -188,7 +188,7 @@
                            Stroke="{DynamicResource AccentBrush}"
                            VerticalAlignment="Center" />
           </StackPanel>
-        </Button>
+        </controls:AccessibleButton>
       </StackPanel>
     </StackPanel>
   </ScrollViewer>

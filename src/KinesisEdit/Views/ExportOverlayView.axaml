@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:data="clr-namespace:Avalonia.Data.Converters;assembly=Avalonia.Base"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="240"
              x:Class="KinesisEdit.Views.ExportOverlayView"
              x:DataType="vm:ExportOverlayViewModel">
@@ -30,8 +31,8 @@
                  IsVisible="{Binding ErrorMessage, Converter={x:Static data:StringConverters.IsNotNullOrEmpty}}" />
 
       <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-        <Button Content="Ok" Command="{Binding ExportCommand}" MinWidth="88" Classes="primaryAction" />
-        <Button Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
+        <controls:AccessibleButton Content="Ok" Command="{Binding ExportCommand}" MinWidth="88" Classes="primaryAction" />
+        <controls:AccessibleButton Content="Cancel" Command="{Binding CancelCommand}" MinWidth="88" />
       </StackPanel>
     </StackPanel>
   </Border>

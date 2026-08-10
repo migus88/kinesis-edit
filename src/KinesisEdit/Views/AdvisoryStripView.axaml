@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:advisories="clr-namespace:KinesisEdit.ViewModels.Advisories"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="30"
              x:Class="KinesisEdit.Views.AdvisoryStripView"
              x:DataType="advisories:AdvisoryStripViewModel">
@@ -104,13 +105,13 @@
 
       <!-- Bordered, as the handoff draws it. The padding and height are the strip's, not the
            button role's: SecondaryButton's own 13,8 would stand it taller than the 30px bar. -->
-      <Button Grid.Column="2"
-              Classes="secondary"
-              Content="{Binding ReviewCaption}"
-              Command="{Binding ReviewAdvisoriesCommand}"
-              Padding="10,0"
-              Height="22"
-              VerticalAlignment="Center" />
+      <controls:AccessibleButton Grid.Column="2"
+                                 Classes="secondary"
+                                 Content="{Binding ReviewCaption}"
+                                 Command="{Binding ReviewAdvisoriesCommand}"
+                                 Padding="10,0"
+                                 Height="22"
+                                 VerticalAlignment="Center" />
     </Grid>
   </Border>
 </UserControl>

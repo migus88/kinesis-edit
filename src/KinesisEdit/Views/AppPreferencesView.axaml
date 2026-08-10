@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
              xmlns:views="clr-namespace:KinesisEdit.Views"
+             xmlns:controls="clr-namespace:KinesisEdit.Controls"
              mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="620"
              x:Class="KinesisEdit.Views.AppPreferencesView"
              x:DataType="vm:AppPreferencesViewModel">
@@ -56,10 +57,10 @@
 
           <!-- "+N more" (mockup 1j draws "+7 more"): the count comes from the catalog, so it can
                never disagree with the list it opens. -->
-          <Button Classes="link"
-                  Content="{Binding DisclosureCaption}"
-                  Command="{Binding ToggleAdditionalCommand}"
-                  HorizontalAlignment="Left" />
+          <controls:AccessibleButton Classes="link"
+                                     Content="{Binding DisclosureCaption}"
+                                     Command="{Binding ToggleAdditionalCommand}"
+                                     HorizontalAlignment="Left" />
 
           <ItemsControl ItemsSource="{Binding Additional}" IsVisible="{Binding AreAdditionalShown}">
             <ItemsControl.ItemsPanel>
@@ -113,14 +114,14 @@
                           BorderBrush="{DynamicResource AccentBrush}"
                           CornerRadius="{DynamicResource RadiusControl}"
                           IsVisible="{Binding IsSelected}" />
-                  <Button Classes="colorSwatch"
-                          Margin="3,3,7,7"
-                          ToolTip.Tip="{Binding Caption}"
-                          Command="{Binding $parent[views:AppPreferencesView].((vm:AppPreferencesViewModel)DataContext).Swatches.SelectSlotCommand}"
-                          CommandParameter="{Binding}">
+                  <controls:AccessibleButton Classes="colorSwatch"
+                                             Margin="3,3,7,7"
+                                             ToolTip.Tip="{Binding Caption}"
+                                             Command="{Binding $parent[views:AppPreferencesView].((vm:AppPreferencesViewModel)DataContext).Swatches.SelectSlotCommand}"
+                                             CommandParameter="{Binding}">
                     <Border Classes="colorSwatchFill"
                             Background="{Binding ColorHex, Converter={StaticResource HexColorToBrush}}" />
-                  </Button>
+                  </controls:AccessibleButton>
                 </Panel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -136,12 +137,12 @@
                        Text="{Binding Swatches.ColorHex, Mode=TwoWay}"
                        Width="110"
                        VerticalAlignment="Center" />
-              <Button Classes="secondary"
-                      Content="{x:Static vm:CustomSwatchesViewModel.ReplaceCaption}"
-                      Command="{Binding Swatches.ReplaceCommand}" />
-              <Button Classes="secondary"
-                      Content="{x:Static vm:CustomSwatchesViewModel.ClearCaption}"
-                      Command="{Binding Swatches.ClearCommand}" />
+              <controls:AccessibleButton Classes="secondary"
+                                         Content="{x:Static vm:CustomSwatchesViewModel.ReplaceCaption}"
+                                         Command="{Binding Swatches.ReplaceCommand}" />
+              <controls:AccessibleButton Classes="secondary"
+                                         Content="{x:Static vm:CustomSwatchesViewModel.ClearCaption}"
+                                         Command="{Binding Swatches.ClearCommand}" />
             </StackPanel>
             <TextBlock Text="{x:Static vm:CustomSwatchesViewModel.EditHint}"
                        Classes="meta muted"

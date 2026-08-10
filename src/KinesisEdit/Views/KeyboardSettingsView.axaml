@@ -73,10 +73,10 @@
                    the string — a Latin-1 arrow in a caption is a glyph the shipped font may not
                    carry. Same split, same wiring and same three parts as the empty state's
                    "Troubleshooting tips" (Views/NoDeviceView.axaml). -->
-              <Button Classes="link"
-                      Command="{Binding WhichBoardCommand}"
-                      IsVisible="{Binding HasWhichBoardLink}"
-                      HorizontalAlignment="Left">
+              <controls:AccessibleButton Classes="link"
+                                         Command="{Binding WhichBoardCommand}"
+                                         IsVisible="{Binding HasWhichBoardLink}"
+                                         HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="{x:Static settings:SettingsMessageCatalog.WhichBoardLinkCaption}"
                              VerticalAlignment="Center" />
@@ -84,7 +84,7 @@
                                  Stroke="{DynamicResource AccentBrush}"
                                  VerticalAlignment="Center" />
                 </StackPanel>
-              </Button>
+              </controls:AccessibleButton>
             </StackPanel>
           </Grid>
         </Border>
@@ -180,10 +180,10 @@
                                 Orientation="Horizontal"
                                 Spacing="{DynamicResource Space8}"
                                 VerticalAlignment="Center">
-                      <ToggleButton Classes="settingSwitch"
-                                    IsChecked="{Binding IsOn}"
-                                    VerticalAlignment="Center"
-                                    IsEnabled="{Binding IsEnabled}" />
+                      <controls:AccessibleToggleButton Classes="settingSwitch"
+                                                       IsChecked="{Binding IsOn}"
+                                                       VerticalAlignment="Center"
+                                                       IsEnabled="{Binding IsEnabled}" />
                       <TextBlock Text="{x:Static settings:SettingsMessageCatalog.ReadOnlyRowMarker}"
                                  Classes="meta muted"
                                  VerticalAlignment="Center"
@@ -251,9 +251,9 @@
                      Classes="meta muted"
                      VerticalAlignment="Center"
                      IsVisible="{Binding IsBusy}" />
-          <Button Content="{x:Static vm:KeyboardSettingsViewModel.SaveTitle}"
-                  Command="{Binding SaveCommand}"
-                  Classes="primaryAction" />
+          <controls:AccessibleButton Content="{x:Static vm:KeyboardSettingsViewModel.SaveTitle}"
+                                     Command="{Binding SaveCommand}"
+                                     Classes="primaryAction" />
         </StackPanel>
       </StackPanel>
 

@@ -156,13 +156,13 @@
               <TextBlock Text="{x:Static views:LightingModeRailView.ColorLabel}" Classes="sectionLabel" />
 
               <StackPanel Spacing="4" IsVisible="{Binding EffectColor.IsVisible}">
-                <Button Classes="colorSlot"
-                        Classes.selected="{Binding EffectColor.IsSelected}"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Command="{Binding SelectColorSlotCommand}"
-                        CommandParameter="{Binding EffectColor}"
-                        Click="OnColorSlotClicked">
+                <controls:AccessibleButton Classes="colorSlot"
+                                           Classes.selected="{Binding EffectColor.IsSelected}"
+                                           HorizontalAlignment="Stretch"
+                                           HorizontalContentAlignment="Stretch"
+                                           Command="{Binding SelectColorSlotCommand}"
+                                           CommandParameter="{Binding EffectColor}"
+                                           Click="OnColorSlotClicked">
                   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                     <!-- The one place a colour legitimately arrives as data rather than as a token:
                          it is the LED colour the file carries, converted by HexColorToBrush. -->
@@ -178,19 +178,19 @@
                                Classes="monoValue"
                                VerticalAlignment="Center" />
                   </Grid>
-                </Button>
+                </controls:AccessibleButton>
 
                 <TextBlock Text="{Binding EffectColor.Hint}" Classes="meta muted" TextWrapping="Wrap" />
               </StackPanel>
 
               <StackPanel Spacing="4" IsVisible="{Binding BaseColor.IsVisible}">
-                <Button Classes="colorSlot"
-                        Classes.selected="{Binding BaseColor.IsSelected}"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Command="{Binding SelectColorSlotCommand}"
-                        CommandParameter="{Binding BaseColor}"
-                        Click="OnColorSlotClicked">
+                <controls:AccessibleButton Classes="colorSlot"
+                                           Classes.selected="{Binding BaseColor.IsSelected}"
+                                           HorizontalAlignment="Stretch"
+                                           HorizontalContentAlignment="Stretch"
+                                           Command="{Binding SelectColorSlotCommand}"
+                                           CommandParameter="{Binding BaseColor}"
+                                           Click="OnColorSlotClicked">
                   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                     <Border Grid.Column="0"
                             Classes="colorSwatchFill"
@@ -204,7 +204,7 @@
                                Classes="monoValue"
                                VerticalAlignment="Center" />
                   </Grid>
-                </Button>
+                </controls:AccessibleButton>
 
                 <TextBlock Text="{Binding BaseColor.Hint}" Classes="meta muted" TextWrapping="Wrap" />
               </StackPanel>
@@ -239,10 +239,10 @@
                   <DataTemplate DataType="vm:LightingSpeedSegmentViewModel">
                     <!-- No content at all: `SpeedBar` is a fixed 10x18 shape with no padding, and
                          the level is read off how many of them are filled. -->
-                    <Button Classes="speedBar"
-                            Classes.filled="{Binding IsFilled}"
-                            Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SetSpeedCommand}"
-                            CommandParameter="{Binding Speed}" />
+                    <controls:AccessibleButton Classes="speedBar"
+                                               Classes.filled="{Binding IsFilled}"
+                                               Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SetSpeedCommand}"
+                                               CommandParameter="{Binding Speed}" />
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
@@ -288,14 +288,14 @@
                   <DataTemplate DataType="vm:LightingDirectionViewModel">
                     <!-- The Icon carries no class: Styles/Editor.axaml colours it from the BUTTON's
                          own classes, so the view writes the state once. -->
-                    <Button Classes="directionSegment"
-                            Classes.selected="{Binding IsSelected}"
-                            IsVisible="{Binding IsAvailable}"
-                            ToolTip.Tip="{Binding Caption}"
-                            Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SelectDirectionCommand}"
-                            CommandParameter="{Binding}">
+                    <controls:AccessibleButton Classes="directionSegment"
+                                               Classes.selected="{Binding IsSelected}"
+                                               IsVisible="{Binding IsAvailable}"
+                                               ToolTip.Tip="{Binding Caption}"
+                                               Command="{Binding $parent[views:LightingModeRailView].((vm:LightingTabViewModel)DataContext).SelectDirectionCommand}"
+                                               CommandParameter="{Binding}">
                       <controls:Icon Data="{Binding Direction, Converter={StaticResource LightingDirectionMark}}" />
-                    </Button>
+                    </controls:AccessibleButton>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>

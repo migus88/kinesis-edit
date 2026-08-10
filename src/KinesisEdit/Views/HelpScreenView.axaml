@@ -25,17 +25,17 @@
     <DataTemplate x:Key="HelpLinkRow" DataType="vm:HelpLink">
       <Border Classes="listRow">
         <StackPanel Spacing="{DynamicResource Space4}">
-          <Button Classes="link"
-                  HorizontalAlignment="Left"
-                  Command="{Binding $parent[views:HelpScreenView].((vm:HelpScreenViewModel)DataContext).OpenLinkCommand}"
-                  CommandParameter="{Binding}">
+          <controls:AccessibleButton Classes="link"
+                                     HorizontalAlignment="Left"
+                                     Command="{Binding $parent[views:HelpScreenView].((vm:HelpScreenViewModel)DataContext).OpenLinkCommand}"
+                                     CommandParameter="{Binding}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="{Binding Caption}" VerticalAlignment="Center" />
               <controls:Icon Data="{DynamicResource IconExternalLink}"
                              Stroke="{DynamicResource AccentBrush}"
                              VerticalAlignment="Center" />
             </StackPanel>
-          </Button>
+          </controls:AccessibleButton>
 
           <TextBlock Text="{Binding Description}"
                      Classes="meta muted"
