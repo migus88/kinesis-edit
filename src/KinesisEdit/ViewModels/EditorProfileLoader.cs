@@ -390,7 +390,7 @@ namespace KinesisEdit.ViewModels
     /// load is refused by, the six pieces of state a profile arriving replaces, the two panels it
     /// re-parents, and the five calls it ends in.
     /// <para>
-    /// A narrow interface rather than a bundle of delegates because there are thirteen members, and
+    /// A narrow interface rather than a bundle of delegates because there are fourteen members, and
     /// a <see cref="KeyboardEditorViewModel"/> back-reference rather than either would let the
     /// loader reach the whole god class it was split out of. It is implemented by the editor,
     /// explicitly where the member is not already part of that class's public surface — a split must
