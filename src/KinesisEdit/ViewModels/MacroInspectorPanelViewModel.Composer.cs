@@ -63,16 +63,7 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         public const string ComposerHint = "Select a step to edit its key, modifiers, action and delay.";
 
-        /// <summary>The label over the key chip and its record button. This app's wording.</summary>
-        public const string StepKeyLabel = "KEY";
-
-        /// <summary>The label over the four modifier latches — 2i's own word for a modified step.</summary>
-        public const string StepModifiersLabel = "HELD";
-
-        /// <summary>The label over the tap/press/release segment. This app's wording.</summary>
-        public const string StepDirectionLabel = "ACTION";
-
-        /// <summary>What the key chip reads while the selected step has no key of its own.</summary>
+        /// <summary>What the key readout shows while the selected step has no key of its own.</summary>
         public const string NoStepKeyText = "—";
 
         /// <summary>
@@ -159,7 +150,7 @@ namespace KinesisEdit.ViewModels
 
         /// <summary>The composer's record button caption, which moves with the single-shot arm.</summary>
         public string RecordStepKeyCaption =>
-            _captureMode == MacroCaptureMode.SingleStep ? RecordingCaption : RecordCaption;
+            _captureMode == MacroCaptureMode.SingleStep ? RecordingCaption : RecordKeyCaption;
 
         /// <summary>
         /// Arms the panel's own sink for <b>exactly one</b> keystroke and writes it onto the selected
@@ -293,7 +284,6 @@ namespace KinesisEdit.ViewModels
             OnPropertyChanged(nameof(IsStepKeyEnabled));
             OnPropertyChanged(nameof(AreStepModifiersEnabled));
             OnPropertyChanged(nameof(HasStepKey));
-            OnPropertyChanged(nameof(RecordingBanner));
 
             RecordStepKeyCommand.NotifyCanExecuteChanged();
             ToggleChordModifierCommand.NotifyCanExecuteChanged();

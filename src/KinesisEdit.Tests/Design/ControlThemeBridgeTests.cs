@@ -141,8 +141,11 @@ namespace KinesisEdit.Tests.Design
                 // Timing Delays modal — §11.3's millisecond field is the same typed value in the
                 // same mono face, and since #139 it sits in the composer, which edits whichever step
                 // is selected rather than opening over one row — and `macroStepRow` is the
-                // step list's own row, which is a RowButton so hover, press and the selected face
-                // are the theme's rather than this panel's.
+                // step list's own row, which is a RowButton so hover and press are the theme's
+                // rather than this panel's. (Since #146 the row no longer wears `.selected`: the
+                // ring spans the grip and the delete mark too, so `Border.macroStepRowFrame`
+                // carries it.) `macroChip`, #146's own theme, has a case of its own below —
+                // TheMacroChip_BridgesToItsTheme_AndRingsBothOfItsStates.
                 (typeof(MacroInspectorPanelView).FullName!, "recordAction", "DiscardButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "macroStepRow", "RowButton"),
                 (typeof(MacroInspectorPanelView).FullName!, "monoValue", "MonoValueField"),
@@ -170,6 +173,48 @@ namespace KinesisEdit.Tests.Design
             using var host = ThemedHost.Show(view, ThemeVariant.Dark);
 
             AssertClassCarriesTheme(view, className, themeKey);
+        }
+
+        [AvaloniaTheory]
+        [InlineData("Dark")]
+        [InlineData("Light")]
+        public void TheMacroChip_BridgesToItsTheme_AndRingsBothOfItsStates(string variantName)
+        {
+            // Issue #146's one new theme, and the Macro panel's whole small-latch vocabulary: the
+            // SLOTS chips, the TRIGGER co-triggers and the composer's modifier latches all write
+            // `macroChip`.
+            //
+            // It is asserted on a BARE BUTTON rather than through the table above, which is the one
+            // case in this file that cannot use a real view: the classes are written by
+            // MacroInspectorPanelView, whose two rings are what the panel says with them, and what
+            // this has to prove is that the STYLE LAYER carries the bridge at all — a missing one
+            // leaves the chip on Fluent's template, drawing a plausible grey button that no
+            // rendering test would question. MacroInspectorPanelTests asserts the panel writes the
+            // classes; this asserts they land somewhere.
+            var variant = ToVariant(variantName);
+            var chip = new Button { Classes = { "macroChip" }, Content = "1" };
+
+            using var host = ThemedHost.Show(chip, variant);
+
+            Assert.Same(DesignTokens.Resolve("MacroChip", variant), chip.Theme);
+
+            // Contract 3: the theme's ring replaces Fluent's dotted adorner rather than doubling up.
+            Assert.Null(chip.FocusAdorner);
+
+            // The selected slot: the full accent, not the deeper AccentSelectedRing every FILLED
+            // selection in the layer wears — here the ring is the whole signal.
+            chip.Classes.Add("selected");
+
+            Assert.Equal(DesignTokens.Resolve("AccentBrush", variant), chip.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), chip.Background);
+
+            // ...and a slot taking part in a co-trigger collision rings amber OVER the selection,
+            // so both sides of a clash are marked even when one of them is the slot being edited.
+            // It keeps the selected wash, which is what still says which one that is.
+            chip.Classes.Add("colliding");
+
+            Assert.Equal(DesignTokens.Resolve("StatusAdvisoryBrush", variant), chip.BorderBrush);
+            Assert.Equal(DesignTokens.Resolve("AccentSelectionFillBrush", variant), chip.Background);
         }
 
         [AvaloniaFact]

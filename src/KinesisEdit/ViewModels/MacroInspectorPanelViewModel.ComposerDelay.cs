@@ -5,7 +5,7 @@ using KinesisEdit.Core.Model;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// The composer's <b>delay</b> section (issue #139) — <c>THEN WAIT</c>, a
+    /// The composer's <b>delay</b> section (issue #139) — <c>then wait</c>, a
     /// <c>none</c> / <c>fixed</c> / <c>random</c> segment and a millisecond field — and the place
     /// specs/11-feature-dialogs.md §11.3's <c>Macro Timing Delays</c> now lives.
     ///
@@ -29,8 +29,15 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed partial class MacroInspectorPanelViewModel
     {
-        /// <summary>The label over the delay segment, in the step row's own voice.</summary>
-        public const string StepDelayLabel = "THEN WAIT";
+        /// <summary>
+        /// The label <b>beside</b> the delay segment, in the step row's own voice. It was the
+        /// section caption <c>THEN WAIT</c> until issue #146 folded the composer into two rows: the
+        /// mock draws no section labels there at all, and this is the one whose words the row still
+        /// needs — <c>none</c> / <c>fixed</c> / <c>random</c> says nothing on its own about what is
+        /// being waited for. Lower case because it is now a phrase in a sentence rather than a
+        /// heading over a block.
+        /// </summary>
+        public const string StepDelayLabel = "then wait";
 
         /// <summary>The segment for "no delay behind this step". This app's wording.</summary>
         public const string NoDelayCaption = "none";
@@ -125,11 +132,13 @@ namespace KinesisEdit.ViewModels
         /// <summary>Writes the chosen delay state onto the selected step.</summary>
         public IRelayCommand<MacroStepDelayOption> SetStepDelayModeCommand { get; private set; } = null!;
 
-        /// <summary>The millisecond field's Up arrow, clamped to 1-999 (§11.3).</summary>
-        public IRelayCommand IncreaseStepDelayCommand { get; private set; } = null!;
-
-        /// <summary>The millisecond field's Down arrow, clamped to 1-999 (§11.3).</summary>
-        public IRelayCommand DecreaseStepDelayCommand { get; private set; } = null!;
+        // THE MILLISECOND FIELD HAS NO ARROWS ANY MORE (issue #146). `IncreaseStepDelayCommand` and
+        // `DecreaseStepDelayCommand` were the `+`/`-` pair beside it; the redesigned compose bar
+        // draws a bare field, so the pair had no call site left and unbound commands are API nobody
+        // can reach. The one job they did that typing could not — getting from "no delay" to a fixed
+        // one, because the first click clamped 0 up into §11.3's range — was already taken over by
+        // `fixed` latching and arming the field without writing (see `SetStepDelayMode`), which is
+        // what made a fixed delay authorable at all.
 
         private IReadOnlyList<MacroStepDelayOption> _stepDelayOptions = [];
         private string _stepDelayError = string.Empty;
@@ -141,8 +150,6 @@ namespace KinesisEdit.ViewModels
         private void CreateComposerDelay()
         {
             SetStepDelayModeCommand = new RelayCommand<MacroStepDelayOption>(SetStepDelayMode, CanSetStepDelayMode);
-            IncreaseStepDelayCommand = new RelayCommand(() => StepDelayBy(1), () => IsStepDelayEnabled);
-            DecreaseStepDelayCommand = new RelayCommand(() => StepDelayBy(-1), () => IsStepDelayEnabled);
         }
 
         /// <summary>
@@ -170,8 +177,6 @@ namespace KinesisEdit.ViewModels
         private void RefreshComposerDelayCommands()
         {
             SetStepDelayModeCommand.NotifyCanExecuteChanged();
-            IncreaseStepDelayCommand.NotifyCanExecuteChanged();
-            DecreaseStepDelayCommand.NotifyCanExecuteChanged();
         }
 
         private static MacroStepDelayMode ReadDelayMode(MacroInspectorStepViewModel? step)
@@ -343,13 +348,6 @@ namespace KinesisEdit.ViewModels
             SetStepDelayChoice(MacroStepDelayMode.Fixed);
         }
 
-        private void StepDelayBy(int offset)
-        {
-            StepDelayMilliseconds = Math.Clamp(
-                _stepDelayMilliseconds + offset,
-                Steps.MinimumDelayMilliseconds,
-                Steps.MaximumDelayMilliseconds);
-        }
     }
 
     /// <summary>

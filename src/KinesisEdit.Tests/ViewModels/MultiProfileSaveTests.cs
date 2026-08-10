@@ -501,8 +501,14 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Records a macro on the open profile's digit-1 position and renames it through the rail's
-        /// inline name field — the app's one rename path.
+        /// Records a macro on the open profile's digit-1 position and renames it.
+        /// <para>
+        /// Issue #146 removed the rail's inline name field, so the rename is the two halves that
+        /// field performed: the model write, and <c>MarkMacroNamesDirty</c> — the public seam it
+        /// reached through <c>NameChanged</c>. Everything this suite is about (a profile whose only
+        /// change is a rename still being written, one <c>UpdateMacroNames</c> call per profile)
+        /// sits below that seam and is untouched by the removal.
+        /// </para>
         /// </summary>
         private void RenameTheFirstMacro(KeyboardEditorViewModel editor, string name)
         {
@@ -526,8 +532,9 @@ namespace KinesisEdit.Tests.ViewModels
 
             editor.Inspector.Deactivate();
 
-            // Through the panel's inline name field: the app's one rename path since issue #141.
-            panel.MacroName = name;
+            key.Key.GetMacro(key.Key.ActiveMacroIndex)!.Name = name;
+
+            editor.MarkMacroNamesDirty();
 
             Assert.True(editor.HasUnsavedMacroNames);
         }

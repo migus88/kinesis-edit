@@ -65,14 +65,22 @@ namespace KinesisEdit.ViewModels
         private readonly HashSet<int> _renamedProfiles = [];
 
         /// <summary>
-        /// Records that a name moved <b>in the open profile</b>. Its production caller is the rail's
-        /// Macro panel, whose inline name field raises <c>NameChanged</c> for exactly this
-        /// (<c>KeyboardEditorViewModel.Inspector.cs</c>) — a name is written straight onto
-        /// <see cref="Macro.Name"/> by the field's own setter, and no session can see that happen,
-        /// because it is not in <c>layout&lt;n&gt;.txt</c>.
+        /// Records that a name moved <b>in the open profile</b> — a name is written straight onto
+        /// <see cref="Macro.Name"/>, and no session can see that happen, because it is not in
+        /// <c>layout&lt;n&gt;.txt</c>.
+        /// <para>
+        /// <b>It has no production caller today</b>, and that is the whole of why a stored name
+        /// survives issue #146. The rail's inline name field was the one path that raised it, and
+        /// #146 removed the field with the rest of the panel's <c>MACRO</c> section; with nothing
+        /// marking a profile, <see cref="PersistMacroNames"/> returns on its first line and the
+        /// <c>macro_name_*</c> lines already in <c>app_settings.txt</c> are simply never rewritten.
+        /// A stored name is therefore loaded, carried on <see cref="Macro.Name"/> for the session
+        /// and left on the drive untouched.
+        /// </para>
         /// <para>
         /// Public because it is the seam that says "this profile's names are out of date", which is
-        /// a fact about the editor rather than about the panel that noticed it.
+        /// a fact about the editor rather than about whatever noticed it — and because the naming
+        /// surface that will call it again is a UI decision, not a change to this file.
         /// </para>
         /// </summary>
         public void MarkMacroNamesDirty()

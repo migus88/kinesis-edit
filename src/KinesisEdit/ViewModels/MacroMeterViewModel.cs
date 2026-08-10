@@ -3,9 +3,9 @@ using KinesisEdit.ViewModels.Advisories;
 namespace KinesisEdit.ViewModels
 {
     /// <summary>
-    /// One footer meter of the key inspector's Macro panel (mockup <c>2i</c>): a label, a value, a
-    /// limit, and whether the value is past it — <c>Playback speed 3 / 5</c>,
-    /// <c>this macro 128 / 500</c>, <c>layout keystrokes 5 140 / 7 200</c>.
+    /// One footer meter of the key inspector's Macro panel: a label, a value, a limit, and whether
+    /// the value is past it — <c>Speed 5 of 9</c>, <c>this macro 128 / 500</c>,
+    /// <c>1 014 / 7 200 chars</c>.
     /// <para>
     /// <b>The thousands separator is a space, and it is not restated here.</b> It is
     /// <see cref="AdvisoryText.Number"/>'s, which is the app's one grouped-number format (mockup
@@ -27,8 +27,17 @@ namespace KinesisEdit.ViewModels
     /// </summary>
     public sealed class MacroMeterViewModel : ViewModelBase
     {
-        /// <summary>Separates the value from its limit — <c>128 / 500</c>.</summary>
+        /// <summary>Separates the value from its limit on a <b>budget</b> — <c>128 / 500</c>.</summary>
         public const string CaptionSeparator = " / ";
+
+        /// <summary>
+        /// The separator for a meter that reports a <b>position in a range</b> rather than a
+        /// consumption of a budget — the playback speed's <c>5 of 9</c> (issue #146's mock). The two
+        /// are one type because the arithmetic and the over-budget rule are identical; they read
+        /// differently because <c>5 / 9</c> claims the macro has used five ninths of something, and
+        /// speed 5 of 9 is simply the fifth of nine settings.
+        /// </summary>
+        public const string OfSeparator = " of ";
 
         /// <summary>What the meter is about, in the app's own voice (mockup <c>2i</c>).</summary>
         public string Label { get; }
@@ -62,26 +71,32 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>The reading — <c>5 140 / 7 200</c>, or a bare number where there is no limit.</summary>
-        public string Caption => Build(_value, _limit);
+        public string Caption => Build(_value, _limit, _separator);
 
         /// <summary>Whether the value is past the limit. Amber, non-blocking; never red.</summary>
         public bool IsOverBudget => _limit is int limit && _value > limit;
 
+        private readonly string _separator;
         private int _value;
         private int? _limit;
 
-        /// <summary>Creates a meter labelled <paramref name="label"/>, reading zero of no limit.</summary>
-        public MacroMeterViewModel(string label)
+        /// <summary>
+        /// Creates a meter labelled <paramref name="label"/>, reading zero of no limit.
+        /// <paramref name="separator"/> is the word between the two numbers and defaults to the
+        /// budget's <c>/</c>; only the speed meter asks for anything else.
+        /// </summary>
+        public MacroMeterViewModel(string label, string separator = CaptionSeparator)
         {
             Label = label ?? throw new ArgumentNullException(nameof(label));
+            _separator = separator ?? throw new ArgumentNullException(nameof(separator));
         }
 
         /// <summary>Builds one reading; the numbers are grouped the way every count in the app is.</summary>
-        public static string Build(int value, int? limit)
+        public static string Build(int value, int? limit, string separator = CaptionSeparator)
         {
             var text = AdvisoryText.Number(value);
 
-            return limit is int maximum ? text + CaptionSeparator + AdvisoryText.Number(maximum) : text;
+            return limit is int maximum ? text + separator + AdvisoryText.Number(maximum) : text;
         }
 
         /// <summary>Moves the reading. Both halves move together, so a caption is never half-stale.</summary>

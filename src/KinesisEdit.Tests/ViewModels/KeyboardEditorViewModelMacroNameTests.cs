@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using KinesisEdit.Core.Devices;
 using KinesisEdit.Core.Model;
 using KinesisEdit.Core.Profiles;
@@ -19,6 +20,15 @@ namespace KinesisEdit.Tests.ViewModels
     /// (06 §1), so a name belongs to a <em>place</em>: two keys carrying the same name are two
     /// independent names, and the last case here is what pins that.
     /// </para>
+    /// <para>
+    /// <b>Issue #146 removed the rail's inline name field, and with it every production caller of
+    /// <c>MarkMacroNamesDirty</c>.</b> The rename cases below therefore drive that seam directly
+    /// rather than through a control that no longer exists — the editor-side behaviour they cover is
+    /// unchanged, only the way the mark is set. The case the removal is actually about is
+    /// <see cref="ThePanelWithNoNameField_LeavesAStoredNameOnTheDrive"/>: with nothing marking a
+    /// profile, <c>PersistMacroNames</c> returns on its first line and a stored
+    /// <c>macro_name_*</c> line is never rewritten — which is exactly how it survives.
+    /// </para>
     /// </summary>
     public sealed class KeyboardEditorViewModelMacroNameTests : IDisposable
     {
@@ -33,7 +43,7 @@ namespace KinesisEdit.Tests.ViewModels
         private readonly FakeAppPreferencesStore _preferences = new();
         private readonly List<KeyboardEditorViewModel> _editors = [];
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Load_StampsTheStoredNamesOntoTheFreshlyParsedLayout()
         {
             // A macro name is NOT in layoutN.txt: a parsed layout always arrives unnamed, and this
@@ -48,7 +58,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(_profiles.SessionToReturn!.ProfileNumber, editor.ProfileNumber);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Load_WithNoStoredName_LeavesTheMacroToDeriveOne()
         {
             StageOneMacro(out _);
@@ -62,7 +72,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.NotEqual(string.Empty, MacroNaming.DeriveDisplayName(macro, editor.Layout!));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Rename_MarksTheProfileDirtyAndWritesNothingYet()
         {
             StageOneMacro(out _);
@@ -81,7 +91,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(0, _preferences.UpdateCount);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Save_HarvestsTheNamesThroughThePreferencesStoreScopedToTheProfile()
         {
             StageOneMacro(out var triggerCode);
@@ -112,7 +122,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.False(editor.IsDirty);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Save_WithTheNameCleared_WritesAnEmptySetSoTheOldKeyIsRemoved()
         {
             var siteKey = StageOneMacro(out _);
@@ -130,7 +140,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Null(_preferences.Current.GetMacroName(siteKey));
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Save_WhenTheProfileWasRejected_WritesNoNames()
         {
             StageOneMacro(out _);
@@ -159,7 +169,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.True(editor.HasUnsavedMacroNames);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task Save_InDemoMode_KeepsTheNamesInMemoryAndThrowsNothing()
         {
             var editor = await CreateLoadedEditorAsync(
@@ -180,29 +190,29 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Empty(_preferences.MacroNameWrites);
         }
 
-        [Fact]
-        public async Task ARename_ReachesTheEditorThroughTheRailsOwnEvent()
+        [AvaloniaFact]
+        public async Task ARename_ThroughTheSeam_MarksTheProfileWithoutMovingACounter()
         {
-            // The panel raises NameChanged rather than Assigned — a name moves no counter — and the
-            // editor's handler is the only thing that turns it into unsaved work.
+            // `MarkMacroNamesDirty` is the public seam that says "this profile's names are out of
+            // date". The rail's inline field used to reach it through `NameChanged`; issue #146
+            // removed the field, and the seam is what a future naming surface will call again.
             var editor = await CreateLoadedEditorAsync();
 
             RecordAMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "a");
 
             var before = editor.MacroCount;
-            var panel = OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex);
 
-            panel.MacroName = "Sign-off block";
+            RenameTheStagedMacro(editor, "Sign-off block");
 
             Assert.True(editor.HasUnsavedMacroNames);
             Assert.True(editor.IsDirty);
 
-            // ...and nothing about it moved the macro count, which is what the second event exists
-            // to keep separate.
+            // ...and nothing about it moved the macro count, which is why a name was never folded
+            // into the layout's own funnel in the first place.
             Assert.Equal(before, editor.MacroCount);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task ARename_OnOneKey_LeavesAnIdenticallyNamedMacroOnAnotherKeyAlone()
         {
             // The whole point of issue #141. The deleted MacroLibrary grouped sites by name and
@@ -213,10 +223,10 @@ namespace KinesisEdit.Tests.ViewModels
             RecordAMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "a");
             RecordAMacro(editor, TestLayouts.RgbDigitTwoKeyIndex, "a");
 
-            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = "Sign-off block";
-            OpenMacroPanelFor(editor, TestLayouts.RgbDigitTwoKeyIndex).MacroName = "Sign-off block";
+            RenameMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "Sign-off block");
+            RenameMacro(editor, TestLayouts.RgbDigitTwoKeyIndex, "Sign-off block");
 
-            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = "Something else";
+            RenameMacro(editor, TestLayouts.RgbDigitOneKeyIndex, "Something else");
 
             Assert.Equal("Something else", FindMacro(editor, TestLayouts.RgbDigitOneKeyIndex).Name);
             Assert.Equal("Sign-off block", FindMacro(editor, TestLayouts.RgbDigitTwoKeyIndex).Name);
@@ -225,7 +235,59 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(2, MacroSites.EnumerateStoredNames(editor.Layout!).Count);
         }
 
-        [Fact]
+        /// <summary>
+        /// <b>Issue #146, AC 12.</b> Removing the rail's name field removed the app's only way to
+        /// mark a profile's names dirty — so the question the change has to answer is what happens
+        /// to a name that is already on the drive. The answer is that it is loaded, carried on
+        /// <see cref="Macro.Name"/> for the session, and left exactly where it was:
+        /// <c>PersistMacroNames</c> returns on its first line with no profile marked, so the
+        /// <c>macro_name_*</c> line is never rewritten and therefore never tombstoned.
+        /// <para>
+        /// This is the case that fails if the harvest is ever made unconditional "for safety" — it
+        /// would then run over macros the panel no longer names, which is the shape that drops them.
+        /// </para>
+        /// </summary>
+        [AvaloniaFact]
+        public async Task ThePanelWithNoNameField_LeavesAStoredNameOnTheDrive()
+        {
+            var siteKey = StageOneMacro(out _);
+
+            _preferences.SetInitial(AppSettings.Empty.WithMacroName(siteKey, "Sign-off block"));
+
+            var editor = await CreateLoadedEditorAsync();
+
+            // The load stamped it, exactly as it always did.
+            Assert.Equal("Sign-off block", FindStagedMacro(editor).Name);
+
+            // Edit the macro through the rail — a real layout write, so the profile is genuinely
+            // dirty and the save genuinely runs.
+            var panel = OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex);
+
+            panel.RecordCommand.Execute(null);
+
+            _capture.RaiseKeystroke(TestLayouts.Gen1Key("b"));
+
+            panel.Deactivate();
+
+            // The fake session's dirty flag is staged rather than derived (a fake that computed it
+            // would be asserting what Core's own suite proves), so the write set really contains
+            // this profile and the save really runs.
+            _profiles.SessionToReturn!.IsDirty = true;
+
+            Assert.False(editor.HasUnsavedMacroNames);
+
+            await editor.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal(1, _profiles.SessionToReturn.SaveCallCount);
+
+            // Nothing was written to the names — and nothing had to be, because nothing removed
+            // them: the stored line is still there and the model still carries it.
+            Assert.Empty(_preferences.MacroNameWrites);
+            Assert.Equal("Sign-off block", _preferences.Current.GetMacroName(siteKey));
+            Assert.Equal("Sign-off block", FindStagedMacro(editor).Name);
+        }
+
+        [AvaloniaFact]
         public async Task TheMacroMode_DoesNotStealTheSectionWhenItIsChosen()
         {
             var editor = await CreateLoadedEditorAsync();
@@ -236,7 +298,7 @@ namespace KinesisEdit.Tests.ViewModels
             Assert.Equal(EditorTab.Keys, editor.SelectedTab);
         }
 
-        [Fact]
+        [AvaloniaFact]
         public async Task ARailMacroEdit_ReachesTheCountersAndTheCap()
         {
             var editor = await CreateLoadedEditorAsync();
@@ -284,13 +346,24 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Renames the staged macro <b>the way the user does</b> — the rail's inline name field —
-        /// which is also the only path that exercises the panel's <c>NameChanged</c> hop into the
-        /// editor.
+        /// Renames the staged macro through the two things a naming surface has to do: write
+        /// <see cref="Macro.Name"/>, and tell the editor its names moved
+        /// (<c>MarkMacroNamesDirty</c>). The rail's inline field did exactly this via
+        /// <c>NameChanged</c> until issue #146 removed it; the seam is unchanged, so everything
+        /// below the seam — the dirty flag, the harvest, the tombstones, the per-profile set — is
+        /// covered exactly as it was.
         /// </summary>
         private static void RenameTheStagedMacro(KeyboardEditorViewModel editor, string name)
         {
-            OpenMacroPanelFor(editor, TestLayouts.RgbDigitOneKeyIndex).MacroName = name;
+            RenameMacro(editor, TestLayouts.RgbDigitOneKeyIndex, name);
+        }
+
+        /// <summary>The same, on any position of the open layer.</summary>
+        private static void RenameMacro(KeyboardEditorViewModel editor, int keyIndex, string name)
+        {
+            FindMacro(editor, keyIndex).Name = name;
+
+            editor.MarkMacroNamesDirty();
         }
 
         private KeyboardKeyViewModel RecordAMacro(KeyboardEditorViewModel editor, int keyIndex, string token)

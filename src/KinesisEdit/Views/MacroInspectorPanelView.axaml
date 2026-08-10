@@ -5,48 +5,58 @@
              xmlns:controls="clr-namespace:KinesisEdit.Controls"
              xmlns:views="clr-namespace:KinesisEdit.Views"
              xmlns:vm="clr-namespace:KinesisEdit.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="700"
+             mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="760"
              x:Class="KinesisEdit.Views.MacroInspectorPanelView"
              x:DataType="vm:MacroInspectorPanelViewModel">
   <!--
-    The key inspector's Macro panel (mockup 2i) — "selecting a key edits its macro right here". It
-    is the app's ONE macro editor since issue #140; there is no second surface for any of it.
+    The key inspector's Macro panel — "selecting a key edits its macro right here". It is the app's
+    ONE macro surface since issue #140; there is no second surface for any of it.
 
-    THE RAIL IS 300px WIDE WHILE THIS PANEL IS SHOWING, not 268. The handoff states both widths and
-    this is the macro-editing variant; the rail sets it off the panel's own WantsWideRail, so this
-    file names no width at all.
+    ITS LAYOUT IS THE "STANDING COMPOSE BAR" MOCK'S (issue #146), not 2i's. Four things moved at
+    once and they are one idea: A SLOT IS ONLY A SLOT. It has no name and no preview — it is nothing
+    but "which of this key's macros am I editing" — so the dot strip and its captioned dropdown
+    collapse into a row of numbered chips, and the co-trigger latches sit on the SAME row, because
+    the co-triggers are what actually tell two slots apart (06 §5). Below that the step rows lose
+    their numbers, the list takes a FIXED height and scrolls, and the composer is pinned directly
+    under it — always the same shape in the same place, which is what makes it usable as the one
+    control that edits a step.
+
+    THE RAIL IS 440px WIDE WHILE THIS PANEL IS SHOWING. The rail sets it off the panel's own
+    WantsWideRail, so this file names no width at all.
 
     THERE IS NO ASSIGN BUTTON. Editing in place means the first recorded keystroke IS the macro —
-    the view model creates it and puts it in the key's first free slot. The old panel's
-    draft-then-assign pair was a modal's shape.
+    the view model creates it and puts it in the key's slot under edit.
 
-    NOTHING HERE IS A GLYPH STANDING IN FOR AN ICON. The record dot is an Ellipse, the drag grip is
+    THERE IS NO NAME FIELD (issue #146). A macro's name is not editable in this app any more; a
+    stored `macro_name_*` still round-trips through the save. The dropdown that named a slot went
+    with it, and its wording survives as each chip's ToolTip.Tip — a bare numeral is not accessible
+    text.
+
+    NOTHING HERE IS A GLYPH STANDING IN FOR AN ICON. The record dots are Ellipses, the drag grip is
     `IconDragHandle` and the insert affordance `IconInsert`: U+25CF, U+283F and U+FF0B are in
-    neither embedded IBM Plex family and would tofu. The row's `×` (U+00D7) and the middle dots
-    (U+00B7) ARE characters — both families carry them.
+    neither embedded IBM Plex family and would tofu. The rows' `×` (U+00D7), the meter join's `·`
+    (U+00B7), the stepper's `+`/`−` and the modifier marks (in the `.keySymbol` face) ARE
+    characters.
 
     MONO IS THE FILE'S VOICE. The step tokens, the modifier codes, the millisecond counts and the
     meter readings are values that exist verbatim in a config file or are counted against one;
-    every sentence the app says in its own voice is sans.
+    every sentence the app says in its own voice — and a slot ordinal, which is this app counting —
+    is sans.
 
     THE ROOT IS A GRID SO THE DRAG HAS SOMEWHERE TO DRAW. The panel itself is still the stack it
     always was; the second child is a Canvas that holds the carried row while a drag is in flight
     (issue #128). A Canvas measures to nothing, so it costs the stack no height, and it is the LAST
     child so the ghost draws over the list rather than under it.
 
-    ONE COMPOSER, ALWAYS ON SCREEN (issue #139). The panel used to offer three ways to change a
-    macro — record a run, compose-and-append a chord, open a per-row delay editor — and no way to
-    change a step that already existed. There is now one block below the list that edits THE
+    ONE COMPOSER, ALWAYS ON SCREEN (issue #139). There is one block below the list that edits THE
     SELECTED STEP, and it is drawn whether or not there is one: with nothing selected every control
     inside it is disabled rather than absent, which is a deliberate exception to the design's
     "absent features are not shown" and is spelled out at that block.
   -->
 
   <UserControl.Resources>
-    <!-- One held modifier, drawn. TWO call sites — the step row and the ghost that copies it — so
-         it is a resource rather than two copies. (#128's composer preview was the third; #139
-         replaced it with the four latches below, which draw their own two runs because a
-         `ToggleSegment`'s selected face sets the Foreground this template's `muted` would override.)
+    <!-- One held modifier, drawn. TWO call sites — the step row's key chip and the ghost that
+         copies it — so it is a resource rather than two copies.
 
          The tooltip is not decoration: only a RIGHT modifier spells its side, so a bare mark is
          worn by the left one and the generic one alike and the row cannot tell them apart.
@@ -55,78 +65,109 @@
          UP TO TWO RUNS, IN TWO FACES. The key-symbol family is a 19-codepoint subset with NO Latin
          letters, so the `R` side letter stays in the ordinary mono face and only the mark goes in
          `.keySymbol`; a whole `R⇧` set in that class would fall back to a system font for its `R`.
-         `MacroModifierMarks.Split` hands the two out separately for exactly this. -->
+         `MacroModifierMarks.Split` hands the two out separately for exactly this.
+
+         NEITHER RUN CARRIES A COLOUR SINCE ISSUE #146. Both used to be `muted`, which was right
+         while the marks sat loose in the row beside a muted action word; they are inside
+         `Border.macroStepToken` now, which sets `TextElement.Foreground` to `MacroStepKeyBrush` so
+         the mark and the token it qualifies read as ONE keystroke (`⌃2`) in one hue. A `muted` here
+         would override the inherited tint on one of the two runs and split the chip in half. -->
     <DataTemplate x:Key="MacroModifierMarkRun" DataType="vm:MacroModifierMarks+Mark">
       <StackPanel Orientation="Horizontal"
                   VerticalAlignment="Center"
                   ToolTip.Tip="{Binding Description}">
         <TextBlock Text="{Binding Side}"
-                   Classes="monoValueSmall muted"
+                   Classes="monoValueSmall"
                    IsVisible="{Binding HasSide}"
                    VerticalAlignment="Center" />
         <TextBlock Text="{Binding Symbol}"
-                   Classes="keySymbol muted"
+                   Classes="keySymbol"
                    VerticalAlignment="Center" />
       </StackPanel>
     </DataTemplate>
 
     <!-- ONE TEMPLATE, TWO CALL SITES: the row in the list and the ghost carried above it. The
-         ghost has to be a copy of the row, and a second hand-written copy of six runs in two
-         faces is a copy that drifts. Nothing in here binds past the step — the row's commands are
-         anchored on the view outside it — so the same template renders correctly in both places.
+         ghost has to be a copy of the row, and a second hand-written copy of it is a copy that
+         drifts. Nothing in here binds past the step — the row's commands are anchored on the view
+         outside it — so the same template renders correctly in both places.
 
-         THE DELAY IS PART OF THE ROW AGAIN (issue #139). It used to be drawn by the per-row
-         `delay…` button, which was also the way into a delay editor of its own; the composer below
-         is the only delay surface now, so the row states the delay it carries and does nothing
-         with it. Putting it HERE rather than beside the button is what keeps the drag ghost honest:
-         a step moves with the delay folded behind it, so a carried row that dropped its `· 80 ms`
-         would be showing the user something other than what the release is about to move. -->
+         IT IS THE WHOLE ROW BODY, AND THAT IS A DECISION (issue #146). The mock draws the delay as
+         its own right-hand column, flush with the `×` above and below it, which would put it
+         OUTSIDE the selecting button — and then the drag ghost, which renders this template alone,
+         would carry a step without the delay folded behind it. A step moves with its delay
+         (`MoveStep`'s rule), so a carried row that dropped its `80 ms` would be showing the user
+         something other than what the release is about to move. Making the template a Grid with a
+         `*` spacer buys both: the pill is right-aligned in the row because the button stretches
+         (`HorizontalContentAlignment`), and the ghost is honest because the pill is inside it.
+
+         Three runs and no fourth: the key chip, the action word, the delay. THE NUMBER IS GONE — a
+         step is identified by the key it strikes, and nothing else in the app cites its ordinal. -->
     <DataTemplate x:Key="MacroStepCaption" DataType="vm:MacroInspectorStepViewModel">
-      <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-        <!-- Mono end to end: the number counts the file's own steps and the token is literally
-             what layoutN.txt carries. -->
-        <TextBlock Text="{Binding NumberText}" Classes="monoValueSmall muted" VerticalAlignment="Center" />
-
-        <!-- THE KEY THAT WAS STRUCK IS TINTED. `MacroStepKeyBrush` is the macro badge's own
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+        <!-- THE KEY THAT WAS STRUCK, AS A CHIP. `MacroStepKeyBrush` is the macro badge's own
              orchid, darkened on light for type — purple already means "macro" in this app, so the
              cap's dot and this token say one thing in one hue, and the row invents no fifth
-             meaning. Deliberately not the accent: that has exactly two, and a key token is
-             neither. -->
-        <TextBlock Text="{Binding TokenText}"
-                   Classes="monoValue"
-                   Foreground="{DynamicResource MacroStepKeyBrush}"
-                   IsVisible="{Binding HasToken}"
-                   TextTrimming="CharacterEllipsis"
+             meaning. Deliberately not the accent: that has exactly two meanings and a key token is
+             neither.
+
+             The marks are INSIDE the chip with the token (`⌃2`), because a chord is one keystroke
+             and drawing `⌃` loose beside `[2]` read as two. The colour is set once, on the chip
+             (`Border.macroStepToken`), and inherited by both runs; see `MacroModifierMarkRun`.
+
+             Hidden entirely on a delay-only row (06 §2.2), where `HasToken` is false: there is no
+             key there to draw a box around. -->
+        <Border Grid.Column="0"
+                Classes="macroStepToken"
+                IsVisible="{Binding HasToken}"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+            <!-- 2i's marks — `⇧`, `R⌃` — and NOT the file's `LS`, `LC`, `S ` codes, which are what
+                 goes on the drive rather than what a person reads (`Keystroke.FormatModifiers`,
+                 untouched). -->
+            <ItemsControl ItemsSource="{Binding Modifiers}"
+                          ItemTemplate="{StaticResource MacroModifierMarkRun}"
+                          IsVisible="{Binding HasModifiers}"
+                          VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="3" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+
+            <TextBlock Text="{Binding TokenText}"
+                       Classes="monoValue"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Column="1"
+                   Text="{Binding ActionText}"
+                   Classes="body muted"
                    VerticalAlignment="Center" />
 
-        <!-- The held modifiers as 2i's marks — `⇧`, `R⌃` — and NOT the file's `LS`, `LC`, `S `
-             codes, which are what goes on the drive rather than what a person reads
-             (`Keystroke.FormatModifiers`, untouched). See `MacroModifierMarkRun` above. -->
-        <ItemsControl ItemsSource="{Binding Modifiers}"
-                      ItemTemplate="{StaticResource MacroModifierMarkRun}"
-                      IsVisible="{Binding HasModifiers}"
-                      VerticalAlignment="Center">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="3" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-        </ItemsControl>
-
-        <TextBlock Text="{Binding ActionText}" Classes="meta muted" VerticalAlignment="Center" />
-
-        <!-- `· 80 ms`. The middle dot IS a character — U+00B7 is Latin-1 and both embedded Plex
-             families carry it — and the count is mono, because `{d080}` is what the file holds
-             (06 §2.2). Both runs go together, so a row with no delay ends at its action word. -->
-        <TextBlock Text="·"
+        <!-- The delay behind the step, at the right of the row. An em dash where there is none —
+             `—` is Latin-1 and both embedded families carry it — and an accent pill where there is
+             one, because a delay is something the user PUT there and "you changed this" is one of
+             the accent's two sanctioned meanings. The count is mono: `{d080}` is what the file
+             holds (06 §2.2). Neither run carries a colour class; the pill sets
+             `TextElement.Foreground` and the dash is ordinary muted type. -->
+        <TextBlock Grid.Column="3"
+                   Text="—"
                    Classes="meta muted"
-                   IsVisible="{Binding HasDelay}"
+                   IsVisible="{Binding !HasDelay}"
                    VerticalAlignment="Center" />
-        <TextBlock Text="{Binding DelayText}"
-                   Classes="monoValueSmall muted"
-                   IsVisible="{Binding HasDelay}"
-                   VerticalAlignment="Center" />
-      </StackPanel>
+
+        <Border Grid.Column="3"
+                Classes="macroStepDelay"
+                IsVisible="{Binding HasDelay}"
+                VerticalAlignment="Center">
+          <TextBlock Text="{Binding DelayText}"
+                     Classes="monoValueSmall"
+                     VerticalAlignment="Center" />
+        </Border>
+      </Grid>
     </DataTemplate>
   </UserControl.Resources>
 
@@ -163,13 +204,10 @@
          Drawn INSTEAD of the editor, never beside it. A device with no macros, or a position that
          can never carry one (05 §5.3, spec 02's verbatim wording), is the design's sanctioned
          exception to "absent features are not shown": the user pressed this tab, and a tab that
-         rendered nothing would look broken. Amber, never red — nothing failed. -->
+         rendered nothing would look broken. Amber, never red — nothing failed. `pickerAdvisory` is
+         the app's one amber inline block; this panel used to inline its three setters twice over. -->
     <Border Classes="inspectorSection" IsVisible="{Binding !IsAvailable}">
-      <Border Background="{DynamicResource StatusAdvisoryTintBrush}"
-              BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
-              BorderThickness="1"
-              CornerRadius="{DynamicResource RadiusControl}"
-              Padding="9,7">
+      <Border Classes="pickerAdvisory">
         <TextBlock Text="{Binding UnavailableReason}"
                    Classes="body statusWarning"
                    TextWrapping="Wrap" />
@@ -178,31 +216,50 @@
 
     <StackPanel IsVisible="{Binding IsAvailable}">
 
-      <!-- ===== The slot ======================================================================
-           WHICH OF THE KEY'S MACROS IS BEING EDITED (issue #137). A key holds up to five macros
-           told apart by their co-triggers (06 §1); until this strip existed the rail could reach
-           only one of them and the rest were unreachable from the board.
+      <!-- ===== SLOTS and TRIGGER, on one row =================================================
+           WHICH OF THE KEY'S MACROS IS BEING EDITED, and WHAT THE KEY HAS TO BE PRESSED WITH. A key
+           holds up to five macros told apart by their co-triggers (06 §1, §5) — which is exactly
+           why the two halves share a row since issue #146: reading the co-triggers three sections
+           below the slot they distinguish was the panel asking the user to hold two things in their
+           head.
 
-           ONE DOT PER SLOT THE DIALECT WRITES, never the five the model owns: `PersistedSlotsPerKey`
-           is 3 on the Advantage2 and Freestyle Edge/Pro and 5 on the RGB family, and a macro put in
-           slot 4 of a Freestyle Edge is gone at the next save.
+           ONE CHIP PER SLOT THE DIALECT WRITES, never the five the model owns:
+           `PersistedSlotsPerKey` is 3 on the Advantage2 and Freestyle Edge/Pro and 5 on the RGB
+           family, and a macro put in slot 4 of a Freestyle Edge is gone at the next save. An
+           occupied slot wears its NUMBER and an empty one a `+`, so "occupied" is said by the
+           caption rather than by a fill; the accent ring says which one is under edit.
 
-           NO `ACTIVE` BADGE AND NO `Make active`. The dropdown is a pure EDITING selector — every
-           populated slot is live on the keyboard, and what tells them apart is the Trigger strip
-           below. Picking a slot writes `KeyboardKey.ActiveMacroIndex`, which is in-memory only and
-           never serialized (05 §1.3), so it deliberately does NOT dirty the session.
+           NO `ACTIVE` BADGE AND NO `Make active`. The strip is a pure EDITING selector — every
+           populated slot is live on the keyboard, and what tells them apart is the trigger latches
+           beside it. Picking a slot writes `KeyboardKey.ActiveMacroIndex`, which is in-memory only
+           and never serialized (05 §1.3), so it deliberately does NOT dirty the session.
+
+           THREE LATCHES, NOT SIX AND NOT FOUR — a deliberate deviation recorded in
+           docs/app/design-system.md. spec 10 pins the legacy set at "six co-trigger buttons —
+           Left/Right Shift, Ctrl, Alt"; authoring here is left-only, and a right-hand or generic
+           co-trigger a FILE carries lights the matching left latch instead of disappearing. There
+           is no `⌘` latch: no co-trigger in specs 06 or 10 names one, so it would author a token no
+           firmware is documented to honour.
+
+           THE TRIGGER TOKEN IS GONE FROM THE STRIP (issue #146). The rail's own header already
+           names the position, and drawing `[hk7]` twice on one rail said nothing the second time.
 
            ABSENT, NEVER DISABLED: a flat-list board (the Advantage 360) and a position that refuses
-           macros (05 §5.3) draw no selector at all. -->
-      <Border Classes="inspectorSection" IsVisible="{Binding HasSlotSelector}">
+           macros (05 §5.3) draw no slot half at all, and a device whose dialect has no co-trigger
+           draws no trigger half. The two are gated independently. -->
+      <Border Classes="inspectorSection">
         <StackPanel Spacing="6">
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.SlotSectionLabel}" Classes="sectionLabel" />
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+            <TextBlock Grid.Column="0"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.SlotSectionLabel}"
+                       Classes="sectionLabel"
+                       IsVisible="{Binding HasSlotSelector}"
+                       VerticalAlignment="Center" />
 
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-            <!-- The dots are geometry and not a glyph, for the record dot's own reason: `●` (U+25CF)
-                 is in neither embedded IBM Plex family. Filled means occupied; the caption is the
-                 tooltip, because a dot alone is not accessible text. -->
-            <ItemsControl Grid.Column="0" ItemsSource="{Binding SlotOptions}" VerticalAlignment="Center">
+            <ItemsControl Grid.Column="1"
+                          ItemsSource="{Binding SlotOptions}"
+                          IsVisible="{Binding HasSlotSelector}"
+                          VerticalAlignment="Center">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="4" />
@@ -210,56 +267,38 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:MacroSlotOption">
-                  <Ellipse Classes="macroSlotDot"
-                           Classes.filled="{Binding IsOccupied}"
-                           ToolTip.Tip="{Binding Caption}"
-                           VerticalAlignment="Center" />
+                  <!-- Sans, not mono: a slot ordinal is this app counting, not a value that exists
+                       verbatim in a config file. The caption is the tooltip, because a bare numeral
+                       is not accessible text. The ancestor binding is anchored on the VIEW: a
+                       `$parent[...]` written inside a themed button's content does not reach past
+                       the presenter. -->
+                  <Button Classes="macroChip"
+                          Classes.selected="{Binding IsSelected}"
+                          Classes.colliding="{Binding IsColliding}"
+                          Content="{Binding ChipText}"
+                          ToolTip.Tip="{Binding Caption}"
+                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SelectSlotCommand}"
+                          CommandParameter="{Binding}" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding SlotOptions}"
-                      SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
-                      HorizontalAlignment="Stretch">
-              <ComboBox.ItemTemplate>
-                <DataTemplate DataType="vm:MacroSlotOption">
-                  <TextBlock Text="{Binding Caption}" TextTrimming="CharacterEllipsis" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </Grid>
-        </StackPanel>
-      </Border>
+            <TextBlock Grid.Column="3"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerSectionLabel}"
+                       Classes="sectionLabel"
+                       IsVisible="{Binding HasCoTriggers}"
+                       VerticalAlignment="Center" />
 
-      <!-- ===== The trigger ===================================================================
-           WHAT THE KEY HAS TO BE PRESSED WITH, and whether anything else on it already claims that
-           combination (06 §5). The latches used to sit in the footer under a `CO-TRIGGERS` label,
-           three rows away from the slot they distinguish; here they are beside the trigger token
-           they qualify and the collision they cause.
+            <TextBlock Grid.Column="4"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerJoin}"
+                       Classes="sectionLabel"
+                       IsVisible="{Binding HasCoTriggers}"
+                       VerticalAlignment="Center" />
 
-           THREE LATCHES, NOT SIX AND NOT FOUR — a deliberate deviation recorded in
-           docs/app/design-system.md. spec 10 pins the legacy set at "six co-trigger buttons —
-           Left/Right Shift, Ctrl, Alt"; authoring here is left-only, and a right-hand or generic
-           co-trigger a FILE carries lights the matching left latch instead of disappearing. There is
-           no `⌘` latch: no co-trigger in specs 06 or 10 names one, so it would author a token no
-           firmware is documented to honour.
-
-           EACH LATCH IS ONE OR TWO RUNS IN TWO FACES, exactly as the step rows draw them — but the
-           left three spell no side, so each is a single `.keySymbol` run today. NEITHER RUN CARRIES
-           A COLOUR: `ToggleSegment`'s `.selected` face sets Foreground, a TextBlock inherits it and
-           an `Icon` (painting from Stroke) cannot, which is why this site is type at all.
-
-           THE STATUS IS AN ADVISORY AND NEVER A REFUSAL. Amber, never red — a collision is what
-           `Validate()` reports as `MacroTriggerCollision`, and it reports rather than blocks. -->
-      <Border Classes="inspectorSection">
-        <StackPanel Spacing="6">
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerSectionLabel}" Classes="sectionLabel" />
-
-          <!-- A Grid and not a horizontal StackPanel: the token takes the `*` column and trims, so
-               nothing here can run off a 300 px rail however long a dialect spells a trigger. -->
-          <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="6">
-            <ItemsControl Grid.Column="0" ItemsSource="{Binding CoTriggers}" IsVisible="{Binding HasCoTriggers}">
+            <ItemsControl Grid.Column="5"
+                          ItemsSource="{Binding CoTriggers}"
+                          IsVisible="{Binding HasCoTriggers}"
+                          VerticalAlignment="Center">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <StackPanel Orientation="Horizontal" Spacing="4" />
@@ -267,7 +306,12 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="vm:MacroCoTriggerViewModel">
-                  <Button Classes="toggleSegment"
+                  <!-- The same chip face as the slots — the mock draws them identically and they
+                       mean the same kind of thing. EACH LATCH IS ONE OR TWO RUNS IN TWO FACES,
+                       exactly as the step rows draw them, and NEITHER RUN CARRIES A COLOUR:
+                       `MacroChip`'s `.selected` face sets Foreground, a TextBlock inherits it and
+                       an `Icon` (painting from Stroke) cannot, which is why this site is type. -->
+                  <Button Classes="macroChip"
                           Classes.selected="{Binding IsOn}"
                           ToolTip.Tip="{Binding Caption}"
                           Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleCoTriggerCommand}"
@@ -289,110 +333,40 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-
-            <TextBlock Grid.Column="1"
-                       Text="{x:Static vm:MacroInspectorPanelViewModel.TriggerJoin}"
-                       Classes="meta muted"
-                       IsVisible="{Binding HasCoTriggers}"
-                       VerticalAlignment="Center" />
-
-            <!-- Mono: this is literally the token on the trigger side of the macro line (06 §3). -->
-            <TextBlock Grid.Column="2"
-                       Text="{Binding TriggerTokenText}"
-                       Classes="monoValue"
-                       TextTrimming="CharacterEllipsis"
-                       VerticalAlignment="Center" />
           </Grid>
 
-          <!-- The two roles are bound EXCLUSIVELY rather than layered, so which one wins is a fact
-               about the selector and never about the order the stylesheet happens to declare them
-               in (docs/app/design-system.md, contract 7). -->
+          <!-- THE STATUS IS AN ADVISORY, AND SINCE #146 IT IS DRAWN ONLY WHEN THERE IS ONE. At rest
+               the mock says nothing, because "bare press · no collision" was the panel restating
+               what the empty latches already showed. A collision or a reserved trigger draws one
+               amber line here AND rings every slot chip involved, so the pair is visible on the
+               strip as well as named in words. Amber, never red — a collision is what `Validate()`
+               reports as `MacroTriggerCollision`, and it reports rather than blocks. -->
           <TextBlock Text="{Binding TriggerStatus}"
-                     Classes="meta"
-                     Classes.muted="{Binding !IsTriggerAdvisory}"
-                     Classes.statusWarning="{Binding IsTriggerAdvisory}"
+                     Classes="meta statusWarning"
+                     IsVisible="{Binding IsTriggerAdvisory}"
                      TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
-      <!-- ===== The name ======================================================================
-           WHAT THE USER CALLS THIS MACRO — a field, not a dropdown (issue #141). 2i drew a list of
-           the profile's macros to pick from, and the app kept one: a MacroLibrary that grouped
-           sites by name so a pick could assign "the same macro" to a second key. There is no such
-           thing on the drive — every key's slot holds its own independent copy (06 §1) — so the
-           list was an identity the hardware does not have, and picking from it was an assignment
-           wearing a rename's clothes. The name belongs to THIS site; `Copy macro to…` in the footer
-           is how a second key gets one.
-
-           A REAL TextBox, and it is the panel's second (the composer's millisecond box is the
-           first). Focus landing in one ENDS the recording — the editor's `GotFocus` leg of
-           `StopRecordingOnInteraction` stands the panel down and the banner goes with it — so the
-           letters reach the field and the panel is never left claiming to record while the keyboard
-           belongs to the box (docs/app/keystroke-capture.md, invariant 7). The capture service's own
-           auto-suspend on text focus still applies underneath, but it is SILENT, and a silent
-           suspension is exactly what a surface that says it is recording must not rely on.
-
-           IT IS NOT AN ACTION FIELD. Those record a KEYPRESS and must never be focusable
-           (`Border.actionField`); a name is typed, like the delay beside it.
-
-           THE DERIVED NAME IS THE WATERMARK, NEVER THE TEXT. `Macro.Name` stays empty for an
-           unnamed macro and the save harvests every non-empty one, so text here would write a
-           `macro_name_*` line for a name nobody typed — and freeze it against the macro's own
-           content, which a derived name otherwise follows.
-
-           COMMITTED ON FOCUS LOSS AND ON ENTER, never per keystroke: every commit runs the editor's
-           refresh funnel, and a funnel per character is a funnel per character. `MaxLength` is
-           Core's own bound (`MacroNaming.MaxNameLength`), reached through the panel so no number is
-           spelled twice.
-
-           SANS, NOT MONO. The mono law is for values that exist verbatim in a config file; this one
-           does not — it rides this app's own app_settings.txt and it is the user's words. -->
-      <Border Classes="inspectorSection">
-        <StackPanel Spacing="6">
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.NameLabel}" Classes="sectionLabel" />
-
-          <TextBox x:Name="NameField"
-                   Text="{Binding MacroName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                   Watermark="{Binding MacroNameWatermark}"
-                   MaxLength="{x:Static vm:MacroInspectorPanelViewModel.MaxNameLength}"
-                   IsEnabled="{Binding HasMacro}"
-                   KeyDown="OnNameFieldKeyDown"
-                   HorizontalAlignment="Stretch" />
-        </StackPanel>
-      </Border>
-
-      <!-- ===== The steps =====================================================================
-           Headed `Steps`, with `drag ⠿ · ⌥↑↓` as the reorder affordance and `● Record` beside it. -->
+      <!-- ===== The sequence ==================================================================
+           Headed `Sequence`, with the step count where 2i's `drag ⠿ · ⌥↑↓` hint used to be and
+           `● Record sequence` beside it. The hint went because the count is the thing a user wants
+           from that spot; the reorder affordance is still written down, in the grip's own tooltip,
+           which is now the only place the `⌥↑↓` shortcut is spelled. -->
       <Border Classes="inspectorSection">
         <StackPanel Spacing="8">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
             <TextBlock Grid.Column="0"
                        Text="{x:Static vm:MacroInspectorStepsViewModel.SectionTitle}"
                        Classes="cardTitle"
                        VerticalAlignment="Center" />
 
-            <!-- `drag ⠿ · ⌥↑↓` — the word, the grip drawn as geometry, and the keyboard spelling
-                 for this platform.
+            <TextBlock Grid.Column="1"
+                       Text="{Binding StepCountText}"
+                       Classes="meta muted"
+                       VerticalAlignment="Center" />
 
-                 BOTH marks are DRAWN, not typed: U+283F (the grip) and U+2325 (Option) are in
-                 neither embedded IBM Plex family, so either character would be tofu. The ⌥ follows
-                 the layer chips exactly (issue #109) — `IconOption` beside the text, hidden off
-                 macOS where the text itself reads `Alt+`. An Icon paints from Stroke and cannot
-                 inherit Foreground, which is what `Icon.kbdMark` is for. -->
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        Spacing="3"
-                        VerticalAlignment="Center">
-              <TextBlock Text="{x:Static vm:MacroInspectorStepsViewModel.ReorderHintPrefix}" Classes="meta muted" />
-              <controls:Icon Classes="dragHandle" Data="{DynamicResource IconDragHandle}" VerticalAlignment="Center" />
-              <controls:Icon Classes="kbdMark"
-                             Data="{DynamicResource IconOption}"
-                             IsVisible="{Binding Steps.ShowsOptionMark}"
-                             VerticalAlignment="Center" />
-              <TextBlock Text="{Binding Steps.ReorderShortcut}" Classes="meta muted" />
-            </StackPanel>
-
-            <Button Grid.Column="2"
+            <Button Grid.Column="3"
                     Classes="recordAction"
                     Command="{Binding RecordCommand}"
                     VerticalAlignment="Center">
@@ -411,47 +385,41 @@
             </Button>
           </Grid>
 
-          <!-- The live banner, naming the step the next keystroke lands in. Amber: it is the app
-               telling the user their keyboard has been taken over, not an error. -->
-          <Border Background="{DynamicResource StatusAdvisoryTintBrush}"
-                  BorderBrush="{DynamicResource StatusAdvisoryTintBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="{DynamicResource RadiusControl}"
-                  Padding="9,7"
-                  IsVisible="{Binding IsRecording}">
-            <TextBlock Text="{Binding RecordingBanner}" Classes="body statusWarning" TextWrapping="Wrap" />
+          <!-- The live banner. Amber: it is the app telling the user their keyboard has been taken
+               over, not an error — and it no longer names a step number, because the rows do not
+               carry one to name.
+
+               THE OS-RESERVED NOTE IS ITS SECOND LINE SINCE #146. It used to stand under the
+               capture rule at all times, which spent two lines of the rail restating a limitation
+               nobody had met yet; it belongs at the moment the limitation is discovered, which is
+               while the take is running. A chord the window system keeps is consumed ABOVE the
+               application and is never delivered here at all, so the sentence points at the
+               composer below rather than apologising. `CaptureRule` went with the paragraph: the
+               banner already says what it said. -->
+          <Border Classes="pickerAdvisory" IsVisible="{Binding IsRecording}">
+            <StackPanel Spacing="5">
+              <TextBlock Text="{Binding RecordingBanner}" Classes="body statusWarning" TextWrapping="Wrap" />
+              <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.OsReservedNote}"
+                         Classes="meta statusWarning"
+                         TextWrapping="Wrap" />
+            </StackPanel>
           </Border>
 
-          <!-- What the capture does with what it hears, verbatim from 2i. -->
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.CaptureRule}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap" />
-
-          <!-- ...and the one thing it cannot do, said in the same breath (issue #128). A chord the
-               window system keeps is consumed ABOVE the application and is never delivered here at
-               all, so this is a fact about the platform and not a defect the panel can fix; the
-               sentence therefore points at the composer below rather than apologising. Its own
-               line, because the sentence above it is the mock's wording verbatim and pinned. -->
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.OsReservedNote}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap" />
-
-          <!-- The rows, in a BOUNDED scroller (issue #139).
+          <!-- The rows, in a FIXED-HEIGHT scroller (issue #146).
 
                AN ItemsControl AND NOT A ListBox, deliberately, and the scroller does not change
                that: the editor's grammar leaves the arrows to any SelectingItemsControl in the
-               focused ancestry, so a selecting list here would swallow the very ⌥↑↓ the header
-               advertises. Selection is the view model's own. A ScrollViewer is not a
-               SelectingItemsControl and is not one of the three surfaces `⌥↑↓` yields to (a text
-               input, and nothing else — see KeyboardEditorView.BoardOwnsLayerShortcuts), so
-               wrapping the rows in one leaves the shortcut exactly where it was.
+               focused ancestry, so a selecting list here would swallow the very ⌥↑↓ the grip's
+               tooltip advertises. Selection is the view model's own. A ScrollViewer is not a
+               SelectingItemsControl and is not one of the surfaces `⌥↑↓` yields to (a text input,
+               and nothing else — see KeyboardEditorView.BoardOwnsLayerShortcuts).
 
-               WHY IT IS BOUNDED AT ALL. Before this the list grew without limit and pushed
-               everything under it — and, since #139, the composer that EDITS the selected row —
-               off the bottom of a 300 px rail: a 40-step macro made the one control that could
-               change step 03 unreachable from step 03. A MaxHeight rather than a Height, and the
-               same shape ScrollViewer.tokenPickerResults uses for the same reason: a three-step
-               macro must still collapse to three rows rather than reserve a hole.
+               WHY IT IS A `Height` AND NOT A `MaxHeight`. It was bounded in #139 because an
+               unbounded list pushed the composer that EDITS the selected row off the bottom of the
+               rail. #146 pins it: with a MaxHeight the list is as tall as its contents, so
+               recording a step, deleting one or landing on an empty slot slid the composer up or
+               down the rail UNDER THE POINTER between one click and the next. A fixed box costs an
+               empty gap under a two-step macro and buys a compose bar that never moves.
 
                The `＋ insert step` row is deliberately OUTSIDE it. It is an action rather than a
                step, and an action that scrolls out of reach is an action the user cannot find. -->
@@ -459,80 +427,78 @@
                         HorizontalScrollBarVisibility="Disabled"
                         VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Steps.Items}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:MacroInspectorStepViewModel">
-                <!-- The row is a Grid rather than one big Button, and the delete action sits
-                     BESIDE the selecting button rather than inside it. Two reasons, and both
-                     have bitten this codebase: a button nested in a button fires both commands on
-                     one click, and a `$parent[...]` binding written inside a themed button's
-                     content no longer reaches past the presenter (docs/app/design-system.md,
-                     "The control-theme layer"). Every ancestor binding here is therefore anchored
-                     on this view, whose DataContext is the panel. -->
-                <Grid ColumnDefinitions="Auto,*,Auto"
-                      ColumnSpacing="4"
-                      Background="Transparent"
-                      Classes.dragSource="{Binding IsDragSource}">
-                  <controls:Icon Grid.Column="0"
-                                 Classes="dragHandle"
-                                 Data="{DynamicResource IconDragHandle}"
-                                 ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.ReorderHandleHint}"
-                                 VerticalAlignment="Center" />
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:MacroInspectorStepViewModel">
+                  <!-- THE FRAME CARRIES THE SELECTION, not the row button (issue #146). The mock
+                       rings the WHOLE row — grip, body and `×` alike — and the outer two sit
+                       outside the button, because a button may not nest inside another button.
+                       `Border.macroStepRowFrame` is transparent at rest rather than absent, so
+                       acquiring the ring costs no reflow and the rows do not shift as the selection
+                       moves down the list. -->
+                  <Border Classes="macroStepRowFrame" Classes.selected="{Binding IsSelected}">
+                    <!-- The row is a Grid rather than one big Button, and the delete action sits
+                         BESIDE the selecting button rather than inside it. Two reasons, and both
+                         have bitten this codebase: a button nested in a button fires both commands
+                         on one click, and a `$parent[...]` binding written inside a themed button's
+                         content no longer reaches past the presenter. Every ancestor binding here
+                         is therefore anchored on this view, whose DataContext is the panel. -->
+                    <Grid ColumnDefinitions="Auto,*,Auto"
+                          ColumnSpacing="4"
+                          Background="Transparent"
+                          Classes.dragSource="{Binding IsDragSource}">
+                      <controls:Icon Grid.Column="0"
+                                     Classes="dragHandle"
+                                     Data="{DynamicResource IconDragHandle}"
+                                     ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.ReorderHandleHint}"
+                                     VerticalAlignment="Center" />
 
-                  <!-- The row's face is the shared `MacroStepCaption` template, because the drag
-                       ghost above the list has to be the same six runs in the same two faces and a
-                       second copy of them would drift from this one. -->
-                  <Button Grid.Column="1"
-                          Classes="macroStepRow"
-                          Classes.selected="{Binding IsSelected}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.SelectStepCommand}"
-                          CommandParameter="{Binding}"
-                          Content="{Binding}"
-                          ContentTemplate="{StaticResource MacroStepCaption}" />
+                      <!-- The row's face is the shared `MacroStepCaption` template, because the
+                           drag ghost above the list has to be the same runs in the same faces and a
+                           second copy of them would drift from this one. -->
+                      <Button Grid.Column="1"
+                              Classes="macroStepRow"
+                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.SelectStepCommand}"
+                              CommandParameter="{Binding}"
+                              Content="{Binding}"
+                              ContentTemplate="{StaticResource MacroStepCaption}" />
 
-                  <!-- The per-row `delay…` affordance is GONE (issue #139). It opened a delay
-                       editor of its own, which was the panel's THIRD way to change a macro beside
-                       recording a run and composing a chord — and the only one that could touch a
-                       step that already existed. The composer below edits the selected step's
-                       delay in the same block as its key, its modifiers and its action; the row
-                       states the delay it carries (in `MacroStepCaption` above) and offers no
-                       action of its own. -->
-                  <Button Grid.Column="2"
-                          Classes="ghost"
-                          Content="×"
-                          ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.RemoveStepHint}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.RemoveStepCommand}"
-                          CommandParameter="{Binding}" />
+                      <Button Grid.Column="2"
+                              Classes="ghost"
+                              Content="×"
+                              ToolTip.Tip="{x:Static vm:MacroInspectorStepsViewModel.RemoveStepHint}"
+                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).Steps.RemoveStepCommand}"
+                              CommandParameter="{Binding}" />
 
-                  <!-- WHERE THE DRAG WOULD LAND. A reorder with no feedback reads as broken even
-                       once it works, so the row under a carried step wears a ring while the
-                       pointer is over it.
+                      <!-- WHERE THE DRAG WOULD LAND. A reorder with no feedback reads as broken
+                           even once it works, so the row under a carried step wears a ring while
+                           the pointer is over it.
 
-                       A RING, NOT A FILL: the selected row already takes `AccentSelectionFill`, and
-                       a drop target painted in it would be indistinguishable from the selection it
-                       is about to displace. Last child and `IsHitTestVisible=False`, so it draws
-                       over the row button's own face without ever becoming the thing the release
-                       hit-tests to. -->
-                  <Border Grid.Column="0"
-                          Grid.ColumnSpan="3"
-                          BorderBrush="{DynamicResource AccentBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{DynamicResource RadiusControl}"
-                          IsHitTestVisible="False"
-                          IsVisible="{Binding IsDropTarget}" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
+                           A RING, NOT A FILL: the selected row already takes `AccentSelectionFill`,
+                           and a drop target painted in it would be indistinguishable from the
+                           selection it is about to displace. Last child and
+                           `IsHitTestVisible=False`, so it draws over the row's own face without
+                           ever becoming the thing the release hit-tests to. -->
+                      <Border Grid.Column="0"
+                              Grid.ColumnSpan="3"
+                              BorderBrush="{DynamicResource AccentBrush}"
+                              BorderThickness="1"
+                              CornerRadius="{DynamicResource RadiusControl}"
+                              IsHitTestVisible="False"
+                              IsVisible="{Binding IsDropTarget}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
 
-          <!-- The trailing row of 2i's list. It NO LONGER runs the same action as `● Record`
-               (issue #139): it opens a placeholder row after the selected step — at the end when
-               nothing is selected — and points the composer at it, so a step can be inserted in
-               the MIDDLE of a macro. Appending by recording is what the header's `● Record` still
-               does. Nothing is written to the macro until a key lands on the placeholder. -->
+          <!-- The trailing row of 2i's list, UNNUMBERED since #146. It opens a placeholder row
+               after the selected step — at the end when nothing is selected — and points the
+               composer at it, so a step can be inserted in the MIDDLE of a macro. Appending by
+               recording is what the header's `● Record sequence` still does. Nothing is written to
+               the macro until a key lands on the placeholder. -->
           <Button Classes="macroStepRow" Command="{Binding InsertStepCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-              <TextBlock Text="{Binding Steps.NextStepNumberText}" Classes="monoValueSmall muted" VerticalAlignment="Center" />
               <controls:Icon Classes="insertMark" Data="{DynamicResource IconInsert}" VerticalAlignment="Center" />
               <TextBlock Text="{x:Static vm:MacroInspectorStepsViewModel.InsertStepCaption}"
                          Classes="meta"
@@ -546,397 +512,423 @@
                      Classes="body statusWarning"
                      TextWrapping="Wrap"
                      IsVisible="{Binding HasMessage}" />
-        </StackPanel>
-      </Border>
 
-      <!-- ===== The composer (issue #139) =====================================================
-           ONE BLOCK THAT EDITS THE SELECTED STEP — its key, the modifiers held with it, what it
-           does, and the delay behind it.
+          <!-- ===== The compose bar (issues #139, #146) =======================================
+               ONE BLOCK THAT EDITS THE SELECTED STEP — its key, the modifiers held with it, what it
+               does, and the delay behind it — PINNED DIRECTLY UNDER THE LIST, in the same section,
+               so nothing separates the rows from the control that changes them.
 
-           IT REPLACED THREE SURFACES. Until now the panel could record a run, compose-and-APPEND a
-           chord (issue #128, a disclosed strip over a key search), and open a per-row delay editor
-           — and none of the three could change a step that already existed. All of it collapses
-           into the four rows below.
+               IT IS A BORDERED BOX, and that is what the mock's own title is about: everything
+               above it edits the SEQUENCE and everything inside it builds ONE STEP, so the block
+               has to read as a tool sitting on the panel rather than as the next paragraph of it.
 
-           ALWAYS VISIBLE, NEVER COLLAPSED, AND DISABLED WITH NOTHING SELECTED. That is a
-           deliberate exception to the design's "features a device lacks are not rendered at all
-           rather than disabled" (docs/design/README.md), recorded in docs/app/design-system.md
-           beside the firmware gate's and the locked position's: nothing here is missing — the user
-           simply has not pointed at a step yet — and a block that appeared and vanished as rows
-           were clicked would move the whole rail under the pointer on every click. The hint below
-           the label is on screen for exactly that state and goes when a step is selected.
+               IT REPLACED THREE SURFACES. Until #139 the panel could record a run, compose-and-
+               APPEND a chord and open a per-row delay editor — and none of the three could change a
+               step that already existed.
 
-           NOTHING HAS AN `Apply` AND NOTHING HAS AN `Insert`. Every control writes the moment it
-           is touched, through the panel's own `OnMacroWritten` hop, so the session goes dirty
-           exactly as it does for a recorded step and there is no half-committed state to abandon.
+               ALWAYS VISIBLE, NEVER COLLAPSED, AND DISABLED WITH NOTHING SELECTED. That is a
+               deliberate exception to the design's "features a device lacks are not rendered at all
+               rather than disabled" (docs/design/README.md), recorded in docs/app/design-system.md
+               beside the firmware gate's and the locked position's: nothing here is missing — the
+               user simply has not pointed at a step yet — and a block that appeared and vanished as
+               rows were clicked would move the whole rail under the pointer on every click. The
+               hint under the label is on screen for exactly that state and goes when a step is
+               selected.
 
-           THERE IS NO TEXT BOX AND NO PICKER FOR THE KEY. It is set by this block's own `Record`,
-           which arms the panel's sink for exactly ONE keystroke. #128's reason for existing
-           survives that: `Ctrl+1` is still authorable without pressing it — record the bare `1`,
-           which the window server does deliver, then tick `⌃` here. See `OsReservedNote` above,
-           which is drawn beside the capture rule and points at this block. -->
-      <Border Classes="inspectorSection">
-        <StackPanel Spacing="8">
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerLabel}" Classes="sectionLabel" />
+               NOTHING HAS AN `Apply` AND NOTHING HAS AN `Insert`. Every control writes the moment
+               it is touched, through the panel's own `OnMacroWritten` hop, so the session goes
+               dirty exactly as it does for a recorded step and there is no half-committed state to
+               abandon.
 
-          <!-- Said only while every control below is dead, which is the state it exists to
-               explain. With a step selected the sentence would be stale advice taking a line of a
-               300 px rail. -->
-          <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerHint}"
-                     Classes="meta muted"
-                     TextWrapping="Wrap"
-                     IsVisible="{Binding !IsComposerEnabled}" />
+               THE FOUR SECTION CAPTIONS ARE GONE (issue #146). `KEY` / `HELD` / `ACTION` /
+               `THEN WAIT` spent four lines of the rail labelling controls the mock leaves unlabelled
+               — a latch wearing `⌃` needs no caption saying it is a modifier. `THEN WAIT`'s wording
+               survives as the inline `then wait` on row 2, which is the one place the sentence is
+               not obvious from the control. -->
+          <Border Classes="composerBox">
+            <StackPanel Spacing="8">
+              <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerLabel}" Classes="sectionLabel" />
 
-          <!-- ===== KEY ========================================================================
-               The step's own token beside the one-shot `Record` that sets it. The token is TINTED
-               `MacroStepKeyBrush`, exactly as the step rows tint theirs, so the chip and the row it
-               is editing say one thing in one hue; the dash that stands in for "no key here" is
-               ordinary muted type, because a placeholder is not a key.
+              <!-- Said only while every control below is dead, which is the state it exists to
+                   explain. With a step selected the sentence would be stale advice taking a line of
+                   the rail. -->
+              <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.ComposerHint}"
+                         Classes="meta muted"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding !IsComposerEnabled}" />
 
-               `Record` wears `recordAction` — the app's second red button, which handoff.md:82
-               names as "also the Record ● color" — and the dot beside it is an `Ellipse` rather
-               than U+25CF, which is in neither embedded Plex family. -->
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-            <TextBlock Grid.Column="0"
-                       Text="{x:Static vm:MacroInspectorPanelViewModel.StepKeyLabel}"
-                       Classes="sectionLabel"
-                       VerticalAlignment="Center" />
+              <!-- ===== Row 1: the modifiers, the key, and the one-shot Record ================
+                   FOUR LATCHES, NOT THE EIGHT #128 OFFERED. Authoring is left-hand only, exactly as
+                   the Trigger strip's three are: the right-hand and generic spellings a FILE
+                   carries are preserved by Core and drawn by the step row, but nothing new is
+                   authored that does not say which side it means. Selecting a step normalizes what
+                   it holds to these four, which is the one moment a click is entitled to write.
 
-            <TextBlock Grid.Column="1"
-                       Text="{Binding StepTokenText}"
-                       Classes="monoValue"
-                       Foreground="{DynamicResource MacroStepKeyBrush}"
-                       IsVisible="{Binding HasStepKey}"
-                       TextTrimming="CharacterEllipsis"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1"
-                       Text="{Binding StepTokenText}"
-                       Classes="monoValue muted"
-                       IsVisible="{Binding !HasStepKey}"
-                       VerticalAlignment="Center" />
+                   The key field is a READOUT and NOT an `actionField`: that one records a keypress
+                   when it is clicked and goes amber while it is armed, and wearing its face here
+                   would promise a click that does nothing. Arming is `Record key` beside it, which
+                   takes exactly ONE keystroke. #128's reason for existing survives that: `Ctrl+1`
+                   is still authorable without pressing it — record the bare `1`, which the window
+                   server does deliver, then tick `⌃` here.
 
-            <Button Grid.Column="2"
-                    Classes="recordAction"
-                    Command="{Binding RecordStepKeyCommand}"
-                    VerticalAlignment="Center">
-              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Ellipse Classes="recordDot" VerticalAlignment="Center" />
-                <!-- The pulse follows THIS arm and not `IsRecording`, which is true for either of
-                     the panel's two arms: the header's `● Record` runs a take until it is stopped,
-                     this one takes exactly one keystroke, and two controls pulsing at once would
-                     say the panel is capturing twice. -->
-                <TextBlock Text="{Binding RecordStepKeyCaption}"
-                           Classes.recording="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter=SingleStep}"
-                           VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-          </Grid>
+                   `Record key` IS `secondary`, NOT `recordAction` (issue #146). The panel already
+                   carries one red Record — the header's `Record sequence` — and two would say the
+                   sequence and the single step were the same weight of act. Its dot wears
+                   `.standby` (muted) while the SingleStep arm is idle and DROPS the class the
+                   moment the arm goes live, so red still means "this is recording now" everywhere
+                   in the app. `None,Run` is the standby set, because the header's take leaves this
+                   button's own arm idle. -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <ItemsControl Grid.Column="0" ItemsSource="{Binding ChordModifiers}" VerticalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="4" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:MacroChordModifier">
+                      <Button Classes="macroChip"
+                              Classes.selected="{Binding IsOn}"
+                              IsEnabled="{Binding IsEnabled}"
+                              ToolTip.Tip="{Binding Description}"
+                              Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleChordModifierCommand}"
+                              CommandParameter="{Binding}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Side}"
+                                     Classes="monoValueSmall"
+                                     IsVisible="{Binding HasSide}"
+                                     VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding Symbol}"
+                                     Classes="keySymbol"
+                                     VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-          <!-- ===== HELD =======================================================================
-               FOUR LATCHES, NOT THE EIGHT #128 OFFERED. Authoring is left-hand only, exactly as the
-               Trigger strip's three are: the right-hand and generic spellings a FILE carries are
-               preserved by Core and drawn by the step row, but nothing new is authored that does
-               not say which side it means. Selecting a step normalizes what it holds to these four,
-               which is the one moment a click is entitled to write (see the view model).
+                <Border Grid.Column="1" Classes="macroComposerKey">
+                  <Grid>
+                    <TextBlock Text="{Binding StepTokenText}"
+                               Classes="monoValue"
+                               Foreground="{DynamicResource MacroStepKeyBrush}"
+                               IsVisible="{Binding HasStepKey}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StepTokenText}"
+                               Classes="monoValue muted"
+                               IsVisible="{Binding !HasStepKey}"
+                               VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
 
-               EACH LATCH IS A MARK, drawn in `.keySymbol` — `⇧ ⌃ ⌥ ⌘` are in NEITHER embedded Plex
-               family — with the words in the tooltip, because a mark alone is not accessible text.
-               NEITHER RUN CARRIES A COLOUR: `ToggleSegment`'s `.selected` face sets Foreground, a
-               TextBlock inherits it and a `muted` here would break the on-accent label. The side
-               run stays in the ordinary mono face for the opposite reason — the key-symbol subset
-               carries no Latin letters — and is invisible on all four of these, because left is the
-               unmarked side; it survives because the mark table is shared with surfaces that do
-               spell a side.
-
-               A WrapPanel, so a font-metric shift on another machine wraps the strip rather than
-               running it off a 300 px rail. -->
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-            <TextBlock Grid.Column="0"
-                       Text="{x:Static vm:MacroInspectorPanelViewModel.StepModifiersLabel}"
-                       Classes="sectionLabel"
-                       VerticalAlignment="Center" />
-
-            <ItemsControl Grid.Column="1" ItemsSource="{Binding ChordModifiers}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:MacroChordModifier">
-                  <Button Classes="toggleSegment"
-                          Classes.selected="{Binding IsOn}"
-                          IsEnabled="{Binding IsEnabled}"
-                          Margin="0,0,4,4"
-                          ToolTip.Tip="{Binding Description}"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).ToggleChordModifierCommand}"
-                          CommandParameter="{Binding}">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Side}"
-                                 Classes="monoValueSmall"
-                                 IsVisible="{Binding HasSide}"
-                                 VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Symbol}"
-                                 Classes="keySymbol"
-                                 VerticalAlignment="Center" />
-                    </StackPanel>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
-
-          <!-- ===== ACTION =====================================================================
-               `tap` / `press` / `release` — 06 §2.2's three directions, in the step row's own
-               words so the control and the row it edits cannot read differently.
-
-               `toggleSegment` AND NOT `directionSegment`. The latter is the Lighting tab's arrow
-               bridge and its content is an `Icon`; these are words, and `toggleSegment` is the
-               text-based face the latches above already wear. Each segment carries its own
-               `IsEnabled`, because `press` and `release` die on a chord: 05 §5.8 discards a
-               direction on a modified keystroke, so a live segment there would be a control whose
-               effect the next save deletes. -->
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-            <TextBlock Grid.Column="0"
-                       Text="{x:Static vm:MacroInspectorPanelViewModel.StepDirectionLabel}"
-                       Classes="sectionLabel"
-                       VerticalAlignment="Center" />
-
-            <ItemsControl Grid.Column="1" ItemsSource="{Binding StepDirections}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="vm:MacroStepDirection">
-                  <Button Classes="toggleSegment"
-                          Classes.selected="{Binding IsOn}"
-                          IsEnabled="{Binding IsEnabled}"
-                          Content="{Binding Caption}"
-                          Margin="0,0,4,4"
-                          Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDirectionCommand}"
-                          CommandParameter="{Binding}" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
-
-          <!-- ===== THEN WAIT ==================================================================
-               §11.3's `Macro Timing Delays`, with its window taken off AND its per-row editor taken
-               away — this is the only delay surface now. Every rule the spec pins survives: the
-               tokens are Core's, resolution goes through the TOKEN and never the code, the range is
-               1-999 with the arrows clamped and a typed value validated, and
-               `FirmwareFeature.CustomMacroDelays` is answered IN PLACE with 09 §2's own words plus
-               an `Update Firmware` button — exactly as the Tap & hold panel answers its gate. What
-               changed is that there is no `Set delay`: the choice writes as it is made. -->
-          <StackPanel Spacing="6">
-            <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.StepDelayLabel}" Classes="sectionLabel" />
-
-            <!-- The refusal, drawn in place of the controls rather than beside them: a firmware
-                 that cannot do this at all has nothing for the segments to write to. Amber — an old
-                 firmware is a fact about the device, not a failure. -->
-            <StackPanel Spacing="8" IsVisible="{Binding !Steps.AreDelaysAvailable}">
-              <TextBlock Text="{Binding Steps.DelayUnavailableReason}"
-                         Classes="body statusWarning"
-                         TextWrapping="Wrap" />
-              <Button Classes="secondary"
-                      Content="{Binding Steps.UpdateFirmwareCaption}"
-                      Command="{Binding Steps.UpdateFirmwareCommand}"
-                      IsVisible="{Binding Steps.CanUpdateFirmware}"
-                      HorizontalAlignment="Left" />
-            </StackPanel>
-
-            <StackPanel Spacing="6" IsVisible="{Binding Steps.AreDelaysAvailable}">
-              <ItemsControl ItemsSource="{Binding StepDelayOptions}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <WrapPanel />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="vm:MacroStepDelayOption">
-                    <!-- The tooltip carries §11.3's own caption and the range it accepts. `random`'s
-                         1-150 ms is stated nowhere else: the fixed delay's bounds are drawn by its
-                         field's arrows and its validation message, but a random one has no field. -->
-                    <Button Classes="toggleSegment"
-                            Classes.selected="{Binding IsOn}"
-                            IsEnabled="{Binding IsEnabled}"
-                            Content="{Binding Caption}"
-                            ToolTip.Tip="{Binding Description}"
-                            Margin="0,0,4,4"
-                            Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
-                            CommandParameter="{Binding}" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-
-              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                <!-- A real TextBox, and that is correct here: focus landing in one ENDS the
-                     recording — the editor's `GotFocus` leg of `StopRecordingOnInteraction` stands
-                     the panel down and the banner goes with it — so the digits reach the field and
-                     the panel is never left claiming to record while the keyboard belongs to the
-                     box (docs/app/keystroke-capture.md, invariant 7: a surface that says it is
-                     capturing must never be wrong about it). The service's own auto-suspend on text
-                     focus still applies underneath, but it is silent, and a silent suspension is
-                     exactly what this panel must not rely on.
-
-                     It is the opposite of an action field, which records a KEYPRESS and must never
-                     be focusable. Mono — the count is written into the macro verbatim.
-
-                     ENABLED ON THE SECTION AND NOT ON `fixed`, deliberately: typing a valid number
-                     is what TAKES the choice off `random` (and off `none`), so a field that went
-                     dead whenever `fixed` was not already the answer would be a control with no way
-                     of ever becoming reachable. -->
-                <TextBox Grid.Column="0"
-                         Classes="monoValue"
-                         IsEnabled="{Binding IsStepDelayEnabled}"
-                         Text="{Binding StepDelayText, Mode=TwoWay}" />
-
-                <!-- The unit loses its muted role only while the count is the delay actually in
-                     effect. A number typed under `none` or `random` is a candidate rather than
-                     something the file holds, and the mono law is about values that exist verbatim
-                     in a config file. -->
-                <TextBlock Grid.Column="1"
-                           Text="{x:Static vm:MacroInspectorStepViewModel.MillisecondSuffix}"
-                           Classes="meta"
-                           Classes.muted="{Binding !IsCustomStepDelay}"
-                           VerticalAlignment="Center" />
-
-                <!-- The steppers are captioned `+`/`-` rather than `▲`/`▼`: the triangles are not
-                     in either embedded family, and an arithmetic sign is not an icon standing in
-                     for a mark. They are also the way from "no delay" to a fixed one, since the
-                     first click clamps 0 up into §11.3's range. -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-                  <Button Content="+" MinWidth="32" Command="{Binding IncreaseStepDelayCommand}" />
-                  <Button Content="-" MinWidth="32" Command="{Binding DecreaseStepDelayCommand}" />
-                </StackPanel>
+                <Button Grid.Column="2"
+                        Classes="secondary"
+                        Command="{Binding RecordStepKeyCommand}"
+                        VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Ellipse Classes="recordDot"
+                             Classes.standby="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter='None,Run'}"
+                             VerticalAlignment="Center" />
+                    <!-- The pulse follows THIS arm and not `IsRecording`, which is true for either
+                         of the panel's two arms: the header's runs a take until it is stopped, this
+                         one takes exactly one keystroke, and two controls pulsing at once would say
+                         the panel is capturing twice. -->
+                    <TextBlock Text="{Binding RecordStepKeyCaption}"
+                               Classes.recording="{Binding CaptureMode, Converter={StaticResource EnumMatch}, ConverterParameter=SingleStep}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
               </Grid>
 
-              <TextBlock Text="{Binding StepDelayError}"
-                         Classes="body statusError"
-                         TextWrapping="Wrap"
-                         IsVisible="{Binding HasStepDelayError}" />
+              <!-- ===== Row 2: what the step does, and what it waits =========================
+                   `tap` / `press` / `release` — 06 §2.2's three directions, in the step row's own
+                   words so the control and the row it edits cannot read differently — then §11.3's
+                   `Macro Timing Delays` with its window taken off AND its per-row editor taken
+                   away. Every rule the spec pins survives: the tokens are Core's, resolution goes
+                   through the TOKEN and never the code, the range is 1-999 with the arrows clamped
+                   and a typed value validated, and `FirmwareFeature.CustomMacroDelays` is answered
+                   IN PLACE with 09 §2's own words plus an `Update Firmware` button.
+
+                   `toggleSegment` AND NOT `macroChip` for these two strips: a chip is an
+                   independent latch that RINGS when it is on, and these are genuinely one-of-N
+                   choices, which the segment's filled face is what says. Each segment carries its
+                   own `IsEnabled`, because `press` and `release` die on a chord: 05 §5.8 discards a
+                   direction on a modified keystroke.
+
+                   `none` IS KEPT even though the mock draws only `fixed` / `random`: without it "no
+                   delay" is unauthorable. Recorded as a deviation in docs/app/design-system.md.
+
+                   A WrapPanel, because keeping `none` is a fourth control the mock's single line
+                   did not budget for: on a rail this wide the row lands on one line or two
+                   depending on the font's own metrics, and wrapping is what stops it running off
+                   the edge on the machine where it does not fit. -->
+              <StackPanel Spacing="6">
+                <WrapPanel>
+                  <ItemsControl ItemsSource="{Binding StepDirections}" Margin="0,0,8,0">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:MacroStepDirection">
+                        <Button Classes="toggleSegment"
+                                Classes.selected="{Binding IsOn}"
+                                IsEnabled="{Binding IsEnabled}"
+                                Content="{Binding Caption}"
+                                Margin="0,0,4,4"
+                                Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDirectionCommand}"
+                                CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <!-- The label travels WITH its segments, as one wrap item: `then wait` orphaned
+                       at the end of the direction row would be a sentence with nothing after it. -->
+                  <StackPanel Orientation="Horizontal"
+                              Margin="0,0,8,0"
+                              IsVisible="{Binding Steps.AreDelaysAvailable}">
+                    <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.StepDelayLabel}"
+                               Classes="meta muted"
+                               Margin="0,0,8,4"
+                               VerticalAlignment="Center" />
+
+                    <ItemsControl ItemsSource="{Binding StepDelayOptions}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:MacroStepDelayOption">
+                          <!-- The tooltip carries §11.3's own caption and the range it accepts.
+                               `random`'s 1-150 ms is stated nowhere else: the fixed delay's bounds
+                               are drawn by its field's arrows and its validation message, but a
+                               random one has no field. -->
+                          <Button Classes="toggleSegment"
+                                  Classes.selected="{Binding IsOn}"
+                                  IsEnabled="{Binding IsEnabled}"
+                                  Content="{Binding Caption}"
+                                  ToolTip.Tip="{Binding Description}"
+                                  Margin="0,0,4,4"
+                                  Command="{Binding $parent[views:MacroInspectorPanelView].((vm:MacroInspectorPanelViewModel)DataContext).SetStepDelayModeCommand}"
+                                  CommandParameter="{Binding}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+
+                  <StackPanel Orientation="Horizontal"
+                              Spacing="6"
+                              Margin="0,0,0,4"
+                              IsVisible="{Binding Steps.AreDelaysAvailable}">
+                    <!-- A real TextBox, and that is correct here: focus landing in one ENDS the
+                         recording — the editor's `GotFocus` leg of `StopRecordingOnInteraction`
+                         stands the panel down and the banner goes with it — so the digits reach the
+                         field and the panel is never left claiming to record while the keyboard
+                         belongs to the box (docs/app/keystroke-capture.md, invariant 7). The
+                         service's own auto-suspend on text focus still applies underneath, but it
+                         is silent, and a silent suspension is exactly what this panel must not rely
+                         on.
+
+                         It is the opposite of an action field, which records a KEYPRESS and must
+                         never be focusable. Mono — the count is written into the macro verbatim.
+
+                         ENABLED ON THE SECTION AND NOT ON `fixed`, deliberately: typing a valid
+                         number is what TAKES the choice off `random` (and off `none`), so a field
+                         that went dead whenever `fixed` was not already the answer would be a
+                         control with no way of ever becoming reachable. The arrows are gone from
+                         beside it since #146 — the segments and the number are the whole control,
+                         and the Repeat row below is where a stepper earns its width. -->
+                    <TextBox Classes="monoValue"
+                             Width="72"
+                             TextAlignment="Right"
+                             IsEnabled="{Binding IsStepDelayEnabled}"
+                             Text="{Binding StepDelayText, Mode=TwoWay}" />
+
+                    <!-- The unit loses its muted role only while the count is the delay actually in
+                         effect. A number typed under `none` or `random` is a candidate rather than
+                         something the file holds, and the mono law is about values that exist
+                         verbatim in a config file. -->
+                    <TextBlock Text="{x:Static vm:MacroInspectorStepViewModel.MillisecondSuffix}"
+                               Classes="meta"
+                               Classes.muted="{Binding !IsCustomStepDelay}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </WrapPanel>
+
+                <!-- The firmware refusal, drawn in place of the controls rather than beside them: a
+                     firmware that cannot do this at all has nothing for the segments to write to.
+                     Amber — an old firmware is a fact about the device, not a failure. -->
+                <StackPanel Spacing="8" IsVisible="{Binding !Steps.AreDelaysAvailable}">
+                  <TextBlock Text="{Binding Steps.DelayUnavailableReason}"
+                             Classes="body statusWarning"
+                             TextWrapping="Wrap" />
+                  <Button Classes="secondary"
+                          Content="{Binding Steps.UpdateFirmwareCaption}"
+                          Command="{Binding Steps.UpdateFirmwareCommand}"
+                          IsVisible="{Binding Steps.CanUpdateFirmware}"
+                          HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <!-- The panel's ONE error ramp, and it is not an advisory: a millisecond value the
+                     user typed outside §11.3's range is a rejected input, where every budget on
+                     this panel is a report. -->
+                <TextBlock Text="{Binding StepDelayError}"
+                           Classes="body statusError"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasStepDelayError}" />
+              </StackPanel>
             </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- ===== Speed, Repeat and the budgets =================================================
+           2i's readings in the mock's own shape: the two things a user SETS, each with the reading
+           that counts it on the same line, and the two budgets that are pure report on one muted
+           line under them.
+
+           Over budget goes AMBER and still saves — the layout is written as it stands and the board
+           truncates. `macros n / m` is 06 §6's profile-wide count; it was the deleted Macros tab's
+           footer meter, so this is the only place that limit is readable now, and its maximum comes
+           from the device's MacroCapability through MacroLimits — never a literal.
+
+           The two faces are bound EXCLUSIVELY rather than layered, so which one wins is a fact
+           about the selector and never about the order the stylesheet happens to declare them in
+           (docs/app/design-system.md, contract 7). -->
+      <Border Classes="inspectorSection">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding HasSpeed}">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding SpeedMeter.Label}"
+                       Classes="body"
+                       VerticalAlignment="Center" />
+
+            <Slider Grid.Column="1"
+                    Minimum="{Binding SpeedMinimum}"
+                    Maximum="{Binding SpeedMaximum}"
+                    Value="{Binding Speed, Mode=TwoWay}"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    VerticalAlignment="Center" />
+
+            <!-- `5 of 9`, not `5 / 9`: a playback speed is a step out of a scale rather than a
+                 consumption against a budget, and the separator is what says so. -->
+            <TextBlock Grid.Column="2"
+                       Text="{Binding SpeedMeter.Caption}"
+                       Classes="monoValue"
+                       Classes.statusWarning="{Binding SpeedMeter.IsOverBudget}"
+                       VerticalAlignment="Center" />
+          </Grid>
+
+          <!-- REPEAT STAYS, as a `− 1 +` stepper. Mockup 2i drew only speed; repeat is supported by
+               the devices this app edits today and this panel is the only place left to set it, so
+               dropping it would be dropping a working feature silently. The Slider it used to wear
+               went with #146: repeat is a small integer range (06 §6) that a slider could neither
+               be read exactly on nor stepped by one.
+
+               ABSENT, NEVER DISABLED, where the file does not keep it — the Advantage2 has a repeat
+               range in the model but its serializer writes no {xN} token at all. Only the LABEL AND
+               THE STEPPER are gated on that, deliberately: the layout keystroke budget beside them
+               is a fact about every device that has macros at all, and hiding the whole row would
+               take a working readout of a real device limit off the screen with it.
+
+               The captions are the arithmetic signs at the call site rather than icons — both
+               embedded families carry them, and a drawn mark would need two more entries in the
+               icon catalog to say what `+` and `−` already say. -->
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+            <TextBlock Grid.Column="0"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.RepeatLabel}"
+                       Classes="body"
+                       IsVisible="{Binding HasRepeat}"
+                       VerticalAlignment="Center" />
+
+            <Border Grid.Column="1" Classes="numericStepper" IsVisible="{Binding HasRepeat}">
+              <Grid ColumnDefinitions="Auto,Auto,Auto">
+                <Button Grid.Column="0" Classes="ghost" Content="−" Command="{Binding DecreaseRepeatCommand}" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Repeat}"
+                           Classes="monoValue"
+                           MinWidth="24"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="2" Classes="ghost" Content="+" Command="{Binding IncreaseRepeatCommand}" />
+              </Grid>
+            </Border>
+
+            <TextBlock Grid.Column="3"
+                       Text="{Binding LayoutKeystrokeMeter.Caption}"
+                       Classes="monoValue"
+                       Classes.muted="{Binding !LayoutKeystrokeMeter.IsOverBudget}"
+                       Classes.statusWarning="{Binding LayoutKeystrokeMeter.IsOverBudget}"
+                       VerticalAlignment="Center" />
+
+            <TextBlock Grid.Column="4"
+                       Text="{x:Static vm:MacroInspectorPanelViewModel.LayoutKeystrokeUnit}"
+                       Classes="meta muted"
+                       VerticalAlignment="Center" />
+          </Grid>
+
+          <!-- The two pure reports, on one line: `this macro 128 / 500 · macros 24 / 100`. The
+               middle dot IS a character — U+00B7 is Latin-1 and both embedded Plex families carry
+               it. Each half goes amber on its OWN budget, so a full profile does not paint an
+               ordinary macro over budget. -->
+          <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+            <TextBlock Text="{Binding MacroLengthMeter.Label}" Classes="meta muted" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding MacroLengthMeter.Caption}"
+                       Classes="monoValueSmall"
+                       Classes.muted="{Binding !MacroLengthMeter.IsOverBudget}"
+                       Classes.statusWarning="{Binding MacroLengthMeter.IsOverBudget}"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{x:Static vm:MacroInspectorPanelViewModel.MeterJoin}"
+                       Classes="meta muted"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding MacroCountMeter.Label}" Classes="meta muted" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding MacroCountMeter.Caption}"
+                       Classes="monoValueSmall"
+                       Classes.muted="{Binding !MacroCountMeter.IsOverBudget}"
+                       Classes.statusWarning="{Binding MacroCountMeter.IsOverBudget}"
+                       VerticalAlignment="Center" />
           </StackPanel>
         </StackPanel>
       </Border>
 
-      <!-- ===== The footer meters =============================================================
-           2i's three readings, in its order: `Playback speed 3 / 5`, `this macro 128 / 500`,
-           `layout keystrokes 5 140 / 7 200`. Over budget goes AMBER and still saves — the layout
-           is written as it stands and the board truncates.
+      <!-- ===== The two macro actions =========================================================
+           WHAT THE DELETED MACROS TAB DID TO A WHOLE NAMED GROUP, done to ONE macro on ONE key
+           (issue #141). `Copy macro to…` arms the editor's own pick — the same arm/cancel pair the
+           legend row's `Copy key…` and the rail footer's `Copy to…` use, so there is one armed
+           state, one Escape route and one disarm set — and the next cap clicked receives a CLONE in
+           its first empty slot. `Delete` empties this slot alone; nothing else on the key and no
+           other key moves, because there is no shared macro to reach (06 §1).
 
-           A FOURTH ROW SINCE ISSUE #140: `macros 24 / 100`, 06 §6's profile-wide count. It was the
-           Macros tab's footer meter and the tab is gone, so this is the only place that limit is
-           readable now; dropping a working readout of a real device limit silently is what the
-           capability law is against. Amber like its neighbours, never an error ramp, and its
-           maximum comes from the device's MacroCapability through MacroLimits — never a literal. -->
+           THE NOUN IS LOAD-BEARING: the rail's own footer, a few rows below this one, carries a
+           `Copy to…` that copies the WHOLE position. Two buttons reading `Copy to…` on one rail
+           would be two different actions with one name — which is why this one keeps its noun even
+           though the mock shortens it.
+
+           THE CANCEL TAKES THE SAME SLOT, exactly as the rail footer's does: the button that armed
+           the pick is what ends it, so the panel never grows a dead control it only sometimes
+           needs.
+
+           `Delete` IS `discard` — THE RED FACE — SINCE #146, and that is a deliberate widening of a
+           face this app had reserved for the destructive ANSWER of a message box. The designer drew
+           it red, and the reason survives the move: emptying a slot is the one action on this rail
+           that destroys something the file holds. Recorded in docs/app/design-system.md. -->
       <Border Classes="inspectorSection">
-        <StackPanel Spacing="8">
-          <StackPanel Spacing="4">
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasSpeed}">
-              <TextBlock Grid.Column="0" Text="{Binding SpeedMeter.Label}" Classes="body" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1"
-                         Text="{Binding SpeedMeter.Caption}"
-                         Classes="monoValue"
-                         Classes.statusWarning="{Binding SpeedMeter.IsOverBudget}"
-                         VerticalAlignment="Center" />
-            </Grid>
-
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" Text="{Binding MacroLengthMeter.Label}" Classes="body" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1"
-                         Text="{Binding MacroLengthMeter.Caption}"
-                         Classes="monoValue"
-                         Classes.statusWarning="{Binding MacroLengthMeter.IsOverBudget}"
-                         VerticalAlignment="Center" />
-            </Grid>
-
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" Text="{Binding LayoutKeystrokeMeter.Label}" Classes="body" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1"
-                         Text="{Binding LayoutKeystrokeMeter.Caption}"
-                         Classes="monoValue"
-                         Classes.statusWarning="{Binding LayoutKeystrokeMeter.IsOverBudget}"
-                         VerticalAlignment="Center" />
-            </Grid>
-
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" Text="{Binding MacroCountMeter.Label}" Classes="body" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1"
-                         Text="{Binding MacroCountMeter.Caption}"
-                         Classes="monoValue"
-                         Classes.statusWarning="{Binding MacroCountMeter.IsOverBudget}"
-                         VerticalAlignment="Center" />
-            </Grid>
-          </StackPanel>
-
-          <!-- Speed itself, beside the reading that counts it. -->
-          <Slider Minimum="{Binding SpeedMinimum}"
-                  Maximum="{Binding SpeedMaximum}"
-                  Value="{Binding Speed, Mode=TwoWay}"
-                  TickFrequency="1"
-                  IsSnapToTickEnabled="True"
-                  IsVisible="{Binding HasSpeed}" />
-
-          <!-- REPEAT STAYS. Mockup 2i draws only speed; repeat is supported by the devices this app
-               edits today and this panel is the only place left to set it, so dropping it would be
-               dropping a working feature silently. Recorded as a deviation
-               in docs/app/design-system.md. THE CO-TRIGGERS LEFT THIS BLOCK with issue #137: they
-               are the Trigger strip in the header now, where they sit beside the trigger token they
-               qualify and the collision they cause.
-
-               Absent, never disabled, where the file does not keep it: the Advantage2 has a repeat
-               range in the model but its serializer writes no {xN} token at all. -->
-          <StackPanel Spacing="4" IsVisible="{Binding HasRepeat}">
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0"
-                         Text="{x:Static vm:MacroInspectorPanelViewModel.RepeatLabel}"
-                         Classes="body"
-                         VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1" Text="{Binding Repeat}" Classes="monoValue" VerticalAlignment="Center" />
-            </Grid>
-            <Slider Minimum="{Binding RepeatMinimum}"
-                    Maximum="{Binding RepeatMaximum}"
-                    Value="{Binding Repeat, Mode=TwoWay}"
-                    TickFrequency="1"
-                    IsSnapToTickEnabled="True" />
-          </StackPanel>
-
-          <!-- ===== The two macro actions ======================================================
-               WHAT THE DELETED MACROS TAB DID TO A WHOLE NAMED GROUP, done to ONE macro on ONE key
-               (issue #141). `Copy macro to…` arms the editor's own pick — the same arm/cancel pair
-               the legend row's `Copy key…` and the rail footer's `Copy to…` use, so there is one
-               armed state, one Escape route and one disarm set — and the next cap clicked receives
-               a CLONE in its first empty slot. `Delete` empties this slot alone; nothing else on
-               the key and no other key moves, because there is no shared macro to reach (06 §1).
-
-               THE NOUN IS LOAD-BEARING: the rail's own footer, six rows below this one, carries a
-               `Copy to…` that copies the WHOLE position. Two buttons reading `Copy to…` on one rail
-               would be two different actions with one name.
-
-               THE CANCEL TAKES THE SAME SLOT, exactly as the rail footer's does: the button that
-               armed the pick is what ends it, so the panel never grows a dead control it only
-               sometimes needs.
-
-               `secondary`, NOT `discard`. The red face is the app's one destructive ANSWER — a
-               message-box button a request names DestructiveResult — and a rail action is not one
-               (docs/app/design-system.md, "The blocking surfaces"). -->
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="secondary"
-                    Content="{x:Static vm:MacroInspectorPanelViewModel.CopyMacroCaption}"
-                    Command="{Binding CopyMacroCommand}"
-                    IsVisible="{Binding !IsCopyArmed}" />
-            <Button Classes="secondary"
-                    Content="{x:Static vm:MacroInspectorPanelViewModel.CancelCopyCaption}"
-                    Command="{Binding CancelCopyCommand}"
-                    IsVisible="{Binding IsCopyArmed}" />
-            <Button Classes="secondary"
-                    Content="{x:Static vm:MacroInspectorPanelViewModel.DeleteMacroCaption}"
-                    Command="{Binding DeleteMacroCommand}" />
-          </StackPanel>
-
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+          <Button Classes="secondary"
+                  Content="{x:Static vm:MacroInspectorPanelViewModel.CopyMacroCaption}"
+                  Command="{Binding CopyMacroCommand}"
+                  IsVisible="{Binding !IsCopyArmed}" />
+          <Button Classes="secondary"
+                  Content="{x:Static vm:MacroInspectorPanelViewModel.CancelCopyCaption}"
+                  Command="{Binding CancelCopyCommand}"
+                  IsVisible="{Binding IsCopyArmed}" />
+          <Button Classes="discard"
+                  Content="{x:Static vm:MacroInspectorPanelViewModel.DeleteMacroCaption}"
+                  Command="{Binding DeleteMacroCommand}" />
         </StackPanel>
       </Border>
     </StackPanel>
@@ -953,9 +945,9 @@
          could be hit would sit under the pointer and answer every one of those tests itself — the
          drag would land on nothing, every time.
 
-         Its content is the row's own `MacroStepCaption`, and its position is written straight from
-         `OnPointerMovedOverStep`; a Canvas measures to nothing, so this costs the panel above it no
-         height at all. -->
+         Its content is the row's own `MacroStepCaption`, delay and all, and its position is written
+         straight from `OnPointerMovedOverStep`; a Canvas measures to nothing, so this costs the
+         panel above it no height at all. -->
     <Canvas x:Name="DragLayer" IsHitTestVisible="False">
       <Border x:Name="DragGhost"
               Classes="macroStepGhost"

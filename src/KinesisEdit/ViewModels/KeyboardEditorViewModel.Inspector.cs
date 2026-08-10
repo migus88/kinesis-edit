@@ -61,7 +61,6 @@ namespace KinesisEdit.ViewModels
         private EventHandler _remapAssignedHandler = null!;
         private EventHandler _tapAndHoldAssignedHandler = null!;
         private EventHandler _macroInspectorAssignedHandler = null!;
-        private EventHandler _macroInspectorNameChangedHandler = null!;
 
         /// <summary>
         /// Whether the capture service is running <b>because a rail panel asked for it</b>. It is the
@@ -200,8 +199,11 @@ namespace KinesisEdit.ViewModels
             // the armed state: there is one CopySource, one prompt and one Escape route.
             //
             // It no longer resolves a MacroLibrary (issue #141): the library was an app-level
-            // identity over macros the hardware keeps as independent copies, and the panel's name
-            // dropdown that read it is an inline field over Macro.Name now.
+            // identity over macros the hardware keeps as independent copies. The inline name field
+            // that replaced its dropdown is gone too (issue #146) — the designer's mock draws none —
+            // so the panel raises no NameChanged and there is nothing here to answer. Macro.Name is
+            // still stamped on at load and harvested at save; with no rename path the harvest simply
+            // never runs, which is what leaves a stored name untouched rather than dropped.
             //
             // It no longer takes the session's recent-token store (issue #139): #128's chord composer
             // hosted a fourth picker over it, and the composer that replaced it sets a step's key from
@@ -215,12 +217,10 @@ namespace KinesisEdit.ViewModels
             _remapAssignedHandler = (_, _) => RefreshCounters();
             _tapAndHoldAssignedHandler = (_, _) => OnTapAndHoldAssigned();
             _macroInspectorAssignedHandler = (_, _) => OnMacroInspectorAssigned();
-            _macroInspectorNameChangedHandler = (_, _) => OnMacroNameChanged();
 
             _remapPanel.Assigned += _remapAssignedHandler;
             _tapAndHoldPanel.Assigned += _tapAndHoldAssignedHandler;
             _macroInspectorPanel.Assigned += _macroInspectorAssignedHandler;
-            _macroInspectorPanel.NameChanged += _macroInspectorNameChangedHandler;
 
             var inspector = new KeyInspectorViewModel(
                 ResetKeyCommand,
@@ -368,26 +368,6 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// The rail's Macro panel renamed the open macro. <b>A different bit from
-        /// <see cref="OnMacroInspectorAssigned"/></b>, which is why the panel raises a second event:
-        /// a name is not in <c>layout&lt;n&gt;.txt</c> at all, so no session can see it move and
-        /// only the per-profile rename mark makes it unsaved work
-        /// (<c>KeyboardEditorViewModel.MacroNames.cs</c>).
-        /// <para>
-        /// The funnel runs anyway. Nothing about a name moves a counter, but the mark is folded into
-        /// <c>IsDirty</c> by <c>RefreshDirtyState</c>, which is the funnel's own tail — and the
-        /// legend and the rail are refreshed from the same place, so one call keeps every reader of
-        /// the name honest instead of a list somebody has to maintain.
-        /// </para>
-        /// </summary>
-        private void OnMacroNameChanged()
-        {
-            MarkMacroNamesDirty();
-
-            RefreshCounters();
-        }
-
-        /// <summary>
         /// Whether the keystroke being routed belongs to an armed rail panel — the new first branch
         /// of <see cref="OnKeystrokeCaptured"/>.
         /// <para>
@@ -443,7 +423,6 @@ namespace KinesisEdit.ViewModels
             _remapPanel.Assigned -= _remapAssignedHandler;
             _tapAndHoldPanel.Assigned -= _tapAndHoldAssignedHandler;
             _macroInspectorPanel.Assigned -= _macroInspectorAssignedHandler;
-            _macroInspectorPanel.NameChanged -= _macroInspectorNameChangedHandler;
 
             // Belt to that brace: a panel that never announced itself cannot leave a claim behind.
             if (_isInspectorCapturing)

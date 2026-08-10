@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
@@ -23,14 +24,20 @@ namespace KinesisEdit.ViewModels
     /// first free slot — or appends it to the Advantage 360's flat list. The old panel's
     /// draft-then-assign dance was a modal's shape, not a rail's.</para>
     ///
-    /// <para><b>The name is a field on this macro, and nothing else</b> (issue #141). It was a
-    /// dropdown over the profile's macro <em>library</em> until that layer was deleted: there is no
-    /// shared macro anywhere on disk — every key's slot holds its own copy (06 §1) — so a list of
-    /// "the macros this profile has" was an identity the hardware does not carry, and picking from
-    /// it was an assignment dressed as a rename. What replaces it is smaller and honest:
-    /// <see cref="MacroName"/> names <em>this</em> site, <see cref="CopyMacroCommand"/> is how a
-    /// second key gets a copy, and <see cref="DeleteMacroCommand"/> empties this slot alone. The
-    /// reuse note and the "Also on …" line went with the grouping that computed them.</para>
+    /// <para><b>A macro is not named here — and since issue #146 it is not named anywhere.</b> The
+    /// dropdown over the profile's macro <em>library</em> went with the library (issue #141): there
+    /// is no shared macro anywhere on disk — every key's slot holds its own copy (06 §1) — so a list
+    /// of "the macros this profile has" was an identity the hardware does not carry, and picking
+    /// from it was an assignment dressed as a rename. The inline field that replaced it went with
+    /// the designer's mock, which draws none: a macro is identified by the place it fires from, and
+    /// what is left of the old section is <see cref="CopyMacroCommand"/> — how a second key gets a
+    /// copy — and <see cref="DeleteMacroCommand"/>, which empties this slot alone.</para>
+    ///
+    /// <para><b>A stored name still round-trips, and that is load bearing.</b> <c>Macro.Name</c> is
+    /// stamped onto a freshly parsed layout on load and harvested on save by
+    /// <c>KeyboardEditorViewModel.MacroNames.cs</c>; with no rename path in the app nothing ever
+    /// marks a profile's names dirty, so the harvest never runs and a <c>macro_name_*</c> line
+    /// written by an earlier version is neither shown nor rewritten — and therefore never lost.</para>
     ///
     /// <para><b>It records through the editor, never around it.</b> The editor owns the single
     /// subscription to <c>IKeystrokeCaptureService</c> and routes one keystroke to one consumer;
@@ -69,9 +76,6 @@ namespace KinesisEdit.ViewModels
         /// <summary>The panel's own name, and its mode tab's caption.</summary>
         public const string PanelTitle = KeyInspectorTabViewModel.MacroCaption;
 
-        /// <summary>The section label over the name field. This app's wording.</summary>
-        public const string NameLabel = "MACRO";
-
         /// <summary>
         /// The footer's copy action. Deliberately <b>not</b> the rail footer's <c>Copy to…</c>: that
         /// one copies the whole position (its assignment, its tap-and-hold, all of its macros), this
@@ -89,15 +93,27 @@ namespace KinesisEdit.ViewModels
         /// <summary>The footer's delete action: this slot's macro, and nothing else.</summary>
         public const string DeleteMacroCaption = "Delete";
 
-        /// <summary>The record button at rest (mockup <c>2i</c>: <c>● Record</c>; the dot is geometry).</summary>
-        public const string RecordCaption = "Record";
+        /// <summary>
+        /// The <b>Sequence header's</b> record button at rest (the dot beside it is geometry). It
+        /// names the take it starts, because since issue #146 there are two record buttons on this
+        /// panel and a bare <c>Record</c> on both would say nothing about which is which.
+        /// </summary>
+        public const string RecordSequenceCaption = "Record sequence";
 
-        /// <summary>The record button while capture is armed.</summary>
+        /// <summary>The <b>composer's</b> record button at rest — one key, onto the selected step.</summary>
+        public const string RecordKeyCaption = "Record key";
+
+        /// <summary>Either record button while its own arm is live.</summary>
         public const string RecordingCaption = "Stop";
 
         /// <summary>
-        /// The live capture banner; <c>{0}</c> is the step the next keystroke lands in, and it moves
-        /// as the macro grows.
+        /// The live capture banner for a <b>run</b>.
+        /// <para>
+        /// <b>It no longer names a step number</b> (issue #146): the rows lost their numbers with
+        /// the designer's mock, so a banner counting up to a number nothing on screen carries would
+        /// be pointing at a label that does not exist. What it still says is the only thing the user
+        /// needs while a take is running — where the keystrokes are going, and how to stop.
+        /// </para>
         /// <para>
         /// <b>A deliberate deviation from mockup <c>2i</c>, which ends the sentence "Esc stops."</b>
         /// Escape is a remappable position like any other, so a macro has to be able to record one
@@ -107,27 +123,25 @@ namespace KinesisEdit.ViewModels
         /// else in the app.
         /// </para>
         /// </summary>
-        public const string RecordingBannerFormat =
-            "Recording into step {0} — your typing goes here, not into the app. Click Stop, or anywhere else, to finish.";
+        public const string RecordingBannerText =
+            "Recording — your typing goes here, not into the app. Click Stop, or anywhere else, to finish.";
 
         /// <summary>
-        /// The banner while the <b>composer</b> is armed (issue #139); <c>{0}</c> is the step the
-        /// key will land on. It is a separate sentence because the two arms mean genuinely different
-        /// things: <see cref="RecordingBannerFormat"/> is a take that runs until it is stopped and
-        /// appends at the end, while this one takes <em>exactly one</em> keystroke and writes it onto
-        /// the row the composer is pointed at. A banner that said "into step 04" while the key was
-        /// about to overwrite step 02 would be the panel lying about its own state.
+        /// The banner while the <b>composer</b> is armed (issue #139). It is a separate sentence
+        /// because the two arms mean genuinely different things: <see cref="RecordingBannerText"/>
+        /// is a take that runs until it is stopped and appends at the end, while this one takes
+        /// <em>exactly one</em> keystroke and writes it onto the row the composer is pointed at.
+        /// Naming the row as "the selected step" rather than by number is what survives #146's
+        /// removal of the numbers — and it was always the more honest phrasing, because the row the
+        /// key lands on is the one wearing the selection ring.
         /// </summary>
-        public const string StepCaptureBannerFormat =
-            "Recording step {0} — the next key you press becomes this step. Click Stop, or anywhere else, to cancel.";
-
-        /// <summary>What the capture actually does with what it hears, stated in the panel (2i).</summary>
-        public const string CaptureRule =
-            "Arrows = press/release. A bare modifier records as tap. Search and shortcuts are suspended until you stop.";
+        public const string StepCaptureBannerText =
+            "Recording the selected step — the next key you press becomes it. Click Stop, or anywhere else, to cancel.";
 
         /// <summary>
-        /// The one thing recording cannot do, said plainly beside the rule that says what it can
-        /// (issue #128, reworded for #139). A chord the window system keeps — <c>Ctrl+1</c> on
+        /// The one thing recording cannot do, said plainly inside the banner that says a take is
+        /// running (issue #128, reworded for #139, rehomed by #146). A chord the window system keeps
+        /// — <c>Ctrl+1</c> on
         /// macOS, or anything a hotkey utility has registered — is consumed <b>above</b> the
         /// application: it is never delivered to the window, so no handler and no local event
         /// monitor can see it or swallow it, and no amount of capture work would change that
@@ -141,23 +155,43 @@ namespace KinesisEdit.ViewModels
         /// was for. The sentence therefore still does not apologise; it names the two steps.
         /// </para>
         /// <para>
-        /// Drawn as its own line rather than folded into <see cref="CaptureRule"/>, which is mockup
-        /// <c>2i</c>'s wording verbatim and pinned as such. Both lines sit under the record banner,
-        /// so the sentence is on screen at the moment the user discovers the limitation.
+        /// <b>It moved inside the recording banner with issue #146.</b> It used to sit under the
+        /// banner beside <c>CaptureRule</c> — mockup <c>2i</c>'s "Arrows = press/release…" sentence,
+        /// which the designer's mock drops along with the whole standing paragraph block. The note
+        /// is kept because it is the only place the app admits the limitation exists, and the banner
+        /// is where it belongs: it is on screen at the moment the user is recording, which is the
+        /// moment the chord fails to arrive.
         /// </para>
         /// </summary>
         public const string OsReservedNote =
             "Some chords never reach this app at all — Ctrl+1, and anything a hotkey utility has claimed, "
             + "are taken by the system first. Record the bare key, then tick the modifiers on the step below.";
 
-        /// <summary>Label of the playback-speed meter, verbatim from mockup <c>2i</c>.</summary>
-        public const string SpeedMeterLabel = "Playback speed";
+        /// <summary>
+        /// Label of the playback-speed meter. <c>2i</c> wrote it <c>Playback speed</c>; the
+        /// designer's mock puts the row inside a 440 px rail as <c>Speed ──●── 5 of 9</c>, and the
+        /// shorter word is what fits beside the slider it labels.
+        /// </summary>
+        public const string SpeedMeterLabel = "Speed";
 
         /// <summary>Label of the per-macro budget meter, verbatim from mockup <c>2i</c>.</summary>
         public const string MacroLengthMeterLabel = "this macro";
 
         /// <summary>Label of the per-layout budget meter, verbatim from mockup <c>2i</c>.</summary>
         public const string LayoutKeystrokeMeterLabel = "layout keystrokes";
+
+        /// <summary>
+        /// What the layout keystroke budget is counted in, drawn after its reading —
+        /// <c>1 014 / 7 200 chars</c>. The mock states the unit rather than the label there, which is
+        /// what lets the meter sit on the <c>Repeat</c> row instead of taking a row of its own.
+        /// </summary>
+        public const string LayoutKeystrokeUnit = "chars";
+
+        /// <summary>
+        /// Between the two budget readings on the panel's one muted meter line —
+        /// <c>this macro 128 / 500 · macros 24 / 100</c>. U+00B7; both embedded families carry it.
+        /// </summary>
+        public const string MeterJoin = " · ";
 
         /// <summary>
         /// Label of the profile-wide macro-count meter. This app's wording; <c>2i</c> draws no such
@@ -183,31 +217,10 @@ namespace KinesisEdit.ViewModels
         /// <summary>Refusal when the profile already holds its macro count (06 §6).</summary>
         public const string MacroCountLimitMessageFormat = "This profile already holds its maximum of {0} macros.";
 
-        /// <summary>
-        /// The longest name the field accepts, which is Core's own bound
-        /// (<see cref="MacroNaming.MaxNameLength"/>) rather than a number spelled again in XAML.
-        /// It exists as a static so the view can reach it with <c>x:Static</c>: the name rides a
-        /// line-oriented settings file (08 §1), so the bound is a file fact and a literal <c>24</c>
-        /// in a view would be a second copy of it waiting to disagree.
-        /// </summary>
-        public static int MaxNameLength => MacroNaming.MaxNameLength;
-
         /// <summary>Builds the macro-count refusal for <paramref name="limit"/> macros (06 §6).</summary>
         public static string BuildMacroCountLimitMessage(int limit)
         {
             return string.Format(CultureInfo.InvariantCulture, MacroCountLimitMessageFormat, limit);
-        }
-
-        /// <summary>Builds the capture banner for the step the next keystroke lands in.</summary>
-        public static string BuildRecordingBanner(string stepNumber)
-        {
-            return string.Format(CultureInfo.InvariantCulture, RecordingBannerFormat, stepNumber);
-        }
-
-        /// <summary>Builds the one-shot banner for the step the composer's <c>Record</c> writes onto.</summary>
-        public static string BuildStepCaptureBanner(string stepNumber)
-        {
-            return string.Format(CultureInfo.InvariantCulture, StepCaptureBannerFormat, stepNumber);
         }
 
         /// <inheritdoc />
@@ -237,10 +250,13 @@ namespace KinesisEdit.ViewModels
         public MacroCaptureMode CaptureMode => _captureMode;
 
         /// <summary>
-        /// The rail widens from 268 px to 300 px while this panel is showing
-        /// (docs/design/handoff.md § Geometry: "inspector rail 268px on Layout, 300px on the
-        /// macro-editing variant"). It is a fact about the panel rather than about the rail, so the
-        /// rail reads it off whichever panel is active.
+        /// The rail widens from 268 px to 440 px while this panel is showing — a <b>floor</b> rather
+        /// than an override, so a rail the user has dragged wider is never yanked back
+        /// (<see cref="InspectorRailWidthViewModel"/>). docs/design/handoff.md § Geometry states the
+        /// macro-editing variant at 300 px; issue #146's mock draws a composer, a slot strip and a
+        /// trigger strip that do not fit one, and the deviation is recorded in
+        /// docs/app/design-system.md. It is a fact about the panel rather than about the rail, so
+        /// the rail reads it off whichever panel is active.
         /// </summary>
         public override bool WantsWideRail => true;
 
@@ -248,49 +264,18 @@ namespace KinesisEdit.ViewModels
         public MacroInspectorStepsViewModel Steps { get; }
 
         /// <summary>
-        /// What the user has called the macro under edit, and the inline field's two-way source.
-        /// The empty string is "unnamed", which is what <see cref="Macro.Name"/> itself means by it.
-        ///
-        /// <para><b>Setting it writes the model and marks the <em>names</em> dirty, not the
-        /// layout.</b> A name does not live in <c>layoutN.txt</c> at all — it rides this app's own
-        /// <c>app_settings.txt</c> (08 §1) — so it raises <see cref="NameChanged"/> rather than
-        /// <c>Assigned</c>: nothing about a name moves a counter, an advisory or a keystroke
-        /// budget, and running the editor's whole refresh funnel for one would be work for nothing
-        /// and a dirty bit on the wrong file.</para>
-        ///
-        /// <para><b>An unchanged commit writes nothing.</b> The field commits on focus loss, which
-        /// happens every time the user clicks past it, so a setter that announced a rename for the
-        /// text it already held would dirty the profile for a glance.</para>
-        ///
-        /// <para><b>It never creates a macro.</b> There is nothing to name until one exists;
-        /// <see cref="HasMacro"/> is what the field is enabled on.</para>
+        /// How many rows the sequence holds, as the header states it beside its title —
+        /// <c>no steps</c> / <c>1 step</c> / <c>5 steps</c>. It is
+        /// <see cref="MacroInspectorStepsViewModel.CountText"/>, forwarded rather than restated, so
+        /// the header and the list cannot disagree about how many rows there are.
         /// </summary>
-        public string MacroName
-        {
-            get => _macro?.Name ?? string.Empty;
-            set => ApplyMacroName(value);
-        }
-
-        /// <summary>
-        /// What the field shows while the macro carries no name of its own — the derived display
-        /// name (<see cref="MacroNaming.DeriveDisplayName"/>), which is what every other surface
-        /// calls an unnamed macro.
-        ///
-        /// <para><b>A watermark, and never the text.</b> Writing the derived name into the field
-        /// would make it the macro's <em>stored</em> name the moment the field committed, and the
-        /// save harvests every non-empty <see cref="Macro.Name"/> — so one visit to a key would
-        /// write a <c>macro_name_*</c> line for a name the user never typed, and freeze it against
-        /// the macro's own content, which the derived name otherwise follows.</para>
-        /// </summary>
-        public string MacroNameWatermark => _macro is { } macro && _layout is { } layout
-            ? MacroNaming.DeriveDisplayName(macro, layout)
-            : string.Empty;
+        public string StepCountText => Steps.CountText;
 
         /// <summary>
         /// Whether the panel is showing a macro at all — false on an empty slot, on a position that
-        /// refuses macros and with nothing selected. It gates the three things that need one to act
-        /// on: the name field, <see cref="DeleteMacroCommand"/> and the editor's own predicate
-        /// behind <see cref="CopyMacroCommand"/>.
+        /// refuses macros and with nothing selected. It gates the two things that need one to act
+        /// on: <see cref="DeleteMacroCommand"/> and the editor's own predicate behind
+        /// <see cref="CopyMacroCommand"/>.
         /// </summary>
         public bool HasMacro => _macro is not null;
 
@@ -303,32 +288,23 @@ namespace KinesisEdit.ViewModels
         public bool IsCopyArmed => CancelCopyCommand.CanExecute(null);
 
         /// <summary>
-        /// The banner shown while capture is armed, naming the step being recorded into — the step
-        /// the <em>next</em> keystroke lands in for a run, and the step the one keystroke will be
-        /// written onto for the composer's single shot.
+        /// The banner shown while capture is armed — which of the two arms is live is the whole of
+        /// what it depends on since issue #146 took the step numbers out of both sentences.
         /// </summary>
         public string RecordingBanner => _captureMode == MacroCaptureMode.SingleStep
-            ? BuildStepCaptureBanner(SelectedStepNumberText)
-            : BuildRecordingBanner(Steps.NextStepNumberText);
+            ? StepCaptureBannerText
+            : RecordingBannerText;
 
         /// <summary>
         /// The Sequence header's record button caption. It follows the <b>run</b> arm alone: the
-        /// composer's own <c>Record</c> is a different button with a caption of its own, and a
+        /// composer's own <c>Record key</c> is a different button with a caption of its own, and a
         /// header reading <c>Stop</c> because the composer is armed would offer to stop a take that
         /// was never started.
         /// </summary>
         public string RecordCommandCaption =>
-            _captureMode == MacroCaptureMode.Run ? RecordingCaption : RecordCaption;
+            _captureMode == MacroCaptureMode.Run ? RecordingCaption : RecordSequenceCaption;
 
-        /// <summary>
-        /// The number of the step the composer is pointed at — what the single-shot banner names.
-        /// Falls back to the step a run would land in when nothing is selected, so the sentence is
-        /// never built around a blank.
-        /// </summary>
-        public string SelectedStepNumberText =>
-            Steps.SelectedStep?.NumberText ?? Steps.NextStepNumberText;
-
-        /// <summary>The playback-speed meter, <c>3 / 5</c> (mockup <c>2i</c>).</summary>
+        /// <summary>The playback-speed meter, <c>5 of 9</c> (issue #146's mock).</summary>
         public MacroMeterViewModel SpeedMeter { get; }
 
         /// <summary>The per-macro budget meter, <c>128 / 500</c> (06 §6).</summary>
@@ -429,6 +405,18 @@ namespace KinesisEdit.ViewModels
         public IRelayCommand CancelCopyCommand { get; }
 
         /// <summary>
+        /// The <c>+</c> half of the repeat stepper (issue #146, which replaced the slider with a
+        /// <c>−</c> / value / <c>+</c> group). It writes through <see cref="Repeat"/> — the very
+        /// path the setter uses — so a stepped value dirties the session exactly as a typed one did,
+        /// and it goes dead at <see cref="RepeatMaximum"/> rather than clamping silently: a button
+        /// that runs and changes nothing is a button that lies about what it can do.
+        /// </summary>
+        public IRelayCommand IncreaseRepeatCommand { get; }
+
+        /// <summary>The <c>−</c> half of the same stepper, dead at <see cref="RepeatMinimum"/>.</summary>
+        public IRelayCommand DecreaseRepeatCommand { get; }
+
+        /// <summary>
         /// Empties <b>this slot</b> — the macro the panel is showing, at the position it is showing
         /// it on — through <see cref="MacroPlacement.Remove"/>, which clears a slot only when that
         /// slot really holds this instance. Every other slot of the key, and every other key
@@ -442,14 +430,6 @@ namespace KinesisEdit.ViewModels
         /// refresh funnel — Core announces nothing, so nothing downstream notices otherwise.
         /// </summary>
         public event EventHandler? Assigned;
-
-        /// <summary>
-        /// Raised after the panel changed a macro's <b>name</b>. A second event beside
-        /// <see cref="Assigned"/> because it marks a different bit: a name is unsaved state of
-        /// <c>app_settings.txt</c>, not of the layout, and the two are saved by different code on
-        /// different files.
-        /// </summary>
-        public event EventHandler? NameChanged;
 
         private readonly MacroCapability _capability;
         private readonly TokenDialect _dialect;
@@ -523,7 +503,10 @@ namespace KinesisEdit.ViewModels
 
             Steps = new MacroInspectorStepsViewModel(device.DeviceId, device.Firmware, urlLauncher);
 
-            SpeedMeter = new MacroMeterViewModel(SpeedMeterLabel);
+            // The speed meter is the one that reads `5 of 9` rather than `5 / 9` (issue #146's
+            // mock): it is a position in a range, not a consumption of a budget, and the other three
+            // really are budgets.
+            SpeedMeter = new MacroMeterViewModel(SpeedMeterLabel, MacroMeterViewModel.OfSeparator);
             MacroLengthMeter = new MacroMeterViewModel(MacroLengthMeterLabel);
             LayoutKeystrokeMeter = new MacroMeterViewModel(LayoutKeystrokeMeterLabel);
             MacroCountMeter = new MacroMeterViewModel(MacroCountMeterLabel);
@@ -531,6 +514,8 @@ namespace KinesisEdit.ViewModels
             RecordCommand = new RelayCommand(ToggleRecording, CanRecord);
             InsertStepCommand = new RelayCommand(InsertPlaceholderStep, CanRecord);
             DeleteMacroCommand = new RelayCommand(DeleteMacro, () => HasMacro);
+            IncreaseRepeatCommand = new RelayCommand(() => StepRepeatBy(1), () => CanStepRepeat(1));
+            DecreaseRepeatCommand = new RelayCommand(() => StepRepeatBy(-1), () => CanStepRepeat(-1));
 
             _copyArmedChangedHandler = (_, _) => OnPropertyChanged(nameof(IsCopyArmed));
 
@@ -546,6 +531,13 @@ namespace KinesisEdit.ViewModels
             // being pushed at — the pointer, ⌥↑↓, a delete and a rebuild all move it.
             Steps.SelectionChanged += (_, _) => OnSelectedStepChanged();
 
+            // The Sequence header's step count is the step list's own, forwarded. Following its
+            // announcement rather than re-raising the count from every path that can change it is
+            // what stops the two drifting: a placeholder opening and a placeholder being discarded
+            // both move the number and neither of them writes to the macro.
+            Steps.PropertyChanged += OnStepsPropertyChanged;
+
+            CreateSlotSelector();
             CreateTriggerStrip(_dialect);
             CreateComposer();
         }
@@ -773,13 +765,10 @@ namespace KinesisEdit.ViewModels
             }
 
             LoadSpeedAndRepeat();
-            RefreshSlots();
-            RefreshTrigger();
-            RefreshName();
+            RefreshSlotsAndTrigger();
+            RefreshMacroActions();
             RefreshMeters();
             ReadComposerFromSelection();
-
-            OnPropertyChanged(nameof(RecordingBanner));
         }
 
         /// <summary>
@@ -950,6 +939,8 @@ namespace KinesisEdit.ViewModels
             // Loading must not write back: the fields move, the model does not.
             SetProperty(ref _speed, _macro?.Speed ?? _capability.Speed?.Default ?? 0, nameof(Speed));
             SetProperty(ref _repeat, _macro?.RepeatFrequency ?? _capability.Repeat?.Default ?? 0, nameof(Repeat));
+
+            RefreshRepeatCommands();
         }
 
         private void ApplySpeed(int value)
@@ -977,7 +968,14 @@ namespace KinesisEdit.ViewModels
         {
             var clamped = _capability.Repeat is { } range ? Math.Clamp(value, range.Minimum, range.Maximum) : value;
 
-            if (!SetProperty(ref _repeat, clamped, nameof(Repeat)) || EnsureMacro() is not { } macro)
+            if (!SetProperty(ref _repeat, clamped, nameof(Repeat)))
+            {
+                return;
+            }
+
+            RefreshRepeatCommands();
+
+            if (EnsureMacro() is not { } macro)
             {
                 return;
             }
@@ -985,6 +983,46 @@ namespace KinesisEdit.ViewModels
             macro.RepeatFrequency = clamped;
 
             OnMacroWritten();
+        }
+
+        /// <summary>
+        /// Whether the stepper may move the repeat factor by <paramref name="offset"/> — false at
+        /// the bound it would cross, and false outright on a device whose file does not keep a
+        /// repeat at all (<see cref="HasRepeat"/>). Clamping instead would leave a live button that
+        /// runs and changes nothing, which reads as a control that is broken rather than at its end.
+        /// </summary>
+        private bool CanStepRepeat(int offset)
+        {
+            if (!HasRepeat)
+            {
+                return false;
+            }
+
+            var target = _repeat + offset;
+
+            return target >= RepeatMinimum && target <= RepeatMaximum;
+        }
+
+        /// <summary>
+        /// Moves the repeat factor one step, <b>through <see cref="Repeat"/></b> and so through
+        /// <see cref="ApplyRepeat"/>: the stepper is a second way to reach the one write path, not a
+        /// second write path, so it creates the macro on an empty slot and dirties the session
+        /// exactly as the slider it replaced did.
+        /// </summary>
+        private void StepRepeatBy(int offset)
+        {
+            if (!CanStepRepeat(offset))
+            {
+                return;
+            }
+
+            Repeat = _repeat + offset;
+        }
+
+        private void RefreshRepeatCommands()
+        {
+            IncreaseRepeatCommand.NotifyCanExecuteChanged();
+            DecreaseRepeatCommand.NotifyCanExecuteChanged();
         }
 
         private bool CanRecord()
@@ -1083,56 +1121,35 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// Re-reads the name field off the model: what the macro is called, what it would be called
-        /// if it were unnamed, and whether there is a macro to name, delete or copy at all. It
-        /// writes nothing — the name of a macro is a fact about the macro, and this runs after
-        /// everybody else's mutation (see <see cref="ReadFromModel"/>).
+        /// Re-announces what the panel derives from "is there a macro on this slot at all" — the
+        /// footer's <c>Delete</c>, and the flag the editor's own <c>Copy macro to…</c> predicate
+        /// reads. It writes nothing, and it runs after everybody else's mutation (see
+        /// <see cref="ReadFromModel"/>).
+        /// <para>
+        /// It is what is left of <c>RefreshName</c>. The name field it also announced went with
+        /// issue #146: there is nothing on this panel that names a macro any more, and
+        /// <c>Macro.Name</c> is now read at load and written at save without the rail ever touching
+        /// it.
+        /// </para>
         /// </summary>
-        private void RefreshName()
+        private void RefreshMacroActions()
         {
-            OnPropertyChanged(nameof(MacroName));
-            OnPropertyChanged(nameof(MacroNameWatermark));
             OnPropertyChanged(nameof(HasMacro));
 
             DeleteMacroCommand.NotifyCanExecuteChanged();
         }
 
         /// <summary>
-        /// The name field's write path. Sanitizing here as well as in <see cref="Macro.Name"/>'s own
-        /// setter is not duplication: it is what makes the "did this actually change?" comparison
-        /// honest, since the model stores the sanitized form and the field hands over raw text.
+        /// The step list announced something. Only its count is forwarded: the rest of what it says
+        /// about itself is bound straight through <see cref="Steps"/> by the view, and re-raising it
+        /// here would be a second copy of the same fact.
         /// </summary>
-        private void ApplyMacroName(string? value)
+        private void OnStepsPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (_macro is not { } macro || !IsAvailable)
+            if (e.PropertyName == nameof(MacroInspectorStepsViewModel.CountText))
             {
-                // Nothing to name. The field is disabled in that state, so this is a guard rather
-                // than a path — but a binding can push a value at a control that has just gone
-                // dead, and answering it would be inventing a macro to hang the name on.
-                OnPropertyChanged(nameof(MacroName));
-
-                return;
+                OnPropertyChanged(nameof(StepCountText));
             }
-
-            var sanitized = MacroNaming.Sanitize(value);
-
-            if (string.Equals(macro.Name, sanitized, StringComparison.Ordinal))
-            {
-                // The commit fires on every focus loss, including the ones where the user only
-                // looked. Announcing a rename for text that did not move would dirty the profile's
-                // names for a glance — and the field is already showing exactly this string.
-                OnPropertyChanged(nameof(MacroName));
-
-                return;
-            }
-
-            macro.Name = sanitized;
-
-            OnPropertyChanged(nameof(MacroName));
-
-            // NOT OnMacroWritten: nothing about a name moves a counter, an advisory or a budget,
-            // and the file it is saved to is not the layout.
-            NameChanged?.Invoke(this, EventArgs.Empty);
         }
 
         /// <summary>
@@ -1175,7 +1192,7 @@ namespace KinesisEdit.ViewModels
         }
 
         /// <summary>
-        /// One hop out, plus the readouts this panel owns outright. The meters, the slot dots and
+        /// One hop out, plus the readouts this panel owns outright. The meters, the slot chips and
         /// the Trigger strip are all derived from the macro the panel just wrote to, so they move
         /// here rather than waiting for the round trip — this is the panel reacting to <em>its own</em>
         /// write, which is the opposite of <see cref="Refresh"/>'s "re-read and never write" and does
@@ -1187,11 +1204,8 @@ namespace KinesisEdit.ViewModels
         /// </summary>
         private void OnMacroWritten()
         {
-            RefreshSlots();
-            RefreshTrigger();
+            RefreshSlotsAndTrigger();
             RefreshMeters();
-
-            OnPropertyChanged(nameof(RecordingBanner));
 
             Assigned?.Invoke(this, EventArgs.Empty);
         }
@@ -1213,14 +1227,14 @@ namespace KinesisEdit.ViewModels
         None = 0,
 
         /// <summary>
-        /// The Sequence header's <c>● Record</c> — a take that runs until it is stopped, appending
-        /// every keystroke to the <b>end</b> of the macro regardless of what is selected.
+        /// The Sequence header's <c>● Record sequence</c> — a take that runs until it is stopped,
+        /// appending every keystroke to the <b>end</b> of the macro regardless of what is selected.
         /// </summary>
         Run = 1,
 
         /// <summary>
-        /// The composer's <c>Record</c> — <b>exactly one</b> keystroke, written onto the selected
-        /// step (or onto the open <c>＋</c> placeholder), disarming itself as it takes it.
+        /// The composer's <c>● Record key</c> — <b>exactly one</b> keystroke, written onto the
+        /// selected step (or onto the open <c>＋</c> placeholder), disarming itself as it takes it.
         /// </summary>
         SingleStep = 2
     }

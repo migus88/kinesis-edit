@@ -1,14 +1,15 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <!--
-    The pill family: the four small labelled lozenges the app draws to say what state something is
+    The pill family: the five small labelled lozenges the app draws to say what state something is
     in. Read Shared.axaml's header first — it carries the authoring contract, and BaseButton
     carries the template, the geometry, the type step, the focus ring and the disabled face that
-    the two clickable pills here inherit.
+    the clickable pills here inherit.
 
-    Three of the four are pills proper (RadiusPill, 999); the kbd chip is the tight one (RadiusChip,
-    3). What groups them is not the radius but the role: each is a compact label that reports or
-    selects a state, never a full action.
+    Three of the five are pills proper (RadiusPill, 999); the kbd chip is the tight one (RadiusChip,
+    3) and the macro chip takes the button radius (RadiusControl, 5). What groups them is not the
+    radius but the role: each is a compact label that reports or selects a state, never a full
+    action.
 
     TWO OF THEM ARE NOT BUTTONS, DELIBERATELY.
 
@@ -261,6 +262,89 @@
     <Style Selector="^:disabled">
       <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    </Style>
+  </ControlTheme>
+
+  <!--
+    MACRO CHIP — the small square latches of the key inspector's Macro panel (issue #146): the SLOTS
+    strip's numbered chips, the TRIGGER strip's co-trigger latches and the composer's four modifier
+    latches. ONE face for all three, because the mock draws them identically and they mean the same
+    thing: a small thing that is either on or off, sitting in a row of its peers.
+
+    IT IS NOT `ToggleSegment`, AND THAT WAS CHECKED FIRST. The toggle's off face is the one this
+    chip wants, but its ON face is a SOLID accent fill, and the mock draws these as an accent
+    OUTLINE over a 14% wash. The difference is not decorative: a slot chip's whole content is a
+    single digit, and a solid accent face with the on-accent label under it reads as a filled button
+    rather than as "this is the slot you are editing" — the same reading the key tile at the head of
+    the rail already uses (AccentSelectionFill inside an AccentBrush hairline). So the two themes
+    keep the same neutral rest ramp and part company on selection, which is exactly the axis
+    ToggleSegment could not be extended along without changing what it draws for the composer's
+    direction and delay strips, which stay on it.
+
+    THE SELECTED RING IS THE FULL `AccentBrush`, not the `AccentSelectedRing` every other selected
+    state in this layer wears. Those all fill a face and use the deeper ring as a quiet border
+    around it; here the ring IS the selection signal — the fill is a 14% wash that barely reads on
+    its own — so dimming it would dim the only thing the chip says. Focus stays separable the way
+    contract 4 asks: it adds the 3px halo outside the border, which selection never draws.
+
+    `.colliding` is the amber ring an advisory puts on EVERY slot chip taking part in a co-trigger
+    collision (spec 06 §6.4), so both sides of a clash are marked rather than only the one being
+    edited. It is declared last and qualified into `:disabled` and `:focus-visible`, so it outranks
+    the selected ring — a colliding slot that is also the selected one still says "these collide",
+    and keeps its wash to say which one is being edited. Amber and not red: an advisory never
+    blocks, and the panel goes on saving.
+
+    Sans, not mono, and that is deliberate for the slot chips: a slot ORDINAL is the app counting,
+    not a value that exists verbatim in a config file. The co-trigger and modifier latches carry
+    their marks in `.keySymbol` at the call site, which sets a family and no colour, so both runs
+    inherit whatever face this theme is in.
+  -->
+  <ControlTheme x:Key="MacroChip" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+    <Setter Property="Background" Value="{DynamicResource SurfaceBarBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Setter Property="Transitions" Value="{x:Null}" />
+
+    <!-- A square-ish target rather than a labelled button: the content is one digit, one `+` or one
+         key mark, so the SIZE is the minimum and the padding only keeps a two-run mark (`R⇧`) off
+         the border. 34x30 is the mock's own chip and is what puts five slots plus three co-triggers
+         on one 440px row. -->
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinWidth" Value="34" />
+    <Setter Property="MinHeight" Value="30" />
+
+    <Style Selector="^:pointerover:not(:pressed):not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pointerover:not(:pressed):not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <Style Selector="^:pressed:not(.selected)">
+      <Setter Property="Background" Value="{DynamicResource SurfaceLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="^:pressed:not(.selected):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceLineHighBrush}" />
+    </Style>
+
+    <!-- On. `:not(:disabled)` for the reason this file's header calls easy to miss: Avalonia walks
+         BasedOn first, so BaseButton's disabled face is applied BEFORE anything here and an
+         unqualified `.selected` would leave a dead chip wearing a live accent. -->
+    <Style Selector="^.selected:not(:disabled)">
+      <Setter Property="Background" Value="{DynamicResource AccentSelectionFillBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="^.selected:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- Part of a co-trigger collision. The face is left alone — whatever the chip was saying about
+         selection it goes on saying — and only the ring turns amber. -->
+    <Style Selector="^.colliding:not(:disabled):not(:focus-visible)">
+      <Setter Property="BorderBrush" Value="{DynamicResource StatusAdvisoryBrush}" />
     </Style>
   </ControlTheme>
 </ResourceDictionary>

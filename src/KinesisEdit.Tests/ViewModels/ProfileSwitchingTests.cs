@@ -669,14 +669,26 @@ namespace KinesisEdit.Tests.ViewModels
         }
 
         /// <summary>
-        /// Renames the macro the rail has open through its inline name field — the app's one rename
-        /// path since issue #141 deleted the library that used to own renaming.
+        /// Renames the macro the rail has open.
+        /// <para>
+        /// Issue #146 removed the rail's inline name field, so this is the two halves that field
+        /// performed: the model write, and <c>MarkMacroNamesDirty</c> — the public seam it reached
+        /// through <c>NameChanged</c>. What this suite is about — a rename surviving a switch away
+        /// and back, which is the trap the session cache is most likely to be broken by — sits below
+        /// that seam and is untouched by the removal.
+        /// </para>
         /// </summary>
         private static void RenameTheOpenMacro(KeyboardEditorViewModel editor, string name)
         {
-            var panel = Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
+            Assert.IsType<MacroInspectorPanelViewModel>(editor.Inspector.ActivePanel);
 
-            panel.MacroName = name;
+            var key = editor.SelectedLayer!.Keys[TestLayouts.RgbDigitOneKeyIndex].Key;
+            var macro = key.GetMacro(key.ActiveMacroIndex)
+                        ?? throw new InvalidOperationException("The open position carries no macro to rename.");
+
+            macro.Name = name;
+
+            editor.MarkMacroNamesDirty();
         }
 
         /// <summary>Arms the key inspector's Macro panel — the app's one macro recorder.</summary>
